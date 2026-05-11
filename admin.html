@@ -1,0 +1,836 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>IM 메신저</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;500;600&display=swap" />
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --bg: #F4ECDC;
+    --surface: #FFFFFF;
+    --surface-2: #FBF6EC;
+    --surface-3: #F0E6D2;
+    --ink: #25201A;
+    --ink-2: #6E6358;
+    --ink-3: #A39787;
+    --border: #E7DCC4;
+    --border-soft: #EEE7D6;
+    --accent: #B5683C;
+    --accent-soft: #E9C9B0;
+    --accent-deep: #8B4A24;
+    --sage: #6F8A5C;
+    --sage-soft: #DCE3CE;
+    --gold: #B89146;
+    --rose: #B05865;
+    --shadow-sm: 0 1px 2px rgba(70,50,20,.06);
+    --shadow-md: 0 4px 14px rgba(70,50,20,.08);
+    --shadow-pop: 0 12px 40px rgba(70,50,20,.16);
+    --font-sans: 'Pretendard Variable', Pretendard, -apple-system, system-ui, sans-serif;
+    --font-serif: 'Noto Serif KR', 'Apple SD Gothic Neo', serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; font-family: var(--font-sans); color: var(--ink); background: #E8DFC8; -webkit-font-smoothing: antialiased; }
+
+  .stage { min-height: 100vh; width: 100%; display: flex; align-items: center; justify-content: center; padding: 40px 24px; gap: 60px;
+    background: radial-gradient(1200px 600px at 20% -10%, #F4EDDA 0%, transparent 60%), radial-gradient(900px 500px at 100% 110%, #EFDFC0 0%, transparent 55%), #E8DFC8; }
+
+  .meta { max-width: 300px; color: var(--ink-2); }
+  .meta .brand { font-family: var(--font-serif); font-size: 28px; color: var(--ink); letter-spacing: -0.02em; margin: 0 0 8px; font-weight: 500; }
+  .meta .tagline { font-size: 15px; line-height: 1.55; margin: 0 0 20px; }
+  .meta .legend { border-top: 1px solid var(--border); padding-top: 16px; font-size: 13px; line-height: 1.7; }
+  .meta .legend b { color: var(--ink); font-weight: 600; }
+  .meta .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #ccc; display: inline-block; margin-right: 6px; }
+  .meta .status-dot.connected { background: #34c759; }
+
+  .scroll { overflow-y: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  .scroll::-webkit-scrollbar { display: none; }
+  .col { display: flex; flex-direction: column; }
+
+  .avatar { width: 44px; height: 44px; border-radius: 14px; display: inline-flex; align-items: center; justify-content: center; font-weight: 600; color: white; flex-shrink: 0; font-size: 15px; letter-spacing: -.02em; }
+  .avatar.sm { width: 32px; height: 32px; border-radius: 10px; font-size: 12px; }
+  .avatar.xs { width: 24px; height: 24px; border-radius: 8px; font-size: 10px; }
+  .avatar.lg { width: 56px; height: 56px; border-radius: 18px; font-size: 19px; }
+
+  .chan { width: 44px; height: 44px; border-radius: 14px; background: var(--surface-3); color: var(--accent-deep); display: inline-flex; align-items: center; justify-content: center; font-weight: 600; font-size: 19px; flex-shrink: 0; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; border-radius: 999px; font-size: 12.5px; font-weight: 500; letter-spacing: -.01em; background: var(--surface-3); color: var(--ink-2); }
+  .pill.accent { background: var(--accent-soft); color: var(--accent-deep); }
+  .pill.sage { background: var(--sage-soft); color: #4D6940; }
+  .badge { min-width: 20px; height: 20px; border-radius: 10px; padding: 0 6px; display: inline-flex; align-items: center; justify-content: center; background: var(--accent); color: white; font-size: 11px; font-weight: 600; }
+  .section-h { padding: 18px 20px 8px; font-size: 12px; font-weight: 600; color: var(--ink-3); letter-spacing: 0.04em; text-transform: uppercase; }
+  .card { background: var(--surface); border-radius: 18px; padding: 16px; box-shadow: var(--shadow-sm); }
+  [data-tap] { cursor: pointer; transition: opacity .15s; }
+  [data-tap]:active { opacity: 0.6; }
+  .fade-in { animation: fadeIn .25s cubic-bezier(.4,0,.2,1); }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+  .slide-in { animation: slideIn .28s cubic-bezier(.4,0,.2,1); }
+  @keyframes slideIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { scrollbar-width: none; }
+
+  .bubble { max-width: 78%; padding: 10px 13px; border-radius: 16px; font-size: 14.5px; line-height: 1.45; letter-spacing: -.01em; word-break: break-word; color: var(--ink); background: var(--surface); }
+  .bubble.mine { background: var(--accent-soft); color: var(--accent-deep); border-bottom-right-radius: 6px; }
+  .bubble.theirs { border-top-left-radius: 6px; }
+  .nav-shadow { box-shadow: 0 -1px 0 var(--border-soft); }
+  .home-indicator { height: 34px; }
+
+  .toast { position: absolute; bottom: 110px; left: 50%; transform: translateX(-50%); background: rgba(37,32,26,.92); color: #fff; padding: 12px 18px; border-radius: 14px; font-size: 13.5px; font-weight: 500; z-index: 100; box-shadow: var(--shadow-pop); animation: toastIn .25s, toastOut .3s 1.4s forwards; }
+  @keyframes toastIn { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
+  @keyframes toastOut { to { opacity: 0; transform: translate(-50%, 8px); } }
+
+  /* Login screen */
+  .login-wrap { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 32px 24px; background: var(--bg); }
+  .login-logo { font-family: var(--font-serif); font-size: 28px; color: var(--accent-deep); margin-bottom: 8px; font-weight: 500; }
+  .login-sub { font-size: 13px; color: var(--ink-3); margin-bottom: 32px; }
+  .login-input { width: 100%; padding: 12px 16px; border-radius: 14px; border: 1.5px solid var(--border); background: var(--surface); font-family: var(--font-sans); font-size: 15px; color: var(--ink); outline: none; margin-bottom: 10px; }
+  .login-input:focus { border-color: var(--accent); }
+  .login-btn { width: 100%; padding: 14px; border-radius: 14px; border: none; background: var(--accent); color: white; font-family: var(--font-sans); font-size: 15px; font-weight: 600; cursor: pointer; margin-top: 6px; }
+  .login-btn:active { opacity: 0.8; }
+  .login-error { font-size: 12px; color: var(--rose); margin-top: 6px; text-align: center; }
+
+  /* Typing indicator */
+  .typing-indicator { display: flex; gap: 4px; align-items: center; padding: 8px 14px; }
+  .typing-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ink-3); animation: typingBounce 1.2s infinite; }
+  .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+  .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes typingBounce { 0%, 60%, 100% { transform: translateY(0); } 30% { transform: translateY(-6px); } }
+
+  /* Online badge */
+  .online-badge { width: 10px; height: 10px; border-radius: 5px; background: #34c759; border: 2px solid var(--surface); position: absolute; bottom: -2px; right: -2px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin></script>
+
+<script type="text/babel">
+
+// ────────────────────────────────────────────────
+// Supabase 설정
+// ────────────────────────────────────────────────
+const SUPABASE_URL = 'https://ziatqkjlafucqtwshhla.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_anybo402FSdDKMNiWcQzSA_oc7LIzZC';
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// ────────────────────────────────────────────────
+// 아이콘
+// ────────────────────────────────────────────────
+const Icon = ({ name, size = 22, color = 'currentColor', stroke = 1.7 }) => {
+  const s = stroke;
+  const paths = {
+    home: <><path d="M3 11.5L12 4l9 7.5"/><path d="M5 10v10h14V10"/></>,
+    chat: <><path d="M4 6.5a3 3 0 013-3h10a3 3 0 013 3V14a3 3 0 01-3 3H10l-4 3.5V17a3 3 0 01-2-2.83V6.5z"/></>,
+    pray: <><path d="M12 3v9"/><path d="M9 12h6"/><path d="M7 18c0-3 2-5 5-5s5 2 5 5"/><path d="M5 21h14"/></>,
+    book: <><path d="M5 4.5A2.5 2.5 0 017.5 2H19v17H7.5A2.5 2.5 0 005 21.5v-17z"/><path d="M5 19.5A2.5 2.5 0 017.5 17H19"/></>,
+    more: <><circle cx="12" cy="12" r="1.5"/><circle cx="5" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></>,
+    search: <><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></>,
+    plus: <><path d="M12 5v14M5 12h14"/></>,
+    send: <><path d="M4 12L20 4l-6 16-3-7-7-1z"/></>,
+    paperclip: <><path d="M14 7l-6.5 6.5a3 3 0 104.2 4.2L19 10a5 5 0 10-7-7L5.4 9.6"/></>,
+    smile: <><circle cx="12" cy="12" r="9"/><path d="M8.5 14.5a4.5 4.5 0 007 0"/><circle cx="9" cy="10" r="1" fill="currentColor"/><circle cx="15" cy="10" r="1" fill="currentColor"/></>,
+    bell: <><path d="M6 16V11a6 6 0 1112 0v5l1.5 2H4.5L6 16z"/><path d="M10 21a2 2 0 004 0"/></>,
+    back: <><path d="M15 6l-6 6 6 6"/></>,
+    members: <><circle cx="9" cy="9" r="3.5"/><path d="M3 19c0-3 3-5 6-5s6 2 6 5"/><circle cx="17" cy="8" r="2.5"/><path d="M15 19c0-2 2-3.5 4-3.5"/></>,
+    check: <><path d="M4 12l5 5L20 6"/></>,
+    chev: <><path d="M9 6l6 6-6 6"/></>,
+    pin: <><path d="M15.5 3.5L20.5 8.5"/><path d="M16 4l4 4-3 3-3-1-3 3v3l-2 2-4-4 2-2h3l3-3-1-3 3-3z"/></>,
+    sparkle: <><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3z"/></>,
+    logout: <><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></>,
+    calendar: <><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></>,
+    drive: <><path d="M9 3l-6 11 3 5h12l3-5L15 3H9z"/><path d="M9 3l3 11 3-11M3 14h18"/></>,
+    heart: <><path d="M12 20s-7-4.5-7-10a4 4 0 017-2.5A4 4 0 0119 10c0 5.5-7 10-7 10z"/></>,
+    comment: <><path d="M5 5h14a1 1 0 011 1v9a1 1 0 01-1 1h-8l-5 4v-4H5a1 1 0 01-1-1V6a1 1 0 011-1z"/></>,
+    settings: <><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></>,
+  };
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+      stroke={color} strokeWidth={s} strokeLinecap="round" strokeLinejoin="round">
+      {paths[name] || null}
+    </svg>
+  );
+};
+
+const Avatar = ({ person, size = 'md' }) => {
+  if (!person) return null;
+  return (
+    <div className={`avatar ${size === 'md' ? '' : size}`} style={{ background: person.color || '#B5683C' }}>
+      {person.initials || (person.name ? person.name[0] : '?')}
+    </div>
+  );
+};
+
+// ────────────────────────────────────────────────
+// 날짜 포맷
+// ────────────────────────────────────────────────
+const formatTime = (ts) => {
+  if (!ts) return '';
+  const d = new Date(ts);
+  const h = d.getHours();
+  const m = String(d.getMinutes()).padStart(2, '0');
+  return `${h < 12 ? '오전' : '오후'} ${h % 12 || 12}:${m}`;
+};
+
+const todayLabel = () => {
+  const wk = ['일','월','화','수','목','금','토'];
+  const d = new Date();
+  return `${d.getMonth()+1}월 ${d.getDate()}일 ${wk[d.getDay()]}요일`;
+};
+
+// ────────────────────────────────────────────────
+// 로그인 화면
+// ────────────────────────────────────────────────
+function LoginScreen({ onLogin }) {
+  const [name, setName] = React.useState('');
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState('');
+
+  const handleLogin = async () => {
+    if (!name.trim()) { setError('이름을 입력해주세요'); return; }
+    setLoading(true);
+    setError('');
+    try {
+      // 이름으로 멤버 찾기
+      let { data, error: err } = await supabase
+        .from('members')
+        .select('*')
+        .eq('name', name.trim())
+        .single();
+
+      if (err || !data) {
+        // 없으면 새로 생성
+        const colors = ['#B5683C','#6F8A5C','#5A7C8B','#7B6BA0','#B89146','#B05865','#4C7363','#8B4A24'];
+        const color = colors[Math.floor(Math.random() * colors.length)];
+        const initials = name.trim()[0];
+        const { data: newMember, error: createErr } = await supabase
+          .from('members')
+          .insert({ name: name.trim(), initials, color, role: '멤버' })
+          .select()
+          .single();
+        if (createErr) throw createErr;
+        data = newMember;
+      }
+      onLogin(data);
+    } catch (e) {
+      setError('오류가 발생했어요. 다시 시도해주세요.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="login-wrap">
+      <div className="login-logo">IM 메신저</div>
+      <div className="login-sub">선교회 가족들과 함께해요 🌿</div>
+      <input
+        className="login-input"
+        placeholder="이름을 입력하세요 (예: 김은혜)"
+        value={name}
+        onChange={e => setName(e.target.value)}
+        onKeyDown={e => e.key === 'Enter' && handleLogin()}
+      />
+      <button className="login-btn" onClick={handleLogin} disabled={loading}>
+        {loading ? '로그인 중...' : '입장하기'}
+      </button>
+      {error && <div className="login-error">{error}</div>}
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────
+// 홈 화면
+// ────────────────────────────────────────────────
+function HomeScreen({ me, go, setTab }) {
+  const [announcements, setAnnouncements] = React.useState([]);
+  const [prayerCount, setPrayerCount] = React.useState(0);
+
+  React.useEffect(() => {
+    supabase.from('prayers').select('id', { count: 'exact' }).then(({ count }) => setPrayerCount(count || 0));
+  }, []);
+
+  const TODAY_VERSE = {
+    ref: '시편 23:1-3',
+    text: '여호와는 나의 목자시니 내게 부족함이 없으리로다. 그가 나를 푸른 풀밭에 누이시며 쉴 만한 물가로 인도하시는도다.',
+  };
+
+  return (
+    <div className="scroll fade-in" style={{ height: '100%', background: 'var(--bg)' }}>
+      <div style={{ padding: '20px 20px 18px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ fontSize: 13, color: 'var(--ink-2)', fontWeight: 500 }}>{todayLabel()}</div>
+            <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.02em', marginTop: 4 }}>
+              샬롬, <span style={{ color: 'var(--accent-deep)' }}>{me.name.split(' ')[0]}</span> 형제/자매님
+            </div>
+          </div>
+          <div style={{ width: 40, height: 40, borderRadius: 14, background: 'var(--surface)', boxShadow: 'var(--shadow-sm)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Icon name="bell" size={20} color="var(--ink)"/>
+          </div>
+        </div>
+      </div>
+
+      {/* 오늘의 말씀 */}
+      <div style={{ padding: '0 16px' }}>
+        <div style={{ borderRadius: 22, background: 'linear-gradient(160deg, #FAF3E1 0%, #F1E3C5 100%)', border: '1px solid #E6D6B4', padding: '20px 22px 22px', position: 'relative', overflow: 'hidden' }}>
+          <div style={{ position: 'absolute', top: -30, right: -20, fontSize: 110, fontFamily: 'var(--font-serif)', color: 'rgba(139,74,36,.07)', lineHeight: 1, fontWeight: 600 }}>"</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+            <Icon name="sparkle" size={16} color="var(--accent-deep)"/>
+            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent-deep)', letterSpacing: '0.04em' }}>오늘의 말씀</span>
+          </div>
+          <div style={{ fontFamily: 'var(--font-serif)', fontSize: 16, lineHeight: 1.65, color: 'var(--ink)' }}>{TODAY_VERSE.text}</div>
+          <div style={{ marginTop: 12, fontSize: 13, color: 'var(--ink-2)', fontWeight: 500 }}>— {TODAY_VERSE.ref}</div>
+        </div>
+      </div>
+
+      {/* 퀵 액션 */}
+      <div style={{ padding: '20px 16px 4px', display: 'flex', gap: 10 }}>
+        <QuickAction label="기도제목" sub={`${prayerCount}개`} icon="pray" tint="sage" onClick={() => setTab('prayer')}/>
+        <QuickAction label="채팅" sub="채널 입장" icon="chat" tint="accent" onClick={() => setTab('chat')}/>
+        <QuickAction label="묵상 나눔" sub="" icon="book" tint="gold" onClick={() => setTab('devotional')}/>
+      </div>
+
+      <div style={{ height: 20 }}/>
+    </div>
+  );
+}
+
+function QuickAction({ label, sub, icon, tint, onClick }) {
+  const tints = { accent: { bg: '#F4E2D0', fg: '#8B4A24' }, sage: { bg: '#DCE3CE', fg: '#4D6940' }, gold: { bg: '#F4E4BF', fg: '#6F5418' } };
+  const t = tints[tint] || tints.accent;
+  return (
+    <div data-tap onClick={onClick} style={{ flex: 1, borderRadius: 18, background: 'var(--surface)', padding: '14px 14px 16px', boxShadow: 'var(--shadow-sm)' }}>
+      <div style={{ width: 36, height: 36, borderRadius: 12, background: t.bg, color: t.fg, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 10 }}>
+        <Icon name={icon} size={20}/>
+      </div>
+      <div style={{ fontSize: 13.5, fontWeight: 600 }}>{label}</div>
+      {sub && <div style={{ fontSize: 11.5, color: 'var(--ink-3)', marginTop: 2 }}>{sub}</div>}
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────
+// 채팅 목록 화면
+// ────────────────────────────────────────────────
+function ChatListScreen({ openRoom }) {
+  const [channels, setChannels] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    supabase.from('channels').select('*').order('pinned', { ascending: false }).order('created_at')
+      .then(({ data }) => { setChannels(data || []); setLoading(false); });
+  }, []);
+
+  const pinned = channels.filter(c => c.pinned);
+  const rest = channels.filter(c => !c.pinned);
+
+  return (
+    <div className="scroll fade-in" style={{ height: '100%', background: 'var(--bg)' }}>
+      <div style={{ padding: '20px 20px 12px' }}>
+        <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-0.02em' }}>채팅</div>
+      </div>
+
+      {loading ? (
+        <div style={{ padding: '40px', textAlign: 'center', color: 'var(--ink-3)' }}>채널 불러오는 중...</div>
+      ) : (
+        <>
+          {pinned.length > 0 && (
+            <>
+              <div className="section-h" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Icon name="pin" size={12} color="var(--ink-3)"/><span>고정</span>
+              </div>
+              <ChannelGroup channels={pinned} openRoom={openRoom}/>
+            </>
+          )}
+          {rest.length > 0 && (
+            <>
+              <div className="section-h">토픽</div>
+              <ChannelGroup channels={rest} openRoom={openRoom}/>
+            </>
+          )}
+        </>
+      )}
+      <div style={{ height: 20 }}/>
+    </div>
+  );
+}
+
+function ChannelGroup({ channels, openRoom }) {
+  return (
+    <div style={{ margin: '0 16px 4px', borderRadius: 18, background: 'var(--surface)', overflow: 'hidden', boxShadow: 'var(--shadow-sm)' }}>
+      {channels.map((ch, i) => (
+        <div key={ch.id} data-tap onClick={() => openRoom(ch)}
+          style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderBottom: i < channels.length - 1 ? '1px solid var(--border-soft)' : 'none' }}>
+          <div className="chan" style={ch.emoji ? { background: 'var(--surface-3)', fontSize: 22 } : {}}>
+            {ch.emoji || '#'}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em' }}>{ch.name}</div>
+            <div style={{ fontSize: 13, color: 'var(--ink-2)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {ch.description || '채널에 입장해서 대화해요'}
+            </div>
+          </div>
+          <Icon name="chev" size={16} color="var(--ink-3)"/>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────
+// 채팅방 화면 (Supabase Realtime)
+// ────────────────────────────────────────────────
+function ChatRoomScreen({ channel, me, back }) {
+  const [messages, setMessages] = React.useState([]);
+  const [members, setMembers] = React.useState({});
+  const [input, setInput] = React.useState('');
+  const [loading, setLoading] = React.useState(true);
+  const scrollRef = React.useRef(null);
+
+  // 멤버 목록 로드
+  React.useEffect(() => {
+    supabase.from('members').select('*').then(({ data }) => {
+      const map = {};
+      (data || []).forEach(m => { map[m.id] = m; });
+      setMembers(map);
+    });
+  }, []);
+
+  // 메시지 로드
+  React.useEffect(() => {
+    setLoading(true);
+    supabase.from('messages').select('*')
+      .eq('channel_id', channel.id)
+      .order('created_at', { ascending: true })
+      .limit(100)
+      .then(({ data }) => {
+        setMessages(data || []);
+        setLoading(false);
+      });
+  }, [channel.id]);
+
+  // 실시간 구독
+  React.useEffect(() => {
+    const sub = supabase
+      .channel(`messages:${channel.id}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'messages',
+        filter: `channel_id=eq.${channel.id}`,
+      }, (payload) => {
+        setMessages(prev => [...prev, payload.new]);
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(sub); };
+  }, [channel.id]);
+
+  // 스크롤 맨 아래
+  React.useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages.length]);
+
+  const send = async () => {
+    if (!input.trim()) return;
+    const text = input.trim();
+    setInput('');
+    await supabase.from('messages').insert({
+      channel_id: channel.id,
+      sender_id: me.id,
+      sender_name: me.name,
+      text,
+      kind: 'text',
+    });
+  };
+
+  const iconBtn = { width: 40, height: 40, borderRadius: 14, background: 'var(--surface)', boxShadow: 'var(--shadow-sm)', display: 'flex', alignItems: 'center', justifyContent: 'center' };
+  const composerIcon = { width: 36, height: 36, borderRadius: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 };
+
+  return (
+    <div className="slide-in col" style={{ height: '100%', background: 'var(--bg)' }}>
+      {/* 헤더 */}
+      <div style={{ padding: '14px 12px 12px', display: 'flex', alignItems: 'center', gap: 10, background: 'var(--bg)', borderBottom: '1px solid var(--border-soft)' }}>
+        <div data-tap onClick={back} style={{ width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Icon name="back" size={22} color="var(--ink)"/>
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: '-0.01em', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ color: 'var(--accent-deep)' }}>{channel.emoji || '#'}</span>
+            <span>{channel.name}</span>
+          </div>
+          <div style={{ fontSize: 11.5, color: 'var(--ink-2)', marginTop: 1 }}>{channel.description}</div>
+        </div>
+        <div data-tap style={iconBtn}><Icon name="members" size={20} color="var(--ink)"/></div>
+      </div>
+
+      {/* 메시지 목록 */}
+      <div ref={scrollRef} className="scroll" style={{ flex: 1, padding: '8px 0 12px' }}>
+        {loading ? (
+          <div style={{ padding: '40px', textAlign: 'center', color: 'var(--ink-3)' }}>메시지 불러오는 중...</div>
+        ) : messages.length === 0 ? (
+          <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--ink-3)' }}>
+            <div style={{ fontSize: 32, marginBottom: 8 }}>{channel.emoji || '💬'}</div>
+            <div style={{ fontSize: 14 }}>{channel.name} 채널에 오신 것을 환영해요!</div>
+            <div style={{ fontSize: 12, marginTop: 4 }}>첫 번째 메시지를 보내보세요</div>
+          </div>
+        ) : (
+          messages.map((m, i) => {
+            const isMine = m.sender_id === me.id;
+            const prev = messages[i - 1];
+            const groupStart = !prev || prev.sender_id !== m.sender_id;
+            const sender = members[m.sender_id] || { name: m.sender_name || '알 수 없음', initials: '?', color: '#999' };
+
+            if (isMine) {
+              return (
+                <div key={m.id} style={{ padding: '2px 14px', display: 'flex', justifyContent: 'flex-end' }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, maxWidth: '85%' }}>
+                    <span style={{ fontSize: 10.5, color: 'var(--ink-3)', marginBottom: 4 }}>{formatTime(m.created_at)}</span>
+                    <div className="bubble mine">{m.text}</div>
+                  </div>
+                </div>
+              );
+            }
+            return (
+              <div key={m.id} style={{ padding: '2px 14px' }}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                  <div style={{ width: 32, flexShrink: 0 }}>
+                    {groupStart && <Avatar person={sender} size="sm"/>}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    {groupStart && (
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 3 }}>
+                        <span style={{ fontSize: 12.5, fontWeight: 600 }}>{sender.name}</span>
+                        <span style={{ fontSize: 10.5, color: 'var(--ink-3)' }}>{formatTime(m.created_at)}</span>
+                      </div>
+                    )}
+                    <div className="bubble theirs">{m.text}</div>
+                  </div>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* 입력창 */}
+      <div style={{ padding: '8px 12px 14px', background: 'var(--bg)', borderTop: '1px solid var(--border-soft)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--surface)', borderRadius: 24, padding: '6px', boxShadow: 'var(--shadow-sm)' }}>
+          <div data-tap style={composerIcon}><Icon name="plus" size={20} color="var(--ink-2)"/></div>
+          <input
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
+            placeholder="메시지 보내기"
+            style={{ flex: 1, border: 0, outline: 0, background: 'transparent', fontFamily: 'var(--font-sans)', fontSize: 14.5, color: 'var(--ink)', padding: '8px 4px' }}
+          />
+          <div data-tap style={composerIcon}><Icon name="smile" size={20} color="var(--ink-2)"/></div>
+          {input.trim() ? (
+            <div data-tap onClick={send} style={{ ...composerIcon, background: 'var(--accent)' }}>
+              <Icon name="send" size={18} color="white" stroke={2}/>
+            </div>
+          ) : (
+            <div data-tap style={composerIcon}><Icon name="paperclip" size={20} color="var(--ink-2)"/></div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────
+// 기도제목 화면
+// ────────────────────────────────────────────────
+function PrayerScreen({ me, showFAB = true }) {
+  const [prayers, setPrayers] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [showForm, setShowForm] = React.useState(false);
+  const [newTitle, setNewTitle] = React.useState('');
+  const [newBody, setNewBody] = React.useState('');
+  const [scope, setScope] = React.useState('전체');
+
+  const load = () => {
+    supabase.from('prayers').select('*').order('created_at', { ascending: false })
+      .then(({ data }) => { setPrayers(data || []); setLoading(false); });
+  };
+
+  React.useEffect(() => { load(); }, []);
+
+  const submit = async () => {
+    if (!newTitle.trim()) return;
+    await supabase.from('prayers').insert({
+      member_id: me.id,
+      member_name: me.name,
+      title: newTitle.trim(),
+      body: newBody.trim(),
+      scope,
+      prayer_count: 0,
+    });
+    setNewTitle(''); setNewBody(''); setShowForm(false);
+    load();
+  };
+
+  const pray = async (prayer) => {
+    await supabase.from('prayers').update({ prayer_count: (prayer.prayer_count || 0) + 1 }).eq('id', prayer.id);
+    load();
+  };
+
+  const colors = ['#B5683C','#6F8A5C','#5A7C8B','#7B6BA0','#B89146'];
+
+  return (
+    <div className="scroll fade-in" style={{ height: '100%', background: 'var(--bg)', position: 'relative' }}>
+      <div style={{ padding: '20px 20px 14px' }}>
+        <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-0.02em' }}>기도제목</div>
+        <div style={{ fontSize: 13, color: 'var(--ink-2)', marginTop: 4 }}>
+          <b style={{ color: 'var(--accent-deep)', fontWeight: 600 }}>{prayers.length}개</b>의 기도제목이 있어요
+        </div>
+      </div>
+
+      {showForm && (
+        <div style={{ margin: '0 16px 16px', background: 'var(--surface)', borderRadius: 18, padding: 16, boxShadow: 'var(--shadow-md)' }}>
+          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 10 }}>기도제목 올리기</div>
+          <input value={newTitle} onChange={e => setNewTitle(e.target.value)}
+            placeholder="제목 (예: 어머니 건강 회복을 위해)"
+            style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontFamily: 'var(--font-sans)', fontSize: 14, marginBottom: 8, outline: 'none' }}/>
+          <textarea value={newBody} onChange={e => setNewBody(e.target.value)}
+            placeholder="기도 내용을 나눠주세요..."
+            rows={3}
+            style={{ width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 10, fontFamily: 'var(--font-sans)', fontSize: 14, resize: 'none', outline: 'none', marginBottom: 8 }}/>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {['전체','청년부','미디어팀','주일학교'].map(s => (
+              <div key={s} data-tap onClick={() => setScope(s)}
+                style={{ height: 28, padding: '0 12px', borderRadius: 999, fontSize: 12, display: 'flex', alignItems: 'center',
+                  background: scope === s ? 'var(--sage)' : 'var(--surface-3)', color: scope === s ? 'white' : 'var(--ink-2)' }}>
+                {s}
+              </div>
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+            <div data-tap onClick={() => setShowForm(false)}
+              style={{ flex: 1, height: 40, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--surface-3)', fontSize: 14, color: 'var(--ink-2)' }}>취소</div>
+            <div data-tap onClick={submit}
+              style={{ flex: 2, height: 40, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--sage)', color: 'white', fontSize: 14, fontWeight: 600 }}>올리기</div>
+          </div>
+        </div>
+      )}
+
+      <div style={{ padding: '0 16px 100px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {loading ? (
+          <div style={{ padding: '40px', textAlign: 'center', color: 'var(--ink-3)' }}>불러오는 중...</div>
+        ) : prayers.map((p, idx) => {
+          const color = colors[idx % colors.length];
+          return (
+            <div key={p.id} style={{ background: 'var(--surface)', borderRadius: 18, padding: 16, boxShadow: 'var(--shadow-sm)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                <div style={{ width: 32, height: 32, borderRadius: 10, background: color, color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, flexShrink: 0 }}>
+                  {(p.member_name || '?')[0]}
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 600 }}>{p.member_name}</div>
+                  <div style={{ fontSize: 11.5, color: 'var(--ink-3)' }}>{p.scope}</div>
+                </div>
+              </div>
+              <div style={{ fontFamily: 'var(--font-serif)', fontSize: 15, fontWeight: 500, marginBottom: 6 }}>{p.title}</div>
+              {p.body && <div style={{ fontSize: 13.5, color: 'var(--ink-2)', lineHeight: 1.55 }}>{p.body}</div>}
+              <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--border-soft)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ fontSize: 12, color: 'var(--ink-2)' }}>
+                  <b style={{ fontWeight: 600, color: 'var(--ink)' }}>{p.prayer_count || 0}명</b> 함께 기도 중
+                </div>
+                <div data-tap onClick={() => pray(p)}
+                  style={{ height: 30, padding: '0 14px', borderRadius: 15, display: 'inline-flex', alignItems: 'center', gap: 5, background: 'var(--sage-soft)', color: '#4D6940', fontSize: 12.5, fontWeight: 600 }}>
+                  <Icon name="pray" size={14}/>함께 기도
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {showFAB && !showForm && (
+        <div data-tap onClick={() => setShowForm(true)}
+          style={{ position: 'absolute', right: 20, bottom: 20, height: 52, paddingLeft: 16, paddingRight: 20, borderRadius: 26, background: 'var(--sage)', color: 'white', display: 'flex', alignItems: 'center', gap: 8, boxShadow: '0 10px 24px rgba(111,138,92,.45)', fontSize: 14.5, fontWeight: 600 }}>
+          <Icon name="plus" size={20} color="white"/>
+          기도제목 올리기
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────
+// 더보기 화면
+// ────────────────────────────────────────────────
+function MoreScreen({ me, onLogout }) {
+  return (
+    <div className="scroll fade-in" style={{ height: '100%', background: 'var(--bg)' }}>
+      <div style={{ padding: '20px 20px 16px' }}>
+        <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-0.02em' }}>더보기</div>
+      </div>
+      <div style={{ padding: '0 16px 8px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: 16, borderRadius: 18, background: 'var(--surface)', boxShadow: 'var(--shadow-sm)' }}>
+          <div style={{ width: 48, height: 48, borderRadius: 15, background: me.color || '#B5683C', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 600, fontSize: 18 }}>
+            {me.initials || me.name[0]}
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 16, fontWeight: 600 }}>{me.name}</div>
+            <div style={{ fontSize: 13, color: 'var(--ink-2)', marginTop: 2 }}>{me.role || '멤버'}</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="section-h">선교회</div>
+      <div style={{ margin: '0 16px', borderRadius: 18, background: 'var(--surface)', overflow: 'hidden', boxShadow: 'var(--shadow-sm)' }}>
+        {[
+          { icon: 'members', label: '교우 명부' },
+          { icon: 'calendar', label: '교회 일정' },
+          { icon: 'drive', label: '드라이브' },
+        ].map((r, i, arr) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', borderBottom: i < arr.length - 1 ? '1px solid var(--border-soft)' : 'none' }}>
+            <div style={{ width: 32, height: 32, borderRadius: 10, background: 'var(--surface-3)', color: 'var(--accent-deep)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Icon name={r.icon} size={18}/>
+            </div>
+            <div style={{ flex: 1, fontSize: 14.5, fontWeight: 500 }}>{r.label}</div>
+            <Icon name="chev" size={16} color="var(--ink-3)"/>
+          </div>
+        ))}
+      </div>
+
+      <div className="section-h">계정</div>
+      <div style={{ margin: '0 16px', borderRadius: 18, background: 'var(--surface)', overflow: 'hidden', boxShadow: 'var(--shadow-sm)' }}>
+        <div data-tap onClick={onLogout} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px' }}>
+          <div style={{ width: 32, height: 32, borderRadius: 10, background: '#FEE2E2', color: '#B05865', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Icon name="logout" size={18}/>
+          </div>
+          <div style={{ flex: 1, fontSize: 14.5, fontWeight: 500, color: 'var(--rose)' }}>로그아웃</div>
+        </div>
+      </div>
+      <div style={{ height: 24 }}/>
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────
+// 하단 탭바
+// ────────────────────────────────────────────────
+function BottomNav({ tab, setTab }) {
+  const tabs = [
+    { id: 'home', label: '홈', icon: 'home' },
+    { id: 'chat', label: '채팅', icon: 'chat' },
+    { id: 'prayer', label: '기도', icon: 'pray' },
+    { id: 'devotional', label: '묵상', icon: 'book' },
+    { id: 'more', label: '더보기', icon: 'more' },
+  ];
+  return (
+    <div className="nav-shadow" style={{ display: 'flex', justifyContent: 'space-around', padding: '8px 6px 4px', background: 'rgba(248,243,234,.94)', backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)' }}>
+      {tabs.map(tt => {
+        const active = tab === tt.id;
+        return (
+          <div key={tt.id} data-tap onClick={() => setTab(tt.id)} style={{ flex: 1, padding: '6px 0 2px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+            <Icon name={tt.icon} size={24} color={active ? 'var(--accent)' : 'var(--ink-3)'} stroke={active ? 2 : 1.7}/>
+            <div style={{ fontSize: 10.5, fontWeight: active ? 600 : 500, color: active ? 'var(--accent)' : 'var(--ink-3)' }}>{tt.label}</div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────
+// 메인 앱
+// ────────────────────────────────────────────────
+function App() {
+  const [me, setMe] = React.useState(() => {
+    try { const s = localStorage.getItem('im_me'); return s ? JSON.parse(s) : null; } catch { return null; }
+  });
+  const [tab, setTab] = React.useState('home');
+  const [openChannel, setOpenChannel] = React.useState(null);
+  const [dbConnected, setDbConnected] = React.useState(false);
+
+  React.useEffect(() => {
+    supabase.from('channels').select('id').limit(1).then(({ error }) => {
+      setDbConnected(!error);
+    });
+  }, []);
+
+  const handleLogin = (member) => {
+    localStorage.setItem('im_me', JSON.stringify(member));
+    setMe(member);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('im_me');
+    setMe(null);
+    setTab('home');
+    setOpenChannel(null);
+  };
+
+  let screen;
+  if (!me) {
+    screen = <LoginScreen onLogin={handleLogin}/>;
+  } else if (openChannel) {
+    screen = <ChatRoomScreen channel={openChannel} me={me} back={() => setOpenChannel(null)}/>;
+  } else if (tab === 'home') screen = <HomeScreen me={me} go={() => {}} setTab={setTab}/>;
+  else if (tab === 'chat') screen = <ChatListScreen openRoom={setOpenChannel}/>;
+  else if (tab === 'prayer') screen = <PrayerScreen me={me}/>;
+  else if (tab === 'devotional') screen = (
+    <div className="scroll fade-in" style={{ height: '100%', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ textAlign: 'center', color: 'var(--ink-3)', padding: 32 }}>
+        <div style={{ fontSize: 40, marginBottom: 12 }}>📖</div>
+        <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ink)' }}>묵상 나눔</div>
+        <div style={{ fontSize: 13, marginTop: 6 }}>곧 추가될 예정이에요</div>
+      </div>
+    </div>
+  );
+  else if (tab === 'more') screen = <MoreScreen me={me} onLogout={handleLogout}/>;
+
+  return (
+    <div className="stage">
+      <div className="meta">
+        <h1 className="brand">IM 메신저</h1>
+        <p className="tagline">선교회 가족들이 실시간으로 소통하고, 함께 기도하는 공동체 메신저</p>
+        <div className="legend">
+          <div style={{ marginBottom: 8 }}>
+            <span className={`status-dot ${dbConnected ? 'connected' : ''}`}/>
+            {dbConnected ? <b>Supabase 연결됨 — 실시간 작동 중</b> : 'Supabase 연결 중...'}
+          </div>
+          <div style={{ marginBottom: 6 }}>이름 입력 후 <b>입장하기</b></div>
+          <div style={{ marginBottom: 6 }}>채팅 탭 → 채널 클릭 → <b>실시간 채팅</b></div>
+          <div style={{ marginBottom: 6 }}>기도제목 탭 → <b>기도제목 올리기</b></div>
+          <div>여러 명이 동시에 접속해서 사용 가능해요</div>
+        </div>
+      </div>
+
+      <div style={{ position: 'relative' }}>
+        <div style={{ width: 390, height: 844, borderRadius: 48, overflow: 'hidden', position: 'relative', background: 'var(--bg)', boxShadow: '0 40px 80px rgba(0,0,0,0.18), 0 0 0 1px rgba(0,0,0,0.12)' }}>
+          {/* 다이나믹 아일랜드 */}
+          <div style={{ position: 'absolute', top: 11, left: '50%', transform: 'translateX(-50%)', width: 126, height: 37, borderRadius: 24, background: '#000', zIndex: 50 }}/>
+          {/* 상태바 */}
+          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10, display: 'flex', justifyContent: 'space-between', padding: '18px 28px 0', color: '#000', fontSize: 15, fontWeight: 600 }}>
+            <span>9:41</span>
+            <span style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12 }}>●●● WiFi 🔋</span>
+          </div>
+
+          <div style={{ height: '100%', display: 'flex', flexDirection: 'column', paddingTop: 54 }}>
+            <div style={{ flex: 1, minHeight: 0, position: 'relative', overflow: 'hidden' }}>
+              {screen}
+            </div>
+            {me && !openChannel && <BottomNav tab={tab} setTab={setTab}/>}
+            <div className="home-indicator"/>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
