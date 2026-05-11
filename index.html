@@ -345,7 +345,93 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
 .auth-msg.error { color: var(--rose); }
 .auth-msg.success { color: var(--sage); }
 
-/* 유틸 */
+/* ── 모바일 반응형 ── */
+@media (max-width: 768px) {
+  /* 사이드바 숨기고 하단 탭바로 */
+  #sidebar { display: none; }
+  #right-panel { display: none !important; }
+
+  /* 패널을 전체화면으로 */
+  #panel {
+    width: 100%;
+    position: fixed; inset: 0;
+    z-index: 20;
+    transform: translateX(0);
+    transition: transform .25s ease;
+  }
+  #panel.hidden { transform: translateX(-100%); }
+
+  /* 메인도 전체화면 */
+  #main { width: 100%; }
+
+  /* 하단 탭바 */
+  #mobile-nav {
+    display: flex !important;
+    position: fixed; bottom: 0; left: 0; right: 0;
+    height: 60px; z-index: 30;
+    background: rgba(248,243,234,.96);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border-top: 1px solid var(--border);
+    justify-content: space-around; align-items: center;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .mn-btn {
+    flex: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 3px; cursor: pointer; padding: 6px 0;
+  }
+  .mn-btn span { font-size: 10px; font-weight: 500; color: var(--ink3); }
+  .mn-btn.active span { color: var(--accent); font-weight: 600; }
+
+  /* 채팅방 열릴 때 패널 숨기기 */
+  #panel.chat-open { transform: translateX(-100%); }
+
+  /* 하단 탭바 높이만큼 여백 */
+  #chat-view, #prayer-view, #home-view { padding-bottom: 60px; }
+  #composer { padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
+
+  /* 메시지 말풍선 넓게 */
+  .msg-body { max-width: 80%; }
+  .msg-row { padding: 3px 12px; }
+
+  /* 채팅방 헤더 뒤로가기 버튼 */
+  #mobile-back {
+    display: flex !important;
+    width: 40px; height: 40px;
+    align-items: center; justify-content: center;
+    cursor: pointer; flex-shrink: 0;
+  }
+
+  /* 인증 화면 모바일 */
+  .auth-wrap {
+    width: 100%; max-width: 100%;
+    flex-direction: column;
+    border-radius: 0; min-height: 100vh;
+    margin: 0;
+  }
+  .auth-left {
+    width: 100%; padding: 32px 28px 24px;
+    min-height: auto;
+  }
+  .auth-left .features { display: none; }
+  .auth-right { padding: 28px 24px 40px; }
+  .auth-form h2 { font-size: 20px; }
+  .field-row { flex-direction: column; }
+
+  /* 패널 헤더에 닫기 버튼 */
+  #panel-close { display: flex !important; }
+
+  /* 홈 컨텐츠 패딩 */
+  #content-area { padding: 16px; }
+}
+
+@media (min-width: 769px) {
+  #mobile-nav { display: none; }
+  #mobile-back { display: none; }
+  #panel-close { display: none; }
+  #panel { transform: none !important; }
+}
 .scroll-none::-webkit-scrollbar { display: none; }
 .scroll-none { scrollbar-width: none; }
 [data-tap] { cursor: pointer; }
@@ -362,7 +448,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
     <!-- 왼쪽 브랜드 -->
     <div class="auth-left">
       <div>
-        <div class="brand">IM 메신저</div>
+        <img src="https://koreayjk.github.io/imessenger/ilogo.png" alt="IM 메신저 로고" style="width:140px;margin-bottom:16px;filter:drop-shadow(0 4px 12px rgba(0,0,0,.4))"/>
         <div class="tagline">선교회 가족들이 한 자리에서 소통하고, 함께 기도하는 공동체 메신저</div>
       </div>
       <div class="features">
@@ -418,7 +504,9 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
 
   <!-- 1) 아이콘 사이드바 -->
   <div id="sidebar">
-    <div class="logo">IM</div>
+    <div class="logo">
+      <img src="https://koreayjk.github.io/imessenger/ilogo.png" alt="IM" style="width:44px;height:44px;object-fit:contain;filter:drop-shadow(0 2px 6px rgba(0,0,0,.4))"/>
+    </div>
     <div class="sb-btn active" id="sb-chat" onclick="setMode('chat')" title="채팅">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.85)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6.5a3 3 0 013-3h10a3 3 0 013 3V14a3 3 0 01-3 3H10l-4 3.5V17a3 3 0 01-2-2.83V6.5z"/></svg>
       <span>채팅</span>
@@ -445,8 +533,13 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
   <div id="panel">
     <div class="panel-header">
       <h2 id="panel-title">채팅</h2>
-      <div class="header-action" title="새 채널">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--ink3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+      <div style="display:flex;align-items:center;gap:4px">
+        <div id="panel-close" onclick="closeMobilePanel()" style="display:none;width:36px;height:36px;align-items:center;justify-content:center;cursor:pointer;border-radius:10px" onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background='transparent'">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--ink3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </div>
+        <div class="header-action" title="새 채널">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--ink3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+        </div>
       </div>
     </div>
     <div class="panel-search">
@@ -525,10 +618,29 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
     <div id="member-list" style="overflow-y:auto;flex:1"></div>
   </div>
 
-</div>
+  <!-- 모바일 하단 탭바 -->
+  <div id="mobile-nav" style="display:none">
+    <div class="mn-btn active" id="mn-chat" onclick="mobileTab('chat')">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6.5a3 3 0 013-3h10a3 3 0 013 3V14a3 3 0 01-3 3H10l-4 3.5V17a3 3 0 01-2-2.83V6.5z"/></svg>
+      <span>채팅</span>
+    </div>
+    <div class="mn-btn" id="mn-prayer" onclick="mobileTab('prayer')">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--ink3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v9"/><path d="M9 12h6"/><path d="M7 18c0-3 2-5 5-5s5 2 5 5"/><path d="M5 21h14"/></svg>
+      <span>기도</span>
+    </div>
+    <div class="mn-btn" id="mn-home" onclick="mobileTab('home')">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--ink3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11.5L12 4l9 7.5"/><path d="M5 10v10h14V10"/></svg>
+      <span>홈</span>
+    </div>
+    <div class="mn-btn" id="mn-me" onclick="mobileTab('me')">
+      <div id="mobile-av" style="width:26px;height:26px;border-radius:8px;background:#8B4A24;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:white">?</div>
+      <span>내정보</span>
+    </div>
+  </div>
 
-<script>
-// ── Supabase ──
+</div><!-- /app -->
+
+<script>// ── Supabase ──
 const SUPABASE_URL = 'https://ziatqkjlafucqtwshhla.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_anybo402FSdDKMNiWcQzSA_oc7LIzZC';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -601,7 +713,20 @@ async function doSignUp() {
     }
   } catch(e) {
     msg.className='auth-msg error';
-    msg.textContent = e.message?.includes('already') ? '이미 가입된 이메일이에요' : (e.message || '오류가 발생했어요');
+    const err = e.message || '';
+    if (err.includes('already registered') || err.includes('already been registered')) {
+      msg.textContent = '이미 가입된 이메일이에요. 로그인해주세요 😊';
+    } else if (err.includes('duplicate') || err.includes('unique constraint')) {
+      msg.textContent = '이미 사용 중인 이메일이에요. 다른 이메일로 가입해주세요 😊';
+    } else if (err.includes('Password should be')) {
+      msg.textContent = '비밀번호는 6자 이상으로 입력해주세요 🔒';
+    } else if (err.includes('invalid') || err.includes('Invalid')) {
+      msg.textContent = '이메일 형식이 올바르지 않아요. 다시 확인해주세요 📧';
+    } else if (err.includes('network') || err.includes('fetch')) {
+      msg.textContent = '인터넷 연결을 확인해주세요 🌐';
+    } else {
+      msg.textContent = '가입 중 오류가 발생했어요. 잠시 후 다시 시도해주세요 😅';
+    }
     btn.textContent='가입하기'; btn.disabled=false;
   }
 }
@@ -629,7 +754,20 @@ async function doSignIn() {
     ME = member;
     enterApp();
   } catch(e) {
-    msg.textContent = e.message?.includes('Invalid') ? '이메일 또는 비밀번호가 틀렸어요' : (e.message || '오류가 발생했어요');
+    const err = e.message || '';
+    if (err.includes('Invalid login') || err.includes('invalid') || err.includes('Invalid')) {
+      msg.textContent = '이메일 또는 비밀번호가 틀렸어요. 다시 확인해주세요 🔒';
+    } else if (err.includes('Email not confirmed')) {
+      msg.textContent = '이메일 인증이 필요해요. 관리자에게 문의해주세요 📧';
+    } else if (err.includes('User not found') || err.includes('프로필')) {
+      msg.textContent = '가입된 계정을 찾을 수 없어요. 먼저 회원가입 해주세요 😊';
+    } else if (err.includes('network') || err.includes('fetch')) {
+      msg.textContent = '인터넷 연결을 확인해주세요 🌐';
+    } else if (err.includes('Too many')) {
+      msg.textContent = '로그인 시도가 너무 많아요. 잠시 후 다시 시도해주세요 ⏳';
+    } else {
+      msg.textContent = '로그인 중 오류가 발생했어요. 잠시 후 다시 시도해주세요 😅';
+    }
     btn.textContent='로그인'; btn.disabled=false;
   }
 }
@@ -641,7 +779,75 @@ function enterApp() {
   document.getElementById('my-av').textContent = ME.initials || ME.name[0];
   document.getElementById('my-av').style.background = ME.color || '#8B4A24';
   document.getElementById('my-av').title = ME.name;
+  // 모바일 아바타
+  const mav = document.getElementById('mobile-av');
+  if (mav) { mav.textContent = ME.initials || ME.name[0]; mav.style.background = ME.color || '#8B4A24'; }
   init();
+}
+
+// ── 모바일 탭 전환 ──
+function mobileTab(tab) {
+  // 탭 버튼 스타일
+  ['chat','prayer','home','me'].forEach(t => {
+    const btn = document.getElementById('mn-'+t);
+    if (!btn) return;
+    const isActive = t === tab;
+    btn.classList.toggle('active', isActive);
+    const svg = btn.querySelector('svg');
+    if (svg) svg.style.stroke = isActive ? 'var(--accent)' : 'var(--ink3)';
+    if (svg) svg.style.strokeWidth = isActive ? '2' : '1.7';
+    const span = btn.querySelector('span');
+    if (span) span.style.color = isActive ? 'var(--accent)' : 'var(--ink3)';
+  });
+
+  if (tab === 'chat') {
+    // 채널 목록 패널 보이기
+    document.getElementById('panel').classList.remove('hidden');
+    document.getElementById('chat-view').style.display = 'flex';
+    document.getElementById('prayer-view').style.display = 'none';
+    document.getElementById('home-view').style.display = 'none';
+    setMode('chat');
+  } else if (tab === 'prayer') {
+    document.getElementById('panel').classList.add('hidden');
+    setMode('prayer');
+  } else if (tab === 'home') {
+    document.getElementById('panel').classList.add('hidden');
+    setMode('home');
+  } else if (tab === 'me') {
+    document.getElementById('panel').classList.add('hidden');
+    showMobileProfile();
+  }
+}
+
+function closeMobilePanel() {
+  document.getElementById('panel').classList.add('hidden');
+}
+
+function showMobileProfile() {
+  document.getElementById('chat-view').style.display = 'none';
+  document.getElementById('prayer-view').style.display = 'none';
+  document.getElementById('home-view').style.display = 'flex';
+  // 홈 뷰에 프로필 표시
+  const area = document.getElementById('content-area');
+  if (area) area.innerHTML = `
+    <div style="padding:20px 0">
+      <div style="display:flex;align-items:center;gap:14px;padding:18px;border-radius:18px;background:var(--surface);box-shadow:0 1px 4px rgba(70,50,20,.07);margin-bottom:16px">
+        <div style="width:52px;height:52px;border-radius:16px;background:${ME.color};color:white;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:600">${ME.initials||ME.name[0]}</div>
+        <div>
+          <div style="font-size:17px;font-weight:700">${ME.name}</div>
+          <div style="font-size:13px;color:var(--ink3);margin-top:2px">${ME.role||'멤버'}</div>
+        </div>
+      </div>
+      <div style="border-radius:16px;background:var(--surface);overflow:hidden;box-shadow:0 1px 4px rgba(70,50,20,.07)">
+        <div onclick="doLogout()" style="display:flex;align-items:center;gap:12px;padding:16px;cursor:pointer">
+          <div style="width:32px;height:32px;border-radius:10px;background:#FEE2E2;color:var(--rose);display:flex;align-items:center;justify-content:center">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>
+          </div>
+          <div style="font-size:15px;font-weight:500;color:var(--rose)">로그아웃</div>
+        </div>
+      </div>
+    </div>`;
+  document.getElementById('panel-title').textContent = '내 정보';
 }
 
 // ── 포맷 ──
@@ -728,6 +934,11 @@ function filterChannels(q) {
 async function openChannel(id) {
   currentChannel = channels.find(c=>c.id===id);
   renderPanel();
+
+  // 모바일: 패널 숨기기
+  if (window.innerWidth <= 768) {
+    document.getElementById('panel').classList.add('hidden');
+  }
 
   document.getElementById('empty').style.display = 'none';
   document.getElementById('chat-active').style.display = 'flex';
@@ -982,6 +1193,11 @@ async function doLogout() {
   document.getElementById('si-email').value = '';
   document.getElementById('si-pw').value = '';
   document.getElementById('si-msg').textContent = '';
+  // 모바일 패널 초기화
+  if (window.innerWidth <= 768) {
+    document.getElementById('panel').classList.remove('hidden');
+  }
+  switchTab('signin');
 }
 </script>
 </body>
