@@ -644,7 +644,8 @@ function enterApp() {
   init();
 }
 
-// ── 포맷 ──function fmtTime(ts) {
+// ── 포맷 ──
+function fmtTime(ts) {
   if (!ts) return '';
   const d = new Date(ts);
   const h = d.getHours(), m = String(d.getMinutes()).padStart(2,'0');
