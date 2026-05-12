@@ -306,10 +306,11 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
   background: linear-gradient(160deg, #2C1F14 0%, #4A2E1A 100%);
   padding: 48px 40px; display: flex; flex-direction: column;
   justify-content: space-between;
+  align-items: center;
 }
 .auth-left .brand { font-family: var(--serif); font-size: 32px; color: #E9C9B0; font-weight: 500; margin-bottom: 10px; }
-.auth-left .tagline { font-size: 14px; color: rgba(255,255,255,.55); line-height: 1.7; }
-.auth-left .features { display: flex; flex-direction: column; gap: 12px; }
+.auth-left .tagline { font-size: 14px; color: rgba(255,255,255,.55); line-height: 1.7; text-align: center; }
+.auth-left .features { display: flex; flex-direction: column; gap: 12px; align-self: flex-start; width: 100%; }
 .auth-left .feat { display: flex; align-items: center; gap: 10px; color: rgba(255,255,255,.7); font-size: 13.5px; }
 .auth-left .feat-icon { width: 32px; height: 32px; border-radius: 10px; background: rgba(255,255,255,.1); display: flex; align-items: center; justify-content: center; font-size: 15px; flex-shrink: 0; }
 .auth-right { flex: 1; padding: 48px 44px; display: flex; flex-direction: column; }
@@ -447,8 +448,8 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
   <div class="auth-wrap">
     <!-- 왼쪽 브랜드 -->
     <div class="auth-left">
-      <div>
-        <img src="https://koreayjk.github.io/imessenger/ilogo.png" alt="IM 메신저 로고" style="width:140px;margin-bottom:16px;filter:drop-shadow(0 4px 12px rgba(0,0,0,.4))"/>
+      <div style="display:flex;flex-direction:column;align-items:center;text-align:center">
+        <img src="https://koreayjk.github.io/imessenger/ilogo.png" alt="IM 메신저 로고" style="width:160px;margin-bottom:16px;filter:drop-shadow(0 4px 16px rgba(0,0,0,.5));mix-blend-mode:lighten;background:transparent"/>
         <div class="tagline">선교회 가족들이 한 자리에서 소통하고, 함께 기도하는 공동체 메신저</div>
       </div>
       <div class="features">
@@ -505,7 +506,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
   <!-- 1) 아이콘 사이드바 -->
   <div id="sidebar">
     <div class="logo">
-      <img src="https://koreayjk.github.io/imessenger/ilogo.png" alt="IM" style="width:44px;height:44px;object-fit:contain;filter:drop-shadow(0 2px 6px rgba(0,0,0,.4))"/>
+      <img src="https://koreayjk.github.io/imessenger/ilogo.png" alt="IM" style="width:44px;height:44px;object-fit:contain;mix-blend-mode:lighten;filter:drop-shadow(0 2px 6px rgba(0,0,0,.4))"/>
     </div>
     <div class="sb-btn active" id="sb-chat" onclick="setMode('chat')" title="채팅">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.85)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6.5a3 3 0 013-3h10a3 3 0 013 3V14a3 3 0 01-3 3H10l-4 3.5V17a3 3 0 01-2-2.83V6.5z"/></svg>
