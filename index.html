@@ -1275,10 +1275,13 @@ function msgHtml(m, prev) {
       const f = JSON.parse(m.text);
       if (f.type === 'file') {
         if (f.isImage) {
-          bubbleContent = `<div style="max-width:260px">
-            <img src="${f.directUrl}" alt="${f.name}" style="width:100%;border-radius:10px;display:block;cursor:pointer" onclick="window.open('${f.viewUrl}','_blank')" onerror="this.style.display='none';this.nextSibling.style.display='flex'"/>
-            <div style="display:none;align-items:center;gap:8px;padding:10px;background:var(--s3);border-radius:10px">
-              🖼️ <a href="${f.viewUrl}" target="_blank" style="color:var(--accent);text-decoration:none;font-size:13px">${f.name}</a>
+          bubbleContent = `<div style="max-width:280px">
+            <img src="${f.thumbUrl||f.directUrl}" alt="${f.name}"
+              style="width:100%;border-radius:10px;display:block;cursor:pointer;max-height:300px;object-fit:cover"
+              onclick="window.open('${f.viewUrl}','_blank')"
+              onerror="this.src='${f.directUrl}';this.onerror=null"/>
+            <div style="font-size:11px;color:var(--ink3);margin-top:4px;text-align:right">
+              <a href="${f.viewUrl}" target="_blank" style="color:var(--accent);text-decoration:none">크게 보기 ↗</a>
             </div>
           </div>`;
         } else if (f.isVideo) {
@@ -1341,7 +1344,20 @@ async function confirmDeleteMsg() {
 }
 
 function escHtml(s) {
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/\n/g,'<br>');
+}
+
+function linkify(s) {
+  // URL을 클릭 가능한 링크로 변환
+  const escaped = escHtml(s);
+  return escaped.replace(
+    /(https?:\/\/[^\s<>"']+)/g,
+    '<a href="$1" target="_blank" rel="noopener noreferrer" style="color:var(--accent);text-decoration:underline;word-break:break-all">$1</a>'
+  );
 }
 
 // ── 메시지 전송 ──
@@ -2183,7 +2199,9 @@ async function uploadFileToDrive(file) {
     // 직접 보기 링크
     const isImage = file.type.startsWith('image/');
     const isVideo = file.type.startsWith('video/');
-    const directUrl = `https://drive.google.com/uc?export=view&id=${data.id}`;
+    // 썸네일 URL (미리보기용) - 더 안정적
+    const thumbUrl = `https://drive.google.com/thumbnail?id=${data.id}&sz=w800`;
+    const directUrl = `https://drive.google.com/uc?export=download&id=${data.id}`;
     const viewUrl = data.webViewLink;
 
     // 메시지로 전송
@@ -2193,6 +2211,7 @@ async function uploadFileToDrive(file) {
       fileId: data.id,
       viewUrl,
       directUrl,
+      thumbUrl,
       mimeType: file.type,
       isImage,
       isVideo,
