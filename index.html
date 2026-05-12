@@ -348,7 +348,20 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
 .auth-msg.error { color: var(--rose); }
 .auth-msg.success { color: var(--sage); }
 
-/* ── 홈 반응형 ── */
+/* 관리자 탭 */
+.adm-tab { padding:12px 16px;font-size:13px;font-weight:500;cursor:pointer;border-bottom:2px solid transparent;color:var(--ink3);margin-bottom:-1px;transition:color .15s; }
+.adm-tab:hover { color:var(--ink); }
+.adm-tab.active-adm { border-bottom-color:var(--accent);color:var(--adeep);font-weight:600; }
+.adm-card { background:var(--surface);border-radius:16px;padding:18px 20px;margin-bottom:12px;box-shadow:0 1px 4px rgba(70,50,20,.07); }
+.adm-row { display:flex;align-items:center;gap:14px;padding:12px 0;border-bottom:1px solid var(--bs); }
+.adm-row:last-child { border-bottom:none; }
+.adm-btn { height:30px;padding:0 14px;border-radius:9px;display:inline-flex;align-items:center;font-size:12px;font-weight:600;cursor:pointer;border:none; }
+.adm-btn.primary { background:var(--accent);color:white; }
+.adm-btn.sage { background:var(--sage);color:white; }
+.adm-btn.danger { background:#FEE2E2;color:var(--rose); }
+.adm-btn.ghost { background:var(--s3);color:var(--ink2); }
+.adm-input { width:100%;padding:10px 13px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none;margin-bottom:8px; }
+.adm-input:focus { border-color:var(--accent); }
 .home-grid-4 { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:24px; }
 .home-grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:20px; }
 @media (max-width:1100px) {
@@ -535,6 +548,10 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>
       <span>일정</span>
     </div>
+    <div class="sb-btn" id="sb-admin" onclick="setMode('admin')" title="관리자" style="display:none">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M12 14c-5 0-8 2-8 4v1h16v-1c0-2-3-4-8-4z"/><path d="M17 3l1.5 1.5L20 3l-1.5 1.5L20 6l-1.5-1.5L17 6l1.5-1.5z"/></svg>
+      <span>관리</span>
+    </div>
     <div class="sb-spacer"></div>
     <div class="sb-btn" id="sb-me" title="내 프로필" style="margin-bottom:4px">
       <div id="my-av" style="width:36px;height:36px;border-radius:11px;background:#8B4A24;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:14px;color:white">?</div>
@@ -665,6 +682,24 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
           <div style="font-size:13px;font-weight:600;color:var(--ink3);margin-bottom:10px">일정을 선택하세요</div>
         </div>
       </div>
+    </div>
+
+    <!-- 관리자 뷰 -->
+    <div id="admin-view" style="display:none;flex-direction:column;height:100%">
+      <div style="height:56px;padding:0 20px;display:flex;align-items:center;gap:12px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0">
+        <div style="width:36px;height:36px;border-radius:11px;background:#2C1F14;display:flex;align-items:center;justify-content:center;font-size:18px">⚙️</div>
+        <div style="flex:1">
+          <div style="font-size:15px;font-weight:700">관리자 페이지</div>
+          <div style="font-size:12px;color:var(--ink3)">멤버·채널·공지·목표 관리</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:0;padding:0 20px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0">
+        <div id="adm-tab-members" onclick="switchAdminTab('members')" class="adm-tab active-adm">👥 멤버</div>
+        <div id="adm-tab-channels" onclick="switchAdminTab('channels')" class="adm-tab">💬 채널</div>
+        <div id="adm-tab-notices" onclick="switchAdminTab('notices')" class="adm-tab">📢 공지사항</div>
+        <div id="adm-tab-goals" onclick="switchAdminTab('goals')" class="adm-tab">🎯 이달의 목표</div>
+      </div>
+      <div id="admin-content" style="flex:1;overflow-y:auto;padding:24px 28px"></div>
     </div>
   </div>
 
@@ -954,9 +989,12 @@ function enterApp() {
   document.getElementById('my-av').textContent = ME.initials || ME.name[0];
   document.getElementById('my-av').style.background = ME.color || '#8B4A24';
   document.getElementById('my-av').title = ME.name;
-  // 모바일 아바타
   const mav = document.getElementById('mobile-av');
   if (mav) { mav.textContent = ME.initials || ME.name[0]; mav.style.background = ME.color || '#8B4A24'; }
+  // 관리자 버튼 표시
+  if (ME.email === 'koreayjk@gmail.com') {
+    document.getElementById('sb-admin').style.display = 'flex';
+  }
   init();
 }
 
@@ -1055,7 +1093,7 @@ async function init() {
 // ── 사이드바 모드 전환 ──
 function setMode(m) {
   mode = m;
-  ['chat','prayer','home','calendar'].forEach(x => {
+  ['chat','prayer','home','calendar','admin'].forEach(x => {
     const el = document.getElementById('sb-'+x);
     if (!el) return;
     el.classList.toggle('active', x===m);
@@ -1068,10 +1106,11 @@ function setMode(m) {
   document.getElementById('prayer-view').style.display = m==='prayer' ? 'flex' : 'none';
   document.getElementById('home-view').style.display = m==='home' ? 'flex' : 'none';
   document.getElementById('calendar-view').style.display = m==='calendar' ? 'flex' : 'none';
+  document.getElementById('admin-view').style.display = m==='admin' ? 'flex' : 'none';
 
-  // 홈, 캘린더에선 패널 숨기기
+  // 홈, 캘린더, 관리자에선 패널 숨기기
   const panel = document.getElementById('panel');
-  if (m === 'home' || m === 'calendar') {
+  if (m === 'home' || m === 'calendar' || m === 'admin') {
     panel.style.display = 'none';
   } else {
     panel.style.display = 'flex';
@@ -1081,7 +1120,8 @@ function setMode(m) {
   if (m==='home') renderHome();
   if (m==='chat') { renderPanel(); }
   if (m==='calendar') { loadCalendar(); }
-  document.getElementById('panel-title').textContent = {chat:'채팅',prayer:'기도제목',home:'홈',calendar:'일정'}[m] || m;
+  if (m==='admin') { switchAdminTab('members'); }
+  document.getElementById('panel-title').textContent = {chat:'채팅',prayer:'기도제목',home:'홈',calendar:'일정',admin:'관리자'}[m] || m;
 }
 
 // ── 채널 패널 렌더 ──
@@ -1585,6 +1625,259 @@ async function doLogout() {
   switchTab('signin');
 }
 
+// ── 관리자 페이지 ──
+let adminTab = 'members';
+
+function switchAdminTab(tab) {
+  adminTab = tab;
+  ['members','channels','notices','goals'].forEach(t => {
+    const el = document.getElementById('adm-tab-'+t);
+    if (!el) return;
+    el.classList.toggle('active-adm', t===tab);
+  });
+  const area = document.getElementById('admin-content');
+  if (!area) return;
+  area.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink3)">불러오는 중...</div>';
+  if (tab==='members') renderAdminMembers();
+  else if (tab==='channels') renderAdminChannels();
+  else if (tab==='notices') renderAdminNotices();
+  else if (tab==='goals') renderAdminGoals();
+}
+
+// ── 멤버 관리 ──
+async function renderAdminMembers() {
+  const { data } = await sb.from('members').select('*').order('created_at');
+  const list = data || [];
+  const area = document.getElementById('admin-content');
+  const roles = ['멤버','리더','관리자'];
+  const roleColors = ['var(--s3)','var(--sagsoft)','var(--asoft)'];
+
+  area.innerHTML = `
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+    <div>
+      <div style="font-size:18px;font-weight:700">👥 멤버 관리</div>
+      <div style="font-size:13px;color:var(--ink3);margin-top:3px">전체 ${list.length}명</div>
+    </div>
+  </div>
+  <div class="adm-card" style="padding:0;overflow:hidden">
+    ${list.map(m => `
+    <div class="adm-row" style="padding:14px 20px">
+      <div style="width:38px;height:38px;border-radius:12px;background:${m.color||'#999'};color:white;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;flex-shrink:0">${m.initials||m.name[0]}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:14px;font-weight:600">${m.name}</div>
+        <div style="font-size:12px;color:var(--ink3);margin-top:2px">${m.email||'이메일 없음'} · 가입: ${m.created_at?new Date(m.created_at).toLocaleDateString('ko-KR'):'-'}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+        <select onchange="updateMemberRole('${m.id}',this.value)"
+          style="height:30px;padding:0 10px;border-radius:9px;border:1.5px solid var(--border);font:12px var(--font);background:white;cursor:pointer;outline:none">
+          <option value="멤버" ${(m.role||'멤버')==='멤버'?'selected':''}>멤버</option>
+          <option value="리더" ${m.role==='리더'?'selected':''}>리더</option>
+          <option value="관리자" ${m.role==='관리자'?'selected':''}>관리자</option>
+        </select>
+        ${m.email !== 'koreayjk@gmail.com' ? `<button class="adm-btn danger" onclick="deleteMember('${m.id}','${m.name}')">탈퇴</button>` : '<span style="font-size:11px;color:var(--ink3)">최고관리자</span>'}
+      </div>
+    </div>`).join('')}
+  </div>`;
+}
+
+async function updateMemberRole(id, role) {
+  await sb.from('members').update({ role }).eq('id', id);
+  members[id] && (members[id].role = role);
+  renderMembers();
+}
+
+async function deleteMember(id, name) {
+  if (!confirm(`${name} 님을 탈퇴시킬까요?\n(메시지/기도제목은 유지됩니다)`)) return;
+  await sb.from('members').delete().eq('id', id);
+  await sb.auth.admin?.deleteUser(id).catch(()=>{});
+  delete members[id];
+  renderAdminMembers();
+  renderMembers();
+}
+
+// ── 채널 관리 ──
+async function renderAdminChannels() {
+  const area = document.getElementById('admin-content');
+  area.innerHTML = `
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+    <div style="font-size:18px;font-weight:700">💬 채널 관리</div>
+    <button class="adm-btn primary" onclick="showAddChannelModal()">+ 채널 추가</button>
+  </div>
+  <div class="adm-card" style="padding:0;overflow:hidden">
+    ${channels.map(ch => `
+    <div class="adm-row" style="padding:14px 20px">
+      <div style="width:38px;height:38px;border-radius:12px;background:var(--s3);display:flex;align-items:center;justify-content:center;font-size:19px;flex-shrink:0">${ch.emoji||'#'}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:14px;font-weight:600">${ch.name}</div>
+        <div style="font-size:12px;color:var(--ink3);margin-top:2px">${ch.description||'설명 없음'}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+        <button class="adm-btn ${ch.pinned?'sage':'ghost'}" onclick="toggleChannelPin('${ch.id}',${ch.pinned})">
+          ${ch.pinned?'📌 고정됨':'📌 고정'}
+        </button>
+        <button class="adm-btn ghost" onclick="showEditChannel('${ch.id}')">수정</button>
+        <button class="adm-btn danger" onclick="deleteChannel('${ch.id}','${ch.name}')">삭제</button>
+      </div>
+    </div>`).join('')}
+  </div>`;
+}
+
+async function toggleChannelPin(id, pinned) {
+  await sb.from('channels').update({ pinned: !pinned }).eq('id', id);
+  const ch = channels.find(c=>c.id===id);
+  if (ch) ch.pinned = !pinned;
+  renderAdminChannels();
+  renderPanel();
+}
+
+async function deleteChannel(id, name) {
+  if (!confirm(`"${name}" 채널을 삭제할까요?\n채널의 모든 메시지도 삭제됩니다.`)) return;
+  await sb.from('messages').delete().eq('channel_id', id);
+  await sb.from('channels').delete().eq('id', id);
+  channels = channels.filter(c=>c.id!==id);
+  if (currentChannel && currentChannel.id===id) {
+    currentChannel=null;
+    document.getElementById('empty').style.display='flex';
+    document.getElementById('chat-active').style.display='none';
+  }
+  renderAdminChannels();
+  renderPanel();
+}
+
+// ── 공지사항 관리 ──
+async function renderAdminNotices() {
+  const { data } = await sb.from('announcements').select('*').order('created_at', {ascending:false});
+  const list = data || [];
+  const area = document.getElementById('admin-content');
+  area.innerHTML = `
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+    <div style="font-size:18px;font-weight:700">📢 공지사항 관리</div>
+    <button class="adm-btn primary" onclick="showNoticeForm()">+ 공지 작성</button>
+  </div>
+  <div id="notice-form-area"></div>
+  <div class="adm-card" style="padding:0;overflow:hidden">
+    ${list.length ? list.map(n => `
+    <div class="adm-row" style="padding:14px 20px;flex-direction:column;align-items:flex-start;gap:8px">
+      <div style="display:flex;align-items:center;justify-content:space-between;width:100%">
+        <div style="display:flex;align-items:center;gap:8px">
+          ${n.pinned?'<span style="font-size:12px;background:var(--asoft);color:var(--adeep);padding:2px 8px;border-radius:6px;font-weight:600">📌 고정</span>':''}
+          <div style="font-size:14px;font-weight:600">${n.title}</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          <button class="adm-btn ${n.pinned?'sage':'ghost'}" onclick="toggleNoticePin('${n.id}',${n.pinned})">${n.pinned?'고정해제':'고정'}</button>
+          <button class="adm-btn ghost" onclick="editNotice('${n.id}')">수정</button>
+          <button class="adm-btn danger" onclick="deleteNotice('${n.id}')">삭제</button>
+        </div>
+      </div>
+      ${n.body ? `<div style="font-size:13px;color:var(--ink2);line-height:1.55">${n.body}</div>` : ''}
+      <div style="font-size:11.5px;color:var(--ink3)">${n.created_by_name||'관리자'} · ${new Date(n.created_at).toLocaleDateString('ko-KR')}</div>
+    </div>`).join('') : '<div style="padding:20px;text-align:center;color:var(--ink3)">공지사항이 없어요</div>'}
+  </div>`;
+}
+
+function showNoticeForm(existing) {
+  const area = document.getElementById('notice-form-area');
+  area.innerHTML = `
+  <div class="adm-card" style="margin-bottom:16px">
+    <div style="font-size:14px;font-weight:600;margin-bottom:12px">${existing?'공지 수정':'새 공지 작성'}</div>
+    <input id="notice-title" class="adm-input" placeholder="제목" value="${existing?.title||''}"/>
+    <textarea id="notice-body" class="adm-input" placeholder="내용 (선택사항)" rows="3" style="resize:none">${existing?.body||''}</textarea>
+    <div style="display:flex;align-items:center;gap:10px;margin-top:4px">
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+        <input type="checkbox" id="notice-pin" ${existing?.pinned?'checked':''}/> 홈화면에 고정
+      </label>
+      <div style="flex:1"></div>
+      <button class="adm-btn ghost" onclick="document.getElementById('notice-form-area').innerHTML=''">취소</button>
+      <button class="adm-btn primary" onclick="submitNotice('${existing?.id||''}')">저장</button>
+    </div>
+  </div>`;
+  area.scrollIntoView({behavior:'smooth'});
+}
+
+async function submitNotice(id) {
+  const title = document.getElementById('notice-title').value.trim();
+  if (!title) return;
+  const body = document.getElementById('notice-body').value.trim();
+  const pinned = document.getElementById('notice-pin').checked;
+  if (id) {
+    await sb.from('announcements').update({title,body,pinned}).eq('id',id);
+  } else {
+    await sb.from('announcements').insert({title,body,pinned,created_by:ME.id,created_by_name:ME.name});
+  }
+  renderAdminNotices();
+}
+
+async function editNotice(id) {
+  const { data } = await sb.from('announcements').select('*').eq('id',id).single();
+  if (data) showNoticeForm(data);
+}
+
+async function deleteNotice(id) {
+  if (!confirm('공지사항을 삭제할까요?')) return;
+  await sb.from('announcements').delete().eq('id',id);
+  renderAdminNotices();
+}
+
+async function toggleNoticePin(id, pinned) {
+  await sb.from('announcements').update({pinned:!pinned}).eq('id',id);
+  renderAdminNotices();
+}
+
+// ── 이달의 목표 관리 ──
+async function renderAdminGoals() {
+  const area = document.getElementById('admin-content');
+  const now = new Date();
+  const monthStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
+  const { data } = await sb.from('monthly_goals').select('*').eq('month', monthStr).single();
+  const goals = data?.goals || ['매일 말씀 묵상하기','기도 모임 참석하기','새가족 섬기기'];
+  const goalId = data?.id;
+
+  area.innerHTML = `
+  <div style="font-size:18px;font-weight:700;margin-bottom:6px">🎯 이달의 목표</div>
+  <div style="font-size:13px;color:var(--ink3);margin-bottom:20px">${now.getMonth()+1}월 목표를 설정해요</div>
+  <div class="adm-card">
+    <div id="goals-list" style="margin-bottom:14px">
+      ${goals.map((g,i) => `
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <input class="adm-input" style="margin-bottom:0;flex:1" id="goal-${i}" value="${g}"/>
+        <button class="adm-btn danger" onclick="removeGoalRow(${i})">✕</button>
+      </div>`).join('')}
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="adm-btn ghost" onclick="addGoalRow()">+ 목표 추가</button>
+      <div style="flex:1"></div>
+      <button class="adm-btn primary" onclick="saveGoals('${goalId||''}','${monthStr}')">저장하기</button>
+    </div>
+  </div>`;
+}
+
+function addGoalRow() {
+  const list = document.getElementById('goals-list');
+  const i = list.children.length;
+  const div = document.createElement('div');
+  div.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:8px';
+  div.innerHTML = `<input class="adm-input" style="margin-bottom:0;flex:1" id="goal-${i}" placeholder="새 목표 입력"/>
+    <button class="adm-btn danger" onclick="this.closest('div').remove()">✕</button>`;
+  list.appendChild(div);
+}
+
+function removeGoalRow(i) {
+  const el = document.getElementById('goal-'+i);
+  if (el) el.closest('div').remove();
+}
+
+async function saveGoals(id, monthStr) {
+  const inputs = document.querySelectorAll('#goals-list input');
+  const goals = Array.from(inputs).map(i=>i.value.trim()).filter(Boolean);
+  if (id) {
+    await sb.from('monthly_goals').update({goals, updated_at: new Date()}).eq('id', id);
+  } else {
+    await sb.from('monthly_goals').insert({month: monthStr, goals, created_by: ME.id});
+  }
+  alert('저장됐어요! ✅');
+  renderAdminGoals();
+}
+
 // ── 채널 수정 ──
 let editingChannelId = null;
 function showEditChannel(id) {
@@ -1672,82 +1965,155 @@ function renderCalendar() {
   document.getElementById('cal-nav-title').textContent = `${calYear}년 ${monthNames[calMonth]}`;
   document.getElementById('cal-month-title').textContent = `${calYear}년 ${monthNames[calMonth]}`;
 
-  // 몇 주인지 계산 (행 수)
-  const totalCells = firstDay + daysInMonth;
-  const rows = Math.ceil(totalCells / 7);
+  const rows = Math.ceil((firstDay + daysInMonth) / 7);
 
-  let html = `<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:var(--border);border:1px solid var(--border);border-radius:12px;overflow:hidden;flex:1">`;
-
-  // 빈 칸
-  for (let i = 0; i < firstDay; i++) {
-    html += `<div style="background:var(--bg);min-height:90px;padding:6px 8px"></div>`;
+  // ── 날짜 → 셀 인덱스 계산 ──
+  function cellIndex(dateStr) {
+    const d = new Date(dateStr);
+    if (d.getFullYear() !== calYear || d.getMonth() !== calMonth) return -1;
+    return firstDay + d.getDate() - 1;
   }
 
-  for (let d = 1; d <= daysInMonth; d++) {
-    const dateStr = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-    const isToday = d === today.getDate() && calMonth === today.getMonth() && calYear === today.getFullYear();
-    const isSelected = dateStr === calSelectedDate;
-    const dow = (firstDay + d - 1) % 7;
-    const isSun = dow === 0, isSat = dow === 6;
+  // ── 다일 이벤트 레이아웃 계산 ──
+  // 각 이벤트의 시작/끝 셀, 어느 row에 배치할지 결정
+  const multiEvents = calEvents.filter(e => e.end_date && e.end_date !== e.start_date);
+  const singleEvents = calEvents.filter(e => !e.end_date || e.end_date === e.start_date);
 
-    const dayEvents = calEvents.filter(e => e.start_date === dateStr);
+  // 셀별 단일 이벤트 맵
+  const singleMap = {};
+  singleEvents.forEach(e => {
+    const key = e.start_date;
+    if (!singleMap[key]) singleMap[key] = [];
+    singleMap[key].push(e);
+  });
 
-    // 날짜 숫자 색상
-    const numColor = isSun ? 'var(--rose)' : isSat ? '#5A7C8B' : 'var(--ink)';
-    const numBg = isToday ? 'var(--accent)' : isSelected ? 'var(--asoft)' : 'transparent';
-    const numTextColor = isToday ? 'white' : isSelected ? 'var(--adeep)' : numColor;
+  // 다일 이벤트: 주별로 분할 (주 경계에서 끊기)
+  const multiLayout = []; // {event, startCell, endCell, row}
+  const rowOccupied = {}; // cellIndex → [row]
 
-    // 일정 태그 (최대 3개, 나머지는 +N개)
-    const visibleEvents = dayEvents.slice(0, 3);
-    const hiddenCount = dayEvents.length - 3;
-    const eventTags = visibleEvents.map(e => `
-      <div onclick="event.stopPropagation();editEvent('${e.id}')" style="
-        display:flex;align-items:center;gap:3px;
-        padding:1px 5px;border-radius:4px;
-        background:${e.color||'var(--accent)'}22;
-        border-left:3px solid ${e.color||'var(--accent)'};
-        font-size:11px;font-weight:500;color:var(--ink);
-        white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-        cursor:pointer;margin-bottom:2px;
-      " title="${e.title}">
-        ${e.start_time ? `<span style="color:${e.color||'var(--accent)'};font-weight:600;flex-shrink:0">${e.start_time.slice(0,5)}</span>` : ''}
-        <span style="overflow:hidden;text-overflow:ellipsis">${e.title}</span>
-      </div>`).join('');
+  multiEvents.forEach(e => {
+    const startD = new Date(Math.max(new Date(e.start_date), new Date(calYear, calMonth, 1)));
+    const endD = new Date(Math.min(new Date(e.end_date), new Date(calYear, calMonth, daysInMonth)));
+    if (startD > endD) return;
 
-    html += `<div onclick="selectCalDate('${dateStr}')" style="
-      background:${isSelected?'rgba(181,104,60,.06)':'var(--surface)'};
-      min-height:90px; padding:6px 8px;
-      cursor:pointer; transition:background .1s;
-      position:relative;
-    " onmouseover="this.style.background='${isSelected?'rgba(181,104,60,.08)':'var(--s2)'}'" onmouseout="this.style.background='${isSelected?'rgba(181,104,60,.06)':'var(--surface)'}'">
-      <!-- 날짜 숫자 (왼쪽 위) -->
-      <div style="
-        display:inline-flex;align-items:center;justify-content:center;
-        width:24px;height:24px;border-radius:50%;
-        background:${numBg};
-        font-size:12px;font-weight:${isToday||isSelected?'700':'400'};
-        color:${numTextColor};
-        margin-bottom:4px;
-      ">${d}</div>
-      <!-- 일정 태그들 -->
-      <div style="display:flex;flex-direction:column;">
-        ${eventTags}
-        ${hiddenCount > 0 ? `<div style="font-size:11px;color:var(--ink3);padding:1px 4px">+${hiddenCount}개 더</div>` : ''}
-      </div>
-    </div>`;
-  }
+    // 주 경계로 분할
+    let cur = new Date(startD);
+    while (cur <= endD) {
+      const segStart = cellIndex(cur.toISOString().slice(0,10));
+      if (segStart < 0) { cur.setDate(cur.getDate()+1); continue; }
+      const rowStart = Math.floor(segStart / 7);
+      // 이 주 끝 (토요일 or endD)
+      const weekEnd = new Date(cur);
+      weekEnd.setDate(cur.getDate() + (6 - cur.getDay()));
+      const segEndDate = weekEnd < endD ? weekEnd : endD;
+      const segEnd = cellIndex(segEndDate.toISOString().slice(0,10));
 
-  // 마지막 주 빈칸 채우기
-  const lastDow = (firstDay + daysInMonth - 1) % 7;
-  if (lastDow < 6) {
-    for (let i = lastDow + 1; i <= 6; i++) {
-      html += `<div style="background:var(--bg);min-height:90px;padding:6px 8px"></div>`;
+      // row 배치 (겹치지 않는 최소 row)
+      let row = 0;
+      while (true) {
+        let ok = true;
+        for (let c = segStart; c <= segEnd; c++) {
+          if (rowOccupied[c] && rowOccupied[c].includes(row)) { ok=false; break; }
+        }
+        if (ok) break;
+        row++;
+      }
+      for (let c = segStart; c <= segEnd; c++) {
+        if (!rowOccupied[c]) rowOccupied[c] = [];
+        rowOccupied[c].push(row);
+      }
+      multiLayout.push({ event: e, startCell: segStart, endCell: segEnd, row });
+
+      cur = new Date(segEndDate);
+      cur.setDate(cur.getDate() + 1);
     }
+  });
+
+  // ── HTML 생성 ──
+  // 주(row)별로 처리
+  let html = `<div style="display:flex;flex-direction:column;gap:1px;flex:1">`;
+
+  // 요일 헤더 행
+  html += `<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:var(--border)">`;
+  ['일','월','화','수','목','금','토'].forEach((d,i) => {
+    html += `<div style="background:var(--s2);text-align:center;font-size:11.5px;font-weight:600;color:${i===0?'var(--rose)':i===6?'#5A7C8B':'var(--ink3)'};padding:6px 0">${d}</div>`;
+  });
+  html += '</div>';
+
+  for (let row = 0; row < rows; row++) {
+    const weekMulti = multiLayout.filter(m => Math.floor(m.startCell/7) === row);
+    const maxMultiRow = weekMulti.length ? Math.max(...weekMulti.map(m=>m.row)) : -1;
+
+    html += `<div style="position:relative;flex:1;min-height:${90+maxMultiRow*22}px">`;
+
+    // 날짜 셀 그리드
+    html += `<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:var(--border);height:100%">`;
+    for (let col = 0; col < 7; col++) {
+      const cellIdx = row * 7 + col;
+      const d = cellIdx - firstDay + 1;
+      if (d < 1 || d > daysInMonth) {
+        html += `<div style="background:var(--bg);height:100%"></div>`;
+        continue;
+      }
+      const dateStr = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+      const isToday = d === today.getDate() && calMonth === today.getMonth() && calYear === today.getFullYear();
+      const isSelected = dateStr === calSelectedDate;
+      const isSun = col === 0, isSat = col === 6;
+      const numBg = isToday ? 'var(--accent)' : 'transparent';
+      const numColor = isToday ? 'white' : isSelected ? 'var(--adeep)' : isSun ? 'var(--rose)' : isSat ? '#5A7C8B' : 'var(--ink)';
+      const numFw = isToday ? '700' : '400';
+
+      // 단일 이벤트 (다일 이벤트가 차지하는 row 아래에 배치)
+      const dayEvts = singleMap[dateStr] || [];
+      const topOffset = (maxMultiRow + 1) * 22 + 30;
+      const evtTags = dayEvts.slice(0,2).map(e => `
+        <div onclick="event.stopPropagation();editEvent('${e.id}')"
+          style="font-size:11px;font-weight:500;padding:1px 5px;border-radius:4px;
+          background:${e.color||'var(--accent)'}22;border-left:3px solid ${e.color||'var(--accent)'};
+          white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;margin-bottom:2px;color:var(--ink)"
+          title="${e.title}">
+          ${e.start_time?`<b style="color:${e.color||'var(--accent)'}">${e.start_time.slice(0,5)}</b> `:''}${e.title}
+        </div>`).join('');
+      const moreEvt = dayEvts.length > 2 ? `<div style="font-size:10px;color:var(--ink3)">+${dayEvts.length-2}개</div>` : '';
+
+      html += `<div onclick="selectCalDate('${dateStr}')"
+        style="background:${isSelected?'rgba(181,104,60,.07)':'var(--surface)'};height:100%;padding:5px 6px;cursor:pointer;transition:background .1s;overflow:hidden"
+        onmouseover="this.style.background='${isSelected?'rgba(181,104,60,.1)':'var(--s2)'}'"
+        onmouseout="this.style.background='${isSelected?'rgba(181,104,60,.07)':'var(--surface)'}'">
+        <div style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:${numBg};font-size:12px;font-weight:${numFw};color:${numColor};margin-bottom:${(maxMultiRow+1)*22}px">${d}</div>
+        <div>${evtTags}${moreEvt}</div>
+      </div>`;
+    }
+    html += '</div>';
+
+    // 다일 이벤트 바 (절대 위치 오버레이)
+    weekMulti.forEach(m => {
+      const startCol = m.startCell % 7;
+      const endCol = m.endCell % 7;
+      const spanCols = endCol - startCol + 1;
+      const isFirstSeg = m.event.start_date >= `${calYear}-${String(calMonth+1).padStart(2,'0')}-01`;
+      const topPx = 28 + m.row * 22;
+      const leftPct = (startCol / 7 * 100).toFixed(2);
+      const widthPct = (spanCols / 7 * 100 - 0.5).toFixed(2);
+      const color = m.event.color || 'var(--accent)';
+
+      html += `<div onclick="event.stopPropagation();editEvent('${m.event.id}')"
+        style="position:absolute;top:${topPx}px;left:calc(${leftPct}% + 2px);width:calc(${widthPct}% - 4px);
+        height:20px;border-radius:${isFirstSeg?'5px 0 0 5px':'0'} ${m.endCell%7===6||m.event.end_date<=`${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(daysInMonth).padStart(2,'0')}`?'5px 5px':'0 0'};
+        background:${color};color:white;
+        font-size:11px;font-weight:600;padding:2px 6px;
+        white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+        cursor:pointer;z-index:5;line-height:16px"
+        title="${m.event.title}">
+        ${isFirstSeg ? m.event.title : ''}
+      </div>`;
+    });
+
+    html += '</div>'; // 주 행 끝
   }
 
   html += '</div>';
   document.getElementById('cal-grid').innerHTML = html;
-
   if (calSelectedDate) showDayEvents(calSelectedDate);
 }
 
@@ -1759,7 +2125,11 @@ function selectCalDate(dateStr) {
 
 function showDayEvents(dateStr) {
   const area = document.getElementById('cal-events');
-  const dayEvents = calEvents.filter(e => e.start_date === dateStr);
+  // 단일 + 해당 날짜를 포함하는 다일 이벤트 모두 포함
+  const dayEvents = calEvents.filter(e => {
+    if (!e.end_date || e.end_date === e.start_date) return e.start_date === dateStr;
+    return e.start_date <= dateStr && e.end_date >= dateStr;
+  });
   const d = new Date(dateStr);
   const wk = ['일','월','화','수','목','금','토'];
   const label = `${d.getMonth()+1}월 ${d.getDate()}일 ${wk[d.getDay()]}요일`;
@@ -1769,14 +2139,15 @@ function showDayEvents(dateStr) {
       <div style="padding:16px;border-radius:12px;background:var(--bg);text-align:center;color:var(--ink3);font-size:13px">일정이 없어요. + 일정 추가로 만들어보세요!</div>`;
     return;
   }
-
   area.innerHTML = `<div style="font-size:13px;font-weight:600;color:var(--ink3);margin-bottom:10px">${label} · ${dayEvents.length}개</div>` +
     dayEvents.map(e => `
     <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:14px;background:var(--bg);margin-bottom:8px;cursor:pointer" onclick="editEvent('${e.id}')">
       <div style="width:4px;height:40px;border-radius:2px;background:${e.color||'var(--accent)'};flex-shrink:0"></div>
       <div style="flex:1;min-width:0">
         <div style="font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${e.title}</div>
-        <div style="font-size:12px;color:var(--ink3);margin-top:2px">${e.start_time ? e.start_time.slice(0,5) : '종일'}${e.end_time?' ~ '+e.end_time.slice(0,5):''}</div>
+        <div style="font-size:12px;color:var(--ink3);margin-top:2px">
+          ${e.end_date && e.end_date !== e.start_date ? `${e.start_date} ~ ${e.end_date}` : (e.start_time ? e.start_time.slice(0,5) : '종일') + (e.end_time?' ~ '+e.end_time.slice(0,5):'')}
+        </div>
         ${e.description ? `<div style="font-size:12px;color:var(--ink2);margin-top:2px">${e.description}</div>` : ''}
       </div>
       ${e.created_by === ME.id ? `<div style="font-size:11px;color:var(--ink3)">수정 ›</div>` : ''}
