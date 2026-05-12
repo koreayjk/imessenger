@@ -1276,13 +1276,10 @@ async function openChannel(id) {
   currentChannel = channels.find(c=>c.id===id);
   if (!currentChannel) return;
 
-  // 현재 채널 저장 (새로고침 복원용)
   sessionStorage.setItem('last_channel_id', id);
   sessionStorage.setItem('last_mode', 'chat');
-
   renderPanel();
 
-  // 모바일: 패널 숨기고 탭바 숨기기
   if (window.innerWidth <= 768) {
     document.getElementById('panel').classList.add('hidden');
     document.getElementById('mobile-nav').style.display = 'none';
@@ -1296,21 +1293,97 @@ async function openChannel(id) {
   document.getElementById('ch-name').textContent = currentChannel.name;
   document.getElementById('ch-desc').textContent = currentChannel.description || '';
 
-  // 메시지 로드
+  // 메시지 + 읽음 데이터 함께 로드
   const { data: msgs } = await sb.from('messages').select('*')
     .eq('channel_id', id).order('created_at', {ascending:true}).limit(200);
-  renderMessages(msgs || []);
 
-  // 실시간 구독
+  // 이 채널의 읽음 데이터 로드
+  const msgIds = (msgs||[]).map(m=>m.id);
+  let readMap = {}; // message_id → Set(member_id)
+  if (msgIds.length) {
+    const { data: reads } = await sb.from('message_reads').select('message_id, member_id')
+      .in('message_id', msgIds);
+    (reads||[]).forEach(r => {
+      if (!readMap[r.message_id]) readMap[r.message_id] = new Set();
+      readMap[r.message_id].add(r.member_id);
+    });
+  }
+
+  // 내가 읽었다고 표시 (이 채널의 모든 메시지)
+  await markAllRead(msgs||[]);
+
+  renderMessages(msgs||[], readMap);
+
+  // 실시간 구독 (메시지 + 읽음)
   if (realtimeSub) sb.removeChannel(realtimeSub);
-  realtimeSub = sb.channel(`msg:${id}`)
+  realtimeSub = sb.channel(`chat:${id}`)
     .on('postgres_changes', { event:'INSERT', schema:'public', table:'messages', filter:`channel_id=eq.${id}` },
-      payload => appendMessage(payload.new))
+      async (payload) => {
+        appendMessage(payload.new, {});
+        // 새 메시지 자동 읽음 처리
+        await markRead(payload.new.id);
+      })
+    .on('postgres_changes', { event:'INSERT', schema:'public', table:'message_reads' },
+      async () => {
+        // 읽음 상태 변경되면 내 메시지들 읽음 숫자 업데이트
+        await refreshReadCounts();
+      })
     .subscribe();
 }
 
+// 채널의 모든 메시지 읽음 처리
+async function markAllRead(msgs) {
+  const unread = msgs.filter(m => m.sender_id !== ME.id);
+  if (!unread.length) return;
+  const inserts = unread.map(m => ({ message_id: m.id, member_id: ME.id }));
+  await sb.from('message_reads').upsert(inserts, { onConflict: 'message_id,member_id', ignoreDuplicates: true });
+}
+
+// 단일 메시지 읽음 처리
+async function markRead(messageId) {
+  await sb.from('message_reads').upsert(
+    { message_id: messageId, member_id: ME.id },
+    { onConflict: 'message_id,member_id', ignoreDuplicates: true }
+  );
+}
+
+// 읽음 숫자 새로고침 (내 메시지들만)
+async function refreshReadCounts() {
+  if (!currentChannel) return;
+  // 내가 보낸 메시지들의 읽음 수 다시 가져오기
+  const myMsgs = document.querySelectorAll('.msg-row.mine[data-id]');
+  if (!myMsgs.length) return;
+  const ids = Array.from(myMsgs).map(el => el.dataset.id);
+  const { data: reads } = await sb.from('message_reads').select('message_id, member_id').in('message_id', ids);
+  const readMap = {};
+  (reads||[]).forEach(r => {
+    if (!readMap[r.message_id]) readMap[r.message_id] = new Set();
+    readMap[r.message_id].add(r.member_id);
+  });
+
+  // 채널 멤버 수 가져오기
+  const { data: chMems } = await sb.from('channel_members').select('member_id').eq('channel_id', currentChannel.id);
+  const chMemberCount = (chMems||[]).length;
+
+  ids.forEach(id => {
+    const el = document.querySelector(`.msg-row[data-id="${id}"]`);
+    if (!el) return;
+    const readEl = el.querySelector('.read-label');
+    if (!readEl) return;
+    const readers = readMap[id] || new Set();
+    const unread = chMemberCount - 1 - readers.size; // 나 제외
+    if (unread <= 0) {
+      readEl.textContent = '모두 읽음 ✓';
+      readEl.style.color = 'var(--sage)';
+    } else {
+      readEl.textContent = unread;
+      readEl.style.color = 'var(--ink3)';
+    }
+  });
+}
+
 // ── 메시지 렌더 ──
-function renderMessages(msgs) {
+function renderMessages(msgs, readMap={}) {
   const area = document.getElementById('msg-area');
   if (!msgs.length) {
     area.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--ink3);gap:10px">
@@ -1321,37 +1394,42 @@ function renderMessages(msgs) {
     return;
   }
   let html = `<div class="date-divider">오늘</div>`;
-  msgs.forEach((m, i) => { html += msgHtml(m, msgs[i-1]); });
+  msgs.forEach((m, i) => { html += msgHtml(m, msgs[i-1], readMap); });
   area.innerHTML = html;
   area.scrollTop = area.scrollHeight;
 }
 
-function appendMessage(m) {
+function appendMessage(m, readMap={}) {
   const area = document.getElementById('msg-area');
-  // 중복 체크
   if (document.querySelector(`[data-id="${m.id}"]`)) return;
-  // 빈 화면 제거
   if (area.querySelector('div[style*="flex-direction:column"]')) {
     area.innerHTML = `<div class="date-divider">오늘</div>`;
   }
   const prev = area.querySelector('.msg-row:last-child');
   const prevId = prev ? prev.dataset.sender : null;
-  area.insertAdjacentHTML('beforeend', msgHtml(m, prevId ? {sender_id: prevId} : null));
+  area.insertAdjacentHTML('beforeend', msgHtml(m, prevId ? {sender_id: prevId} : null, readMap));
   area.scrollTop = area.scrollHeight;
 }
 
-function msgHtml(m, prev) {
+function msgHtml(m, prev, readMap={}) {
   const isMine = m.sender_id === ME.id;
   const sender = members[m.sender_id] || { name: m.sender_name||'알 수 없음', initials: (m.sender_name||'?')[0], color:'#999' };
   const sameAsPrev = prev && prev.sender_id === m.sender_id;
   const avStyle = `background:${sender.color}`;
-  const memberCount = Object.keys(members).length;
-  const readCount = m.read_count || 0;
-  const unread = memberCount - 1 - readCount;
+
+  // 읽음 표시 (내 메시지만) - 실제 readMap 기반
   let readLabel = '';
   if (isMine) {
-    if (unread <= 0) readLabel = `<div style="font-size:10px;color:var(--sage);margin-top:3px;text-align:right">모두 읽음 ✓</div>`;
-    else if (unread > 0) readLabel = `<div style="font-size:10px;color:var(--ink3);margin-top:3px;text-align:right">${unread}</div>`;
+    const readers = readMap[m.id] || new Set();
+    const totalMembers = Object.keys(members).length;
+    const unread = Math.max(0, totalMembers - 1 - readers.size);
+    if (readers.size > 0 && unread === 0) {
+      readLabel = `<div class="read-label" style="font-size:10px;color:var(--sage);margin-top:3px;text-align:right">모두 읽음 ✓</div>`;
+    } else if (unread > 0) {
+      readLabel = `<div class="read-label" style="font-size:10px;color:var(--ink3);margin-top:3px;text-align:right">${unread}</div>`;
+    } else {
+      readLabel = `<div class="read-label" style="font-size:10px;margin-top:3px;text-align:right"></div>`;
+    }
   }
   const delBtn = isMine ? `<div class="msg-del-btn" onclick="askDeleteMsg('${m.id}')" title="삭제" style="display:none;width:26px;height:26px;border-radius:8px;background:rgba(176,88,101,.12);color:var(--rose);align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;font-size:13px">✕</div>` : '';
 
