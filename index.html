@@ -742,7 +742,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
 
   <!-- 채널/DM 추가 모달 -->
   <div id="add-modal" style="display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.45);align-items:center;justify-content:center">
-    <div style="background:var(--surface);border-radius:20px;padding:28px;width:420px;box-shadow:0 20px 60px rgba(0,0,0,.2)">
+    <div style="background:var(--surface);border-radius:20px;padding:28px;width:460px;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.2)">
       <div style="font-size:17px;font-weight:700;margin-bottom:20px">새 채널 / 1:1 채팅 추가</div>
       <div style="display:flex;gap:10px;margin-bottom:20px">
         <div id="add-tab-topic" onclick="switchAddTab('topic')" style="flex:1;padding:10px;border-radius:12px;background:var(--accent);color:white;text-align:center;cursor:pointer;font-size:14px;font-weight:600">📢 토픽 채널</div>
@@ -752,7 +752,14 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
       <div id="add-topic-form">
         <input id="new-ch-name" placeholder="채널 이름 (예: 청년부)" style="width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none;margin-bottom:10px"/>
         <input id="new-ch-emoji" placeholder="이모지 (예: 🌿, 선택사항)" style="width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none;margin-bottom:10px"/>
-        <input id="new-ch-desc" placeholder="채널 설명 (선택사항)" style="width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none;margin-bottom:16px"/>
+        <input id="new-ch-desc" placeholder="채널 설명 (선택사항)" style="width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none;margin-bottom:12px"/>
+        <!-- 멤버 선택 -->
+        <div style="font-size:12px;font-weight:600;color:var(--ink3);margin-bottom:8px;letter-spacing:.03em">초대할 멤버 선택</div>
+        <div style="display:flex;gap:8px;margin-bottom:8px">
+          <div onclick="selectAllMembers(true)" style="height:28px;padding:0 12px;border-radius:8px;background:var(--s3);font-size:12px;display:flex;align-items:center;cursor:pointer;color:var(--ink2)">전체 선택</div>
+          <div onclick="selectAllMembers(false)" style="height:28px;padding:0 12px;border-radius:8px;background:var(--s3);font-size:12px;display:flex;align-items:center;cursor:pointer;color:var(--ink2)">전체 해제</div>
+        </div>
+        <div id="new-ch-members" style="max-height:200px;overflow-y:auto;border:1px solid var(--border);border-radius:12px;padding:6px;margin-bottom:16px"></div>
       </div>
       <!-- DM 폼 -->
       <div id="add-dm-form" style="display:none">
@@ -1086,15 +1093,23 @@ function fmtTime(ts) {
 
 
 // ── 초기화 ──
+let myChannelIds = new Set(); // 내가 속한 채널 ID 목록
+
 async function init() {
   const { data: chs } = await sb.from('channels').select('*').order('pinned', {ascending:false}).order('created_at');
   channels = chs || [];
+
   const { data: mems } = await sb.from('members').select('*');
   members = {};
   (mems||[]).forEach(m => { members[m.id] = m; });
+
+  // 내가 속한 채널 로드
+  const { data: myMemberships } = await sb.from('channel_members').select('channel_id').eq('member_id', ME.id);
+  myChannelIds = new Set((myMemberships||[]).map(m => m.channel_id));
+
   renderPanel();
   renderMembers();
-  setMode('home'); // 홈으로 시작
+  setMode('home');
 }
 
 // ── 사이드바 모드 전환 ──
@@ -1133,8 +1148,11 @@ function setMode(m) {
 
 // ── 채널 패널 렌더 ──
 function renderPanel() {
-  const pinned = channels.filter(c=>c.pinned);
-  const rest = channels.filter(c=>!c.pinned);
+  // 관리자는 모든 채널, 일반 멤버는 속한 채널만
+  const isAdmin = ME.email === 'koreayjk@gmail.com';
+  const visibleChannels = isAdmin ? channels : channels.filter(c => myChannelIds.has(c.id));
+  const pinned = visibleChannels.filter(c=>c.pinned);
+  const rest = visibleChannels.filter(c=>!c.pinned);
   let html = '';
   if (pinned.length) {
     html += `<div class="section-label"><span>📌 고정</span></div>`;
@@ -1143,6 +1161,9 @@ function renderPanel() {
   if (rest.length) {
     html += `<div class="section-label"><span>토픽</span></div>`;
     rest.forEach(ch => html += chRow(ch));
+  }
+  if (!pinned.length && !rest.length) {
+    html = `<div style="padding:24px;text-align:center;color:var(--ink3);font-size:13px">초대된 채널이 없어요</div>`;
   }
   document.getElementById('panel-body').innerHTML = html;
 }
@@ -1568,8 +1589,11 @@ function toggleGoal(row) {
 
 // ── 채널/DM 추가 모달 ──
 let addTabMode = 'topic';
+let selectedNewChMembers = new Set();
+
 function showAddChannelModal() {
   addTabMode = 'topic';
+  selectedNewChMembers = new Set(Object.keys(members)); // 기본: 전체 선택
   document.getElementById('add-modal').style.display = 'flex';
   document.getElementById('new-ch-name').value = '';
   document.getElementById('new-ch-emoji').value = '';
@@ -1577,6 +1601,36 @@ function showAddChannelModal() {
   switchAddTab('topic');
 }
 function closeAddModal() { document.getElementById('add-modal').style.display = 'none'; }
+
+function renderNewChMembers() {
+  const list = document.getElementById('new-ch-members');
+  if (!list) return;
+  list.innerHTML = Object.values(members).map(m => {
+    const selected = selectedNewChMembers.has(m.id);
+    return `<div onclick="toggleNewChMember('${m.id}',this)" data-mid="${m.id}"
+      style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:9px;cursor:pointer;background:${selected?'var(--asoft)':'transparent'}"
+      onmouseover="this.style.background='${selected?'var(--asoft)':'var(--bg)'}'"
+      onmouseout="this.style.background='${selected?'var(--asoft)':'transparent'}'">
+      <div style="width:28px;height:28px;border-radius:8px;background:${m.color||'#999'};color:white;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;flex-shrink:0">${m.initials||m.name[0]}</div>
+      <div style="flex:1;font-size:13.5px;font-weight:500">${m.name}</div>
+      <div style="width:20px;height:20px;border-radius:6px;border:2px solid ${selected?'var(--accent)':'var(--border)'};background:${selected?'var(--accent)':'transparent'};display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        ${selected?'<span style="color:white;font-size:11px">✓</span>':''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggleNewChMember(id, el) {
+  if (selectedNewChMembers.has(id)) selectedNewChMembers.delete(id);
+  else selectedNewChMembers.add(id);
+  renderNewChMembers();
+}
+
+function selectAllMembers(all) {
+  if (all) Object.keys(members).forEach(id => selectedNewChMembers.add(id));
+  else selectedNewChMembers.clear();
+  renderNewChMembers();
+}
 
 function switchAddTab(tab) {
   addTabMode = tab;
@@ -1589,8 +1643,9 @@ function switchAddTab(tab) {
   document.getElementById('add-dm-form').style.display = !isTopic ? 'block' : 'none';
   document.getElementById('add-submit-btn').textContent = isTopic ? '채널 만들기' : 'DM 시작하기';
 
-  if (!isTopic) {
-    // 멤버 목록 렌더
+  if (isTopic) {
+    renderNewChMembers();
+  } else {
     const list = document.getElementById('dm-member-list');
     list.innerHTML = Object.values(members).filter(m => m.id !== ME.id).map(m => `
       <div onclick="selectDmMember(this,'${m.id}')" data-mid="${m.id}" style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:9px;cursor:pointer" onmouseover="this.style.background='var(--bg)'" onmouseout="this.style.background=''">
@@ -1613,9 +1668,21 @@ async function submitAddChannel() {
     if (!name) { document.getElementById('new-ch-name').style.borderColor='var(--rose)'; return; }
     const emoji = document.getElementById('new-ch-emoji').value.trim() || null;
     const desc = document.getElementById('new-ch-desc').value.trim() || '';
+
+    // 채널 생성
     const { data, error } = await sb.from('channels').insert({ name, emoji, description: desc, pinned: false }).select().single();
     if (!error && data) {
+      // 선택된 멤버들을 channel_members에 추가
+      const memberInserts = Array.from(selectedNewChMembers).map(mid => ({
+        channel_id: data.id,
+        member_id: mid,
+      }));
+      if (memberInserts.length > 0) {
+        await sb.from('channel_members').insert(memberInserts);
+      }
       channels.push(data);
+      // 내가 선택됐으면 myChannelIds에 추가
+      if (selectedNewChMembers.has(ME.id)) myChannelIds.add(data.id);
       renderPanel();
       closeAddModal();
       openChannel(data.id);
@@ -1625,11 +1692,16 @@ async function submitAddChannel() {
     const target = members[selectedDmMemberId];
     if (!target) return;
     const dmName = `${ME.name} · ${target.name}`;
-    // 이미 DM 채널 있는지 확인
     const existing = channels.find(c => c.kind === 'dm' && c.name.includes(ME.name) && c.name.includes(target.name));
     if (existing) { closeAddModal(); openChannel(existing.id); return; }
     const { data, error } = await sb.from('channels').insert({ name: dmName, emoji: '💬', description: '1:1 대화', pinned: false, kind: 'dm' }).select().single();
     if (!error && data) {
+      // DM: 두 멤버만 추가
+      await sb.from('channel_members').insert([
+        { channel_id: data.id, member_id: ME.id },
+        { channel_id: data.id, member_id: selectedDmMemberId },
+      ]);
+      myChannelIds.add(data.id);
       channels.push(data);
       renderPanel();
       closeAddModal();
@@ -1729,28 +1801,96 @@ async function deleteMember(id, name) {
 // ── 채널 관리 ──
 async function renderAdminChannels() {
   const area = document.getElementById('admin-content');
+  // 각 채널의 멤버 수 로드
+  const { data: chMembers } = await sb.from('channel_members').select('channel_id, member_id');
+  const chMemberMap = {};
+  (chMembers||[]).forEach(cm => {
+    if (!chMemberMap[cm.channel_id]) chMemberMap[cm.channel_id] = [];
+    chMemberMap[cm.channel_id].push(cm.member_id);
+  });
+
   area.innerHTML = `
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
     <div style="font-size:18px;font-weight:700">💬 채널 관리</div>
     <button class="adm-btn primary" onclick="showAddChannelModal()">+ 채널 추가</button>
   </div>
   <div class="adm-card" style="padding:0;overflow:hidden">
-    ${channels.map(ch => `
-    <div class="adm-row" style="padding:14px 20px">
-      <div style="width:38px;height:38px;border-radius:12px;background:var(--s3);display:flex;align-items:center;justify-content:center;font-size:19px;flex-shrink:0">${ch.emoji||'#'}</div>
-      <div style="flex:1;min-width:0">
-        <div style="font-size:14px;font-weight:600">${ch.name}</div>
-        <div style="font-size:12px;color:var(--ink3);margin-top:2px">${ch.description||'설명 없음'}</div>
-      </div>
-      <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
-        <button class="adm-btn ${ch.pinned?'sage':'ghost'}" onclick="toggleChannelPin('${ch.id}',${ch.pinned})">
-          ${ch.pinned?'📌 고정됨':'📌 고정'}
-        </button>
-        <button class="adm-btn ghost" onclick="showEditChannel('${ch.id}')">수정</button>
-        <button class="adm-btn danger" onclick="deleteChannel('${ch.id}','${ch.name}')">삭제</button>
-      </div>
-    </div>`).join('')}
+    ${channels.map(ch => {
+      const chMems = chMemberMap[ch.id] || [];
+      return `
+      <div class="adm-row" style="padding:14px 20px;flex-direction:column;align-items:flex-start;gap:10px">
+        <div style="display:flex;align-items:center;gap:10px;width:100%">
+          <div style="width:38px;height:38px;border-radius:12px;background:var(--s3);display:flex;align-items:center;justify-content:center;font-size:19px;flex-shrink:0">${ch.emoji||'#'}</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:14px;font-weight:600">${ch.name}</div>
+            <div style="font-size:12px;color:var(--ink3);margin-top:2px">${ch.description||'설명 없음'} · 멤버 ${chMems.length}명</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+            <button class="adm-btn ${ch.pinned?'sage':'ghost'}" onclick="toggleChannelPin('${ch.id}',${ch.pinned})">${ch.pinned?'📌 고정됨':'📌 고정'}</button>
+            <button class="adm-btn ghost" onclick="showEditChannel('${ch.id}')">수정</button>
+            <button class="adm-btn ghost" onclick="showChannelMemberMgmt('${ch.id}')">멤버 초대</button>
+            <button class="adm-btn danger" onclick="deleteChannel('${ch.id}','${ch.name}')">삭제</button>
+          </div>
+        </div>
+        <!-- 멤버 아바타 -->
+        <div style="display:flex;gap:4px;padding-left:48px;flex-wrap:wrap">
+          ${chMems.map(mid => {
+            const m = members[mid];
+            return m ? `<div title="${m.name}" style="width:26px;height:26px;border-radius:7px;background:${m.color||'#999'};color:white;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600">${m.initials||m.name[0]}</div>` : '';
+          }).join('')}
+        </div>
+      </div>`;
+    }).join('')}
+  </div>
+
+  <!-- 멤버 관리 영역 -->
+  <div id="ch-member-mgmt" style="display:none;margin-top:16px"></div>`;
+}
+
+async function showChannelMemberMgmt(chId) {
+  const ch = channels.find(c=>c.id===chId);
+  if (!ch) return;
+  const { data: chMems } = await sb.from('channel_members').select('member_id').eq('channel_id', chId);
+  const currentMemberIds = new Set((chMems||[]).map(m=>m.member_id));
+
+  const area = document.getElementById('ch-member-mgmt');
+  area.style.display = 'block';
+  area.innerHTML = `
+  <div class="adm-card">
+    <div style="font-size:15px;font-weight:700;margin-bottom:4px">👥 "${ch.name}" 멤버 관리</div>
+    <div style="font-size:13px;color:var(--ink3);margin-bottom:16px">체크하면 채널에 초대, 해제하면 제거돼요</div>
+    <div style="display:flex;flex-direction:column;gap:6px">
+      ${Object.values(members).map(m => {
+        const isIn = currentMemberIds.has(m.id);
+        return `<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:11px;background:var(--bg)">
+          <div style="width:32px;height:32px;border-radius:10px;background:${m.color||'#999'};color:white;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600">${m.initials||m.name[0]}</div>
+          <div style="flex:1;font-size:13.5px;font-weight:500">${m.name}</div>
+          <div style="font-size:12px;color:var(--ink3)">${m.role||'멤버'}</div>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+            <input type="checkbox" ${isIn?'checked':''} onchange="toggleChMember('${chId}','${m.id}',this.checked)" style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer"/>
+          </label>
+        </div>`;
+      }).join('')}
+    </div>
+    <div style="margin-top:14px;text-align:right">
+      <button class="adm-btn ghost" onclick="document.getElementById('ch-member-mgmt').style.display='none'">닫기</button>
+    </div>
   </div>`;
+  area.scrollIntoView({behavior:'smooth'});
+}
+
+async function toggleChMember(chId, memberId, add) {
+  if (add) {
+    await sb.from('channel_members').upsert({ channel_id: chId, member_id: memberId }, { onConflict: 'channel_id,member_id' });
+  } else {
+    await sb.from('channel_members').delete().eq('channel_id', chId).eq('member_id', memberId);
+  }
+  // 내가 추가/제거됐으면 myChannelIds 업데이트
+  if (memberId === ME.id) {
+    if (add) myChannelIds.add(chId);
+    else myChannelIds.delete(chId);
+    renderPanel();
+  }
 }
 
 async function toggleChannelPin(id, pinned) {
