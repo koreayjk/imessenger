@@ -618,13 +618,13 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
 
     <!-- 캘린더 뷰 -->
     <div id="calendar-view" style="display:none;flex-direction:column;height:100%">
-      <div id="chat-header" style="position:static">
-        <div class="chat-header-icon">📅</div>
-        <div class="chat-header-info">
-          <div class="chat-header-name" id="cal-month-title">2026년 5월</div>
-          <div class="chat-header-desc">선교회 공동체 일정</div>
+      <div style="height:56px;padding:0 20px;display:flex;align-items:center;gap:12px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0">
+        <div style="width:36px;height:36px;border-radius:11px;background:var(--s3);display:flex;align-items:center;justify-content:center;font-size:18px">📅</div>
+        <div style="flex:1">
+          <div style="font-size:15px;font-weight:700" id="cal-month-title">2026년 5월</div>
+          <div style="font-size:12px;color:var(--ink3);margin-top:1px">선교회 공동체 일정</div>
         </div>
-        <button onclick="showEventForm()" style="margin-left:auto;height:34px;padding:0 16px;border-radius:10px;border:none;background:var(--accent);color:white;font:600 13px var(--font);cursor:pointer">+ 일정 추가</button>
+        <button onclick="showEventForm()" style="height:34px;padding:0 16px;border-radius:10px;border:none;background:var(--accent);color:white;font:600 13px var(--font);cursor:pointer">+ 일정 추가</button>
       </div>
       <div style="flex:1;overflow-y:auto;display:flex;flex-direction:column">
         <!-- 달력 네비 -->
@@ -639,7 +639,13 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
         </div>
         <!-- 요일 헤더 -->
         <div style="display:grid;grid-template-columns:repeat(7,1fr);padding:0 16px;margin-bottom:4px">
-          ${['일','월','화','수','목','금','토'].map((d,i)=>`<div style="text-align:center;font-size:12px;font-weight:600;color:${i===0?'var(--rose)':i===6?'#5A7C8B':'var(--ink3)'};padding:6px 0">${d}</div>`).join('')}
+          <div style="text-align:center;font-size:12px;font-weight:600;color:var(--rose);padding:6px 0">일</div>
+          <div style="text-align:center;font-size:12px;font-weight:600;color:var(--ink3);padding:6px 0">월</div>
+          <div style="text-align:center;font-size:12px;font-weight:600;color:var(--ink3);padding:6px 0">화</div>
+          <div style="text-align:center;font-size:12px;font-weight:600;color:var(--ink3);padding:6px 0">수</div>
+          <div style="text-align:center;font-size:12px;font-weight:600;color:var(--ink3);padding:6px 0">목</div>
+          <div style="text-align:center;font-size:12px;font-weight:600;color:var(--ink3);padding:6px 0">금</div>
+          <div style="text-align:center;font-size:12px;font-weight:600;color:#5A7C8B;padding:6px 0">토</div>
         </div>
         <!-- 달력 그리드 -->
         <div id="cal-grid" style="padding:0 16px;flex:1"></div>
@@ -749,7 +755,12 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
       <div style="margin-bottom:16px">
         <div style="font-size:11.5px;color:var(--ink3);margin-bottom:8px">색상</div>
         <div style="display:flex;gap:8px">
-          ${['#B5683C','#6F8A5C','#5A7C8B','#7B6BA0','#B89146','#B05865'].map(c=>`<div onclick="selectEventColor(this,'${c}')" data-color="${c}" style="width:28px;height:28px;border-radius:8px;background:${c};cursor:pointer;transition:transform .15s" onmouseover="this.style.transform='scale(1.15)'" onmouseout="this.style.transform=''"></div>`).join('')}
+          <div onclick="selectEventColor(this,'#B5683C')" data-color="#B5683C" style="width:28px;height:28px;border-radius:8px;background:#B5683C;cursor:pointer;outline:3px solid #B5683C;outline-offset:2px"></div>
+          <div onclick="selectEventColor(this,'#6F8A5C')" data-color="#6F8A5C" style="width:28px;height:28px;border-radius:8px;background:#6F8A5C;cursor:pointer"></div>
+          <div onclick="selectEventColor(this,'#5A7C8B')" data-color="#5A7C8B" style="width:28px;height:28px;border-radius:8px;background:#5A7C8B;cursor:pointer"></div>
+          <div onclick="selectEventColor(this,'#7B6BA0')" data-color="#7B6BA0" style="width:28px;height:28px;border-radius:8px;background:#7B6BA0;cursor:pointer"></div>
+          <div onclick="selectEventColor(this,'#B89146')" data-color="#B89146" style="width:28px;height:28px;border-radius:8px;background:#B89146;cursor:pointer"></div>
+          <div onclick="selectEventColor(this,'#B05865')" data-color="#B05865" style="width:28px;height:28px;border-radius:8px;background:#B05865;cursor:pointer"></div>
         </div>
       </div>
       <div style="display:flex;gap:8px">
