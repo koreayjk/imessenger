@@ -520,6 +520,10 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v9"/><path d="M9 12h6"/><path d="M7 18c0-3 2-5 5-5s5 2 5 5"/><path d="M5 21h14"/></svg>
       <span>기도</span>
     </div>
+    <div class="sb-btn" id="sb-calendar" onclick="setMode('calendar')" title="캘린더">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>
+      <span>일정</span>
+    </div>
     <div class="sb-spacer"></div>
     <div class="sb-btn" id="sb-me" title="내 프로필" style="margin-bottom:4px">
       <div id="my-av" style="width:36px;height:36px;border-radius:11px;background:#8B4A24;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:14px;color:white">?</div>
@@ -611,6 +615,40 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
       </div>
       <div id="content-area" style="flex:1;overflow-y:auto;padding:28px 32px"></div>
     </div>
+
+    <!-- 캘린더 뷰 -->
+    <div id="calendar-view" style="display:none;flex-direction:column;height:100%">
+      <div id="chat-header" style="position:static">
+        <div class="chat-header-icon">📅</div>
+        <div class="chat-header-info">
+          <div class="chat-header-name" id="cal-month-title">2026년 5월</div>
+          <div class="chat-header-desc">선교회 공동체 일정</div>
+        </div>
+        <button onclick="showEventForm()" style="margin-left:auto;height:34px;padding:0 16px;border-radius:10px;border:none;background:var(--accent);color:white;font:600 13px var(--font);cursor:pointer">+ 일정 추가</button>
+      </div>
+      <div style="flex:1;overflow-y:auto;display:flex;flex-direction:column">
+        <!-- 달력 네비 -->
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px 8px">
+          <div onclick="calPrev()" style="width:34px;height:34px;border-radius:10px;background:var(--surface);display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 1px 3px rgba(70,50,20,.08)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ink)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
+          </div>
+          <div id="cal-nav-title" style="font-size:16px;font-weight:700;letter-spacing:-.01em"></div>
+          <div onclick="calNext()" style="width:34px;height:34px;border-radius:10px;background:var(--surface);display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 1px 3px rgba(70,50,20,.08)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ink)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+          </div>
+        </div>
+        <!-- 요일 헤더 -->
+        <div style="display:grid;grid-template-columns:repeat(7,1fr);padding:0 16px;margin-bottom:4px">
+          ${['일','월','화','수','목','금','토'].map((d,i)=>`<div style="text-align:center;font-size:12px;font-weight:600;color:${i===0?'var(--rose)':i===6?'#5A7C8B':'var(--ink3)'};padding:6px 0">${d}</div>`).join('')}
+        </div>
+        <!-- 달력 그리드 -->
+        <div id="cal-grid" style="padding:0 16px;flex:1"></div>
+        <!-- 선택한 날짜 일정 -->
+        <div id="cal-events" style="padding:16px 20px 20px;border-top:1px solid var(--border);background:var(--surface);max-height:220px;overflow-y:auto">
+          <div style="font-size:13px;font-weight:600;color:var(--ink3);margin-bottom:10px">일정을 선택하세요</div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- 4) 우측 멤버 패널 -->
@@ -632,6 +670,10 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
     <div class="mn-btn" id="mn-prayer" onclick="mobileTab('prayer')">
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--ink3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v9"/><path d="M9 12h6"/><path d="M7 18c0-3 2-5 5-5s5 2 5 5"/><path d="M5 21h14"/></svg>
       <span>기도</span>
+    </div>
+    <div class="mn-btn" id="mn-calendar" onclick="mobileTab('calendar')">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--ink3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>
+      <span>일정</span>
     </div>
     <div class="mn-btn" id="mn-me" onclick="mobileTab('me')">
       <div id="mobile-av" style="width:26px;height:26px;border-radius:8px;background:#8B4A24;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:white">?</div>
@@ -674,6 +716,46 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
       <div style="display:flex;gap:10px">
         <div onclick="document.getElementById('delete-modal').style.display='none'" style="flex:1;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:var(--s3);color:var(--ink2);cursor:pointer;font-size:14px">취소</div>
         <div onclick="confirmDeleteMsg()" style="flex:1;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:var(--rose);color:white;cursor:pointer;font-size:14px;font-weight:600">삭제</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 일정 추가/수정 모달 -->
+  <div id="event-modal" style="display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.45);align-items:center;justify-content:center">
+    <div style="background:var(--surface);border-radius:20px;padding:28px;width:440px;box-shadow:0 20px 60px rgba(0,0,0,.2)">
+      <div style="font-size:17px;font-weight:700;margin-bottom:20px" id="event-modal-title">📅 일정 추가</div>
+      <input id="ev-title" placeholder="일정 제목 (예: 주일예배)" style="width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none;margin-bottom:10px"/>
+      <textarea id="ev-desc" placeholder="설명 (선택사항)" rows="2" style="width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none;resize:none;margin-bottom:10px"></textarea>
+      <div style="display:flex;gap:10px;margin-bottom:10px">
+        <div style="flex:1">
+          <div style="font-size:11.5px;color:var(--ink3);margin-bottom:5px">날짜</div>
+          <input id="ev-date" type="date" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none"/>
+        </div>
+        <div style="flex:1">
+          <div style="font-size:11.5px;color:var(--ink3);margin-bottom:5px">종료일 (선택)</div>
+          <input id="ev-end-date" type="date" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none"/>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;margin-bottom:14px">
+        <div style="flex:1">
+          <div style="font-size:11.5px;color:var(--ink3);margin-bottom:5px">시작 시간</div>
+          <input id="ev-time" type="time" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none"/>
+        </div>
+        <div style="flex:1">
+          <div style="font-size:11.5px;color:var(--ink3);margin-bottom:5px">종료 시간</div>
+          <input id="ev-end-time" type="time" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none"/>
+        </div>
+      </div>
+      <div style="margin-bottom:16px">
+        <div style="font-size:11.5px;color:var(--ink3);margin-bottom:8px">색상</div>
+        <div style="display:flex;gap:8px">
+          ${['#B5683C','#6F8A5C','#5A7C8B','#7B6BA0','#B89146','#B05865'].map(c=>`<div onclick="selectEventColor(this,'${c}')" data-color="${c}" style="width:28px;height:28px;border-radius:8px;background:${c};cursor:pointer;transition:transform .15s" onmouseover="this.style.transform='scale(1.15)'" onmouseout="this.style.transform=''"></div>`).join('')}
+        </div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <div onclick="closeEventModal()" style="flex:1;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:var(--s3);color:var(--ink2);cursor:pointer;font-size:14px">취소</div>
+        <div id="ev-delete-btn" onclick="deleteEvent()" style="display:none;flex:1;height:42px;border-radius:12px;align-items:center;justify-content:center;background:#FEE2E2;color:var(--rose);cursor:pointer;font-size:14px;font-weight:600">삭제</div>
+        <div onclick="submitEvent()" style="flex:2;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:var(--accent);color:white;cursor:pointer;font-size:14px;font-weight:600" id="ev-submit-btn">저장하기</div>
       </div>
     </div>
   </div>
@@ -918,21 +1000,25 @@ async function init() {
 // ── 사이드바 모드 전환 ──
 function setMode(m) {
   mode = m;
-  ['chat','prayer','home'].forEach(x => {
-    document.getElementById('sb-'+x).classList.toggle('active', x===m);
-    const svg = document.getElementById('sb-'+x).querySelector('svg');
+  ['chat','prayer','home','calendar'].forEach(x => {
+    const el = document.getElementById('sb-'+x);
+    if (!el) return;
+    el.classList.toggle('active', x===m);
+    const svg = el.querySelector('svg');
     if (svg) svg.style.stroke = x===m ? 'rgba(255,255,255,.85)' : 'rgba(255,255,255,.5)';
-    const span = document.getElementById('sb-'+x).querySelector('span');
+    const span = el.querySelector('span');
     if (span) span.style.color = x===m ? '#E9C9B0' : 'rgba(255,255,255,.5)';
   });
   document.getElementById('chat-view').style.display = m==='chat' ? 'flex' : 'none';
   document.getElementById('prayer-view').style.display = m==='prayer' ? 'flex' : 'none';
   document.getElementById('home-view').style.display = m==='home' ? 'flex' : 'none';
+  document.getElementById('calendar-view').style.display = m==='calendar' ? 'flex' : 'none';
 
   if (m==='prayer') { loadPrayers(); renderPrayerPanel(); }
   if (m==='home') renderHome();
   if (m==='chat') { renderPanel(); }
-  document.getElementById('panel-title').textContent = {chat:'채팅',prayer:'기도제목',home:'홈'}[m];
+  if (m==='calendar') { loadCalendar(); }
+  document.getElementById('panel-title').textContent = {chat:'채팅',prayer:'기도제목',home:'홈',calendar:'일정'}[m] || m;
 }
 
 // ── 채널 패널 렌더 ──
@@ -1419,11 +1505,221 @@ async function doLogout() {
   document.getElementById('si-email').value = '';
   document.getElementById('si-pw').value = '';
   document.getElementById('si-msg').textContent = '';
-  // 모바일 패널 초기화
   if (window.innerWidth <= 768) {
     document.getElementById('panel').classList.remove('hidden');
   }
   switchTab('signin');
+}
+
+// ── 캘린더 ──
+let calYear = new Date().getFullYear();
+let calMonth = new Date().getMonth();
+let calEvents = [];
+let calSelectedDate = null;
+let editingEventId = null;
+let selectedEventColor = '#B5683C';
+
+async function loadCalendar() {
+  const { data } = await sb.from('events').select('*').order('start_date').order('start_time');
+  calEvents = data || [];
+  renderCalendar();
+}
+
+function renderCalendar() {
+  const today = new Date();
+  const firstDay = new Date(calYear, calMonth, 1).getDay();
+  const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+  const monthNames = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'];
+
+  document.getElementById('cal-nav-title').textContent = `${calYear}년 ${monthNames[calMonth]}`;
+  document.getElementById('cal-month-title').textContent = `${calYear}년 ${monthNames[calMonth]}`;
+
+  let html = `<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:8px">`;
+
+  // 빈 칸
+  for (let i = 0; i < firstDay; i++) {
+    html += `<div style="aspect-ratio:1;padding:2px"></div>`;
+  }
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const isToday = d === today.getDate() && calMonth === today.getMonth() && calYear === today.getFullYear();
+    const isSelected = dateStr === calSelectedDate;
+    const dow = (firstDay + d - 1) % 7;
+    const isSun = dow === 0, isSat = dow === 6;
+
+    // 이 날짜의 이벤트
+    const dayEvents = calEvents.filter(e => e.start_date === dateStr);
+    const hasEvent = dayEvents.length > 0;
+    const eventDots = dayEvents.slice(0,3).map(e =>
+      `<div style="width:5px;height:5px;border-radius:50%;background:${e.color||'var(--accent)'};flex-shrink:0"></div>`
+    ).join('');
+
+    html += `<div onclick="selectCalDate('${dateStr}')" style="
+      aspect-ratio:1; padding:2px; border-radius:10px; cursor:pointer;
+      background:${isSelected?'var(--accent)':isToday?'var(--asoft)':'transparent'};
+      transition:background .12s;
+      display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px
+    " onmouseover="if(!${isSelected}&&!${isToday})this.style.background='var(--s3)'" onmouseout="if(!${isSelected}&&!${isToday})this.style.background='transparent'">
+      <div style="font-size:13px;font-weight:${isToday||isSelected?'700':'400'};color:${isSelected?'white':isToday?'var(--adeep)':isSun?'var(--rose)':isSat?'#5A7C8B':'var(--ink)'}">${d}</div>
+      ${hasEvent ? `<div style="display:flex;gap:2px;justify-content:center">${eventDots}</div>` : ''}
+    </div>`;
+  }
+  html += '</div>';
+  document.getElementById('cal-grid').innerHTML = html;
+
+  // 선택된 날짜 일정 표시
+  if (calSelectedDate) showDayEvents(calSelectedDate);
+}
+
+function selectCalDate(dateStr) {
+  calSelectedDate = dateStr;
+  renderCalendar();
+  showDayEvents(dateStr);
+}
+
+function showDayEvents(dateStr) {
+  const area = document.getElementById('cal-events');
+  const dayEvents = calEvents.filter(e => e.start_date === dateStr);
+  const d = new Date(dateStr);
+  const wk = ['일','월','화','수','목','금','토'];
+  const label = `${d.getMonth()+1}월 ${d.getDate()}일 ${wk[d.getDay()]}요일`;
+
+  if (!dayEvents.length) {
+    area.innerHTML = `<div style="font-size:13px;font-weight:600;color:var(--ink3);margin-bottom:8px">${label}</div>
+      <div style="padding:16px;border-radius:12px;background:var(--bg);text-align:center;color:var(--ink3);font-size:13px">일정이 없어요. + 일정 추가로 만들어보세요!</div>`;
+    return;
+  }
+
+  area.innerHTML = `<div style="font-size:13px;font-weight:600;color:var(--ink3);margin-bottom:10px">${label} · ${dayEvents.length}개</div>` +
+    dayEvents.map(e => `
+    <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:14px;background:var(--bg);margin-bottom:8px;cursor:pointer" onclick="editEvent('${e.id}')">
+      <div style="width:4px;height:40px;border-radius:2px;background:${e.color||'var(--accent)'};flex-shrink:0"></div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${e.title}</div>
+        <div style="font-size:12px;color:var(--ink3);margin-top:2px">${e.start_time ? e.start_time.slice(0,5) : '종일'}${e.end_time?' ~ '+e.end_time.slice(0,5):''}</div>
+        ${e.description ? `<div style="font-size:12px;color:var(--ink2);margin-top:2px">${e.description}</div>` : ''}
+      </div>
+      ${e.created_by === ME.id ? `<div style="font-size:11px;color:var(--ink3)">수정 ›</div>` : ''}
+    </div>`).join('');
+}
+
+function calPrev() { if (calMonth === 0) { calMonth=11; calYear--; } else calMonth--; renderCalendar(); }
+function calNext() { if (calMonth === 11) { calMonth=0; calYear++; } else calMonth++; renderCalendar(); }
+
+// 색상 선택
+function selectEventColor(el, color) {
+  selectedEventColor = color;
+  document.querySelectorAll('#event-modal [data-color]').forEach(x => {
+    x.style.outline = 'none'; x.style.transform = '';
+  });
+  el.style.outline = `3px solid ${color}`; el.style.outlineOffset = '2px';
+  el.style.transform = 'scale(1.2)';
+}
+
+// 일정 추가 모달
+function showEventForm(dateStr) {
+  editingEventId = null;
+  selectedEventColor = '#B5683C';
+  document.getElementById('event-modal-title').textContent = '📅 일정 추가';
+  document.getElementById('ev-title').value = '';
+  document.getElementById('ev-desc').value = '';
+  document.getElementById('ev-date').value = dateStr || calSelectedDate || new Date().toISOString().slice(0,10);
+  document.getElementById('ev-end-date').value = '';
+  document.getElementById('ev-time').value = '';
+  document.getElementById('ev-end-time').value = '';
+  document.getElementById('ev-delete-btn').style.display = 'none';
+  document.querySelectorAll('#event-modal [data-color]').forEach(x => { x.style.outline='none'; x.style.transform=''; });
+  document.querySelector('#event-modal [data-color="#B5683C"]').style.outline = '3px solid #B5683C';
+  document.querySelector('#event-modal [data-color="#B5683C"]').style.outlineOffset = '2px';
+  document.getElementById('event-modal').style.display = 'flex';
+}
+
+function editEvent(id) {
+  const ev = calEvents.find(e => e.id === id);
+  if (!ev) return;
+  if (ev.created_by !== ME.id) { return; }
+  editingEventId = id;
+  selectedEventColor = ev.color || '#B5683C';
+  document.getElementById('event-modal-title').textContent = '✏️ 일정 수정';
+  document.getElementById('ev-title').value = ev.title;
+  document.getElementById('ev-desc').value = ev.description || '';
+  document.getElementById('ev-date').value = ev.start_date;
+  document.getElementById('ev-end-date').value = ev.end_date || '';
+  document.getElementById('ev-time').value = ev.start_time ? ev.start_time.slice(0,5) : '';
+  document.getElementById('ev-end-time').value = ev.end_time ? ev.end_time.slice(0,5) : '';
+  document.getElementById('ev-delete-btn').style.display = 'flex';
+  document.querySelectorAll('#event-modal [data-color]').forEach(x => { x.style.outline='none'; x.style.transform=''; });
+  const colorEl = document.querySelector(`#event-modal [data-color="${selectedEventColor}"]`);
+  if (colorEl) { colorEl.style.outline=`3px solid ${selectedEventColor}`; colorEl.style.outlineOffset='2px'; }
+  document.getElementById('event-modal').style.display = 'flex';
+}
+
+function closeEventModal() { document.getElementById('event-modal').style.display = 'none'; }
+
+async function submitEvent() {
+  const title = document.getElementById('ev-title').value.trim();
+  if (!title) { document.getElementById('ev-title').style.borderColor='var(--rose)'; return; }
+  const payload = {
+    title,
+    description: document.getElementById('ev-desc').value.trim() || null,
+    start_date: document.getElementById('ev-date').value,
+    end_date: document.getElementById('ev-end-date').value || null,
+    start_time: document.getElementById('ev-time').value || null,
+    end_time: document.getElementById('ev-end-time').value || null,
+    color: selectedEventColor,
+    created_by: ME.id,
+    created_by_name: ME.name,
+  };
+  if (!payload.start_date) { document.getElementById('ev-date').style.borderColor='var(--rose)'; return; }
+
+  if (editingEventId) {
+    await sb.from('events').update(payload).eq('id', editingEventId);
+  } else {
+    await sb.from('events').insert(payload);
+  }
+  closeEventModal();
+  await loadCalendar();
+  if (calSelectedDate) showDayEvents(calSelectedDate);
+}
+
+async function deleteEvent() {
+  if (!editingEventId) return;
+  await sb.from('events').delete().eq('id', editingEventId);
+  closeEventModal();
+  await loadCalendar();
+  if (calSelectedDate) showDayEvents(calSelectedDate);
+}
+
+// 모바일 캘린더 탭
+const _origMobileTab = typeof mobileTab === 'function' ? mobileTab : null;
+function mobileTab(tab) {
+  ['home','chat','prayer','calendar','me'].forEach(t => {
+    const btn = document.getElementById('mn-'+t);
+    if (!btn) return;
+    const isActive = t === tab;
+    btn.classList.toggle('active', isActive);
+    const svg = btn.querySelector('svg');
+    if (svg) { svg.style.stroke = isActive ? 'var(--accent)' : 'var(--ink3)'; svg.style.strokeWidth = isActive ? '2' : '1.7'; }
+    const span = btn.querySelector('span');
+    if (span) span.style.color = isActive ? 'var(--accent)' : 'var(--ink3)';
+  });
+  if (tab === 'chat') {
+    document.getElementById('panel').classList.remove('hidden');
+    setMode('chat');
+  } else if (tab === 'prayer') {
+    document.getElementById('panel').classList.add('hidden');
+    setMode('prayer');
+  } else if (tab === 'home') {
+    document.getElementById('panel').classList.add('hidden');
+    setMode('home');
+  } else if (tab === 'calendar') {
+    document.getElementById('panel').classList.add('hidden');
+    setMode('calendar');
+  } else if (tab === 'me') {
+    document.getElementById('panel').classList.add('hidden');
+    showMobileProfile();
+  }
 }
 </script>
 </body>
