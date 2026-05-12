@@ -8,7 +8,7 @@
 <!-- Google API -->
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://apis.google.com/js/api.js" async defer></script>
-<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css"/>
@@ -462,9 +462,14 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
   #content-area { padding: 16px; }
 }
 
+@media (max-width: 768px) {
+  #mobile-chat-back { display: flex !important; }
+  #todo-btn span { display: none; }
+}
 @media (min-width: 769px) {
   #mobile-nav { display: none; }
   #mobile-back { display: none; }
+  #mobile-chat-back { display: none !important; }
   #panel-close { display: none; }
   #panel { transform: none !important; }
 }
@@ -604,6 +609,10 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
       </div>
       <div id="chat-active" style="display:none;flex-direction:column;height:100%">
         <div id="chat-header">
+          <!-- 모바일 뒤로가기 버튼 -->
+          <div id="mobile-chat-back" onclick="closeMobileChat()" style="display:none;width:36px;height:36px;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;margin-right:4px">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--ink)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
+          </div>
           <div class="chat-header-icon" id="ch-icon">📢</div>
           <div class="chat-header-info">
             <div class="chat-header-name" id="ch-name">채널명</div>
@@ -1040,11 +1049,29 @@ function enterApp() {
   document.getElementById('my-av').title = ME.name;
   const mav = document.getElementById('mobile-av');
   if (mav) { mav.textContent = ME.initials || ME.name[0]; mav.style.background = ME.color || '#8B4A24'; }
-  // 관리자 버튼 표시
   if (ME.email === 'koreayjk@gmail.com') {
     document.getElementById('sb-admin').style.display = 'flex';
   }
   init();
+}
+
+async function restoreLastState() {
+  // 마지막 상태 복원
+  const lastMode = sessionStorage.getItem('last_mode') || 'home';
+  const lastChannelId = sessionStorage.getItem('last_channel_id');
+
+  if (lastMode === 'chat' && lastChannelId) {
+    setMode('chat');
+    // 채널이 로드될 때까지 잠깐 기다렸다가 열기
+    const ch = channels.find(c => c.id === lastChannelId);
+    if (ch && myChannelIds.has(lastChannelId)) {
+      await openChannel(lastChannelId);
+    } else {
+      setMode('home');
+    }
+  } else {
+    setMode(lastMode);
+  }
 }
 
 // ── 모바일 탭 전환 ──
@@ -1083,6 +1110,21 @@ function mobileTab(tab) {
 
 function closeMobilePanel() {
   document.getElementById('panel').classList.add('hidden');
+}
+
+function closeMobileChat() {
+  // 채팅방 닫고 채널 목록으로
+  currentChannel = null;
+  sessionStorage.removeItem('last_channel_id');
+  document.getElementById('chat-active').style.display = 'none';
+  document.getElementById('empty').style.display = 'flex';
+  // 탭바 다시 보이기
+  document.getElementById('mobile-nav').style.display = 'flex';
+  // 채널 목록 패널 보이기
+  document.getElementById('panel').classList.remove('hidden');
+  // 뒤로가기 버튼 숨기기
+  const backBtn = document.getElementById('mobile-chat-back');
+  if (backBtn) backBtn.style.display = 'none';
 }
 
 function showMobileProfile() {
@@ -1128,7 +1170,7 @@ function fmtTime(ts) {
 
 
 // ── 초기화 ──
-let myChannelIds = new Set(); // 내가 속한 채널 ID 목록
+let myChannelIds = new Set();
 
 async function init() {
   const { data: chs } = await sb.from('channels').select('*').order('pinned', {ascending:false}).order('created_at');
@@ -1144,7 +1186,7 @@ async function init() {
 
   renderPanel();
   renderMembers();
-  setMode('home');
+  restoreLastState(); // 마지막 상태 복원
 }
 
 // ── 사이드바 모드 전환 ──
@@ -1175,9 +1217,10 @@ function setMode(m) {
 
   if (m==='prayer') { loadPrayers(); renderPrayerPanel(); }
   if (m==='home') renderHome();
-  if (m==='chat') { renderPanel(); }
+  if (m==='chat') { renderPanel(); sessionStorage.removeItem('last_channel_id'); }
   if (m==='calendar') { loadCalendar(); }
   if (m==='admin') { switchAdminTab('members'); }
+  sessionStorage.setItem('last_mode', m);
   document.getElementById('panel-title').textContent = {chat:'채팅',prayer:'기도제목',home:'홈',calendar:'일정',admin:'관리자'}[m] || m;
 }
 
@@ -1231,11 +1274,18 @@ function filterChannels(q) {
 // ── 채널 열기 ──
 async function openChannel(id) {
   currentChannel = channels.find(c=>c.id===id);
+  if (!currentChannel) return;
+
+  // 현재 채널 저장 (새로고침 복원용)
+  sessionStorage.setItem('last_channel_id', id);
+  sessionStorage.setItem('last_mode', 'chat');
+
   renderPanel();
 
-  // 모바일: 패널 숨기기
+  // 모바일: 패널 숨기고 탭바 숨기기
   if (window.innerWidth <= 768) {
     document.getElementById('panel').classList.add('hidden');
+    document.getElementById('mobile-nav').style.display = 'none';
   }
 
   document.getElementById('empty').style.display = 'none';
