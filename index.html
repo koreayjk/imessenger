@@ -1286,6 +1286,8 @@ async function openChannel(id) {
   if (window.innerWidth <= 768) {
     document.getElementById('panel').classList.add('hidden');
     document.getElementById('mobile-nav').style.display = 'none';
+    const backBtn = document.getElementById('mobile-chat-back');
+    if (backBtn) backBtn.style.display = 'flex';
   }
 
   document.getElementById('empty').style.display = 'none';
@@ -2832,18 +2834,30 @@ function mobileTab(tab) {
   });
   if (tab === 'chat') {
     document.getElementById('panel').classList.remove('hidden');
+    document.getElementById('mobile-nav').style.display = 'flex';
+    // 채팅방 닫기
+    currentChannel = null;
+    document.getElementById('chat-active').style.display = 'none';
+    document.getElementById('empty').style.display = 'flex';
+    sessionStorage.removeItem('last_channel_id');
+    const backBtn = document.getElementById('mobile-chat-back');
+    if (backBtn) backBtn.style.display = 'none';
     setMode('chat');
   } else if (tab === 'prayer') {
     document.getElementById('panel').classList.add('hidden');
+    document.getElementById('mobile-nav').style.display = 'flex';
     setMode('prayer');
   } else if (tab === 'home') {
     document.getElementById('panel').classList.add('hidden');
+    document.getElementById('mobile-nav').style.display = 'flex';
     setMode('home');
   } else if (tab === 'calendar') {
     document.getElementById('panel').classList.add('hidden');
+    document.getElementById('mobile-nav').style.display = 'flex';
     setMode('calendar');
   } else if (tab === 'me') {
     document.getElementById('panel').classList.add('hidden');
+    document.getElementById('mobile-nav').style.display = 'flex';
     showMobileProfile();
   }
 }
