@@ -737,6 +737,23 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
     </div>
   </div>
 
+  <!-- 채널 수정 모달 -->
+  <div id="edit-channel-modal" style="display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.45);align-items:center;justify-content:center">
+    <div style="background:var(--surface);border-radius:20px;padding:28px;width:400px;box-shadow:0 20px 60px rgba(0,0,0,.2)">
+      <div style="font-size:17px;font-weight:700;margin-bottom:20px">✏️ 채널 수정</div>
+      <div style="font-size:11.5px;color:var(--ink3);margin-bottom:5px">채널 이름</div>
+      <input id="edit-ch-name" placeholder="채널 이름" style="width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none;margin-bottom:10px"/>
+      <div style="font-size:11.5px;color:var(--ink3);margin-bottom:5px">이모지 (선택)</div>
+      <input id="edit-ch-emoji" placeholder="예: 🌿 📢 🤲" style="width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none;margin-bottom:10px"/>
+      <div style="font-size:11.5px;color:var(--ink3);margin-bottom:5px">채널 설명 (선택)</div>
+      <input id="edit-ch-desc" placeholder="채널 설명" style="width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none;margin-bottom:18px"/>
+      <div style="display:flex;gap:8px">
+        <div onclick="document.getElementById('edit-channel-modal').style.display='none'" style="flex:1;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:var(--s3);color:var(--ink2);cursor:pointer;font-size:14px">취소</div>
+        <div onclick="submitEditChannel()" style="flex:2;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:var(--accent);color:white;cursor:pointer;font-size:14px;font-weight:600">저장</div>
+      </div>
+    </div>
+  </div>
+
   <!-- 오늘의 묵상 등록 모달 -->
   <div id="daily-word-modal" style="display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.45);align-items:center;justify-content:center">
     <div style="background:var(--surface);border-radius:20px;padding:28px;width:460px;box-shadow:0 20px 60px rgba(0,0,0,.2)">
@@ -1085,12 +1102,19 @@ function renderPanel() {
 
 function chRow(ch) {
   const active = currentChannel && currentChannel.id === ch.id;
-  return `<div class="ch-row${active?' active':''}" onclick="openChannel('${ch.id}')">
+  const isAdmin = ME && ME.email === 'koreayjk@gmail.com';
+  return `<div class="ch-row${active?' active':''}" style="position:relative" onclick="openChannel('${ch.id}')"
+    onmouseenter="this.querySelector('.ch-edit-btn') && (this.querySelector('.ch-edit-btn').style.opacity='1')"
+    onmouseleave="this.querySelector('.ch-edit-btn') && (this.querySelector('.ch-edit-btn').style.opacity='0')">
     <div class="ch-icon">${ch.emoji||'#'}</div>
     <div class="ch-info">
       <div class="ch-name">${ch.name}</div>
       <div class="ch-preview">${ch.description||''}</div>
     </div>
+    ${isAdmin ? `<div class="ch-edit-btn" onclick="event.stopPropagation();showEditChannel('${ch.id}')"
+      style="opacity:0;transition:opacity .15s;width:26px;height:26px;border-radius:7px;
+      background:rgba(0,0,0,.07);display:flex;align-items:center;justify-content:center;
+      flex-shrink:0;cursor:pointer;font-size:13px" title="채널 수정">✏️</div>` : ''}
   </div>`;
 }
 
@@ -1559,6 +1583,43 @@ async function doLogout() {
     document.getElementById('panel').classList.remove('hidden');
   }
   switchTab('signin');
+}
+
+// ── 채널 수정 ──
+let editingChannelId = null;
+function showEditChannel(id) {
+  const ch = channels.find(c => c.id === id);
+  if (!ch) return;
+  editingChannelId = id;
+  document.getElementById('edit-ch-name').value = ch.name;
+  document.getElementById('edit-ch-emoji').value = ch.emoji || '';
+  document.getElementById('edit-ch-desc').value = ch.description || '';
+  document.getElementById('edit-channel-modal').style.display = 'flex';
+}
+
+async function submitEditChannel() {
+  const name = document.getElementById('edit-ch-name').value.trim();
+  if (!name) { document.getElementById('edit-ch-name').style.borderColor='var(--rose)'; return; }
+  const emoji = document.getElementById('edit-ch-emoji').value.trim() || null;
+  const description = document.getElementById('edit-ch-desc').value.trim() || '';
+
+  const { error } = await sb.from('channels').update({ name, emoji, description }).eq('id', editingChannelId);
+  if (!error) {
+    // 로컬 데이터 업데이트
+    const ch = channels.find(c => c.id === editingChannelId);
+    if (ch) { ch.name = name; ch.emoji = emoji; ch.description = description; }
+    // 현재 열린 채널이면 헤더도 업데이트
+    if (currentChannel && currentChannel.id === editingChannelId) {
+      currentChannel.name = name;
+      currentChannel.emoji = emoji;
+      currentChannel.description = description;
+      document.getElementById('ch-icon').textContent = emoji || '#';
+      document.getElementById('ch-name').textContent = name;
+      document.getElementById('ch-desc').textContent = description;
+    }
+    renderPanel();
+  }
+  document.getElementById('edit-channel-modal').style.display = 'none';
 }
 
 // ── 오늘의 묵상 ──
