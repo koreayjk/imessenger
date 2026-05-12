@@ -1220,6 +1220,8 @@ function renderMessages(msgs) {
 
 function appendMessage(m) {
   const area = document.getElementById('msg-area');
+  // 중복 체크
+  if (document.querySelector(`[data-id="${m.id}"]`)) return;
   // 빈 화면 제거
   if (area.querySelector('div[style*="flex-direction:column"]')) {
     area.innerHTML = `<div class="date-divider">오늘</div>`;
@@ -1322,13 +1324,17 @@ function escHtml(s) {
 }
 
 // ── 메시지 전송 ──
+let isSending = false;
 async function sendMsg() {
+  if (isSending) return;
   const inp = document.getElementById('msgInput');
   const text = inp.value.trim();
   if (!text || !currentChannel) return;
+  isSending = true;
   inp.value = '';
   updateSendBtn();
   await sb.from('messages').insert({ channel_id: currentChannel.id, sender_id: ME.id, sender_name: ME.name, text, kind:'text' });
+  isSending = false;
 }
 
 function updateSendBtn() {
@@ -1944,33 +1950,29 @@ async function submitEditChannel() {
 const GDRIVE_CLIENT_ID = '218054665901-m0u2dru174ddu5bjc0upvje03nvmhq7i.apps.googleusercontent.com';
 const GDRIVE_SCOPES = 'https://www.googleapis.com/auth/drive.file';
 let gdriveToken = null;
-let gisInited = false;
-let gapiInited = false;
 let tokenClient = null;
+let pendingFile = null;
+let gdriveReady = false;
 
 function initGoogleDrive() {
-  // GAPI 초기화
-  gapi.load('client', async () => {
-    await gapi.client.init({});
-    await gapi.client.load('https://www.googleapis.com/discovery/v1/apis/drive/v3/rest');
-    gapiInited = true;
-  });
-  // GIS 초기화
-  tokenClient = google.accounts.oauth2.initTokenClient({
-    client_id: GDRIVE_CLIENT_ID,
-    scope: GDRIVE_SCOPES,
-    callback: (resp) => {
-      if (resp.error) return;
-      gdriveToken = resp.access_token;
-      gapi.client.setToken({ access_token: gdriveToken });
-      // 파일 업로드 계속
-      if (pendingFile) uploadFileToDrive(pendingFile);
-    },
-  });
-  gisInited = true;
+  try {
+    gapi.load('client', async () => {
+      try {
+        await gapi.client.init({});
+        gdriveReady = true;
+      } catch(e) { console.warn('gapi init error', e); }
+    });
+    tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: GDRIVE_CLIENT_ID,
+      scope: GDRIVE_SCOPES,
+      callback: (resp) => {
+        if (resp.error) { showUploadToast('구글 로그인 실패 😥'); return; }
+        gdriveToken = resp.access_token;
+        if (pendingFile) uploadFileToDrive(pendingFile);
+      },
+    });
+  } catch(e) { console.warn('Google Drive init error', e); }
 }
-
-let pendingFile = null;
 
 function handleFileUpload(input) {
   const file = input.files[0];
@@ -1979,14 +1981,15 @@ function handleFileUpload(input) {
   pendingFile = file;
 
   if (!gdriveToken) {
-    // 아직 로그인 안 됐으면 구글 로그인 요청
-    if (!gisInited) {
-      // API 아직 로드 중
-      const check = setInterval(() => {
-        if (gisInited && gapiInited) { clearInterval(check); tokenClient.requestAccessToken(); }
-      }, 300);
+    // tokenClient 없으면 초기화 시도
+    if (!tokenClient) {
+      try { initGoogleDrive(); } catch(e) {}
+      setTimeout(() => {
+        if (tokenClient) tokenClient.requestAccessToken({prompt:'consent'});
+        else showUploadToast('구글 API 로딩 중... 잠시 후 다시 시도해주세요 😊');
+      }, 800);
     } else {
-      tokenClient.requestAccessToken();
+      tokenClient.requestAccessToken({prompt:''});
     }
   } else {
     uploadFileToDrive(file);
@@ -2094,20 +2097,25 @@ function showUploadToast(msg) {
 
 // window.onload에서 Google Drive 초기화
 window.addEventListener('load', async () => {
-  // Google API 로드 대기 후 초기화
+  // Google API 로드 대기 후 초기화 (최대 10초)
+  let attempts = 0;
   const waitForGoogle = setInterval(() => {
+    attempts++;
     if (typeof google !== 'undefined' && typeof gapi !== 'undefined') {
       clearInterval(waitForGoogle);
       initGoogleDrive();
     }
+    if (attempts > 20) clearInterval(waitForGoogle);
   }, 500);
 
   // 기존 세션 복원
-  const { data: { session } } = await sb.auth.getSession();
-  if (session) {
-    const { data: member } = await sb.from('members').select('*').eq('id', session.user.id).single();
-    if (member) { ME = member; enterApp(); return; }
-  }
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    if (session) {
+      const { data: member } = await sb.from('members').select('*').eq('id', session.user.id).single();
+      if (member) { ME = member; enterApp(); return; }
+    }
+  } catch(e) {}
 });
 
 // ── 오늘의 묵상 ──
