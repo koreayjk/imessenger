@@ -415,9 +415,17 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
   /* 채팅방 열릴 때 패널 숨기기 */
   #panel.chat-open { transform: translateX(-100%); }
 
-  /* 하단 탭바 높이만큼 여백 */
-  #chat-view, #prayer-view, #home-view { padding-bottom: 60px; }
-  #composer { padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
+  /* 입력창이 하단 탭바에 가리지 않도록 */
+  #chat-view, #prayer-view, #home-view, #calendar-view, #admin-view {
+    padding-bottom: calc(60px + env(safe-area-inset-bottom));
+  }
+  #composer {
+    position: sticky;
+    bottom: calc(60px + env(safe-area-inset-bottom));
+    background: var(--surface);
+    z-index: 10;
+    padding-bottom: 12px;
+  }
 
   /* 메시지 말풍선 넓게 */
   .msg-body { max-width: 80%; }
@@ -1269,7 +1277,7 @@ function msgHtml(m, prev) {
   const delBtn = isMine ? `<div class="msg-del-btn" onclick="askDeleteMsg('${m.id}')" title="삭제" style="display:none;width:26px;height:26px;border-radius:8px;background:rgba(176,88,101,.12);color:var(--rose);align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;font-size:13px">✕</div>` : '';
 
   // 파일 메시지 렌더링
-  let bubbleContent = escHtml(m.text);
+  let bubbleContent = linkify(m.text);
   if (m.kind === 'file') {
     try {
       const f = JSON.parse(m.text);
@@ -2136,25 +2144,41 @@ function initGoogleDrive() {
         if (resp.error) { showUploadToast('구글 로그인 실패 😥'); return; }
         gdriveToken = resp.access_token;
         gdriveReady = true;
+        // 토큰 만료 시간 저장 (1시간)
+        const expiry = Date.now() + (resp.expires_in || 3600) * 1000;
+        sessionStorage.setItem('gdrive_token', gdriveToken);
+        sessionStorage.setItem('gdrive_expiry', expiry);
         // 로그인 완료 후 파일 선택창 열기
         document.getElementById('fileInput').click();
       },
     });
-    gdriveReady = false;
+    // 세션에 저장된 토큰 복원
+    const savedToken = sessionStorage.getItem('gdrive_token');
+    const savedExpiry = sessionStorage.getItem('gdrive_expiry');
+    if (savedToken && savedExpiry && Date.now() < Number(savedExpiry)) {
+      gdriveToken = savedToken;
+      gdriveReady = true;
+    }
   } catch(e) { console.warn('Google Drive init error', e); }
 }
 
 // 📎 버튼 클릭시 → 구글 로그인 먼저, 그 다음 파일 선택
 function openFileChooser() {
+  // 토큰 만료 체크
+  const savedToken = sessionStorage.getItem('gdrive_token');
+  const savedExpiry = sessionStorage.getItem('gdrive_expiry');
+  if (savedToken && savedExpiry && Date.now() < Number(savedExpiry)) {
+    gdriveToken = savedToken;
+    gdriveReady = true;
+  }
+
   if (!gdriveToken) {
-    // 구글 로그인 먼저
     if (!tokenClient) {
       showUploadToast('구글 API 로딩 중... 잠시 후 다시 시도해주세요 😊');
       return;
     }
-    tokenClient.requestAccessToken({ prompt: 'consent' });
+    tokenClient.requestAccessToken({ prompt: '' });
   } else {
-    // 이미 로그인됨 → 바로 파일 선택
     document.getElementById('fileInput').click();
   }
 }
