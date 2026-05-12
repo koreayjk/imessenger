@@ -5,6 +5,9 @@
 <title>IM 메신저</title>
 <link rel="icon" type="image/png" href="https://koreayjk.github.io/imessenger/ilogo.png"/>
 <link rel="apple-touch-icon" href="https://koreayjk.github.io/imessenger/ilogo.png"/>
+<!-- Google API -->
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://apis.google.com/js/api.js" async defer></script>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
@@ -612,6 +615,10 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--ink3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
             </div>
             <input id="msgInput" placeholder="메시지 보내기 (Enter)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMsg()}" oninput="updateSendBtn()"/>
+            <div class="icon-btn" onclick="document.getElementById('fileInput').click()" title="파일 첨부">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--ink3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 7l-6.5 6.5a3 3 0 104.2 4.2L19 10a5 5 0 10-7-7L5.4 9.6"/></svg>
+            </div>
+            <input type="file" id="fileInput" style="display:none" accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt" onchange="handleFileUpload(this)"/>
             <div class="icon-btn">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--ink3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8.5 14.5a4.5 4.5 0 007 0"/><circle cx="9" cy="10" r="1" fill="var(--ink3)"/><circle cx="15" cy="10" r="1" fill="var(--ink3)"/></svg>
             </div>
@@ -1229,18 +1236,48 @@ function msgHtml(m, prev) {
   const sameAsPrev = prev && prev.sender_id === m.sender_id;
   const avStyle = `background:${sender.color}`;
   const memberCount = Object.keys(members).length;
-
-  // 읽음 표시 (내 메시지만)
   const readCount = m.read_count || 0;
-  const unread = memberCount - 1 - readCount; // 나 제외
+  const unread = memberCount - 1 - readCount;
   let readLabel = '';
   if (isMine) {
     if (unread <= 0) readLabel = `<div style="font-size:10px;color:var(--sage);margin-top:3px;text-align:right">모두 읽음 ✓</div>`;
     else if (unread > 0) readLabel = `<div style="font-size:10px;color:var(--ink3);margin-top:3px;text-align:right">${unread}</div>`;
   }
-
-  // 삭제 버튼 (내 메시지만)
   const delBtn = isMine ? `<div class="msg-del-btn" onclick="askDeleteMsg('${m.id}')" title="삭제" style="display:none;width:26px;height:26px;border-radius:8px;background:rgba(176,88,101,.12);color:var(--rose);align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;font-size:13px">✕</div>` : '';
+
+  // 파일 메시지 렌더링
+  let bubbleContent = escHtml(m.text);
+  if (m.kind === 'file') {
+    try {
+      const f = JSON.parse(m.text);
+      if (f.type === 'file') {
+        if (f.isImage) {
+          bubbleContent = `<div style="max-width:260px">
+            <img src="${f.directUrl}" alt="${f.name}" style="width:100%;border-radius:10px;display:block;cursor:pointer" onclick="window.open('${f.viewUrl}','_blank')" onerror="this.style.display='none';this.nextSibling.style.display='flex'"/>
+            <div style="display:none;align-items:center;gap:8px;padding:10px;background:var(--s3);border-radius:10px">
+              🖼️ <a href="${f.viewUrl}" target="_blank" style="color:var(--accent);text-decoration:none;font-size:13px">${f.name}</a>
+            </div>
+          </div>`;
+        } else if (f.isVideo) {
+          bubbleContent = `<div style="max-width:280px">
+            <video controls style="width:100%;border-radius:10px;display:block" onerror="this.style.display='none'">
+              <source src="${f.directUrl}"/>
+            </video>
+            <a href="${f.viewUrl}" target="_blank" style="display:block;margin-top:5px;font-size:12px;color:var(--accent);text-decoration:none">🎥 ${f.name} — Google Drive에서 보기</a>
+          </div>`;
+        } else {
+          const size = f.size ? (f.size > 1048576 ? (f.size/1048576).toFixed(1)+'MB' : (f.size/1024).toFixed(0)+'KB') : '';
+          bubbleContent = `<a href="${f.viewUrl}" target="_blank" style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:rgba(0,0,0,.04);border-radius:10px;text-decoration:none;color:var(--ink);min-width:180px">
+            <div style="font-size:24px;flex-shrink:0">${f.mimeType?.includes('pdf')?'📄':f.mimeType?.includes('word')?'📝':f.mimeType?.includes('sheet')||f.mimeType?.includes('excel')?'📊':'📎'}</div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${f.name}</div>
+              <div style="font-size:11px;color:var(--ink3);margin-top:2px">${size} · Google Drive</div>
+            </div>
+          </a>`;
+        }
+      }
+    } catch(e) { bubbleContent = escHtml(m.text); }
+  }
 
   if (isMine) {
     return `<div class="msg-row mine${sameAsPrev?' same-sender':''}" data-sender="${m.sender_id}" data-id="${m.id}" onmouseenter="showDelBtn(this)" onmouseleave="hideDelBtn(this)">
@@ -1248,7 +1285,7 @@ function msgHtml(m, prev) {
       <div class="msg-avatar" style="${avStyle}">${sender.initials}</div>
       <div class="msg-body">
         ${!sameAsPrev ? `<div class="msg-meta"><span class="name">${sender.name}</span><span class="time">${fmtTime(m.created_at)}</span></div>` : ''}
-        <div class="bubble">${escHtml(m.text)}</div>
+        <div class="bubble">${bubbleContent}</div>
         ${readLabel}
       </div>
     </div>`;
@@ -1257,7 +1294,7 @@ function msgHtml(m, prev) {
     <div class="msg-avatar" style="${avStyle}">${sender.initials}</div>
     <div class="msg-body">
       ${!sameAsPrev ? `<div class="msg-meta"><span class="name">${sender.name}</span><span class="time">${fmtTime(m.created_at)}</span></div>` : ''}
-      <div class="bubble">${escHtml(m.text)}</div>
+      <div class="bubble">${bubbleContent}</div>
     </div>
   </div>`;
 }
@@ -1595,19 +1632,7 @@ async function submitAddChannel() {
   }
 }
 
-// ── 세션 복원 ──
-window.addEventListener('load', async () => {
-  const { data: { session } } = await sb.auth.getSession();
-  if (session) {
-    const { data: member } = await sb.from('members').select('*').eq('id', session.user.id).single();
-    if (member) {
-      ME = member;
-      enterApp();
-      return;
-    }
-  }
-  // 세션 없으면 로그인 화면 유지
-});
+// ── 세션 복원은 위 window.addEventListener('load') 에서 처리 ──
 
 // 로그아웃
 async function doLogout() {
@@ -1914,6 +1939,176 @@ async function submitEditChannel() {
   }
   document.getElementById('edit-channel-modal').style.display = 'none';
 }
+
+// ── Google Drive 연동 ──
+const GDRIVE_CLIENT_ID = '218054665901-m0u2dru174ddu5bjc0upvje03nvmhq7i.apps.googleusercontent.com';
+const GDRIVE_SCOPES = 'https://www.googleapis.com/auth/drive.file';
+let gdriveToken = null;
+let gisInited = false;
+let gapiInited = false;
+let tokenClient = null;
+
+function initGoogleDrive() {
+  // GAPI 초기화
+  gapi.load('client', async () => {
+    await gapi.client.init({});
+    await gapi.client.load('https://www.googleapis.com/discovery/v1/apis/drive/v3/rest');
+    gapiInited = true;
+  });
+  // GIS 초기화
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: GDRIVE_CLIENT_ID,
+    scope: GDRIVE_SCOPES,
+    callback: (resp) => {
+      if (resp.error) return;
+      gdriveToken = resp.access_token;
+      gapi.client.setToken({ access_token: gdriveToken });
+      // 파일 업로드 계속
+      if (pendingFile) uploadFileToDrive(pendingFile);
+    },
+  });
+  gisInited = true;
+}
+
+let pendingFile = null;
+
+function handleFileUpload(input) {
+  const file = input.files[0];
+  if (!file) return;
+  input.value = '';
+  pendingFile = file;
+
+  if (!gdriveToken) {
+    // 아직 로그인 안 됐으면 구글 로그인 요청
+    if (!gisInited) {
+      // API 아직 로드 중
+      const check = setInterval(() => {
+        if (gisInited && gapiInited) { clearInterval(check); tokenClient.requestAccessToken(); }
+      }, 300);
+    } else {
+      tokenClient.requestAccessToken();
+    }
+  } else {
+    uploadFileToDrive(file);
+  }
+}
+
+async function uploadFileToDrive(file) {
+  // 업로드 중 표시
+  showUploadToast('업로드 중... ⏳');
+
+  try {
+    // IM 메신저 폴더 찾기 또는 생성
+    let folderId = await getOrCreateFolder('IM 메신저');
+
+    // 파일 업로드 (multipart)
+    const metadata = { name: file.name, parents: [folderId] };
+    const form = new FormData();
+    form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+    form.append('file', file);
+
+    const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink,mimeType,size', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${gdriveToken}` },
+      body: form,
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message);
+
+    // 공유 설정 (링크 있는 사람 모두 보기)
+    await fetch(`https://www.googleapis.com/drive/v3/files/${data.id}/permissions`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${gdriveToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: 'reader', type: 'anyone' }),
+    });
+
+    // 직접 보기 링크
+    const isImage = file.type.startsWith('image/');
+    const isVideo = file.type.startsWith('video/');
+    const directUrl = `https://drive.google.com/uc?export=view&id=${data.id}`;
+    const viewUrl = data.webViewLink;
+
+    // 메시지로 전송
+    const msgText = JSON.stringify({
+      type: 'file',
+      name: file.name,
+      fileId: data.id,
+      viewUrl,
+      directUrl,
+      mimeType: file.type,
+      isImage,
+      isVideo,
+      size: file.size,
+    });
+
+    await sb.from('messages').insert({
+      channel_id: currentChannel.id,
+      sender_id: ME.id,
+      sender_name: ME.name,
+      text: msgText,
+      kind: 'file',
+    });
+
+    showUploadToast('업로드 완료! ✅');
+    pendingFile = null;
+  } catch(e) {
+    showUploadToast('업로드 실패 😥 다시 시도해주세요');
+    console.error(e);
+    pendingFile = null;
+  }
+}
+
+async function getOrCreateFolder(name) {
+  // 기존 폴더 검색
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=name='${name}' and mimeType='application/vnd.google-apps.folder' and trashed=false&fields=files(id)`, {
+    headers: { Authorization: `Bearer ${gdriveToken}` },
+  });
+  const data = await res.json();
+  if (data.files && data.files.length > 0) return data.files[0].id;
+
+  // 없으면 생성
+  const createRes = await fetch('https://www.googleapis.com/drive/v3/files?fields=id', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${gdriveToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, mimeType: 'application/vnd.google-apps.folder' }),
+  });
+  const folder = await createRes.json();
+  return folder.id;
+}
+
+function showUploadToast(msg) {
+  const area = document.getElementById('msg-area');
+  if (!area) return;
+  let toast = document.getElementById('upload-toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'upload-toast';
+    toast.style.cssText = 'position:sticky;bottom:8px;left:50%;transform:translateX(-50%);display:inline-block;background:rgba(37,32,26,.9);color:white;padding:8px 16px;border-radius:12px;font-size:13px;font-weight:500;z-index:10;margin:0 auto;text-align:center;width:fit-content';
+    area.appendChild(toast);
+  }
+  toast.textContent = msg;
+  if (msg.includes('완료') || msg.includes('실패')) {
+    setTimeout(() => toast.remove(), 2500);
+  }
+}
+
+// window.onload에서 Google Drive 초기화
+window.addEventListener('load', async () => {
+  // Google API 로드 대기 후 초기화
+  const waitForGoogle = setInterval(() => {
+    if (typeof google !== 'undefined' && typeof gapi !== 'undefined') {
+      clearInterval(waitForGoogle);
+      initGoogleDrive();
+    }
+  }, 500);
+
+  // 기존 세션 복원
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) {
+    const { data: member } = await sb.from('members').select('*').eq('id', session.user.id).single();
+    if (member) { ME = member; enterApp(); return; }
+  }
+});
 
 // ── 오늘의 묵상 ──
 let dailyWordDate = null;
