@@ -508,17 +508,17 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
     <div class="logo">
       <img src="https://koreayjk.github.io/imessenger/ilogo.png" alt="IM" style="width:44px;height:44px;object-fit:contain;mix-blend-mode:lighten;filter:drop-shadow(0 2px 6px rgba(0,0,0,.4))"/>
     </div>
-    <div class="sb-btn active" id="sb-chat" onclick="setMode('chat')" title="채팅">
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.85)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6.5a3 3 0 013-3h10a3 3 0 013 3V14a3 3 0 01-3 3H10l-4 3.5V17a3 3 0 01-2-2.83V6.5z"/></svg>
+    <div class="sb-btn active" id="sb-home" onclick="setMode('home')" title="홈">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.85)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11.5L12 4l9 7.5"/><path d="M5 10v10h14V10"/></svg>
+      <span>홈</span>
+    </div>
+    <div class="sb-btn" id="sb-chat" onclick="setMode('chat')" title="채팅">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6.5a3 3 0 013-3h10a3 3 0 013 3V14a3 3 0 01-3 3H10l-4 3.5V17a3 3 0 01-2-2.83V6.5z"/></svg>
       <span>채팅</span>
     </div>
     <div class="sb-btn" id="sb-prayer" onclick="setMode('prayer')" title="기도제목">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v9"/><path d="M9 12h6"/><path d="M7 18c0-3 2-5 5-5s5 2 5 5"/><path d="M5 21h14"/></svg>
       <span>기도</span>
-    </div>
-    <div class="sb-btn" id="sb-home" onclick="setMode('home')" title="홈">
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11.5L12 4l9 7.5"/><path d="M5 10v10h14V10"/></svg>
-      <span>홈</span>
     </div>
     <div class="sb-spacer"></div>
     <div class="sb-btn" id="sb-me" title="내 프로필" style="margin-bottom:4px">
@@ -538,7 +538,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
         <div id="panel-close" onclick="closeMobilePanel()" style="display:none;width:36px;height:36px;align-items:center;justify-content:center;cursor:pointer;border-radius:10px" onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background='transparent'">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--ink3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
         </div>
-        <div class="header-action" title="새 채널">
+        <div class="header-action" title="새 채널/DM 추가" onclick="showAddChannelModal()" style="cursor:pointer">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--ink3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
         </div>
       </div>
@@ -609,7 +609,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
       <div style="height:56px;padding:0 20px;display:flex;align-items:center;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0">
         <div style="font-size:16px;font-weight:700">홈</div>
       </div>
-      <div id="content-area" style="flex:1;overflow-y:auto;padding:28px 32px;max-width:700px"></div>
+      <div id="content-area" style="flex:1;overflow-y:auto;padding:28px 32px"></div>
     </div>
   </div>
 
@@ -621,17 +621,17 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
 
   <!-- 모바일 하단 탭바 -->
   <div id="mobile-nav" style="display:none">
-    <div class="mn-btn active" id="mn-chat" onclick="mobileTab('chat')">
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6.5a3 3 0 013-3h10a3 3 0 013 3V14a3 3 0 01-3 3H10l-4 3.5V17a3 3 0 01-2-2.83V6.5z"/></svg>
+    <div class="mn-btn active" id="mn-home" onclick="mobileTab('home')">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11.5L12 4l9 7.5"/><path d="M5 10v10h14V10"/></svg>
+      <span>홈</span>
+    </div>
+    <div class="mn-btn" id="mn-chat" onclick="mobileTab('chat')">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--ink3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6.5a3 3 0 013-3h10a3 3 0 013 3V14a3 3 0 01-3 3H10l-4 3.5V17a3 3 0 01-2-2.83V6.5z"/></svg>
       <span>채팅</span>
     </div>
     <div class="mn-btn" id="mn-prayer" onclick="mobileTab('prayer')">
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--ink3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v9"/><path d="M9 12h6"/><path d="M7 18c0-3 2-5 5-5s5 2 5 5"/><path d="M5 21h14"/></svg>
       <span>기도</span>
-    </div>
-    <div class="mn-btn" id="mn-home" onclick="mobileTab('home')">
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--ink3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11.5L12 4l9 7.5"/><path d="M5 10v10h14V10"/></svg>
-      <span>홈</span>
     </div>
     <div class="mn-btn" id="mn-me" onclick="mobileTab('me')">
       <div id="mobile-av" style="width:26px;height:26px;border-radius:8px;background:#8B4A24;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:white">?</div>
@@ -639,7 +639,44 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
     </div>
   </div>
 
-</div><!-- /app -->
+  <!-- 채널/DM 추가 모달 -->
+  <div id="add-modal" style="display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.45);align-items:center;justify-content:center">
+    <div style="background:var(--surface);border-radius:20px;padding:28px;width:420px;box-shadow:0 20px 60px rgba(0,0,0,.2)">
+      <div style="font-size:17px;font-weight:700;margin-bottom:20px">새 채널 / 1:1 채팅 추가</div>
+      <div style="display:flex;gap:10px;margin-bottom:20px">
+        <div id="add-tab-topic" onclick="switchAddTab('topic')" style="flex:1;padding:10px;border-radius:12px;background:var(--accent);color:white;text-align:center;cursor:pointer;font-size:14px;font-weight:600">📢 토픽 채널</div>
+        <div id="add-tab-dm" onclick="switchAddTab('dm')" style="flex:1;padding:10px;border-radius:12px;background:var(--s3);color:var(--ink2);text-align:center;cursor:pointer;font-size:14px;font-weight:600">💬 1:1 채팅</div>
+      </div>
+      <!-- 토픽 폼 -->
+      <div id="add-topic-form">
+        <input id="new-ch-name" placeholder="채널 이름 (예: 청년부)" style="width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none;margin-bottom:10px"/>
+        <input id="new-ch-emoji" placeholder="이모지 (예: 🌿, 선택사항)" style="width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none;margin-bottom:10px"/>
+        <input id="new-ch-desc" placeholder="채널 설명 (선택사항)" style="width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none;margin-bottom:16px"/>
+      </div>
+      <!-- DM 폼 -->
+      <div id="add-dm-form" style="display:none">
+        <div style="font-size:13px;color:var(--ink3);margin-bottom:10px">대화할 멤버를 선택하세요</div>
+        <div id="dm-member-list" style="max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:12px;padding:6px"></div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:4px">
+        <div onclick="closeAddModal()" style="flex:1;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:var(--s3);color:var(--ink2);cursor:pointer;font-size:14px">취소</div>
+        <div onclick="submitAddChannel()" id="add-submit-btn" style="flex:2;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:var(--accent);color:white;cursor:pointer;font-size:14px;font-weight:600">만들기</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 메시지 삭제 확인 모달 -->
+  <div id="delete-modal" style="display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.45);align-items:center;justify-content:center">
+    <div style="background:var(--surface);border-radius:20px;padding:28px;width:340px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.2)">
+      <div style="font-size:32px;margin-bottom:12px">🗑️</div>
+      <div style="font-size:16px;font-weight:700;margin-bottom:8px">메시지를 삭제할까요?</div>
+      <div style="font-size:13px;color:var(--ink3);margin-bottom:24px">삭제된 메시지는 복구할 수 없어요</div>
+      <div style="display:flex;gap:10px">
+        <div onclick="document.getElementById('delete-modal').style.display='none'" style="flex:1;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:var(--s3);color:var(--ink2);cursor:pointer;font-size:14px">취소</div>
+        <div onclick="confirmDeleteMsg()" style="flex:1;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:var(--rose);color:white;cursor:pointer;font-size:14px;font-weight:600">삭제</div>
+      </div>
+    </div>
+  </div>
 
 <script>// ── Supabase ──
 const SUPABASE_URL = 'https://ziatqkjlafucqtwshhla.supabase.co';
@@ -863,18 +900,14 @@ function fmtTime(ts) {
 
 // ── 초기화 ──
 async function init() {
-  // 채널 로드
   const { data: chs } = await sb.from('channels').select('*').order('pinned', {ascending:false}).order('created_at');
   channels = chs || [];
-
-  // 멤버 로드
   const { data: mems } = await sb.from('members').select('*');
   members = {};
   (mems||[]).forEach(m => { members[m.id] = m; });
-
   renderPanel();
   renderMembers();
-  setMode('chat');
+  setMode('home'); // 홈으로 시작
 }
 
 // ── 사이드바 모드 전환 ──
@@ -994,22 +1027,56 @@ function msgHtml(m, prev) {
   const sender = members[m.sender_id] || { name: m.sender_name||'알 수 없음', initials: (m.sender_name||'?')[0], color:'#999' };
   const sameAsPrev = prev && prev.sender_id === m.sender_id;
   const avStyle = `background:${sender.color}`;
+  const memberCount = Object.keys(members).length;
+
+  // 읽음 표시 (내 메시지만)
+  const readCount = m.read_count || 0;
+  const unread = memberCount - 1 - readCount; // 나 제외
+  let readLabel = '';
   if (isMine) {
-    return `<div class="msg-row mine${sameAsPrev?' same-sender':''}" data-sender="${m.sender_id}">
+    if (unread <= 0) readLabel = `<div style="font-size:10px;color:var(--sage);margin-top:3px;text-align:right">모두 읽음 ✓</div>`;
+    else if (unread > 0) readLabel = `<div style="font-size:10px;color:var(--ink3);margin-top:3px;text-align:right">${unread}</div>`;
+  }
+
+  // 삭제 버튼 (내 메시지만)
+  const delBtn = isMine ? `<div class="msg-del-btn" onclick="askDeleteMsg('${m.id}')" title="삭제" style="display:none;width:26px;height:26px;border-radius:8px;background:rgba(176,88,101,.12);color:var(--rose);align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;font-size:13px">✕</div>` : '';
+
+  if (isMine) {
+    return `<div class="msg-row mine${sameAsPrev?' same-sender':''}" data-sender="${m.sender_id}" data-id="${m.id}" onmouseenter="showDelBtn(this)" onmouseleave="hideDelBtn(this)">
+      ${delBtn}
       <div class="msg-avatar" style="${avStyle}">${sender.initials}</div>
       <div class="msg-body">
         ${!sameAsPrev ? `<div class="msg-meta"><span class="name">${sender.name}</span><span class="time">${fmtTime(m.created_at)}</span></div>` : ''}
         <div class="bubble">${escHtml(m.text)}</div>
+        ${readLabel}
       </div>
     </div>`;
   }
-  return `<div class="msg-row${sameAsPrev?' same-sender':''}" data-sender="${m.sender_id}">
+  return `<div class="msg-row${sameAsPrev?' same-sender':''}" data-sender="${m.sender_id}" data-id="${m.id}">
     <div class="msg-avatar" style="${avStyle}">${sender.initials}</div>
     <div class="msg-body">
       ${!sameAsPrev ? `<div class="msg-meta"><span class="name">${sender.name}</span><span class="time">${fmtTime(m.created_at)}</span></div>` : ''}
       <div class="bubble">${escHtml(m.text)}</div>
     </div>
   </div>`;
+}
+
+function showDelBtn(row) { const b = row.querySelector('.msg-del-btn'); if(b) b.style.display='flex'; }
+function hideDelBtn(row) { const b = row.querySelector('.msg-del-btn'); if(b) b.style.display='none'; }
+
+let deletingMsgId = null;
+function askDeleteMsg(id) {
+  deletingMsgId = id;
+  document.getElementById('delete-modal').style.display = 'flex';
+}
+async function confirmDeleteMsg() {
+  if (!deletingMsgId) return;
+  await sb.from('messages').delete().eq('id', deletingMsgId);
+  document.getElementById('delete-modal').style.display = 'none';
+  // DOM에서 제거
+  const el = document.querySelector(`[data-id="${deletingMsgId}"]`);
+  if (el) el.remove();
+  deletingMsgId = null;
 }
 
 function escHtml(s) {
@@ -1143,31 +1210,184 @@ async function submitPrayer(btn) {
   loadPrayers();
 }
 
-// ── 홈 ──
+// ── 홈 대시보드 ──
 function renderHome() {
-  const area = document.getElementById('content-area');
+  const el = document.getElementById('home-view');
+  const area = el ? el.querySelector('#content-area') : null;
   if (!area) return;
   const d = new Date();
   const wk = ['일','월','화','수','목','금','토'];
+  const prayerCount = prayers.length;
+  const memberCount = Object.keys(members).length;
+
   area.innerHTML = `
+  <div style="max-width:860px">
+    <!-- 인사 -->
     <div style="margin-bottom:24px">
       <div style="font-size:13px;color:var(--ink3);margin-bottom:4px">${d.getMonth()+1}월 ${d.getDate()}일 ${wk[d.getDay()]}요일</div>
-      <div style="font-size:26px;font-weight:700;letter-spacing:-.02em">샬롬, <span style="color:var(--adeep)">${ME.name.split(' ')[0]}</span> 형제/자매님 👋</div>
+      <div style="font-size:26px;font-weight:700;letter-spacing:-.02em">샬롬, <span style="color:var(--adeep)">${ME.name}</span> 님 👋</div>
     </div>
-    <div style="border-radius:20px;background:linear-gradient(160deg,#FAF3E1,#F1E3C5);border:1px solid #E6D6B4;padding:24px 28px;margin-bottom:20px;position:relative;overflow:hidden">
-      <div style="position:absolute;top:-30px;right:-16px;font-size:120px;color:rgba(139,74,36,.06);line-height:1">"</div>
-      <div style="font-size:11.5px;font-weight:600;color:var(--adeep);letter-spacing:.04em;margin-bottom:12px">✦ 오늘의 말씀</div>
-      <div style="font-family:var(--serif);font-size:17px;line-height:1.7;color:var(--ink)">여호와는 나의 목자시니 내게 부족함이 없으리로다. 그가 나를 푸른 풀밭에 누이시며 쉴 만한 물가로 인도하시는도다.</div>
-      <div style="margin-top:14px;font-size:13px;color:var(--ink2);font-weight:500">— 시편 23:1-2</div>
-    </div>
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:20px">
-      ${[{label:'채팅 채널',val:channels.length+'개',icon:'💬',tab:'chat'},{label:'기도제목',val:'올라온 글',icon:'🙏',tab:'prayer'},{label:'멤버',val:Object.keys(members).length+'명',icon:'👥',tab:'chat'}].map(c=>`
-      <div onclick="setMode('${c.tab}')" style="border-radius:16px;background:var(--surface);padding:18px;box-shadow:0 1px 4px rgba(70,50,20,.07);cursor:pointer;transition:box-shadow .15s" onmouseover="this.style.boxShadow='0 4px 14px rgba(70,50,20,.1)'" onmouseout="this.style.boxShadow='0 1px 4px rgba(70,50,20,.07)'">
-        <div style="font-size:26px;margin-bottom:10px">${c.icon}</div>
-        <div style="font-size:20px;font-weight:700;color:var(--adeep)">${c.val}</div>
-        <div style="font-size:13px;color:var(--ink3);margin-top:3px">${c.label}</div>
+
+    <!-- 통계 카드 -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px">
+      ${[
+        {icon:'💬',label:'채팅 채널',val:channels.length+'개',color:'#F4E2D0',fg:'#8B4A24',tab:'chat'},
+        {icon:'🙏',label:'기도제목',val:prayerCount+'개',color:'#DCE3CE',fg:'#4D6940',tab:'prayer'},
+        {icon:'👥',label:'멤버',val:memberCount+'명',color:'#E8E4F4',fg:'#5B4E8A',tab:'chat'},
+        {icon:'📖',label:'말씀 본문',val:'시편 23편',color:'#F4E4BF',fg:'#6F5418',tab:'home'},
+      ].map(c=>`
+      <div onclick="setMode('${c.tab}')" style="border-radius:16px;background:var(--surface);padding:18px;box-shadow:0 1px 4px rgba(70,50,20,.07);cursor:pointer;transition:all .15s" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 16px rgba(70,50,20,.12)'" onmouseout="this.style.transform='';this.style.boxShadow='0 1px 4px rgba(70,50,20,.07)'">
+        <div style="width:38px;height:38px;border-radius:12px;background:${c.color};display:flex;align-items:center;justify-content:center;font-size:18px;margin-bottom:12px">${c.icon}</div>
+        <div style="font-size:22px;font-weight:700;color:var(--adeep)">${c.val}</div>
+        <div style="font-size:12.5px;color:var(--ink3);margin-top:3px">${c.label}</div>
       </div>`).join('')}
-    </div>`;
+    </div>
+
+    <!-- 공지사항 + 이달의 목표 -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+      <!-- 공지사항 -->
+      <div style="background:var(--surface);border-radius:18px;padding:20px;box-shadow:0 1px 4px rgba(70,50,20,.07)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+          <div style="font-size:14px;font-weight:700;display:flex;align-items:center;gap:7px">📢 공지사항</div>
+          <div onclick="setMode('chat')" style="font-size:12px;color:var(--accent);cursor:pointer">더보기</div>
+        </div>
+        <div id="home-notices">
+          <div style="padding:12px;border-radius:12px;background:var(--bg);margin-bottom:8px">
+            <div style="font-size:13px;font-weight:600;margin-bottom:3px">IM 메신저에 오신 것을 환영해요! 🎉</div>
+            <div style="font-size:12px;color:var(--ink3)">채팅, 기도제목 나눔 등 다양한 기능을 사용해보세요</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 이달의 목표 -->
+      <div style="background:var(--surface);border-radius:18px;padding:20px;box-shadow:0 1px 4px rgba(70,50,20,.07)">
+        <div style="font-size:14px;font-weight:700;margin-bottom:14px;display:flex;align-items:center;gap:7px">🎯 이달의 목표</div>
+        <div id="monthly-goals">
+          ${[
+            {text:'매일 말씀 묵상하기',done:false},
+            {text:'기도 모임 참석하기',done:false},
+            {text:'새가족 섬기기',done:false},
+          ].map((g,i)=>`
+          <div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--bs)" onclick="toggleGoal(this)">
+            <div style="width:20px;height:20px;border-radius:6px;border:2px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s" class="goal-check"></div>
+            <div style="font-size:13.5px">${g.text}</div>
+          </div>`).join('')}
+        </div>
+      </div>
+    </div>
+
+    <!-- 이번주 일정 + 오늘의 말씀 -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+      <!-- 이번주 이벤트 -->
+      <div style="background:var(--surface);border-radius:18px;padding:20px;box-shadow:0 1px 4px rgba(70,50,20,.07)">
+        <div style="font-size:14px;font-weight:700;margin-bottom:14px;display:flex;align-items:center;gap:7px">📅 이번주 일정</div>
+        ${[
+          {day:'월',what:'새벽기도회',time:'06:00',color:'#B5683C'},
+          {day:'수',what:'소그룹 모임',time:'19:30',color:'#6F8A5C'},
+          {day:'금',what:'청년부 예배',time:'19:00',color:'#7B6BA0'},
+          {day:'일',what:'주일예배',time:'11:00',color:'#B89146'},
+        ].map(e=>`
+        <div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--bs)">
+          <div style="width:30px;height:30px;border-radius:8px;background:${e.color}22;color:${e.color};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0">${e.day}</div>
+          <div style="flex:1;font-size:13.5px;font-weight:500">${e.what}</div>
+          <div style="font-size:12px;color:var(--ink3)">${e.time}</div>
+        </div>`).join('')}
+      </div>
+
+      <!-- 오늘의 말씀 -->
+      <div style="border-radius:18px;background:linear-gradient(160deg,#FAF3E1,#F1E3C5);border:1px solid #E6D6B4;padding:20px;position:relative;overflow:hidden">
+        <div style="position:absolute;top:-20px;right:-10px;font-size:80px;color:rgba(139,74,36,.07);line-height:1">"</div>
+        <div style="font-size:11px;font-weight:600;color:var(--adeep);letter-spacing:.05em;margin-bottom:12px">✦ 오늘의 말씀</div>
+        <div style="font-size:15.5px;line-height:1.7;color:var(--ink);font-style:italic">여호와는 나의 목자시니 내게 부족함이 없으리로다. 그가 나를 푸른 풀밭에 누이시며 쉴 만한 물가로 인도하시는도다.</div>
+        <div style="margin-top:14px;font-size:12.5px;color:var(--ink2);font-weight:500">— 시편 23:1-2</div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function toggleGoal(row) {
+  const check = row.querySelector('.goal-check');
+  const text = row.querySelector('div:last-child');
+  const done = check.style.background === 'var(--sage)' || check.innerHTML.includes('✓');
+  if (done) {
+    check.style.background=''; check.style.borderColor='var(--border)'; check.innerHTML='';
+    text.style.textDecoration=''; text.style.color='';
+  } else {
+    check.style.background='var(--sage)'; check.style.borderColor='var(--sage)'; check.innerHTML='<span style="color:white;font-size:11px">✓</span>';
+    text.style.textDecoration='line-through'; text.style.color='var(--ink3)';
+  }
+}
+
+// ── 채널/DM 추가 모달 ──
+let addTabMode = 'topic';
+function showAddChannelModal() {
+  addTabMode = 'topic';
+  document.getElementById('add-modal').style.display = 'flex';
+  document.getElementById('new-ch-name').value = '';
+  document.getElementById('new-ch-emoji').value = '';
+  document.getElementById('new-ch-desc').value = '';
+  switchAddTab('topic');
+}
+function closeAddModal() { document.getElementById('add-modal').style.display = 'none'; }
+
+function switchAddTab(tab) {
+  addTabMode = tab;
+  const isTopic = tab === 'topic';
+  document.getElementById('add-tab-topic').style.background = isTopic ? 'var(--accent)' : 'var(--s3)';
+  document.getElementById('add-tab-topic').style.color = isTopic ? 'white' : 'var(--ink2)';
+  document.getElementById('add-tab-dm').style.background = !isTopic ? 'var(--accent)' : 'var(--s3)';
+  document.getElementById('add-tab-dm').style.color = !isTopic ? 'white' : 'var(--ink2)';
+  document.getElementById('add-topic-form').style.display = isTopic ? 'block' : 'none';
+  document.getElementById('add-dm-form').style.display = !isTopic ? 'block' : 'none';
+  document.getElementById('add-submit-btn').textContent = isTopic ? '채널 만들기' : 'DM 시작하기';
+
+  if (!isTopic) {
+    // 멤버 목록 렌더
+    const list = document.getElementById('dm-member-list');
+    list.innerHTML = Object.values(members).filter(m => m.id !== ME.id).map(m => `
+      <div onclick="selectDmMember(this,'${m.id}')" data-mid="${m.id}" style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:9px;cursor:pointer" onmouseover="this.style.background='var(--bg)'" onmouseout="this.style.background=''">
+        <div style="width:30px;height:30px;border-radius:9px;background:${m.color};color:white;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600">${m.initials||m.name[0]}</div>
+        <div><div style="font-size:13.5px;font-weight:500">${m.name}</div><div style="font-size:11.5px;color:var(--ink3)">${m.role||'멤버'}</div></div>
+      </div>`).join('') || '<div style="padding:20px;text-align:center;color:var(--ink3);font-size:13px">다른 멤버가 없어요</div>';
+  }
+}
+
+let selectedDmMemberId = null;
+function selectDmMember(el, mid) {
+  selectedDmMemberId = mid;
+  document.querySelectorAll('#dm-member-list [data-mid]').forEach(x => x.style.background = '');
+  el.style.background = 'var(--asoft)';
+}
+
+async function submitAddChannel() {
+  if (addTabMode === 'topic') {
+    const name = document.getElementById('new-ch-name').value.trim();
+    if (!name) { document.getElementById('new-ch-name').style.borderColor='var(--rose)'; return; }
+    const emoji = document.getElementById('new-ch-emoji').value.trim() || null;
+    const desc = document.getElementById('new-ch-desc').value.trim() || '';
+    const { data, error } = await sb.from('channels').insert({ name, emoji, description: desc, pinned: false }).select().single();
+    if (!error && data) {
+      channels.push(data);
+      renderPanel();
+      closeAddModal();
+      openChannel(data.id);
+    }
+  } else {
+    if (!selectedDmMemberId) return;
+    const target = members[selectedDmMemberId];
+    if (!target) return;
+    const dmName = `${ME.name} · ${target.name}`;
+    // 이미 DM 채널 있는지 확인
+    const existing = channels.find(c => c.kind === 'dm' && c.name.includes(ME.name) && c.name.includes(target.name));
+    if (existing) { closeAddModal(); openChannel(existing.id); return; }
+    const { data, error } = await sb.from('channels').insert({ name: dmName, emoji: '💬', description: '1:1 대화', pinned: false, kind: 'dm' }).select().single();
+    if (!error && data) {
+      channels.push(data);
+      renderPanel();
+      closeAddModal();
+      openChannel(data.id);
+    }
+  }
 }
 
 // ── 세션 복원 ──
