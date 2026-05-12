@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8"/>
 <title>IM 메신저</title>
+<link rel="icon" type="image/png" href="https://koreayjk.github.io/imessenger/ilogo.png"/>
+<link rel="apple-touch-icon" href="https://koreayjk.github.io/imessenger/ilogo.png"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
@@ -726,7 +728,23 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
     </div>
   </div>
 
-  <!-- 일정 추가/수정 모달 -->
+  <!-- 오늘의 묵상 등록 모달 -->
+  <div id="daily-word-modal" style="display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.45);align-items:center;justify-content:center">
+    <div style="background:var(--surface);border-radius:20px;padding:28px;width:460px;box-shadow:0 20px 60px rgba(0,0,0,.2)">
+      <div style="font-size:17px;font-weight:700;margin-bottom:6px">✦ 오늘의 묵상 등록</div>
+      <div style="font-size:13px;color:var(--ink3);margin-bottom:20px">Tabletalk 링크를 입력하면 홈화면에 표시돼요</div>
+      <div style="font-size:11.5px;color:var(--ink3);margin-bottom:5px">Tabletalk URL</div>
+      <input id="dw-url" placeholder="https://tabletalkmagazine.com/daily-study/2026/05/..." style="width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:11px;font:13px var(--font);outline:none;margin-bottom:10px"/>
+      <div style="font-size:11.5px;color:var(--ink3);margin-bottom:5px">성경 구절 (예: 베드로전서 3:1-2)</div>
+      <input id="dw-verse" placeholder="예: 베드로전서 3:1-2" style="width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:11px;font:13px var(--font);outline:none;margin-bottom:10px"/>
+      <div style="font-size:11.5px;color:var(--ink3);margin-bottom:5px">제목 (선택사항)</div>
+      <input id="dw-title" placeholder="예: 아내의 의무" style="width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:11px;font:13px var(--font);outline:none;margin-bottom:18px"/>
+      <div style="display:flex;gap:8px">
+        <div onclick="document.getElementById('daily-word-modal').style.display='none'" style="flex:1;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:var(--s3);color:var(--ink2);cursor:pointer;font-size:14px">취소</div>
+        <div onclick="submitDailyWord()" style="flex:2;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:var(--accent);color:white;cursor:pointer;font-size:14px;font-weight:600">등록하기</div>
+      </div>
+    </div>
+  </div>
   <div id="event-modal" style="display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.45);align-items:center;justify-content:center">
     <div style="background:var(--surface);border-radius:20px;padding:28px;width:440px;box-shadow:0 20px 60px rgba(0,0,0,.2)">
       <div style="font-size:17px;font-weight:700;margin-bottom:20px" id="event-modal-title">📅 일정 추가</div>
@@ -1025,6 +1043,14 @@ function setMode(m) {
   document.getElementById('home-view').style.display = m==='home' ? 'flex' : 'none';
   document.getElementById('calendar-view').style.display = m==='calendar' ? 'flex' : 'none';
 
+  // 홈, 캘린더에선 패널 숨기기
+  const panel = document.getElementById('panel');
+  if (m === 'home' || m === 'calendar') {
+    panel.style.display = 'none';
+  } else {
+    panel.style.display = 'flex';
+  }
+
   if (m==='prayer') { loadPrayers(); renderPrayerPanel(); }
   if (m==='home') renderHome();
   if (m==='chat') { renderPanel(); }
@@ -1313,7 +1339,7 @@ async function submitPrayer(btn) {
 }
 
 // ── 홈 대시보드 ──
-function renderHome() {
+async function renderHome() {
   const el = document.getElementById('home-view');
   const area = el ? el.querySelector('#content-area') : null;
   if (!area) return;
@@ -1321,22 +1347,38 @@ function renderHome() {
   const wk = ['일','월','화','수','목','금','토'];
   const prayerCount = prayers.length;
   const memberCount = Object.keys(members).length;
+  const isAdmin = ME.email === 'koreayjk@gmail.com';
+  const todayStr = d.toISOString().slice(0,10);
+
+  // 오늘의 묵상 로드
+  const { data: wordData } = await sb.from('daily_word').select('*').eq('date', todayStr).single();
+
+  // 이번주 캘린더 일정 로드
+  const weekStart = new Date(d); weekStart.setDate(d.getDate() - d.getDay());
+  const weekEnd = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 6);
+  const { data: weekEvents } = await sb.from('events').select('*')
+    .gte('start_date', weekStart.toISOString().slice(0,10))
+    .lte('start_date', weekEnd.toISOString().slice(0,10))
+    .order('start_date').order('start_time');
 
   area.innerHTML = `
   <div style="max-width:860px">
     <!-- 인사 -->
-    <div style="margin-bottom:24px">
-      <div style="font-size:13px;color:var(--ink3);margin-bottom:4px">${d.getMonth()+1}월 ${d.getDate()}일 ${wk[d.getDay()]}요일</div>
-      <div style="font-size:26px;font-weight:700;letter-spacing:-.02em">샬롬, <span style="color:var(--adeep)">${ME.name}</span> 님 👋</div>
+    <div style="margin-bottom:24px;display:flex;align-items:flex-start;justify-content:space-between">
+      <div>
+        <div style="font-size:13px;color:var(--ink3);margin-bottom:4px">${d.getMonth()+1}월 ${d.getDate()}일 ${wk[d.getDay()]}요일</div>
+        <div style="font-size:26px;font-weight:700;letter-spacing:-.02em">샬롬, <span style="color:var(--adeep)">${ME.name}</span> 님 👋</div>
+      </div>
+      ${isAdmin ? `<button onclick="showDailyWordForm('${todayStr}')" style="height:36px;padding:0 16px;border-radius:11px;border:1.5px solid var(--accent);background:white;color:var(--accent);font:600 13px var(--font);cursor:pointer;white-space:nowrap">✏️ 오늘의 묵상 등록</button>` : ''}
     </div>
 
     <!-- 통계 카드 -->
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px">
       ${[
-        {icon:'💬',label:'채팅 채널',val:channels.length+'개',color:'#F4E2D0',fg:'#8B4A24',tab:'chat'},
-        {icon:'🙏',label:'기도제목',val:prayerCount+'개',color:'#DCE3CE',fg:'#4D6940',tab:'prayer'},
-        {icon:'👥',label:'멤버',val:memberCount+'명',color:'#E8E4F4',fg:'#5B4E8A',tab:'chat'},
-        {icon:'📖',label:'말씀 본문',val:'시편 23편',color:'#F4E4BF',fg:'#6F5418',tab:'home'},
+        {icon:'💬',label:'채팅 채널',val:channels.length+'개',color:'#F4E2D0',tab:'chat'},
+        {icon:'🙏',label:'기도제목',val:prayerCount+'개',color:'#DCE3CE',tab:'prayer'},
+        {icon:'👥',label:'멤버',val:memberCount+'명',color:'#E8E4F4',tab:'chat'},
+        {icon:'📅',label:'이번주 일정',val:(weekEvents||[]).length+'개',color:'#F4E4BF',tab:'calendar'},
       ].map(c=>`
       <div onclick="setMode('${c.tab}')" style="border-radius:16px;background:var(--surface);padding:18px;box-shadow:0 1px 4px rgba(70,50,20,.07);cursor:pointer;transition:all .15s" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 16px rgba(70,50,20,.12)'" onmouseout="this.style.transform='';this.style.boxShadow='0 1px 4px rgba(70,50,20,.07)'">
         <div style="width:38px;height:38px;border-radius:12px;background:${c.color};display:flex;align-items:center;justify-content:center;font-size:18px;margin-bottom:12px">${c.icon}</div>
@@ -1345,63 +1387,51 @@ function renderHome() {
       </div>`).join('')}
     </div>
 
-    <!-- 공지사항 + 이달의 목표 -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
-      <!-- 공지사항 -->
-      <div style="background:var(--surface);border-radius:18px;padding:20px;box-shadow:0 1px 4px rgba(70,50,20,.07)">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-          <div style="font-size:14px;font-weight:700;display:flex;align-items:center;gap:7px">📢 공지사항</div>
-          <div onclick="setMode('chat')" style="font-size:12px;color:var(--accent);cursor:pointer">더보기</div>
+    <!-- 오늘의 묵상 (풀너비) -->
+    <div style="margin-bottom:20px">
+      ${wordData ? `
+      <div style="border-radius:18px;background:linear-gradient(160deg,#FAF3E1,#F1E3C5);border:1px solid #E6D6B4;padding:22px 24px;position:relative;overflow:hidden">
+        <div style="position:absolute;top:-20px;right:-10px;font-size:80px;color:rgba(139,74,36,.07);line-height:1">"</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div style="font-size:11px;font-weight:600;color:var(--adeep);letter-spacing:.05em">✦ 오늘의 묵상 — Tabletalk</div>
+          ${isAdmin ? `<div onclick="showDailyWordForm('${todayStr}')" style="font-size:11.5px;color:var(--accent);cursor:pointer;font-weight:600">수정</div>` : ''}
         </div>
-        <div id="home-notices">
-          <div style="padding:12px;border-radius:12px;background:var(--bg);margin-bottom:8px">
-            <div style="font-size:13px;font-weight:600;margin-bottom:3px">IM 메신저에 오신 것을 환영해요! 🎉</div>
-            <div style="font-size:12px;color:var(--ink3)">채팅, 기도제목 나눔 등 다양한 기능을 사용해보세요</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 이달의 목표 -->
-      <div style="background:var(--surface);border-radius:18px;padding:20px;box-shadow:0 1px 4px rgba(70,50,20,.07)">
-        <div style="font-size:14px;font-weight:700;margin-bottom:14px;display:flex;align-items:center;gap:7px">🎯 이달의 목표</div>
-        <div id="monthly-goals">
-          ${[
-            {text:'매일 말씀 묵상하기',done:false},
-            {text:'기도 모임 참석하기',done:false},
-            {text:'새가족 섬기기',done:false},
-          ].map((g,i)=>`
-          <div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--bs)" onclick="toggleGoal(this)">
-            <div style="width:20px;height:20px;border-radius:6px;border:2px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s" class="goal-check"></div>
-            <div style="font-size:13.5px">${g.text}</div>
-          </div>`).join('')}
-        </div>
-      </div>
+        ${wordData.verse ? `<div style="font-size:13px;font-weight:600;color:var(--adeep);margin-bottom:8px">📖 ${wordData.verse}</div>` : ''}
+        ${wordData.title ? `<div style="font-size:16px;font-weight:600;color:var(--ink);margin-bottom:14px">${wordData.title}</div>` : ''}
+        <a href="${wordData.url}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 16px;border-radius:10px;background:var(--accent);color:white;font:600 13px var(--font);text-decoration:none">
+          Tabletalk에서 읽기 →
+        </a>
+      </div>` : `
+      <div style="border-radius:18px;background:linear-gradient(160deg,#FAF3E1,#F1E3C5);border:1px solid #E6D6B4;padding:22px 24px;text-align:center">
+        <div style="font-size:11px;font-weight:600;color:var(--adeep);letter-spacing:.05em;margin-bottom:12px">✦ 오늘의 묵상</div>
+        <div style="font-size:15px;line-height:1.7;color:var(--ink2);font-style:italic">오늘의 묵상이 아직 등록되지 않았어요</div>
+        ${isAdmin ? `<button onclick="showDailyWordForm('${todayStr}')" style="margin-top:14px;height:34px;padding:0 16px;border-radius:10px;border:none;background:var(--accent);color:white;font:600 13px var(--font);cursor:pointer">+ 지금 등록하기</button>` : ''}
+      </div>`}
     </div>
 
-    <!-- 이번주 일정 + 오늘의 말씀 -->
+    <!-- 공지사항 + 이달의 목표 -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
-      <!-- 이번주 이벤트 -->
       <div style="background:var(--surface);border-radius:18px;padding:20px;box-shadow:0 1px 4px rgba(70,50,20,.07)">
-        <div style="font-size:14px;font-weight:700;margin-bottom:14px;display:flex;align-items:center;gap:7px">📅 이번주 일정</div>
-        ${[
-          {day:'월',what:'새벽기도회',time:'06:00',color:'#B5683C'},
-          {day:'수',what:'소그룹 모임',time:'19:30',color:'#6F8A5C'},
-          {day:'금',what:'청년부 예배',time:'19:00',color:'#7B6BA0'},
-          {day:'일',what:'주일예배',time:'11:00',color:'#B89146'},
-        ].map(e=>`
-        <div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--bs)">
-          <div style="width:30px;height:30px;border-radius:8px;background:${e.color}22;color:${e.color};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0">${e.day}</div>
-          <div style="flex:1;font-size:13.5px;font-weight:500">${e.what}</div>
-          <div style="font-size:12px;color:var(--ink3)">${e.time}</div>
-        </div>`).join('')}
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+          <div style="font-size:14px;font-weight:700">📢 공지사항</div>
+          <div onclick="setMode('chat')" style="font-size:12px;color:var(--accent);cursor:pointer">더보기</div>
+        </div>
+        <div style="padding:12px;border-radius:12px;background:var(--bg)">
+          <div style="font-size:13px;font-weight:600;margin-bottom:3px">IM 메신저에 오신 것을 환영해요! 🎉</div>
+          <div style="font-size:12px;color:var(--ink3)">채팅, 기도제목 나눔 등 다양한 기능을 사용해보세요</div>
+        </div>
       </div>
 
-      <!-- 오늘의 말씀 -->
-      <div style="border-radius:18px;background:linear-gradient(160deg,#FAF3E1,#F1E3C5);border:1px solid #E6D6B4;padding:20px;position:relative;overflow:hidden">
-        <div style="position:absolute;top:-20px;right:-10px;font-size:80px;color:rgba(139,74,36,.07);line-height:1">"</div>
-        <div style="font-size:11px;font-weight:600;color:var(--adeep);letter-spacing:.05em;margin-bottom:12px">✦ 오늘의 말씀</div>
-        <div style="font-size:15.5px;line-height:1.7;color:var(--ink);font-style:italic">여호와는 나의 목자시니 내게 부족함이 없으리로다. 그가 나를 푸른 풀밭에 누이시며 쉴 만한 물가로 인도하시는도다.</div>
-        <div style="margin-top:14px;font-size:12.5px;color:var(--ink2);font-weight:500">— 시편 23:1-2</div>
+      <div style="background:var(--surface);border-radius:18px;padding:20px;box-shadow:0 1px 4px rgba(70,50,20,.07)">
+        <div style="font-size:14px;font-weight:700;margin-bottom:14px">📅 이번주 일정</div>
+        ${(weekEvents||[]).length ? (weekEvents||[]).slice(0,4).map(e=>`
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--bs)">
+          <div style="width:4px;height:32px;border-radius:2px;background:${e.color||'var(--accent)'};flex-shrink:0"></div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${e.title}</div>
+            <div style="font-size:11.5px;color:var(--ink3)">${e.start_date} ${e.start_time?e.start_time.slice(0,5):''}</div>
+          </div>
+        </div>`).join('') : `<div style="font-size:13px;color:var(--ink3);padding:8px 0">이번주 일정이 없어요</div>`}
       </div>
     </div>
   </div>`;
@@ -1520,6 +1550,33 @@ async function doLogout() {
     document.getElementById('panel').classList.remove('hidden');
   }
   switchTab('signin');
+}
+
+// ── 오늘의 묵상 ──
+let dailyWordDate = null;
+function showDailyWordForm(dateStr) {
+  dailyWordDate = dateStr;
+  document.getElementById('dw-url').value = '';
+  document.getElementById('dw-verse').value = '';
+  document.getElementById('dw-title').value = '';
+  document.getElementById('daily-word-modal').style.display = 'flex';
+}
+
+async function submitDailyWord() {
+  const url = document.getElementById('dw-url').value.trim();
+  const verse = document.getElementById('dw-verse').value.trim();
+  const title = document.getElementById('dw-title').value.trim();
+  if (!url) { document.getElementById('dw-url').style.borderColor='var(--rose)'; return; }
+
+  // upsert (있으면 수정, 없으면 추가)
+  await sb.from('daily_word').upsert({
+    date: dailyWordDate,
+    url, verse, title,
+    created_by: ME.id,
+  }, { onConflict: 'date' });
+
+  document.getElementById('daily-word-modal').style.display = 'none';
+  renderHome(); // 홈 새로고침
 }
 
 // ── 캘린더 ──
