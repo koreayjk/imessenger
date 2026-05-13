@@ -964,6 +964,7 @@ async function doSignUp() {
       role: '멤버',
       email,
       birth_date: birth,
+      status: 'pending', // 승인 대기
     }).select().single();
 
     if (mErr) throw mErr;
@@ -1018,6 +1019,20 @@ async function doSignIn() {
     const uid = data.user.id;
     const { data: member, error: mErr } = await sb.from('members').select('*').eq('id', uid).single();
     if (mErr || !member) throw new Error('프로필을 찾을 수 없어요. 다시 가입해주세요.');
+
+    // 승인 상태 체크
+    if (member.status === 'pending') {
+      msg.className = 'auth-msg';
+      msg.style.color = 'var(--gold)';
+      msg.textContent = '⏳ 관리자 승인 대기 중이에요. 승인 후 이용 가능해요.';
+      btn.textContent = '로그인'; btn.disabled = false;
+      return;
+    }
+    if (member.status === 'rejected') {
+      msg.textContent = '❌ 가입이 거절되었어요. 관리자에게 문의해주세요.';
+      btn.textContent = '로그인'; btn.disabled = false;
+      return;
+    }
 
     ME = member;
     enterApp();
@@ -1950,8 +1965,33 @@ async function renderAdminMembers() {
   const { data } = await sb.from('members').select('*').order('created_at');
   const list = data || [];
   const area = document.getElementById('admin-content');
-  const roles = ['멤버','리더','관리자'];
-  const roleColors = ['var(--s3)','var(--sagsoft)','var(--asoft)'];
+
+  const pending = list.filter(m => m.status === 'pending');
+  const approved = list.filter(m => m.status === 'approved' || !m.status);
+  const rejected = list.filter(m => m.status === 'rejected');
+
+  const memberRow = (m, showApproval=false) => `
+    <div class="adm-row" style="padding:14px 20px;flex-wrap:wrap;gap:10px">
+      <div style="width:38px;height:38px;border-radius:12px;background:${m.color||'#999'};color:white;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;flex-shrink:0">${m.initials||m.name[0]}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:14px;font-weight:600">${m.name}</div>
+        <div style="font-size:12px;color:var(--ink3);margin-top:2px">${m.email||'이메일 없음'} · ${m.birth_date||''}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;flex-wrap:wrap">
+        ${showApproval ? `
+          <button class="adm-btn sage" onclick="approveMember('${m.id}')">✅ 승인</button>
+          <button class="adm-btn danger" onclick="rejectMember('${m.id}')">❌ 거절</button>
+        ` : `
+          <select onchange="updateMemberRole('${m.id}',this.value)"
+            style="height:30px;padding:0 10px;border-radius:9px;border:1.5px solid var(--border);font:12px var(--font);background:white;cursor:pointer;outline:none">
+            <option value="멤버" ${(m.role||'멤버')==='멤버'?'selected':''}>멤버</option>
+            <option value="리더" ${m.role==='리더'?'selected':''}>리더</option>
+            <option value="관리자" ${m.role==='관리자'?'selected':''}>관리자</option>
+          </select>
+          ${m.email !== 'koreayjk@gmail.com' ? `<button class="adm-btn danger" onclick="deleteMember('${m.id}','${m.name}')">탈퇴</button>` : '<span style="font-size:11px;color:var(--ink3)">최고관리자</span>'}
+        `}
+      </div>
+    </div>`;
 
   area.innerHTML = `
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
@@ -1960,25 +2000,57 @@ async function renderAdminMembers() {
       <div style="font-size:13px;color:var(--ink3);margin-top:3px">전체 ${list.length}명</div>
     </div>
   </div>
-  <div class="adm-card" style="padding:0;overflow:hidden">
-    ${list.map(m => `
+
+  ${pending.length ? `
+  <div style="background:#FFF8E7;border:1.5px solid #F0D080;border-radius:16px;padding:16px 20px;margin-bottom:20px">
+    <div style="font-size:14px;font-weight:700;color:#8B6914;margin-bottom:12px;display:flex;align-items:center;gap:8px">
+      ⏳ 승인 대기 중 <span style="background:#F0D080;color:#8B6914;padding:2px 8px;border-radius:999px;font-size:12px">${pending.length}명</span>
+    </div>
+    ${pending.map(m => memberRow(m, true)).join('')}
+  </div>` : ''}
+
+  <div class="adm-card" style="padding:0;overflow:hidden;margin-bottom:16px">
+    <div style="padding:12px 20px;font-size:12px;font-weight:600;color:var(--ink3);border-bottom:1px solid var(--bs)">승인된 멤버 ${approved.length}명</div>
+    ${approved.map(m => memberRow(m, false)).join('')}
+  </div>
+
+  ${rejected.length ? `
+  <div class="adm-card" style="padding:0;overflow:hidden;opacity:.6">
+    <div style="padding:12px 20px;font-size:12px;font-weight:600;color:var(--ink3);border-bottom:1px solid var(--bs)">거절된 멤버 ${rejected.length}명</div>
+    ${rejected.map(m => `
     <div class="adm-row" style="padding:14px 20px">
       <div style="width:38px;height:38px;border-radius:12px;background:${m.color||'#999'};color:white;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;flex-shrink:0">${m.initials||m.name[0]}</div>
       <div style="flex:1;min-width:0">
         <div style="font-size:14px;font-weight:600">${m.name}</div>
-        <div style="font-size:12px;color:var(--ink3);margin-top:2px">${m.email||'이메일 없음'} · 가입: ${m.created_at?new Date(m.created_at).toLocaleDateString('ko-KR'):'-'}</div>
+        <div style="font-size:12px;color:var(--ink3)">${m.email||''}</div>
       </div>
-      <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
-        <select onchange="updateMemberRole('${m.id}',this.value)"
-          style="height:30px;padding:0 10px;border-radius:9px;border:1.5px solid var(--border);font:12px var(--font);background:white;cursor:pointer;outline:none">
-          <option value="멤버" ${(m.role||'멤버')==='멤버'?'selected':''}>멤버</option>
-          <option value="리더" ${m.role==='리더'?'selected':''}>리더</option>
-          <option value="관리자" ${m.role==='관리자'?'selected':''}>관리자</option>
-        </select>
-        ${m.email !== 'koreayjk@gmail.com' ? `<button class="adm-btn danger" onclick="deleteMember('${m.id}','${m.name}')">탈퇴</button>` : '<span style="font-size:11px;color:var(--ink3)">최고관리자</span>'}
-      </div>
+      <button class="adm-btn sage" onclick="approveMember('${m.id}')">재승인</button>
+      <button class="adm-btn danger" onclick="deleteMember('${m.id}','${m.name}')">삭제</button>
     </div>`).join('')}
-  </div>`;
+  </div>` : ''}`;
+}
+
+async function approveMember(id) {
+  await sb.from('members').update({ status: 'approved' }).eq('id', id);
+  // 기존 채널들에 자동 추가 (고정 채널만)
+  const pinnedChannels = channels.filter(c => c.pinned);
+  if (pinnedChannels.length) {
+    const inserts = pinnedChannels.map(ch => ({ channel_id: ch.id, member_id: id }));
+    await sb.from('channel_members').upsert(inserts, { onConflict: 'channel_id,member_id', ignoreDuplicates: true });
+  }
+  renderAdminMembers();
+  // 전체 멤버 목록 새로고침
+  const { data: mems } = await sb.from('members').select('*');
+  members = {};
+  (mems||[]).forEach(m => { members[m.id] = m; });
+  renderMembers();
+}
+
+async function rejectMember(id) {
+  if (!confirm('이 멤버의 가입을 거절할까요?')) return;
+  await sb.from('members').update({ status: 'rejected' }).eq('id', id);
+  renderAdminMembers();
+}
 }
 
 async function updateMemberRole(id, role) {
@@ -2566,7 +2638,29 @@ window.addEventListener('load', async () => {
     const { data: { session } } = await sb.auth.getSession();
     if (session) {
       const { data: member } = await sb.from('members').select('*').eq('id', session.user.id).single();
-      if (member) { ME = member; enterApp(); return; }
+      if (member) {
+        if (member.status === 'pending') {
+          // 대기 화면 표시
+          document.getElementById('auth-screen').style.display = 'flex';
+          document.getElementById('form-signin').style.display = 'flex';
+          document.getElementById('form-signup').style.display = 'none';
+          document.getElementById('tab-signin').classList.add('active');
+          document.getElementById('tab-signup').classList.remove('active');
+          const msg = document.getElementById('si-msg');
+          msg.className = 'auth-msg';
+          msg.style.color = 'var(--gold)';
+          msg.textContent = '⏳ 관리자 승인 대기 중이에요. 승인 후 이용 가능해요.';
+          return;
+        }
+        if (member.status === 'rejected') {
+          document.getElementById('auth-screen').style.display = 'flex';
+          document.getElementById('si-msg').textContent = '❌ 가입이 거절되었어요. 관리자에게 문의해주세요.';
+          return;
+        }
+        ME = member;
+        enterApp();
+        return;
+      }
     }
   } catch(e) {}
 });
