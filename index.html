@@ -970,16 +970,11 @@ async function doSignUp() {
     if (mErr) throw mErr;
 
     msg.className='auth-msg success';
-    msg.textContent='가입 완료! 이메일 인증 후 로그인해주세요 ✅';
+    msg.textContent='가입 신청 완료! 관리자 승인 후 이용 가능해요 ✅';
     btn.textContent='가입하기'; btn.disabled=false;
 
-    // 이메일 인증 없이 바로 로그인 허용 (개발 단계)
-    if (authData.session) {
-      ME = member;
-      enterApp();
-    } else {
-      setTimeout(() => switchTab('signin'), 2000);
-    }
+    // 승인 대기 상태이므로 바로 앱 진입 안 함
+    setTimeout(() => switchTab('signin'), 2500);
   } catch(e) {
     msg.className='auth-msg error';
     const err = e.message || '';
