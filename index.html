@@ -2046,7 +2046,6 @@ async function rejectMember(id) {
   await sb.from('members').update({ status: 'rejected' }).eq('id', id);
   renderAdminMembers();
 }
-}
 
 async function updateMemberRole(id, role) {
   await sb.from('members').update({ role }).eq('id', id);
