@@ -262,11 +262,14 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
   flex-shrink: 0; overflow: hidden;
 }
 #right-panel h3 { font-size: 13px; font-weight: 600; padding: 18px 16px 8px; color: var(--ink3); letter-spacing: .04em; text-transform: uppercase; }
-.member-row {
-  display: flex; align-items: center; gap: 10px;
-  padding: 7px 14px;
+.member-row { display: flex; align-items: center; gap: 10px; padding: 7px 14px; }
+.member-av-wrap { position: relative; flex-shrink: 0; }
+.member-av { width: 30px; height: 30px; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; color: white; }
+.online-dot {
+  position: absolute; bottom: -1px; right: -1px;
+  width: 9px; height: 9px; border-radius: 50%;
+  background: #4CAF50; border: 2px solid var(--surface);
 }
-.member-av { width: 30px; height: 30px; border-radius: 9px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; color: white; }
 .member-name { font-size: 13px; font-weight: 500; }
 .member-role { font-size: 11px; color: var(--ink3); }
 
@@ -1062,6 +1065,7 @@ function enterApp() {
   if (ME.email === 'koreayjk@gmail.com') {
     document.getElementById('sb-admin').style.display = 'flex';
   }
+  initPresence();
   init();
 }
 
@@ -1585,6 +1589,36 @@ function updateSendBtn() {
   document.getElementById('sendBtn').classList.toggle('active', !!v);
 }
 
+// ── 온라인 Presence ──
+let onlineUsers = new Set();
+let presenceChannel = null;
+
+function initPresence() {
+  if (presenceChannel) sb.removeChannel(presenceChannel);
+  presenceChannel = sb.channel('online-users', {
+    config: { presence: { key: ME.id } }
+  });
+  presenceChannel
+    .on('presence', { event: 'sync' }, () => {
+      const state = presenceChannel.presenceState();
+      onlineUsers = new Set(Object.keys(state));
+      renderMembers();
+    })
+    .on('presence', { event: 'join' }, ({ key }) => {
+      onlineUsers.add(key);
+      renderMembers();
+    })
+    .on('presence', { event: 'leave' }, ({ key }) => {
+      onlineUsers.delete(key);
+      renderMembers();
+    })
+    .subscribe(async (status) => {
+      if (status === 'SUBSCRIBED') {
+        await presenceChannel.track({ user_id: ME.id, name: ME.name, online_at: new Date().toISOString() });
+      }
+    });
+}
+
 // ── 멤버 패널 ──
 async function renderMembers() {
   const memberList = document.getElementById('member-list');
@@ -1592,7 +1626,7 @@ async function renderMembers() {
 
   let list = Object.values(members);
 
-  // DM 채널이면 해당 채널 멤버만 표시 (관리자 제외)
+  // DM 채널이면 해당 채널 멤버만 표시
   if (currentChannel && currentChannel.kind === 'dm') {
     const { data: chMems } = await sb.from('channel_members')
       .select('member_id').eq('channel_id', currentChannel.id);
@@ -1600,12 +1634,26 @@ async function renderMembers() {
     list = list.filter(m => chMemberIds.has(m.id));
   }
 
-  memberList.innerHTML = list.map(m =>
-    `<div class="member-row">
-      <div class="member-av" style="background:${m.color||'#999'}">${m.initials||m.name[0]}</div>
-      <div><div class="member-name">${m.name}</div><div class="member-role">${m.role||'멤버'}</div></div>
-    </div>`
-  ).join('');
+  // 온라인 먼저 정렬
+  list.sort((a, b) => {
+    const aOnline = onlineUsers.has(a.id) ? 0 : 1;
+    const bOnline = onlineUsers.has(b.id) ? 0 : 1;
+    return aOnline - bOnline;
+  });
+
+  memberList.innerHTML = list.map(m => {
+    const isOnline = onlineUsers.has(m.id);
+    return `<div class="member-row">
+      <div class="member-av-wrap">
+        <div class="member-av" style="background:${m.color||'#999'}">${m.initials||m.name[0]}</div>
+        ${isOnline ? '<div class="online-dot"></div>' : ''}
+      </div>
+      <div>
+        <div class="member-name" style="color:${isOnline?'var(--ink)':'var(--ink3)'}">${m.name}</div>
+        <div class="member-role" style="color:${isOnline?'var(--sage)':'var(--ink3)'}">${isOnline?'● 온라인':m.role||'멤버'}</div>
+      </div>
+    </div>`;
+  }).join('');
 }
 
 function toggleRightPanel() {
