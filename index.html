@@ -1190,13 +1190,19 @@ async function init() {
   members = {};
   (mems||[]).forEach(m => { members[m.id] = m; });
 
-  // 내가 속한 채널 로드
-  const { data: myMemberships } = await sb.from('channel_members').select('channel_id').eq('member_id', ME.id);
-  myChannelIds = new Set((myMemberships||[]).map(m => m.channel_id));
+  const isAdmin = ME.email === 'koreayjk@gmail.com';
+  if (isAdmin) {
+    // 관리자는 모든 채널 접근 가능
+    myChannelIds = new Set(channels.map(c => c.id));
+  } else {
+    // 일반 멤버는 속한 채널만
+    const { data: myMemberships } = await sb.from('channel_members').select('channel_id').eq('member_id', ME.id);
+    myChannelIds = new Set((myMemberships||[]).map(m => m.channel_id));
+  }
 
   renderPanel();
   renderMembers();
-  restoreLastState(); // 마지막 상태 복원
+  restoreLastState();
 }
 
 // ── 사이드바 모드 전환 ──
@@ -1236,21 +1242,25 @@ function setMode(m) {
 
 // ── 채널 패널 렌더 ──
 function renderPanel() {
-  // 관리자는 모든 채널, 일반 멤버는 속한 채널만
   const isAdmin = ME.email === 'koreayjk@gmail.com';
   const visibleChannels = isAdmin ? channels : channels.filter(c => myChannelIds.has(c.id));
-  const pinned = visibleChannels.filter(c=>c.pinned);
-  const rest = visibleChannels.filter(c=>!c.pinned);
+  const pinned = visibleChannels.filter(c => c.pinned && c.kind !== 'dm');
+  const topics = visibleChannels.filter(c => !c.pinned && c.kind !== 'dm');
+  const dms = visibleChannels.filter(c => c.kind === 'dm');
   let html = '';
   if (pinned.length) {
     html += `<div class="section-label"><span>📌 고정</span></div>`;
     pinned.forEach(ch => html += chRow(ch));
   }
-  if (rest.length) {
+  if (topics.length) {
     html += `<div class="section-label"><span>토픽</span></div>`;
-    rest.forEach(ch => html += chRow(ch));
+    topics.forEach(ch => html += chRow(ch));
   }
-  if (!pinned.length && !rest.length) {
+  if (dms.length) {
+    html += `<div class="section-label"><span>💬 1:1 대화</span></div>`;
+    dms.forEach(ch => html += chRow(ch));
+  }
+  if (!pinned.length && !topics.length && !dms.length) {
     html = `<div style="padding:24px;text-align:center;color:var(--ink3);font-size:13px">초대된 채널이 없어요</div>`;
   }
   document.getElementById('panel-body').innerHTML = html;
@@ -1275,10 +1285,28 @@ function chRow(ch) {
 }
 
 function filterChannels(q) {
-  const filtered = channels.filter(c => c.name.includes(q) || (c.description||'').includes(q));
+  if (!q) { renderPanel(); return; }
+  const isAdmin = ME.email === 'koreayjk@gmail.com';
+  const visibleChannels = isAdmin ? channels : channels.filter(c => myChannelIds.has(c.id));
+  const filtered = visibleChannels.filter(c => c.name.includes(q) || (c.description||'').includes(q));
+  const pinned = filtered.filter(c => c.pinned && c.kind !== 'dm');
+  const topics = filtered.filter(c => !c.pinned && c.kind !== 'dm');
+  const dms = filtered.filter(c => c.kind === 'dm');
   let html = '';
-  filtered.forEach(ch => html += chRow(ch));
-  document.getElementById('panel-body').innerHTML = html || '<div style="padding:20px;text-align:center;color:var(--ink3);font-size:13px">검색 결과가 없어요</div>';
+  if (pinned.length) {
+    html += `<div class="section-label"><span>📌 고정</span></div>`;
+    pinned.forEach(ch => html += chRow(ch));
+  }
+  if (topics.length) {
+    html += `<div class="section-label"><span>토픽</span></div>`;
+    topics.forEach(ch => html += chRow(ch));
+  }
+  if (dms.length) {
+    html += `<div class="section-label"><span>💬 1:1 대화</span></div>`;
+    dms.forEach(ch => html += chRow(ch));
+  }
+  if (!html) html = '<div style="padding:20px;text-align:center;color:var(--ink3);font-size:13px">검색 결과가 없어요</div>';
+  document.getElementById('panel-body').innerHTML = html;
 }
 
 // ── 채널 열기 ──
@@ -1302,6 +1330,9 @@ async function openChannel(id) {
   document.getElementById('ch-icon').textContent = currentChannel.emoji || '#';
   document.getElementById('ch-name').textContent = currentChannel.name;
   document.getElementById('ch-desc').textContent = currentChannel.description || '';
+
+  // 멤버 패널 업데이트 (DM이면 해당 멤버만)
+  renderMembers();
 
   // 메시지 + 읽음 데이터 함께 로드
   const { data: msgs } = await sb.from('messages').select('*')
@@ -1555,9 +1586,21 @@ function updateSendBtn() {
 }
 
 // ── 멤버 패널 ──
-function renderMembers() {
-  const list = Object.values(members);
-  document.getElementById('member-list').innerHTML = list.map(m =>
+async function renderMembers() {
+  const memberList = document.getElementById('member-list');
+  if (!memberList) return;
+
+  let list = Object.values(members);
+
+  // DM 채널이면 해당 채널 멤버만 표시 (관리자 제외)
+  if (currentChannel && currentChannel.kind === 'dm') {
+    const { data: chMems } = await sb.from('channel_members')
+      .select('member_id').eq('channel_id', currentChannel.id);
+    const chMemberIds = new Set((chMems||[]).map(m => m.member_id));
+    list = list.filter(m => chMemberIds.has(m.id));
+  }
+
+  memberList.innerHTML = list.map(m =>
     `<div class="member-row">
       <div class="member-av" style="background:${m.color||'#999'}">${m.initials||m.name[0]}</div>
       <div><div class="member-name">${m.name}</div><div class="member-role">${m.role||'멤버'}</div></div>
@@ -2985,48 +3028,7 @@ async function deleteEvent() {
   if (calSelectedDate) showDayEvents(calSelectedDate);
 }
 
-// 모바일 캘린더 탭
-const _origMobileTab = typeof mobileTab === 'function' ? mobileTab : null;
-function mobileTab(tab) {
-  ['home','chat','prayer','calendar','me'].forEach(t => {
-    const btn = document.getElementById('mn-'+t);
-    if (!btn) return;
-    const isActive = t === tab;
-    btn.classList.toggle('active', isActive);
-    const svg = btn.querySelector('svg');
-    if (svg) { svg.style.stroke = isActive ? 'var(--accent)' : 'var(--ink3)'; svg.style.strokeWidth = isActive ? '2' : '1.7'; }
-    const span = btn.querySelector('span');
-    if (span) span.style.color = isActive ? 'var(--accent)' : 'var(--ink3)';
-  });
-  if (tab === 'chat') {
-    document.getElementById('panel').classList.remove('hidden');
-    document.getElementById('mobile-nav').style.display = 'flex';
-    // 채팅방 닫기
-    currentChannel = null;
-    document.getElementById('chat-active').style.display = 'none';
-    document.getElementById('empty').style.display = 'flex';
-    sessionStorage.removeItem('last_channel_id');
-    const backBtn = document.getElementById('mobile-chat-back');
-    if (backBtn) backBtn.style.display = 'none';
-    setMode('chat');
-  } else if (tab === 'prayer') {
-    document.getElementById('panel').classList.add('hidden');
-    document.getElementById('mobile-nav').style.display = 'flex';
-    setMode('prayer');
-  } else if (tab === 'home') {
-    document.getElementById('panel').classList.add('hidden');
-    document.getElementById('mobile-nav').style.display = 'flex';
-    setMode('home');
-  } else if (tab === 'calendar') {
-    document.getElementById('panel').classList.add('hidden');
-    document.getElementById('mobile-nav').style.display = 'flex';
-    setMode('calendar');
-  } else if (tab === 'me') {
-    document.getElementById('panel').classList.add('hidden');
-    document.getElementById('mobile-nav').style.display = 'flex';
-    showMobileProfile();
-  }
-}
+// ── 세션 복원은 위 window.addEventListener('load') 에서 처리 ──
 </script>
 </body>
 </html>
