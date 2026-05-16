@@ -1196,8 +1196,13 @@ async function init() {
 
   const isAdmin = ME.email === 'koreayjk@gmail.com';
   if (isAdmin) {
-    // 관리자는 모든 채널 접근 가능
-    myChannelIds = new Set(channels.map(c => c.id));
+    // 관리자: 토픽/고정은 다 보이고, DM은 본인 것만
+    const { data: myDMs } = await sb.from('channel_members').select('channel_id').eq('member_id', ME.id);
+    const myDMIds = new Set((myDMs||[]).map(m => m.channel_id));
+    myChannelIds = new Set(channels.map(c => {
+      if (c.kind === 'dm') return myDMIds.has(c.id) ? c.id : null;
+      return c.id;
+    }).filter(Boolean));
   } else {
     // 일반 멤버는 속한 채널만
     const { data: myMemberships } = await sb.from('channel_members').select('channel_id').eq('member_id', ME.id);
@@ -2240,12 +2245,13 @@ async function toggleChMember(chId, memberId, add) {
   } else {
     await sb.from('channel_members').delete().eq('channel_id', chId).eq('member_id', memberId);
   }
-  // 내가 추가/제거됐으면 myChannelIds 업데이트
   if (memberId === ME.id) {
     if (add) myChannelIds.add(chId);
     else myChannelIds.delete(chId);
     renderPanel();
   }
+  // 채널 카드 멤버 아바타 즉시 업데이트
+  await renderAdminChannels();
 }
 
 async function toggleChannelPin(id, pinned) {
