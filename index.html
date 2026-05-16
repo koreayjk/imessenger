@@ -785,6 +785,10 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
       <div id="mobile-av" style="width:26px;height:26px;border-radius:8px;background:#8B4A24;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:white">?</div>
       <span>내정보</span>
     </div>
+    <div class="mn-btn" id="mn-admin" onclick="mobileTab('admin')" style="display:none">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--ink3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M12 14c-5 0-8 2-8 4v1h16v-1c0-2-3-4-8-4z"/><path d="M17 3l1.5 1.5L20 3l-1.5 1.5L20 6l-1.5-1.5L17 6l1.5-1.5z"/></svg>
+      <span>관리</span>
+    </div>
   </div>
 
   <!-- 채널/DM 추가 모달 -->
@@ -1064,6 +1068,8 @@ function enterApp() {
   if (mav) { mav.textContent = ME.initials || ME.name[0]; mav.style.background = ME.color || '#8B4A24'; }
   if (ME.email === 'koreayjk@gmail.com') {
     document.getElementById('sb-admin').style.display = 'flex';
+    const mnAdmin = document.getElementById('mn-admin');
+    if (mnAdmin) mnAdmin.style.display = 'flex';
   }
   initPresence();
   init();
@@ -1119,6 +1125,10 @@ function mobileTab(tab) {
   } else if (tab === 'me') {
     document.getElementById('panel').classList.add('hidden');
     showMobileProfile();
+  } else if (tab === 'admin') {
+    document.getElementById('panel').classList.add('hidden');
+    document.getElementById('mobile-nav').style.display = 'flex';
+    setMode('admin');
   }
 }
 
@@ -1196,7 +1206,6 @@ async function init() {
 
   const isAdmin = ME.email === 'koreayjk@gmail.com';
   if (isAdmin) {
-    // 관리자: 토픽/고정은 다 보이고, DM은 본인 것만
     const { data: myDMs } = await sb.from('channel_members').select('channel_id').eq('member_id', ME.id);
     const myDMIds = new Set((myDMs||[]).map(m => m.channel_id));
     myChannelIds = new Set(channels.map(c => {
@@ -1204,10 +1213,35 @@ async function init() {
       return c.id;
     }).filter(Boolean));
   } else {
-    // 일반 멤버는 속한 채널만
     const { data: myMemberships } = await sb.from('channel_members').select('channel_id').eq('member_id', ME.id);
     myChannelIds = new Set((myMemberships||[]).map(m => m.channel_id));
   }
+
+  // 채널 실시간 구독 (새 채널 추가 즉시 반영)
+  sb.channel('channels-changes')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'channels' }, async () => {
+      const { data: newChs } = await sb.from('channels').select('*').order('pinned', {ascending:false}).order('created_at');
+      channels = newChs || [];
+      // myChannelIds도 업데이트
+      if (ME.email === 'koreayjk@gmail.com') {
+        const { data: myDMs } = await sb.from('channel_members').select('channel_id').eq('member_id', ME.id);
+        const myDMIds = new Set((myDMs||[]).map(m => m.channel_id));
+        myChannelIds = new Set(channels.map(c => {
+          if (c.kind === 'dm') return myDMIds.has(c.id) ? c.id : null;
+          return c.id;
+        }).filter(Boolean));
+      } else {
+        const { data: myMemberships } = await sb.from('channel_members').select('channel_id').eq('member_id', ME.id);
+        myChannelIds = new Set((myMemberships||[]).map(m => m.channel_id));
+      }
+      renderPanel();
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'channel_members', filter: `member_id=eq.${ME.id}` }, async () => {
+      const { data: myMemberships } = await sb.from('channel_members').select('channel_id').eq('member_id', ME.id);
+      myChannelIds = new Set((myMemberships||[]).map(m => m.channel_id));
+      renderPanel();
+    })
+    .subscribe();
 
   renderPanel();
   renderMembers();
