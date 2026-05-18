@@ -1905,30 +1905,47 @@ function openImageModal(url, title) {
 }
 
 // ── 일정 사진 등록 ──
+let pendingScheduleDate = null;
+let pendingScheduleFile = null;
+
 function showScheduleImageForm(dateStr, label) {
+  pendingScheduleDate = dateStr;
+  pendingScheduleFile = null;
+
+  if (!gdriveToken) {
+    // 구글 로그인 먼저
+    if (!tokenClient) { alert('구글 API 로딩 중이에요. 잠시 후 다시 시도해주세요.'); return; }
+    // 로그인 후 콜백에서 파일 선택창 열기
+    tokenClient.callback = async (resp) => {
+      if (resp.error) { showUploadToast('구글 로그인 실패 😥'); return; }
+      gdriveToken = resp.access_token;
+      gdriveReady = true;
+      const expiry = Date.now() + (resp.expires_in || 3600) * 1000;
+      sessionStorage.setItem('gdrive_token', gdriveToken);
+      sessionStorage.setItem('gdrive_expiry', expiry);
+      // 로그인 완료 후 파일 선택창 열기
+      openScheduleFilePicker();
+    };
+    tokenClient.requestAccessToken({ prompt: '' });
+  } else {
+    openScheduleFilePicker();
+  }
+}
+
+function openScheduleFilePicker() {
   const input = document.createElement('input');
   input.type = 'file';
   input.accept = 'image/*';
   input.onchange = async (e) => {
     const file = e.target.files[0];
-    if (!file) return;
-    // 구글 드라이브로 업로드
-    if (!gdriveToken) {
-      if (!tokenClient) { alert('구글 API 로딩 중이에요. 잠시 후 다시 시도해주세요.'); return; }
-      pendingScheduleDate = dateStr;
-      pendingScheduleFile = file;
-      tokenClient.requestAccessToken({ prompt: '' });
-      return;
-    }
-    await uploadScheduleImage(file, dateStr);
+    if (!file || !pendingScheduleDate) return;
+    await uploadScheduleImage(file, pendingScheduleDate);
   };
   input.click();
 }
 
-let pendingScheduleDate = null;
-let pendingScheduleFile = null;
-
 async function uploadScheduleImage(file, dateStr) {
+  showUploadToast('일정 사진 업로드 중... ⏳');
   try {
     const folderId = await getOrCreateFolder('IM 메신저 일정');
     const metadata = { name: `schedule_${dateStr}_${file.name}`, parents: [folderId] };
@@ -1942,18 +1959,17 @@ async function uploadScheduleImage(file, dateStr) {
     });
     const data = await res.json();
     if (data.error) throw new Error(data.error.message);
-    // 공개 설정
     await fetch(`https://www.googleapis.com/drive/v3/files/${data.id}/permissions`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${gdriveToken}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ role: 'reader', type: 'anyone' }),
     });
     const imageUrl = `https://drive.google.com/thumbnail?id=${data.id}&sz=w1200`;
-    // DB에 저장
     await sb.from('schedule_images').upsert({ date: dateStr, image_url: imageUrl, created_by: ME.id }, { onConflict: 'date' });
+    showUploadToast('일정 사진 등록 완료! ✅');
     renderHome();
   } catch(e) {
-    alert('업로드 실패: ' + e.message);
+    showUploadToast('업로드 실패 😥 ' + e.message);
   }
 }
 
@@ -2658,15 +2674,13 @@ function initGoogleDrive() {
         if (resp.error) { showUploadToast('구글 로그인 실패 😥'); return; }
         gdriveToken = resp.access_token;
         gdriveReady = true;
-        // 토큰 만료 시간 저장 (1시간)
         const expiry = Date.now() + (resp.expires_in || 3600) * 1000;
         sessionStorage.setItem('gdrive_token', gdriveToken);
         sessionStorage.setItem('gdrive_expiry', expiry);
-        // 로그인 완료 후 파일 선택창 열기
+        // 채팅 파일 업로드용
         document.getElementById('fileInput').click();
       },
     });
-    // 세션에 저장된 토큰 복원
     const savedToken = sessionStorage.getItem('gdrive_token');
     const savedExpiry = sessionStorage.getItem('gdrive_expiry');
     if (savedToken && savedExpiry && Date.now() < Number(savedExpiry)) {
