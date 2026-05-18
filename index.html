@@ -1802,97 +1802,159 @@ async function renderHome() {
   const area = el ? el.querySelector('#content-area') : null;
   if (!area) return;
   const d = new Date();
+  const tomorrow = new Date(d); tomorrow.setDate(d.getDate() + 1);
   const wk = ['일','월','화','수','목','금','토'];
-  const prayerCount = prayers.length;
-  const memberCount = Object.keys(members).length;
   const isAdmin = ME.email === 'koreayjk@gmail.com';
   const todayStr = d.toISOString().slice(0,10);
+  const tomorrowStr = tomorrow.toISOString().slice(0,10);
 
   // 오늘의 묵상 로드
   const { data: wordData } = await sb.from('daily_word').select('*').eq('date', todayStr).single();
 
-  // 이번주 캘린더 일정 로드
-  const weekStart = new Date(d); weekStart.setDate(d.getDate() - d.getDay());
-  const weekEnd = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 6);
-  const { data: weekEvents } = await sb.from('events').select('*')
-    .gte('start_date', weekStart.toISOString().slice(0,10))
-    .lte('start_date', weekEnd.toISOString().slice(0,10))
-    .order('start_date').order('start_time');
+  // 오늘 + 내일 일정 사진 로드
+  const { data: schedImgs } = await sb.from('schedule_images').select('*')
+    .in('date', [todayStr, tomorrowStr]);
+  const todayImg = (schedImgs||[]).find(i => i.date === todayStr);
+  const tomorrowImg = (schedImgs||[]).find(i => i.date === tomorrowStr);
 
   area.innerHTML = `
   <div style="width:100%">
     <!-- 인사 -->
-    <div style="margin-bottom:24px;display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px">
+    <div style="margin-bottom:20px;display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px">
       <div>
         <div style="font-size:13px;color:var(--ink3);margin-bottom:4px">${d.getMonth()+1}월 ${d.getDate()}일 ${wk[d.getDay()]}요일</div>
         <div style="font-size:clamp(20px,2.5vw,26px);font-weight:700;letter-spacing:-.02em">샬롬, <span style="color:var(--adeep)">${ME.name}</span> 님 👋</div>
       </div>
-      ${isAdmin ? `<button onclick="showDailyWordForm('${todayStr}')" style="height:36px;padding:0 16px;border-radius:11px;border:1.5px solid var(--accent);background:white;color:var(--accent);font:600 13px var(--font);cursor:pointer;white-space:nowrap;flex-shrink:0">✏️ 오늘의 묵상 등록</button>` : ''}
+      ${isAdmin ? `<div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button onclick="showDailyWordForm('${todayStr}')" style="height:34px;padding:0 14px;border-radius:10px;border:1.5px solid var(--accent);background:white;color:var(--accent);font:600 12px var(--font);cursor:pointer;white-space:nowrap">✏️ 묵상 등록</button>
+        <button onclick="showScheduleImageForm('${todayStr}','today')" style="height:34px;padding:0 14px;border-radius:10px;border:1.5px solid var(--sage);background:white;color:var(--sage);font:600 12px var(--font);cursor:pointer;white-space:nowrap">📷 오늘 일정</button>
+        <button onclick="showScheduleImageForm('${tomorrowStr}','tomorrow')" style="height:34px;padding:0 14px;border-radius:10px;border:1.5px solid var(--sage);background:white;color:var(--sage);font:600 12px var(--font);cursor:pointer;white-space:nowrap">📷 내일 일정</button>
+      </div>` : ''}
     </div>
 
-    <!-- 통계 카드 -->
-    <div class="home-grid-4">
-      ${[
-        {icon:'💬',label:'채팅 채널',val:channels.length+'개',color:'#F4E2D0',tab:'chat'},
-        {icon:'🙏',label:'기도제목',val:prayerCount+'개',color:'#DCE3CE',tab:'prayer'},
-        {icon:'👥',label:'멤버',val:memberCount+'명',color:'#E8E4F4',tab:'chat'},
-        {icon:'📅',label:'이번주 일정',val:(weekEvents||[]).length+'개',color:'#F4E4BF',tab:'calendar'},
-      ].map(c=>`
-      <div onclick="setMode('${c.tab}')" style="border-radius:16px;background:var(--surface);padding:clamp(12px,1.5vw,18px);box-shadow:0 1px 4px rgba(70,50,20,.07);cursor:pointer;transition:all .15s" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 16px rgba(70,50,20,.12)'" onmouseout="this.style.transform='';this.style.boxShadow='0 1px 4px rgba(70,50,20,.07)'">
-        <div style="width:38px;height:38px;border-radius:12px;background:${c.color};display:flex;align-items:center;justify-content:center;font-size:18px;margin-bottom:12px">${c.icon}</div>
-        <div style="font-size:clamp(18px,2vw,22px);font-weight:700;color:var(--adeep)">${c.val}</div>
-        <div style="font-size:12.5px;color:var(--ink3);margin-top:3px">${c.label}</div>
-      </div>`).join('')}
-    </div>
-
-    <!-- 오늘의 묵상 (풀너비) -->
+    <!-- 오늘의 묵상 -->
     <div style="margin-bottom:20px">
       ${wordData ? `
-      <div style="border-radius:18px;background:linear-gradient(160deg,#FAF3E1,#F1E3C5);border:1px solid #E6D6B4;padding:22px 24px;position:relative;overflow:hidden">
+      <div style="border-radius:18px;background:linear-gradient(160deg,#FAF3E1,#F1E3C5);border:1px solid #E6D6B4;padding:20px 24px;position:relative;overflow:hidden">
         <div style="position:absolute;top:-20px;right:-10px;font-size:80px;color:rgba(139,74,36,.07);line-height:1">"</div>
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
           <div style="font-size:11px;font-weight:600;color:var(--adeep);letter-spacing:.05em">✦ 오늘의 묵상 — Tabletalk</div>
           ${isAdmin ? `<div onclick="showDailyWordForm('${todayStr}')" style="font-size:11.5px;color:var(--accent);cursor:pointer;font-weight:600">수정</div>` : ''}
         </div>
-        ${wordData.verse ? `<div style="font-size:13px;font-weight:600;color:var(--adeep);margin-bottom:8px">📖 ${wordData.verse}</div>` : ''}
-        ${wordData.title ? `<div style="font-size:16px;font-weight:600;color:var(--ink);margin-bottom:14px">${wordData.title}</div>` : ''}
-        <a href="${wordData.url}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 16px;border-radius:10px;background:var(--accent);color:white;font:600 13px var(--font);text-decoration:none">
-          Tabletalk에서 읽기 →
-        </a>
+        ${wordData.verse ? `<div style="font-size:13px;font-weight:600;color:var(--adeep);margin-bottom:6px">📖 ${wordData.verse}</div>` : ''}
+        ${wordData.title ? `<div style="font-size:15px;font-weight:600;color:var(--ink);margin-bottom:12px">${wordData.title}</div>` : ''}
+        <a href="${wordData.url}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 14px;border-radius:9px;background:var(--accent);color:white;font:600 12px var(--font);text-decoration:none">Tabletalk에서 읽기 →</a>
       </div>` : `
-      <div style="border-radius:18px;background:linear-gradient(160deg,#FAF3E1,#F1E3C5);border:1px solid #E6D6B4;padding:22px 24px;text-align:center">
-        <div style="font-size:11px;font-weight:600;color:var(--adeep);letter-spacing:.05em;margin-bottom:12px">✦ 오늘의 묵상</div>
-        <div style="font-size:15px;line-height:1.7;color:var(--ink2);font-style:italic">오늘의 묵상이 아직 등록되지 않았어요</div>
-        ${isAdmin ? `<button onclick="showDailyWordForm('${todayStr}')" style="margin-top:14px;height:34px;padding:0 16px;border-radius:10px;border:none;background:var(--accent);color:white;font:600 13px var(--font);cursor:pointer">+ 지금 등록하기</button>` : ''}
+      <div style="border-radius:18px;background:linear-gradient(160deg,#FAF3E1,#F1E3C5);border:1px solid #E6D6B4;padding:20px 24px;text-align:center">
+        <div style="font-size:11px;font-weight:600;color:var(--adeep);letter-spacing:.05em;margin-bottom:10px">✦ 오늘의 묵상</div>
+        <div style="font-size:14px;line-height:1.7;color:var(--ink2);font-style:italic">오늘의 묵상이 아직 등록되지 않았어요</div>
+        ${isAdmin ? `<button onclick="showDailyWordForm('${todayStr}')" style="margin-top:12px;height:32px;padding:0 14px;border-radius:9px;border:none;background:var(--accent);color:white;font:600 12px var(--font);cursor:pointer">+ 지금 등록하기</button>` : ''}
       </div>`}
     </div>
 
-    <!-- 공지사항 + 이번주 일정 -->
-    <div class="home-grid-2">
-      <div style="background:var(--surface);border-radius:18px;padding:20px;box-shadow:0 1px 4px rgba(70,50,20,.07)">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-          <div style="font-size:14px;font-weight:700">📢 공지사항</div>
-          <div onclick="setMode('chat')" style="font-size:12px;color:var(--accent);cursor:pointer">더보기</div>
+    <!-- 오늘/내일 일정 사진 -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px">
+      <!-- 오늘 일정 -->
+      <div style="background:var(--surface);border-radius:18px;overflow:hidden;box-shadow:0 1px 4px rgba(70,50,20,.07)">
+        <div style="padding:14px 16px 10px;display:flex;align-items:center;justify-content:space-between">
+          <div>
+            <div style="font-size:13px;font-weight:700">📅 오늘 일정</div>
+            <div style="font-size:11px;color:var(--ink3);margin-top:2px">${d.getMonth()+1}월 ${d.getDate()}일 ${wk[d.getDay()]}요일</div>
+          </div>
         </div>
-        <div style="padding:12px;border-radius:12px;background:var(--bg)">
-          <div style="font-size:13px;font-weight:600;margin-bottom:3px">IM 메신저에 오신 것을 환영해요! 🎉</div>
-          <div style="font-size:12px;color:var(--ink3)">채팅, 기도제목 나눔 등 다양한 기능을 사용해보세요</div>
-        </div>
+        ${todayImg ? `
+        <div onclick="openImageModal('${todayImg.image_url}','오늘 일정')" style="cursor:pointer;overflow:hidden">
+          <img src="${todayImg.image_url}" style="width:100%;display:block;transition:transform .2s" onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform=''"/>
+        </div>` : `
+        <div style="height:160px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--ink3);gap:8px;background:var(--bg)">
+          <div style="font-size:32px">📋</div>
+          <div style="font-size:13px">${isAdmin ? '일정 사진을 등록해주세요' : '일정이 등록되지 않았어요'}</div>
+        </div>`}
       </div>
 
-      <div style="background:var(--surface);border-radius:18px;padding:20px;box-shadow:0 1px 4px rgba(70,50,20,.07)">
-        <div style="font-size:14px;font-weight:700;margin-bottom:14px">📅 이번주 일정</div>
-        ${(weekEvents||[]).length ? (weekEvents||[]).slice(0,4).map(e=>`
-        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--bs)">
-          <div style="width:4px;height:32px;border-radius:2px;background:${e.color||'var(--accent)'};flex-shrink:0"></div>
-          <div style="flex:1;min-width:0">
-            <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${e.title}</div>
-            <div style="font-size:11.5px;color:var(--ink3)">${e.start_date} ${e.start_time?e.start_time.slice(0,5):''}</div>
+      <!-- 내일 일정 -->
+      <div style="background:var(--surface);border-radius:18px;overflow:hidden;box-shadow:0 1px 4px rgba(70,50,20,.07)">
+        <div style="padding:14px 16px 10px;display:flex;align-items:center;justify-content:space-between">
+          <div>
+            <div style="font-size:13px;font-weight:700">📅 내일 일정</div>
+            <div style="font-size:11px;color:var(--ink3);margin-top:2px">${tomorrow.getMonth()+1}월 ${tomorrow.getDate()}일 ${wk[tomorrow.getDay()]}요일</div>
           </div>
-        </div>`).join('') : `<div style="font-size:13px;color:var(--ink3);padding:8px 0">이번주 일정이 없어요</div>`}
+        </div>
+        ${tomorrowImg ? `
+        <div onclick="openImageModal('${tomorrowImg.image_url}','내일 일정')" style="cursor:pointer;overflow:hidden">
+          <img src="${tomorrowImg.image_url}" style="width:100%;display:block;transition:transform .2s" onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform=''"/>
+        </div>` : `
+        <div style="height:160px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--ink3);gap:8px;background:var(--bg)">
+          <div style="font-size:32px">📋</div>
+          <div style="font-size:13px">${isAdmin ? '일정 사진을 등록해주세요' : '일정이 등록되지 않았어요'}</div>
+        </div>`}
       </div>
     </div>
+  </div>
+
+  <!-- 이미지 크게 보기 모달 -->
+  <div id="img-modal" onclick="this.style.display='none'" style="display:none;position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.85);align-items:center;justify-content:center;cursor:zoom-out">
+    <img id="img-modal-src" style="max-width:90vw;max-height:90vh;border-radius:12px;object-fit:contain"/>
   </div>`;
+}
+
+function openImageModal(url, title) {
+  const modal = document.getElementById('img-modal');
+  document.getElementById('img-modal-src').src = url;
+  modal.style.display = 'flex';
+}
+
+// ── 일정 사진 등록 ──
+function showScheduleImageForm(dateStr, label) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    // 구글 드라이브로 업로드
+    if (!gdriveToken) {
+      if (!tokenClient) { alert('구글 API 로딩 중이에요. 잠시 후 다시 시도해주세요.'); return; }
+      pendingScheduleDate = dateStr;
+      pendingScheduleFile = file;
+      tokenClient.requestAccessToken({ prompt: '' });
+      return;
+    }
+    await uploadScheduleImage(file, dateStr);
+  };
+  input.click();
+}
+
+let pendingScheduleDate = null;
+let pendingScheduleFile = null;
+
+async function uploadScheduleImage(file, dateStr) {
+  try {
+    const folderId = await getOrCreateFolder('IM 메신저 일정');
+    const metadata = { name: `schedule_${dateStr}_${file.name}`, parents: [folderId] };
+    const form = new FormData();
+    form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+    form.append('file', file);
+    const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${gdriveToken}` },
+      body: form,
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message);
+    // 공개 설정
+    await fetch(`https://www.googleapis.com/drive/v3/files/${data.id}/permissions`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${gdriveToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: 'reader', type: 'anyone' }),
+    });
+    const imageUrl = `https://drive.google.com/thumbnail?id=${data.id}&sz=w1200`;
+    // DB에 저장
+    await sb.from('schedule_images').upsert({ date: dateStr, image_url: imageUrl, created_by: ME.id }, { onConflict: 'date' });
+    renderHome();
+  } catch(e) {
+    alert('업로드 실패: ' + e.message);
+  }
 }
 
 function toggleGoal(row) {
