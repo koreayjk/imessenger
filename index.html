@@ -1802,20 +1802,17 @@ async function renderHome() {
   const area = el ? el.querySelector('#content-area') : null;
   if (!area) return;
   const d = new Date();
-  const tomorrow = new Date(d); tomorrow.setDate(d.getDate() + 1);
   const wk = ['일','월','화','수','목','금','토'];
   const isAdmin = ME.email === 'koreayjk@gmail.com';
   const todayStr = d.toISOString().slice(0,10);
-  const tomorrowStr = tomorrow.toISOString().slice(0,10);
 
   // 오늘의 묵상 로드
   const { data: wordData } = await sb.from('daily_word').select('*').eq('date', todayStr).single();
 
-  // 오늘 + 내일 일정 사진 로드
+  // 주간 일정표 로드 (가장 최근 것)
   const { data: schedImgs } = await sb.from('schedule_images').select('*')
-    .in('date', [todayStr, tomorrowStr]);
-  const todayImg = (schedImgs||[]).find(i => i.date === todayStr);
-  const tomorrowImg = (schedImgs||[]).find(i => i.date === tomorrowStr);
+    .order('created_at', {ascending: false}).limit(1);
+  const schedImg = schedImgs?.[0] || null;
 
   area.innerHTML = `
   <div style="width:100%">
@@ -1827,8 +1824,7 @@ async function renderHome() {
       </div>
       ${isAdmin ? `<div style="display:flex;gap:8px;flex-wrap:wrap">
         <button onclick="showDailyWordForm('${todayStr}')" style="height:34px;padding:0 14px;border-radius:10px;border:1.5px solid var(--accent);background:white;color:var(--accent);font:600 12px var(--font);cursor:pointer;white-space:nowrap">✏️ 묵상 등록</button>
-        <button onclick="showScheduleImageForm('${todayStr}','today')" style="height:34px;padding:0 14px;border-radius:10px;border:1.5px solid var(--sage);background:white;color:var(--sage);font:600 12px var(--font);cursor:pointer;white-space:nowrap">📷 오늘 일정</button>
-        <button onclick="showScheduleImageForm('${tomorrowStr}','tomorrow')" style="height:34px;padding:0 14px;border-radius:10px;border:1.5px solid var(--sage);background:white;color:var(--sage);font:600 12px var(--font);cursor:pointer;white-space:nowrap">📷 내일 일정</button>
+        <button onclick="showScheduleImageForm()" style="height:34px;padding:0 14px;border-radius:10px;border:1.5px solid var(--sage);background:white;color:var(--sage);font:600 12px var(--font);cursor:pointer;white-space:nowrap">📷 주간일정 등록</button>
       </div>` : ''}
     </div>
 
@@ -1852,51 +1848,30 @@ async function renderHome() {
       </div>`}
     </div>
 
-    <!-- 오늘/내일 일정 사진 -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px">
-      <!-- 오늘 일정 -->
-      <div style="background:var(--surface);border-radius:18px;overflow:hidden;box-shadow:0 1px 4px rgba(70,50,20,.07)">
-        <div style="padding:14px 16px 10px;display:flex;align-items:center;justify-content:space-between">
-          <div>
-            <div style="font-size:13px;font-weight:700">📅 오늘 일정</div>
-            <div style="font-size:11px;color:var(--ink3);margin-top:2px">${d.getMonth()+1}월 ${d.getDate()}일 ${wk[d.getDay()]}요일</div>
-          </div>
-        </div>
-        ${todayImg ? `
-        <div onclick="openImageModal('${todayImg.image_url}','오늘 일정')" style="cursor:pointer;overflow:hidden">
-          <img src="${todayImg.image_url}" style="width:100%;display:block;transition:transform .2s" onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform=''"/>
-        </div>` : `
-        <div style="height:160px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--ink3);gap:8px;background:var(--bg)">
-          <div style="font-size:32px">📋</div>
-          <div style="font-size:13px">${isAdmin ? '일정 사진을 등록해주세요' : '일정이 등록되지 않았어요'}</div>
-        </div>`}
+    <!-- 주간 일정표 -->
+    <div style="background:var(--surface);border-radius:18px;overflow:hidden;box-shadow:0 1px 4px rgba(70,50,20,.07)">
+      <div style="padding:14px 18px 12px;display:flex;align-items:center;justify-content:space-between">
+        <div style="font-size:14px;font-weight:700">📅 ${schedImg?.title || '주간 일정표'}</div>
+        ${isAdmin ? `<button onclick="showScheduleImageForm()" style="height:28px;padding:0 12px;border-radius:8px;border:1px solid var(--border);background:white;color:var(--ink2);font:500 12px var(--font);cursor:pointer">+ 새 일정 등록</button>` : ''}
       </div>
-
-      <!-- 내일 일정 -->
-      <div style="background:var(--surface);border-radius:18px;overflow:hidden;box-shadow:0 1px 4px rgba(70,50,20,.07)">
-        <div style="padding:14px 16px 10px;display:flex;align-items:center;justify-content:space-between">
-          <div>
-            <div style="font-size:13px;font-weight:700">📅 내일 일정</div>
-            <div style="font-size:11px;color:var(--ink3);margin-top:2px">${tomorrow.getMonth()+1}월 ${tomorrow.getDate()}일 ${wk[tomorrow.getDay()]}요일</div>
-          </div>
-        </div>
-        ${tomorrowImg ? `
-        <div onclick="openImageModal('${tomorrowImg.image_url}','내일 일정')" style="cursor:pointer;overflow:hidden">
-          <img src="${tomorrowImg.image_url}" style="width:100%;display:block;transition:transform .2s" onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform=''"/>
-        </div>` : `
-        <div style="height:160px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--ink3);gap:8px;background:var(--bg)">
-          <div style="font-size:32px">📋</div>
-          <div style="font-size:13px">${isAdmin ? '일정 사진을 등록해주세요' : '일정이 등록되지 않았어요'}</div>
-        </div>`}
-      </div>
+      ${schedImg ? `
+      <div onclick="openImageModal('${schedImg.image_url}','주간 일정표')" style="cursor:zoom-in">
+        <img src="${schedImg.image_url}" style="width:100%;display:block;max-height:500px;object-fit:contain;background:var(--bg)"
+          onerror="this.style.display='none';this.nextSibling.style.display='flex'"/>
+        <div style="display:none;height:200px;align-items:center;justify-content:center;color:var(--ink3);font-size:13px">이미지를 불러올 수 없어요</div>
+      </div>` : `
+      <div style="height:200px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--ink3);gap:10px;background:var(--bg)">
+        <div style="font-size:40px">📋</div>
+        <div style="font-size:13px">${isAdmin ? '주간 일정표를 등록해주세요' : '주간 일정표가 아직 등록되지 않았어요'}</div>
+        ${isAdmin ? `<button onclick="showScheduleImageForm()" style="height:32px;padding:0 16px;border-radius:9px;border:none;background:var(--sage);color:white;font:600 12px var(--font);cursor:pointer">📷 지금 등록하기</button>` : ''}
+      </div>`}
     </div>
   </div>
 
   <!-- 이미지 크게 보기 모달 -->
-  <div id="img-modal" onclick="this.style.display='none'" style="display:none;position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.85);align-items:center;justify-content:center;cursor:zoom-out">
-    <img id="img-modal-src" style="max-width:90vw;max-height:90vh;border-radius:12px;object-fit:contain"/>
-  </div>`;
-}
+  <div id="img-modal" onclick="this.style.display='none'" style="display:none;position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.9);align-items:center;justify-content:center;cursor:zoom-out">
+    <img id="img-modal-src" style="max-width:95vw;max-height:95vh;border-radius:8px;object-fit:contain"/>
+  </div>`;}
 
 function openImageModal(url, title) {
   const modal = document.getElementById('img-modal');
@@ -1908,14 +1883,37 @@ function openImageModal(url, title) {
 let pendingScheduleDate = null;
 let pendingScheduleFile = null;
 
-function showScheduleImageForm(dateStr, label) {
-  pendingScheduleDate = dateStr;
-  pendingScheduleFile = null;
+function showScheduleImageForm() {
+  pendingScheduleDate = new Date().toISOString().slice(0,10);
+
+  // 제목 입력 모달 표시
+  const modal = document.createElement('div');
+  modal.id = 'sched-title-modal';
+  modal.style.cssText = 'position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center';
+  modal.innerHTML = `
+    <div style="background:var(--surface);border-radius:20px;padding:28px;width:360px;box-shadow:0 20px 60px rgba(0,0,0,.2)">
+      <div style="font-size:16px;font-weight:700;margin-bottom:16px">📷 일정 사진 등록</div>
+      <div style="font-size:12px;color:var(--ink3);margin-bottom:6px">사진 제목</div>
+      <input id="sched-title-input" placeholder="예: 이번주 일정, 5월 4주차 일정..."
+        style="width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none;margin-bottom:16px"/>
+      <div style="display:flex;gap:8px">
+        <div onclick="document.getElementById('sched-title-modal').remove()" style="flex:1;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:var(--s3);color:var(--ink2);cursor:pointer;font-size:14px">취소</div>
+        <div onclick="confirmScheduleTitle()" style="flex:2;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:var(--sage);color:white;cursor:pointer;font-size:14px;font-weight:600">사진 선택 →</div>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  setTimeout(() => document.getElementById('sched-title-input')?.focus(), 100);
+}
+
+let pendingScheduleTitle = '';
+
+function confirmScheduleTitle() {
+  const title = document.getElementById('sched-title-input')?.value.trim() || '주간 일정';
+  pendingScheduleTitle = title;
+  document.getElementById('sched-title-modal')?.remove();
 
   if (!gdriveToken) {
-    // 구글 로그인 먼저
     if (!tokenClient) { alert('구글 API 로딩 중이에요. 잠시 후 다시 시도해주세요.'); return; }
-    // 로그인 후 콜백에서 파일 선택창 열기
     tokenClient.callback = async (resp) => {
       if (resp.error) { showUploadToast('구글 로그인 실패 😥'); return; }
       gdriveToken = resp.access_token;
@@ -1923,7 +1921,6 @@ function showScheduleImageForm(dateStr, label) {
       const expiry = Date.now() + (resp.expires_in || 3600) * 1000;
       sessionStorage.setItem('gdrive_token', gdriveToken);
       sessionStorage.setItem('gdrive_expiry', expiry);
-      // 로그인 완료 후 파일 선택창 열기
       openScheduleFilePicker();
     };
     tokenClient.requestAccessToken({ prompt: '' });
@@ -1952,7 +1949,7 @@ async function uploadScheduleImage(file, dateStr) {
     const form = new FormData();
     form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
     form.append('file', file);
-    const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink', {
+    const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', {
       method: 'POST',
       headers: { Authorization: `Bearer ${gdriveToken}` },
       body: form,
@@ -1965,7 +1962,12 @@ async function uploadScheduleImage(file, dateStr) {
       body: JSON.stringify({ role: 'reader', type: 'anyone' }),
     });
     const imageUrl = `https://drive.google.com/thumbnail?id=${data.id}&sz=w1200`;
-    await sb.from('schedule_images').upsert({ date: dateStr, image_url: imageUrl, created_by: ME.id }, { onConflict: 'date' });
+    await sb.from('schedule_images').insert({
+      date: dateStr,
+      image_url: imageUrl,
+      title: pendingScheduleTitle || '주간 일정표',
+      created_by: ME.id
+    });
     showUploadToast('일정 사진 등록 완료! ✅');
     renderHome();
   } catch(e) {
