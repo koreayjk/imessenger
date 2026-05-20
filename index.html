@@ -1539,9 +1539,10 @@ async function refreshReadCounts() {
     readMap[r.message_id].add(r.member_id);
   });
 
-  // 채널 멤버 수 가져오기
-  const { data: chMems } = await sb.from('channel_members').select('member_id').eq('channel_id', currentChannel.id);
-  const chMemberCount = (chMems||[]).length;
+  // 채널 멤버 수 (나 제외)
+  const chMemberCount = currentChannelMemberIds.size > 0
+    ? currentChannelMemberIds.size - 1
+    : Object.keys(members).length - 1;
 
   ids.forEach(id => {
     const el = document.querySelector(`.msg-row[data-id="${id}"]`);
@@ -1549,13 +1550,15 @@ async function refreshReadCounts() {
     const readEl = el.querySelector('.read-label');
     if (!readEl) return;
     const readers = readMap[id] || new Set();
-    const unread = chMemberCount - 1 - readers.size; // 나 제외
-    if (unread <= 0) {
+    const unread = Math.max(0, chMemberCount - readers.size);
+    if (chMemberCount > 0 && unread === 0) {
       readEl.textContent = '모두 읽음 ✓';
       readEl.style.color = 'var(--sage)';
-    } else {
+    } else if (unread > 0) {
       readEl.textContent = unread;
       readEl.style.color = 'var(--ink3)';
+    } else {
+      readEl.textContent = '';
     }
   });
 }
@@ -1595,13 +1598,16 @@ function msgHtml(m, prev, readMap={}) {
   const sameAsPrev = prev && prev.sender_id === m.sender_id;
   const avStyle = `background:${sender.color}`;
 
-  // 읽음 표시 (내 메시지만) - 실제 readMap 기반
+  // 읽음 표시 (내 메시지만) - 채널 멤버 수 기반
   let readLabel = '';
   if (isMine) {
     const readers = readMap[m.id] || new Set();
-    const totalMembers = Object.keys(members).length;
-    const unread = Math.max(0, totalMembers - 1 - readers.size);
-    if (readers.size > 0 && unread === 0) {
+    // 채널 멤버 수 (나 제외) 기준
+    const chMemberCount = currentChannelMemberIds.size > 0
+      ? currentChannelMemberIds.size - 1  // 나 제외
+      : Object.keys(members).length - 1;
+    const unread = Math.max(0, chMemberCount - readers.size);
+    if (chMemberCount > 0 && unread === 0) {
       readLabel = `<div class="read-label" style="font-size:10px;color:var(--sage);margin-top:3px;text-align:right">모두 읽음 ✓</div>`;
     } else if (unread > 0) {
       readLabel = `<div class="read-label" style="font-size:10px;color:var(--ink3);margin-top:3px;text-align:right">${unread}</div>`;
@@ -1754,18 +1760,21 @@ function initPresence() {
 }
 
 // ── 멤버 패널 ──
+// 채널별 멤버 캐시
+let currentChannelMemberIds = new Set();
+
 async function renderMembers() {
   const memberList = document.getElementById('member-list');
   if (!memberList) return;
 
   let list = Object.values(members);
 
-  // DM 채널이면 해당 채널 멤버만 표시
-  if (currentChannel && currentChannel.kind === 'dm') {
+  // 채널이 열려있으면 해당 채널 멤버만 표시
+  if (currentChannel) {
     const { data: chMems } = await sb.from('channel_members')
       .select('member_id').eq('channel_id', currentChannel.id);
-    const chMemberIds = new Set((chMems||[]).map(m => m.member_id));
-    list = list.filter(m => chMemberIds.has(m.id));
+    currentChannelMemberIds = new Set((chMems||[]).map(m => m.member_id));
+    list = list.filter(m => currentChannelMemberIds.has(m.id));
   }
 
   // 온라인 먼저 정렬
