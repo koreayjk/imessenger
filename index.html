@@ -1222,7 +1222,6 @@ async function init() {
     .on('postgres_changes', { event: '*', schema: 'public', table: 'channels' }, async () => {
       const { data: newChs } = await sb.from('channels').select('*').order('pinned', {ascending:false}).order('created_at');
       channels = newChs || [];
-      // myChannelIds도 업데이트
       if (ME.email === 'koreayjk@gmail.com') {
         const { data: myDMs } = await sb.from('channel_members').select('channel_id').eq('member_id', ME.id);
         const myDMIds = new Set((myDMs||[]).map(m => m.channel_id));
@@ -1243,8 +1242,24 @@ async function init() {
     })
     .subscribe();
 
+  // 모든 채널 새 메시지 감지 → 읽지 않은 배지 업데이트
+  sb.channel('global-messages')
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
+      const msg = payload.new;
+      // 내가 보낸 메시지거나 현재 보고 있는 채널이면 무시
+      if (msg.sender_id === ME.id) return;
+      if (currentChannel && currentChannel.id === msg.channel_id) return;
+      // 내가 속한 채널이면 배지 증가
+      if (myChannelIds.has(msg.channel_id)) {
+        unreadCounts[msg.channel_id] = (unreadCounts[msg.channel_id] || 0) + 1;
+        updateUnreadBadges();
+      }
+    })
+    .subscribe();
+
   renderPanel();
   renderMembers();
+  await loadUnreadCounts();
   restoreLastState();
 }
 
@@ -1309,17 +1324,93 @@ function renderPanel() {
   document.getElementById('panel-body').innerHTML = html;
 }
 
+// ── 읽지 않은 메시지 추적 ──
+let unreadCounts = {}; // channel_id → unread count
+
+async function loadUnreadCounts() {
+  // 각 채널의 마지막 메시지 중 내가 읽지 않은 것 카운트
+  const visibleIds = Array.from(myChannelIds);
+  if (!visibleIds.length) return;
+
+  // 내가 읽은 메시지 ID 목록
+  const { data: reads } = await sb.from('message_reads').select('message_id').eq('member_id', ME.id);
+  const readSet = new Set((reads||[]).map(r => r.message_id));
+
+  // 각 채널의 메시지 중 내가 안 읽은 것 (내가 보낸 것 제외)
+  const { data: msgs } = await sb.from('messages').select('id, channel_id, sender_id')
+    .in('channel_id', visibleIds);
+
+  unreadCounts = {};
+  (msgs||[]).forEach(m => {
+    if (m.sender_id === ME.id) return; // 내가 보낸 건 제외
+    if (!readSet.has(m.id)) {
+      unreadCounts[m.channel_id] = (unreadCounts[m.channel_id] || 0) + 1;
+    }
+  });
+
+  updateUnreadBadges();
+}
+
+function updateUnreadBadges() {
+  // 사이드바 채팅 아이콘 배지
+  const totalUnread = Object.values(unreadCounts).reduce((a, b) => a + b, 0);
+  let badge = document.getElementById('chat-unread-badge');
+  if (!badge) {
+    const sbChat = document.getElementById('sb-chat');
+    if (sbChat) {
+      badge = document.createElement('div');
+      badge.id = 'chat-unread-badge';
+      badge.className = 'badge';
+      sbChat.appendChild(badge);
+    }
+  }
+  if (badge) {
+    if (totalUnread > 0) {
+      badge.textContent = totalUnread > 99 ? '99+' : totalUnread;
+      badge.style.display = 'flex';
+    } else {
+      badge.style.display = 'none';
+    }
+  }
+
+  // 모바일 탭바 채팅 배지
+  let mobileBadge = document.getElementById('chat-mobile-badge');
+  if (!mobileBadge) {
+    const mnChat = document.getElementById('mn-chat');
+    if (mnChat) {
+      mobileBadge = document.createElement('div');
+      mobileBadge.id = 'chat-mobile-badge';
+      mobileBadge.style.cssText = 'position:absolute;top:2px;right:10px;min-width:16px;height:16px;border-radius:8px;padding:0 4px;background:#E53935;color:white;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center';
+      mnChat.style.position = 'relative';
+      mnChat.appendChild(mobileBadge);
+    }
+  }
+  if (mobileBadge) {
+    if (totalUnread > 0) {
+      mobileBadge.textContent = totalUnread > 99 ? '99+' : totalUnread;
+      mobileBadge.style.display = 'flex';
+    } else {
+      mobileBadge.style.display = 'none';
+    }
+  }
+
+  // 채널 패널 다시 렌더 (배지 포함)
+  renderPanel();
+}
+
 function chRow(ch) {
   const active = currentChannel && currentChannel.id === ch.id;
   const isAdmin = ME && ME.email === 'koreayjk@gmail.com';
+  const unread = (!active && unreadCounts[ch.id]) ? unreadCounts[ch.id] : 0;
   return `<div class="ch-row${active?' active':''}" style="position:relative" onclick="openChannel('${ch.id}')"
     onmouseenter="this.querySelector('.ch-edit-btn') && (this.querySelector('.ch-edit-btn').style.opacity='1')"
     onmouseleave="this.querySelector('.ch-edit-btn') && (this.querySelector('.ch-edit-btn').style.opacity='0')">
     <div class="ch-icon">${ch.emoji||'#'}</div>
     <div class="ch-info">
-      <div class="ch-name">${ch.name}</div>
+      <div class="ch-name" style="font-weight:${unread?'700':'600'}">${ch.name}</div>
       <div class="ch-preview">${ch.description||''}</div>
     </div>
+    ${unread ? `<div style="min-width:20px;height:20px;border-radius:10px;padding:0 5px;background:#E53935;color:white;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">${unread > 99 ? '99+' : unread}</div>` : ''}
     ${isAdmin ? `<div class="ch-edit-btn" onclick="event.stopPropagation();showEditChannel('${ch.id}')"
       style="opacity:0;transition:opacity .15s;width:26px;height:26px;border-radius:7px;
       background:rgba(0,0,0,.07);display:flex;align-items:center;justify-content:center;
@@ -1377,6 +1468,10 @@ async function openChannel(id) {
   // 멤버 패널 업데이트 (DM이면 해당 멤버만)
   renderMembers();
 
+  // 채널 열면 읽지 않은 카운트 초기화
+  unreadCounts[id] = 0;
+  updateUnreadBadges();
+
   // 메시지 + 읽음 데이터 함께 로드
   const { data: msgs } = await sb.from('messages').select('*')
     .eq('channel_id', id).order('created_at', {ascending:true}).limit(200);
@@ -1404,7 +1499,6 @@ async function openChannel(id) {
     .on('postgres_changes', { event:'INSERT', schema:'public', table:'messages', filter:`channel_id=eq.${id}` },
       async (payload) => {
         appendMessage(payload.new, {});
-        // 새 메시지 자동 읽음 처리
         await markRead(payload.new.id);
       })
     .on('postgres_changes', { event:'INSERT', schema:'public', table:'message_reads' },
@@ -1869,14 +1963,104 @@ async function renderHome() {
   </div>
 
   <!-- 이미지 크게 보기 모달 -->
-  <div id="img-modal" onclick="this.style.display='none'" style="display:none;position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.9);align-items:center;justify-content:center;cursor:zoom-out">
-    <img id="img-modal-src" style="max-width:95vw;max-height:95vh;border-radius:8px;object-fit:contain"/>
+  <div id="img-modal" style="display:none;position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.9);align-items:center;justify-content:center;overflow:hidden;touch-action:none">
+    <div id="img-modal-close" onclick="closeImageModal()" style="position:absolute;top:16px;right:16px;width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:10;color:white;font-size:18px">✕</div>
+    <img id="img-modal-src" style="max-width:95vw;max-height:95vh;border-radius:8px;object-fit:contain;transform-origin:center center;transition:transform .1s;cursor:grab;user-select:none"/>
+    <div style="position:absolute;bottom:16px;left:50%;transform:translateX(-50%);color:rgba(255,255,255,.5);font-size:12px">핀치로 확대 · 더블탭으로 확대/축소</div>
   </div>`;}
 
-function openImageModal(url, title) {
+function openImageModal(url) {
   const modal = document.getElementById('img-modal');
-  document.getElementById('img-modal-src').src = url;
+  const img = document.getElementById('img-modal-src');
+  img.src = url;
   modal.style.display = 'flex';
+
+  // 상태 초기화
+  let scale = 1, lastScale = 1;
+  let tx = 0, ty = 0, lastTx = 0, lastTy = 0;
+  let startDist = 0;
+  let isDragging = false;
+  let dragStartX = 0, dragStartY = 0;
+  let lastTapTime = 0;
+
+  function applyTransform(animate) {
+    img.style.transition = animate ? 'transform .25s ease' : 'transform .05s';
+    img.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
+  }
+
+  function clampTx() {
+    const maxTx = Math.max(0, (img.offsetWidth * scale - window.innerWidth) / 2);
+    const maxTy = Math.max(0, (img.offsetHeight * scale - window.innerHeight) / 2);
+    tx = Math.max(-maxTx, Math.min(maxTx, tx));
+    ty = Math.max(-maxTy, Math.min(maxTy, ty));
+  }
+
+  // 터치 이벤트 (핀치 줌 + 드래그)
+  img.ontouchstart = (e) => {
+    if (e.touches.length === 2) {
+      startDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+      lastScale = scale;
+      lastTx = tx; lastTy = ty;
+    } else if (e.touches.length === 1) {
+      // 더블탭
+      const now = Date.now();
+      if (now - lastTapTime < 300) {
+        if (scale > 1) { scale=1; tx=0; ty=0; }
+        else { scale=2.5; tx=0; ty=0; }
+        applyTransform(true);
+      }
+      lastTapTime = now;
+      isDragging = true;
+      dragStartX = e.touches[0].clientX - tx;
+      dragStartY = e.touches[0].clientY - ty;
+    }
+  };
+
+  img.ontouchmove = (e) => {
+    e.preventDefault();
+    if (e.touches.length === 2) {
+      const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+      scale = Math.max(1, Math.min(5, lastScale * dist / startDist));
+      clampTx();
+      applyTransform(false);
+    } else if (e.touches.length === 1 && isDragging && scale > 1) {
+      tx = e.touches[0].clientX - dragStartX;
+      ty = e.touches[0].clientY - dragStartY;
+      clampTx();
+      applyTransform(false);
+    }
+  };
+
+  img.ontouchend = (e) => {
+    isDragging = false;
+    if (scale < 1.05) { scale=1; tx=0; ty=0; applyTransform(true); }
+  };
+
+  // 마우스 휠 줌 (데스크탑)
+  img.onwheel = (e) => {
+    e.preventDefault();
+    scale = Math.max(1, Math.min(5, scale * (e.deltaY < 0 ? 1.15 : 0.87)));
+    clampTx();
+    applyTransform(false);
+  };
+
+  // 배경 클릭시 닫기
+  modal.onclick = (e) => { if (e.target === modal) closeImageModal(); };
+
+  // 초기화
+  scale=1; tx=0; ty=0;
+  img.style.transform = '';
+}
+
+function closeImageModal() {
+  const modal = document.getElementById('img-modal');
+  const img = document.getElementById('img-modal-src');
+  modal.style.display = 'none';
+  img.style.transform = '';
+  img.ontouchstart = null;
+  img.ontouchmove = null;
+  img.ontouchend = null;
+  img.onwheel = null;
 }
 
 // ── 일정 사진 등록 ──
