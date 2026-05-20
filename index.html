@@ -1786,7 +1786,8 @@ async function renderMembers() {
 
   memberList.innerHTML = list.map(m => {
     const isOnline = onlineUsers.has(m.id);
-    return `<div class="member-row">
+    const isSelf = m.id === ME.id;
+    return `<div class="member-row" ${!isSelf ? `ondblclick="openDMwith('${m.id}')" title="더블클릭으로 1:1 대화"` : ''} style="cursor:${isSelf?'default':'pointer'}">
       <div class="member-av-wrap">
         <div class="member-av" style="background:${m.color||'#999'}">${m.initials||m.name[0]}</div>
         ${isOnline ? '<div class="online-dot"></div>' : ''}
@@ -1795,6 +1796,7 @@ async function renderMembers() {
         <div class="member-name" style="color:${isOnline?'var(--ink)':'var(--ink3)'}">${m.name}</div>
         <div class="member-role" style="color:${isOnline?'var(--sage)':'var(--ink3)'}">${isOnline?'● 온라인':m.role||'멤버'}</div>
       </div>
+      ${!isSelf ? `<div style="font-size:10px;color:var(--ink3);margin-left:auto">💬</div>` : ''}
     </div>`;
   }).join('');
 }
@@ -1802,6 +1804,38 @@ async function renderMembers() {
 function toggleRightPanel() {
   const rp = document.getElementById('right-panel');
   rp.style.display = rp.style.display === 'none' ? 'flex' : 'none';
+}
+
+async function openDMwith(memberId) {
+  const target = members[memberId];
+  if (!target) return;
+
+  // 이미 있는 DM 채널 찾기
+  let dmChannel = channels.find(c =>
+    c.kind === 'dm' &&
+    c.name.includes(ME.name) &&
+    c.name.includes(target.name)
+  );
+
+  if (!dmChannel) {
+    // 없으면 새로 만들기
+    const dmName = `${ME.name} · ${target.name}`;
+    const { data, error } = await sb.from('channels').insert({
+      name: dmName, emoji: '💬', description: '1:1 대화', pinned: false, kind: 'dm'
+    }).select().single();
+    if (error || !data) return;
+    await sb.from('channel_members').insert([
+      { channel_id: data.id, member_id: ME.id },
+      { channel_id: data.id, member_id: memberId },
+    ]);
+    myChannelIds.add(data.id);
+    channels.push(data);
+    dmChannel = data;
+  }
+
+  // 채팅 탭으로 이동 후 DM 채널 열기
+  setMode('chat');
+  await openChannel(dmChannel.id);
 }
 
 // ── 기도제목 ──
