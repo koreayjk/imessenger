@@ -661,7 +661,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
             <div class="icon-btn">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--ink3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
             </div>
-            <input id="msgInput" placeholder="메시지 보내기 (Enter)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMsg()}" oninput="updateSendBtn()"/>
+            <input id="msgInput" placeholder="메시지 보내기 (Enter)" onkeydown="if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();sendMsg()}" oninput="updateSendBtn()"/>
             <div class="icon-btn" onclick="openFileChooser()" title="파일 첨부">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--ink3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 7l-6.5 6.5a3 3 0 104.2 4.2L19 10a5 5 0 10-7-7L5.4 9.6"/></svg>
             </div>
@@ -1712,6 +1712,7 @@ async function sendMsg() {
   if (!text || !currentChannel) return;
   isSending = true;
   inp.value = '';
+  inp.focus();
   updateSendBtn();
   await sb.from('messages').insert({ channel_id: currentChannel.id, sender_id: ME.id, sender_name: ME.name, text, kind:'text' });
   isSending = false;
