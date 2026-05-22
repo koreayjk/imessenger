@@ -1972,13 +1972,13 @@ async function renderHome() {
         <div style="font-size:14px;font-weight:700">📖 맥체인 성경읽기</div>
         <span style="font-size:11px;color:var(--ink3)">오늘의 4구절</span>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div style="display:flex;gap:8px">
         ${getMcCheyneToday().map((r,i) => `
         <a href="${getMcCheyneUrl(r)}" target="_blank"
-          style="display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:10px;background:var(--bg);text-decoration:none;transition:background .12s"
+          style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 8px;border-radius:12px;background:var(--bg);text-decoration:none;text-align:center;transition:background .12s"
           onmouseover="this.style.background='var(--asoft)'" onmouseout="this.style.background='var(--bg)'">
-          <div style="width:22px;height:22px;border-radius:6px;background:${['#B5683C','#6F8A5C','#5A7C8B','#7B6BA0'][i]};color:white;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">${i+1}</div>
-          <div style="font-size:13px;font-weight:600;color:var(--ink)">${r}</div>
+          <div style="width:24px;height:24px;border-radius:7px;background:${['#B5683C','#6F8A5C','#5A7C8B','#7B6BA0'][i]};color:white;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center">${i+1}</div>
+          <div style="font-size:12px;font-weight:600;color:var(--ink);word-break:keep-all">${r}</div>
         </a>`).join('')}
       </div>
     </div>
