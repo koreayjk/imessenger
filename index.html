@@ -1995,9 +1995,9 @@ async function renderHome() {
             <div style="font-size:11px;font-weight:600;color:var(--adeep);letter-spacing:.05em">✦ 오늘의 묵상 — Tabletalk</div>
             ${isAdmin ? `<div onclick="showDailyWordForm('${todayStr}')" style="font-size:11.5px;color:var(--accent);cursor:pointer;font-weight:600">수정</div>` : ''}
           </div>
-          ${wordData.verse ? `<div style="font-size:13px;font-weight:600;color:var(--adeep);margin-bottom:6px">📖 ${wordData.verse}</div>` : ''}
           ${wordData.title ? `<div style="font-size:15px;font-weight:600;color:var(--ink);margin-bottom:12px">${wordData.title}</div>` : ''}
           <a href="${wordData.url}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 14px;border-radius:9px;background:var(--accent);color:white;font:600 12px var(--font);text-decoration:none">Tabletalk에서 읽기 →</a>
+          ${wordData.verse ? `<div style="font-size:12px;font-weight:600;color:var(--adeep);margin-top:14px;padding-top:12px;border-top:1px solid rgba(139,74,36,.15)">📖 ${wordData.verse}</div>` : ''}
         </div>` : `
         <div style="border-radius:18px;background:linear-gradient(160deg,#FAF3E1,#F1E3C5);border:1px solid #E6D6B4;padding:20px 24px;text-align:center;height:100%;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center">
           <div style="font-size:11px;font-weight:600;color:var(--adeep);letter-spacing:.05em;margin-bottom:10px">✦ 오늘의 묵상</div>
