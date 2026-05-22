@@ -1966,41 +1966,45 @@ async function renderHome() {
       </div>` : ''}
     </div>
 
-    <!-- 맥체인 성경읽기 -->
-    <div style="background:var(--surface);border-radius:18px;padding:18px 20px;box-shadow:0 1px 4px rgba(70,50,20,.07);margin-bottom:20px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-        <div style="font-size:14px;font-weight:700">📖 맥체인 성경읽기</div>
-        <span style="font-size:11px;color:var(--ink3)">오늘의 4구절</span>
-      </div>
-      <div style="display:flex;gap:8px">
-        ${getMcCheyneToday().map((r,i) => `
-        <a href="${getMcCheyneUrl(r)}" target="_blank"
-          style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 8px;border-radius:12px;background:var(--bg);text-decoration:none;text-align:center;transition:background .12s"
-          onmouseover="this.style.background='var(--asoft)'" onmouseout="this.style.background='var(--bg)'">
-          <div style="width:24px;height:24px;border-radius:7px;background:${['#B5683C','#6F8A5C','#5A7C8B','#7B6BA0'][i]};color:white;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center">${i+1}</div>
-          <div style="font-size:12px;font-weight:600;color:var(--ink);word-break:keep-all">${r}</div>
-        </a>`).join('')}
-      </div>
-    </div>
+    <!-- 맥체인 + 오늘의 묵상 좌우 배치 -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px">
 
-    <!-- 오늘의 묵상 -->
-    <div style="margin-bottom:20px">
-      ${wordData ? `
-      <div style="border-radius:18px;background:linear-gradient(160deg,#FAF3E1,#F1E3C5);border:1px solid #E6D6B4;padding:20px 24px;position:relative;overflow:hidden">
-        <div style="position:absolute;top:-20px;right:-10px;font-size:80px;color:rgba(139,74,36,.07);line-height:1">"</div>
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
-          <div style="font-size:11px;font-weight:600;color:var(--adeep);letter-spacing:.05em">✦ 오늘의 묵상 — Tabletalk</div>
-          ${isAdmin ? `<div onclick="showDailyWordForm('${todayStr}')" style="font-size:11.5px;color:var(--accent);cursor:pointer;font-weight:600">수정</div>` : ''}
+      <!-- 맥체인 성경읽기 -->
+      <div style="background:var(--surface);border-radius:18px;padding:18px 20px;box-shadow:0 1px 4px rgba(70,50,20,.07)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div style="font-size:14px;font-weight:700">📖 맥체인 성경읽기</div>
+          <span style="font-size:11px;color:var(--ink3)">오늘의 4구절</span>
         </div>
-        ${wordData.verse ? `<div style="font-size:13px;font-weight:600;color:var(--adeep);margin-bottom:6px">📖 ${wordData.verse}</div>` : ''}
-        ${wordData.title ? `<div style="font-size:15px;font-weight:600;color:var(--ink);margin-bottom:12px">${wordData.title}</div>` : ''}
-        <a href="${wordData.url}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 14px;border-radius:9px;background:var(--accent);color:white;font:600 12px var(--font);text-decoration:none">Tabletalk에서 읽기 →</a>
-      </div>` : `
-      <div style="border-radius:18px;background:linear-gradient(160deg,#FAF3E1,#F1E3C5);border:1px solid #E6D6B4;padding:20px 24px;text-align:center">
-        <div style="font-size:11px;font-weight:600;color:var(--adeep);letter-spacing:.05em;margin-bottom:10px">✦ 오늘의 묵상</div>
-        <div style="font-size:14px;line-height:1.7;color:var(--ink2);font-style:italic">오늘의 묵상이 아직 등록되지 않았어요</div>
-        ${isAdmin ? `<button onclick="showDailyWordForm('${todayStr}')" style="margin-top:12px;height:32px;padding:0 14px;border-radius:9px;border:none;background:var(--accent);color:white;font:600 12px var(--font);cursor:pointer">+ 지금 등록하기</button>` : ''}
-      </div>`}
+        <div style="display:flex;flex-direction:column;gap:7px">
+          ${getMcCheyneToday().map((r,i) => `
+          <a href="${getMcCheyneUrl(r)}" target="_blank"
+            style="display:flex;align-items:center;gap:9px;padding:9px 12px;border-radius:10px;background:var(--bg);text-decoration:none;transition:background .12s"
+            onmouseover="this.style.background='var(--asoft)'" onmouseout="this.style.background='var(--bg)'">
+            <div style="width:22px;height:22px;border-radius:6px;background:${['#B5683C','#6F8A5C','#5A7C8B','#7B6BA0'][i]};color:white;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">${i+1}</div>
+            <div style="font-size:13px;font-weight:600;color:var(--ink)">${r}</div>
+          </a>`).join('')}
+        </div>
+      </div>
+
+      <!-- 오늘의 묵상 -->
+      <div>
+        ${wordData ? `
+        <div style="border-radius:18px;background:linear-gradient(160deg,#FAF3E1,#F1E3C5);border:1px solid #E6D6B4;padding:20px 24px;position:relative;overflow:hidden;height:100%;box-sizing:border-box">
+          <div style="position:absolute;top:-20px;right:-10px;font-size:80px;color:rgba(139,74,36,.07);line-height:1">"</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+            <div style="font-size:11px;font-weight:600;color:var(--adeep);letter-spacing:.05em">✦ 오늘의 묵상 — Tabletalk</div>
+            ${isAdmin ? `<div onclick="showDailyWordForm('${todayStr}')" style="font-size:11.5px;color:var(--accent);cursor:pointer;font-weight:600">수정</div>` : ''}
+          </div>
+          ${wordData.verse ? `<div style="font-size:13px;font-weight:600;color:var(--adeep);margin-bottom:6px">📖 ${wordData.verse}</div>` : ''}
+          ${wordData.title ? `<div style="font-size:15px;font-weight:600;color:var(--ink);margin-bottom:12px">${wordData.title}</div>` : ''}
+          <a href="${wordData.url}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 14px;border-radius:9px;background:var(--accent);color:white;font:600 12px var(--font);text-decoration:none">Tabletalk에서 읽기 →</a>
+        </div>` : `
+        <div style="border-radius:18px;background:linear-gradient(160deg,#FAF3E1,#F1E3C5);border:1px solid #E6D6B4;padding:20px 24px;text-align:center;height:100%;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center">
+          <div style="font-size:11px;font-weight:600;color:var(--adeep);letter-spacing:.05em;margin-bottom:10px">✦ 오늘의 묵상</div>
+          <div style="font-size:14px;line-height:1.7;color:var(--ink2);font-style:italic">오늘의 묵상이 아직 등록되지 않았어요</div>
+          ${isAdmin ? `<button onclick="showDailyWordForm('${todayStr}')" style="margin-top:12px;height:32px;padding:0 14px;border-radius:9px;border:none;background:var(--accent);color:white;font:600 12px var(--font);cursor:pointer">+ 지금 등록하기</button>` : ''}
+        </div>`}
+      </div>
     </div>
 
     <!-- 주간 일정표 -->
