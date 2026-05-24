@@ -1726,8 +1726,7 @@ function msgHtml(m, prev, readMap={}) {
   }
 
   if (isMine) {
-    return `<div class="msg-row mine${sameAsPrev?' same-sender':''}" data-sender="${m.sender_id}" data-id="${m.id}" style="position:relative"
-      onmouseenter="showMsgActions(this)" onmouseleave="hideMsgActions(this)">
+    return `<div class="msg-row mine${sameAsPrev?' same-sender':''}" data-sender="${m.sender_id}" data-id="${m.id}" style="position:relative">
       ${actionBtns}
       <div class="msg-avatar" style="${avStyle}">${sender.initials}</div>
       <div class="msg-body">
@@ -1739,8 +1738,7 @@ function msgHtml(m, prev, readMap={}) {
       </div>
     </div>`;
   }
-  return `<div class="msg-row${sameAsPrev?' same-sender':''}" data-sender="${m.sender_id}" data-id="${m.id}" style="position:relative"
-    onmouseenter="showMsgActions(this)" onmouseleave="hideMsgActions(this)">
+  return `<div class="msg-row${sameAsPrev?' same-sender':''}" data-sender="${m.sender_id}" data-id="${m.id}" style="position:relative">
     ${actionBtns}
     <div class="msg-avatar" style="${avStyle}">${sender.initials}</div>
     <div class="msg-body">
