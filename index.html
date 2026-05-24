@@ -3011,14 +3011,9 @@ function handleFileUpload(input) {
 }
 
 async function uploadFileToDrive(file) {
-  // 업로드 중 표시
   showUploadToast('업로드 중... ⏳');
-
   try {
-    // IM 메신저 폴더 찾기 또는 생성
     let folderId = await getOrCreateFolder('IM 메신저');
-
-    // 파일 업로드 (multipart)
     const metadata = { name: file.name, parents: [folderId] };
     const form = new FormData();
     form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
@@ -3032,48 +3027,52 @@ async function uploadFileToDrive(file) {
     const data = await res.json();
     if (data.error) throw new Error(data.error.message);
 
-    // 공유 설정 (링크 있는 사람 모두 보기)
+    // 공유 설정
     await fetch(`https://www.googleapis.com/drive/v3/files/${data.id}/permissions`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${gdriveToken}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ role: 'reader', type: 'anyone' }),
     });
 
-    // 직접 보기 링크
-    const isImage = file.type.startsWith('image/');
-    const isVideo = file.type.startsWith('video/');
-    // 썸네일 URL (미리보기용) - 더 안정적
-    const thumbUrl = `https://drive.google.com/thumbnail?id=${data.id}&sz=w800`;
-    const directUrl = `https://drive.google.com/uc?export=download&id=${data.id}`;
-    const viewUrl = data.webViewLink;
+    const fileId = data.id;
+    const mimeType = file.type || data.mimeType || '';
+    const isImage = mimeType.startsWith('image/');
+    const isVideo = mimeType.startsWith('video/');
+    const thumbUrl = `https://drive.google.com/thumbnail?id=${fileId}&sz=w800`;
+    const directUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
+    const viewUrl = data.webViewLink || `https://drive.google.com/file/d/${fileId}/view`;
 
-    // 메시지로 전송
     const msgText = JSON.stringify({
-      type: 'file',
-      name: file.name,
-      fileId: data.id,
-      viewUrl,
-      directUrl,
-      thumbUrl,
-      mimeType: file.type,
-      isImage,
-      isVideo,
-      size: file.size,
+      type: 'file', name: file.name, fileId,
+      viewUrl, directUrl, thumbUrl,
+      mimeType, isImage, isVideo, size: file.size,
     });
 
-    await sb.from('messages').insert({
-      channel_id: currentChannel.id,
-      sender_id: ME.id,
-      sender_name: ME.name,
-      text: msgText,
-      kind: 'file',
-    });
+    // 재시도 로직 (연결 끊길 경우 대비)
+    let retries = 3;
+    while (retries > 0) {
+      try {
+        await sb.from('messages').insert({
+          channel_id: currentChannel.id,
+          sender_id: ME.id,
+          sender_name: ME.name,
+          text: msgText,
+          kind: 'file',
+        });
+        break;
+      } catch(insertErr) {
+        retries--;
+        if (retries === 0) throw insertErr;
+        await new Promise(r => setTimeout(r, 1000));
+        showUploadToast('재시도 중... ⏳');
+      }
+    }
 
     showUploadToast('업로드 완료! ✅');
     pendingFile = null;
   } catch(e) {
     showUploadToast('업로드 실패 😥 다시 시도해주세요');
-    console.error(e);
+    console.error('Upload error:', e);
     pendingFile = null;
   }
 }
