@@ -476,8 +476,8 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
   #panel-close { display: none; }
   #panel { transform: none !important; }
 }
-.scroll-none::-webkit-scrollbar { display: none; }
-.scroll-none { scrollbar-width: none; }
+.msg-row:hover .msg-actions { display: flex !important; }
+.msg-actions { display: none; }
 [data-tap] { cursor: pointer; }
 [data-tap]:active { opacity: .7; }
 .fade { animation: fadeIn .2s ease; }
@@ -1667,9 +1667,9 @@ function msgHtml(m, prev, readMap={}) {
 
   // 액션 버튼 (호버시 표시)
   const actionBtns = `
-    <div class="msg-actions" style="display:none;position:absolute;${isMine?'left:-130px':'right:-130px'};top:0;
+    <div class="msg-actions" style="position:absolute;${isMine?'left:-106px':'right:-106px'};top:4px;
       background:var(--surface);border:1px solid var(--border);border-radius:12px;
-      padding:4px;display:none;gap:2px;box-shadow:0 2px 8px rgba(0,0,0,.1);z-index:10">
+      padding:4px;gap:2px;box-shadow:0 2px 8px rgba(0,0,0,.12);z-index:10">
       <div onclick="showReactionPicker('${m.id}',this)" title="리액션" style="width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px" onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background=''">😊</div>
       <div onclick="startReply('${m.id}','${escAttr(m.text)}','${escAttr(sender.name)}')" title="답장" style="width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:15px" onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background=''">↩️</div>
       ${isMine ? `<div onclick="askDeleteMsg('${m.id}')" title="삭제" style="width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:13px;color:var(--rose)" onmouseover="this.style.background='#FEE2E2'" onmouseout="this.style.background=''">✕</div>` : ''}
