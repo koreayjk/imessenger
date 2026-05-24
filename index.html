@@ -661,7 +661,10 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
             <div class="icon-btn">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--ink3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
             </div>
-            <input id="msgInput" placeholder="메시지 보내기 (Enter)" onkeydown="if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();sendMsg()}" oninput="updateSendBtn()"/>
+            <textarea id="msgInput" placeholder="메시지 보내기 (Enter)" rows="1"
+              onkeydown="if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();sendMsg()} "
+              oninput="updateSendBtn();autoResizeInput(this)"
+              style="flex:1;border:0;outline:0;background:transparent;font:14px var(--font);color:var(--ink);resize:none;line-height:1.5;max-height:120px;overflow-y:auto;padding:0"></textarea>
             <div class="icon-btn" onclick="openFileChooser()" title="파일 첨부">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--ink3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 7l-6.5 6.5a3 3 0 104.2 4.2L19 10a5 5 0 10-7-7L5.4 9.6"/></svg>
             </div>
@@ -1480,9 +1483,20 @@ async function openChannel(id) {
   const { data: msgs } = await sb.from('messages').select('*')
     .eq('channel_id', id).order('created_at', {ascending:true}).limit(200);
 
-  // 이 채널의 읽음 데이터 로드
+  // 리액션 로드
   const msgIds = (msgs||[]).map(m=>m.id);
-  let readMap = {}; // message_id → Set(member_id)
+  let reactionsMap = {};
+  if (msgIds.length) {
+    const { data: reactions } = await sb.from('message_reactions').select('*').in('message_id', msgIds);
+    (reactions||[]).forEach(r => {
+      if (!reactionsMap[r.message_id]) reactionsMap[r.message_id] = [];
+      reactionsMap[r.message_id].push(r);
+    });
+  }
+  const msgsWithReactions = (msgs||[]).map(m => ({ ...m, reactions: reactionsMap[m.id]||[] }));
+
+  // 이 채널의 읽음 데이터 로드
+  let readMap = {};
   if (msgIds.length) {
     const { data: reads } = await sb.from('message_reads').select('message_id, member_id')
       .in('message_id', msgIds);
@@ -1492,25 +1506,59 @@ async function openChannel(id) {
     });
   }
 
-  // 내가 읽었다고 표시 (이 채널의 모든 메시지)
   await markAllRead(msgs||[]);
+  renderMessages(msgsWithReactions, readMap);
 
-  renderMessages(msgs||[], readMap);
-
-  // 실시간 구독 (메시지 + 읽음)
+  // 실시간 구독
   if (realtimeSub) sb.removeChannel(realtimeSub);
   realtimeSub = sb.channel(`chat:${id}`)
     .on('postgres_changes', { event:'INSERT', schema:'public', table:'messages', filter:`channel_id=eq.${id}` },
       async (payload) => {
-        appendMessage(payload.new, {});
+        appendMessage({...payload.new, reactions:[]}, {});
         await markRead(payload.new.id);
       })
     .on('postgres_changes', { event:'INSERT', schema:'public', table:'message_reads' },
-      async () => {
-        // 읽음 상태 변경되면 내 메시지들 읽음 숫자 업데이트
-        await refreshReadCounts();
-      })
+      async () => { await refreshReadCounts(); })
+    .on('postgres_changes', { event:'*', schema:'public', table:'message_reactions' },
+      async () => { await refreshReactions(); })
     .subscribe();
+}
+
+// 리액션 새로고침
+async function refreshReactions() {
+  if (!currentChannel) return;
+  const msgEls = document.querySelectorAll('.msg-row[data-id]');
+  if (!msgEls.length) return;
+  const ids = Array.from(msgEls).map(el => el.dataset.id);
+  const { data: reactions } = await sb.from('message_reactions').select('*').in('message_id', ids);
+  const map = {};
+  (reactions||[]).forEach(r => {
+    if (!map[r.message_id]) map[r.message_id] = [];
+    map[r.message_id].push(r);
+  });
+  ids.forEach(id => {
+    const el = document.querySelector(`.msg-row[data-id="${id}"]`);
+    if (!el) return;
+    let reactionEl = el.querySelector('.msg-reactions');
+    const reactionData = map[id] || [];
+    const html = reactionData.length ? `
+      <div class="msg-reactions" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px">
+        ${groupReactions(reactionData).map(r => `
+          <div onclick="toggleReaction('${id}','${r.emoji}')"
+            style="display:flex;align-items:center;gap:3px;padding:2px 7px;border-radius:999px;
+            background:${r.mine?'rgba(181,104,60,.15)':'var(--s3)'};
+            border:1.5px solid ${r.mine?'var(--accent)':'transparent'};
+            cursor:pointer;font-size:13px">
+            ${r.emoji}<span style="font-size:11px;font-weight:600;color:var(--ink2)">${r.count}</span>
+          </div>`).join('')}
+      </div>` : '';
+    if (reactionEl) {
+      reactionEl.outerHTML = html;
+    } else if (html) {
+      const bubble = el.querySelector('.bubble');
+      if (bubble) bubble.insertAdjacentHTML('afterend', html);
+    }
+  });
 }
 
 // 채널의 모든 메시지 읽음 처리
@@ -1602,14 +1650,11 @@ function msgHtml(m, prev, readMap={}) {
   const sameAsPrev = prev && prev.sender_id === m.sender_id;
   const avStyle = `background:${sender.color}`;
 
-  // 읽음 표시 (내 메시지만) - 채널 멤버 수 기반
+  // 읽음 표시
   let readLabel = '';
   if (isMine) {
     const readers = readMap[m.id] || new Set();
-    // 채널 멤버 수 (나 제외) 기준
-    const chMemberCount = currentChannelMemberIds.size > 0
-      ? currentChannelMemberIds.size - 1  // 나 제외
-      : Object.keys(members).length - 1;
+    const chMemberCount = currentChannelMemberIds.size > 0 ? currentChannelMemberIds.size - 1 : Object.keys(members).length - 1;
     const unread = Math.max(0, chMemberCount - readers.size);
     if (chMemberCount > 0 && unread === 0) {
       readLabel = `<div class="read-label" style="font-size:10px;color:var(--sage);margin-top:3px;text-align:right">모두 읽음 ✓</div>`;
@@ -1619,9 +1664,38 @@ function msgHtml(m, prev, readMap={}) {
       readLabel = `<div class="read-label" style="font-size:10px;margin-top:3px;text-align:right"></div>`;
     }
   }
-  const delBtn = isMine ? `<div class="msg-del-btn" onclick="askDeleteMsg('${m.id}')" title="삭제" style="display:none;width:26px;height:26px;border-radius:8px;background:rgba(176,88,101,.12);color:var(--rose);align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;font-size:13px">✕</div>` : '';
 
-  // 파일 메시지 렌더링
+  // 액션 버튼 (호버시 표시)
+  const actionBtns = `
+    <div class="msg-actions" style="display:none;position:absolute;${isMine?'left:-130px':'right:-130px'};top:0;
+      background:var(--surface);border:1px solid var(--border);border-radius:12px;
+      padding:4px;display:none;gap:2px;box-shadow:0 2px 8px rgba(0,0,0,.1);z-index:10">
+      <div onclick="showReactionPicker('${m.id}',this)" title="리액션" style="width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px" onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background=''">😊</div>
+      <div onclick="startReply('${m.id}','${escAttr(m.text)}','${escAttr(sender.name)}')" title="답장" style="width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:15px" onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background=''">↩️</div>
+      ${isMine ? `<div onclick="askDeleteMsg('${m.id}')" title="삭제" style="width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:13px;color:var(--rose)" onmouseover="this.style.background='#FEE2E2'" onmouseout="this.style.background=''">✕</div>` : ''}
+    </div>`;
+
+  // 답장 인용
+  const replyQuote = m.reply_to_id ? `
+    <div style="border-left:3px solid var(--accent);padding:5px 10px;border-radius:0 8px 8px 0;background:rgba(181,104,60,.08);margin-bottom:5px;font-size:12px;color:var(--ink2)">
+      <div style="font-weight:600;color:var(--adeep);margin-bottom:2px">${escHtml(m.reply_to_name||'')}</div>
+      <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:240px">${escHtml(m.reply_to_text||'')}</div>
+    </div>` : '';
+
+  // 리액션 표시
+  const reactions = (m.reactions && m.reactions.length) ? `
+    <div class="msg-reactions" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px">
+      ${groupReactions(m.reactions).map(r => `
+        <div onclick="toggleReaction('${m.id}','${r.emoji}')"
+          style="display:flex;align-items:center;gap:3px;padding:2px 7px;border-radius:999px;
+          background:${r.mine?'rgba(181,104,60,.15)':'var(--s3)'};
+          border:1.5px solid ${r.mine?'var(--accent)':'transparent'};
+          cursor:pointer;font-size:13px;transition:all .1s">
+          ${r.emoji}<span style="font-size:11px;font-weight:600;color:var(--ink2)">${r.count}</span>
+        </div>`).join('')}
+    </div>` : '';
+
+  // 파일 메시지
   let bubbleContent = linkify(m.text);
   if (m.kind === 'file') {
     try {
@@ -1629,25 +1703,18 @@ function msgHtml(m, prev, readMap={}) {
       if (f.type === 'file') {
         if (f.isImage) {
           bubbleContent = `<div style="max-width:280px">
-            <img src="${f.thumbUrl||f.directUrl}" alt="${f.name}"
-              style="width:100%;border-radius:10px;display:block;cursor:pointer;max-height:300px;object-fit:cover"
-              onclick="window.open('${f.viewUrl}','_blank')"
-              onerror="this.src='${f.directUrl}';this.onerror=null"/>
-            <div style="font-size:11px;color:var(--ink3);margin-top:4px;text-align:right">
-              <a href="${f.viewUrl}" target="_blank" style="color:var(--accent);text-decoration:none">크게 보기 ↗</a>
-            </div>
+            <img src="${f.thumbUrl||f.directUrl}" alt="${f.name}" style="width:100%;border-radius:10px;display:block;cursor:pointer;max-height:300px;object-fit:cover" onclick="window.open('${f.viewUrl}','_blank')" onerror="this.src='${f.directUrl}';this.onerror=null"/>
+            <div style="font-size:11px;color:var(--ink3);margin-top:4px;text-align:right"><a href="${f.viewUrl}" target="_blank" style="color:var(--accent);text-decoration:none">크게 보기 ↗</a></div>
           </div>`;
         } else if (f.isVideo) {
           bubbleContent = `<div style="max-width:280px">
-            <video controls style="width:100%;border-radius:10px;display:block" onerror="this.style.display='none'">
-              <source src="${f.directUrl}"/>
-            </video>
-            <a href="${f.viewUrl}" target="_blank" style="display:block;margin-top:5px;font-size:12px;color:var(--accent);text-decoration:none">🎥 ${f.name} — Google Drive에서 보기</a>
+            <video controls style="width:100%;border-radius:10px;display:block"><source src="${f.directUrl}"/></video>
+            <a href="${f.viewUrl}" target="_blank" style="display:block;margin-top:5px;font-size:12px;color:var(--accent);text-decoration:none">🎥 ${f.name}</a>
           </div>`;
         } else {
           const size = f.size ? (f.size > 1048576 ? (f.size/1048576).toFixed(1)+'MB' : (f.size/1024).toFixed(0)+'KB') : '';
           bubbleContent = `<a href="${f.viewUrl}" target="_blank" style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:rgba(0,0,0,.04);border-radius:10px;text-decoration:none;color:var(--ink);min-width:180px">
-            <div style="font-size:24px;flex-shrink:0">${f.mimeType?.includes('pdf')?'📄':f.mimeType?.includes('word')?'📝':f.mimeType?.includes('sheet')||f.mimeType?.includes('excel')?'📊':'📎'}</div>
+            <div style="font-size:24px;flex-shrink:0">${f.mimeType?.includes('pdf')?'📄':f.mimeType?.includes('word')?'📝':f.mimeType?.includes('sheet')||f.mimeType?.includes('excel')?'📊':f.mimeType?.includes('presentation')||f.mimeType?.includes('powerpoint')?'📊':'📎'}</div>
             <div style="flex:1;min-width:0">
               <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${f.name}</div>
               <div style="font-size:11px;color:var(--ink3);margin-top:2px">${size} · Google Drive</div>
@@ -1659,27 +1726,110 @@ function msgHtml(m, prev, readMap={}) {
   }
 
   if (isMine) {
-    return `<div class="msg-row mine${sameAsPrev?' same-sender':''}" data-sender="${m.sender_id}" data-id="${m.id}" onmouseenter="showDelBtn(this)" onmouseleave="hideDelBtn(this)">
-      ${delBtn}
+    return `<div class="msg-row mine${sameAsPrev?' same-sender':''}" data-sender="${m.sender_id}" data-id="${m.id}" style="position:relative"
+      onmouseenter="showMsgActions(this)" onmouseleave="hideMsgActions(this)">
+      ${actionBtns}
       <div class="msg-avatar" style="${avStyle}">${sender.initials}</div>
       <div class="msg-body">
         ${!sameAsPrev ? `<div class="msg-meta"><span class="name">${sender.name}</span><span class="time">${fmtTime(m.created_at)}</span></div>` : ''}
+        ${replyQuote}
         <div class="bubble">${bubbleContent}</div>
+        ${reactions}
         ${readLabel}
       </div>
     </div>`;
   }
-  return `<div class="msg-row${sameAsPrev?' same-sender':''}" data-sender="${m.sender_id}" data-id="${m.id}">
+  return `<div class="msg-row${sameAsPrev?' same-sender':''}" data-sender="${m.sender_id}" data-id="${m.id}" style="position:relative"
+    onmouseenter="showMsgActions(this)" onmouseleave="hideMsgActions(this)">
+    ${actionBtns}
     <div class="msg-avatar" style="${avStyle}">${sender.initials}</div>
     <div class="msg-body">
       ${!sameAsPrev ? `<div class="msg-meta"><span class="name">${sender.name}</span><span class="time">${fmtTime(m.created_at)}</span></div>` : ''}
+      ${replyQuote}
       <div class="bubble">${bubbleContent}</div>
+      ${reactions}
     </div>
   </div>`;
 }
 
-function showDelBtn(row) { const b = row.querySelector('.msg-del-btn'); if(b) b.style.display='flex'; }
-function hideDelBtn(row) { const b = row.querySelector('.msg-del-btn'); if(b) b.style.display='none'; }
+function escAttr(s) {
+  return String(s||'').replace(/'/g,"\\'").replace(/\n/g,' ').slice(0,100);
+}
+
+function showMsgActions(row) {
+  const a = row.querySelector('.msg-actions'); if(a) a.style.display='flex';
+}
+function hideMsgActions(row) {
+  const a = row.querySelector('.msg-actions'); if(a) a.style.display='none';
+}
+
+function groupReactions(reactions) {
+  const map = {};
+  (reactions||[]).forEach(r => {
+    if (!map[r.emoji]) map[r.emoji] = { emoji: r.emoji, count: 0, mine: false };
+    map[r.emoji].count++;
+    if (r.member_id === ME.id) map[r.emoji].mine = true;
+  });
+  return Object.values(map);
+}
+
+// ── 리액션 ──
+const REACTION_EMOJIS = ['❤️','👍','😂','🙏','🔥','👏','😮','😢'];
+
+function showReactionPicker(msgId, btn) {
+  document.querySelectorAll('.reaction-picker').forEach(p => p.remove());
+  const picker = document.createElement('div');
+  picker.className = 'reaction-picker';
+  picker.style.cssText = 'position:fixed;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:8px;display:flex;gap:4px;box-shadow:0 4px 16px rgba(0,0,0,.15);z-index:100';
+  picker.innerHTML = REACTION_EMOJIS.map(e =>
+    `<div onclick="toggleReaction('${msgId}','${e}');this.closest('.reaction-picker').remove()"
+      style="width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:20px;cursor:pointer"
+      onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background=''">${e}</div>`
+  ).join('');
+  const rect = btn.getBoundingClientRect();
+  picker.style.top = (rect.top - 54) + 'px';
+  picker.style.left = rect.left + 'px';
+  document.body.appendChild(picker);
+  setTimeout(() => document.addEventListener('click', () => picker.remove(), {once:true}), 100);
+}
+
+async function toggleReaction(msgId, emoji) {
+  const { data: existing } = await sb.from('message_reactions')
+    .select('id').eq('message_id', msgId).eq('member_id', ME.id).eq('emoji', emoji).single();
+  if (existing) {
+    await sb.from('message_reactions').delete().eq('id', existing.id);
+  } else {
+    await sb.from('message_reactions').insert({ message_id: msgId, member_id: ME.id, emoji });
+  }
+}
+
+// ── 답장 ──
+let replyingTo = null;
+
+function startReply(msgId, text, name) {
+  replyingTo = { id: msgId, text, name };
+  let bar = document.getElementById('reply-bar');
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'reply-bar';
+    bar.style.cssText = 'padding:8px 16px;background:var(--s2);border-top:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-shrink:0';
+    const composer = document.getElementById('composer');
+    composer.parentNode.insertBefore(bar, composer);
+  }
+  bar.innerHTML = `
+    <div style="flex:1;border-left:3px solid var(--accent);padding:4px 10px;border-radius:0 6px 6px 0">
+      <div style="font-size:11px;font-weight:600;color:var(--adeep)">${escHtml(name)}에게 답장</div>
+      <div style="font-size:12px;color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:400px">${escHtml(text)}</div>
+    </div>
+    <div onclick="cancelReply()" style="width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--ink3);font-size:14px" onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background=''">✕</div>`;
+  document.getElementById('msgInput').focus();
+}
+
+function cancelReply() {
+  replyingTo = null;
+  const bar = document.getElementById('reply-bar');
+  if (bar) bar.remove();
+}
 
 let deletingMsgId = null;
 function askDeleteMsg(id) {
@@ -1714,6 +1864,11 @@ function linkify(s) {
 }
 
 // ── 메시지 전송 ──
+function autoResizeInput(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+}
+
 let isSending = false;
 async function sendMsg() {
   if (isSending) return;
@@ -1722,9 +1877,20 @@ async function sendMsg() {
   if (!text || !currentChannel) return;
   isSending = true;
   inp.value = '';
+  inp.style.height = 'auto';
   inp.focus();
   updateSendBtn();
-  await sb.from('messages').insert({ channel_id: currentChannel.id, sender_id: ME.id, sender_name: ME.name, text, kind:'text' });
+  const msgData = {
+    channel_id: currentChannel.id, sender_id: ME.id,
+    sender_name: ME.name, text, kind: 'text',
+  };
+  if (replyingTo) {
+    msgData.reply_to_id = replyingTo.id;
+    msgData.reply_to_text = replyingTo.text.slice(0, 100);
+    msgData.reply_to_name = replyingTo.name;
+    cancelReply();
+  }
+  await sb.from('messages').insert(msgData);
   isSending = false;
 }
 
