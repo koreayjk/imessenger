@@ -188,7 +188,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
 
 /* 메시지 영역 */
 #msg-area {
-  flex: 1; overflow-y: auto;
+  flex: 1; overflow-y: auto; overflow-x: visible;
   padding: 20px 0 12px;
 }
 #msg-area::-webkit-scrollbar { width: 6px; }
@@ -200,7 +200,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
 .date-divider::before, .date-divider::after {
   content: ''; flex: 1; height: 1px; background: var(--border);
 }
-.msg-row { display: flex; gap: 10px; padding: 3px 24px; }
+.msg-row { display: flex; gap: 10px; padding: 3px 24px; position: relative; overflow: visible; }
 .msg-row:hover { background: rgba(0,0,0,.02); }
 .msg-row.mine { flex-direction: row-reverse; }
 .msg-avatar { width: 36px; height: 36px; border-radius: 11px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 13px; color: white; margin-top: 2px; }
@@ -1669,14 +1669,12 @@ function msgHtml(m, prev, readMap={}) {
     }
   }
 
-  // 액션 버튼 (호버시 표시)
+  // 액션 버튼 - msg-body 안에 포함, hover시 표시
   const actionBtns = `
-    <div class="msg-actions" style="position:absolute;${isMine?'left:-106px':'right:-106px'};top:4px;
-      background:var(--surface);border:1px solid var(--border);border-radius:12px;
-      padding:4px;gap:2px;box-shadow:0 2px 8px rgba(0,0,0,.12);z-index:10">
-      <div onclick="showReactionPicker('${m.id}',this)" title="리액션" style="width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px" onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background=''">😊</div>
-      <div onclick="startReply('${m.id}','${escAttr(m.text)}','${escAttr(sender.name)}')" title="답장" style="width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:15px" onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background=''">↩️</div>
-      ${isMine ? `<div onclick="askDeleteMsg('${m.id}')" title="삭제" style="width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:13px;color:var(--rose)" onmouseover="this.style.background='#FEE2E2'" onmouseout="this.style.background=''">✕</div>` : ''}
+    <div class="msg-actions" style="display:flex;gap:2px;margin-top:4px;${isMine?'justify-content:flex-end':'justify-content:flex-start'}">
+      <div onclick="showReactionPicker('${m.id}',this)" style="width:26px;height:26px;border-radius:7px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;background:var(--s3)" onmouseover="this.style.background='var(--asoft)'" onmouseout="this.style.background='var(--s3)'">😊</div>
+      <div onclick="startReply('${m.id}','${escAttr(m.text)}','${escAttr(sender.name)}')" style="width:26px;height:26px;border-radius:7px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:13px;background:var(--s3)" onmouseover="this.style.background='var(--asoft)'" onmouseout="this.style.background='var(--s3)'">↩️</div>
+      ${isMine ? `<div onclick="askDeleteMsg('${m.id}')" style="width:26px;height:26px;border-radius:7px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:11px;color:var(--rose);background:var(--s3)" onmouseover="this.style.background='#FEE2E2'" onmouseout="this.style.background='var(--s3)'">✕</div>` : ''}
     </div>`;
 
   // 답장 인용
@@ -1731,25 +1729,25 @@ function msgHtml(m, prev, readMap={}) {
 
   if (isMine) {
     return `<div class="msg-row mine${sameAsPrev?' same-sender':''}" data-sender="${m.sender_id}" data-id="${m.id}" style="position:relative">
-      ${actionBtns}
       <div class="msg-avatar" style="${avStyle}">${sender.initials}</div>
       <div class="msg-body">
         ${!sameAsPrev ? `<div class="msg-meta"><span class="name">${sender.name}</span><span class="time">${fmtTime(m.created_at)}</span></div>` : ''}
         ${replyQuote}
         <div class="bubble">${bubbleContent}</div>
         ${reactions}
+        ${actionBtns}
         ${readLabel}
       </div>
     </div>`;
   }
   return `<div class="msg-row${sameAsPrev?' same-sender':''}" data-sender="${m.sender_id}" data-id="${m.id}" style="position:relative">
-    ${actionBtns}
     <div class="msg-avatar" style="${avStyle}">${sender.initials}</div>
     <div class="msg-body">
       ${!sameAsPrev ? `<div class="msg-meta"><span class="name">${sender.name}</span><span class="time">${fmtTime(m.created_at)}</span></div>` : ''}
       ${replyQuote}
       <div class="bubble">${bubbleContent}</div>
       ${reactions}
+      ${actionBtns}
     </div>
   </div>`;
 }
