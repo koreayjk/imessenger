@@ -1630,6 +1630,23 @@ function renderMessages(msgs, readMap={}) {
   msgs.forEach((m, i) => { html += msgHtml(m, msgs[i-1], readMap); });
   area.innerHTML = html;
   area.scrollTop = area.scrollHeight;
+
+  // 이벤트 위임으로 hover 처리
+  area.onmouseover = (e) => {
+    const row = e.target.closest('.msg-row');
+    if (row) {
+      document.querySelectorAll('.msg-actions').forEach(a => a.style.display='none');
+      const actions = row.querySelector('.msg-actions');
+      if (actions) actions.style.display = 'flex';
+    }
+  };
+  area.onmouseout = (e) => {
+    const row = e.target.closest('.msg-row');
+    if (row && !row.contains(e.relatedTarget)) {
+      const actions = row.querySelector('.msg-actions');
+      if (actions) actions.style.display = 'none';
+    }
+  };
 }
 
 function appendMessage(m, readMap={}) {
