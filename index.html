@@ -5,9 +5,6 @@
 <title>IM 메신저</title>
 <link rel="icon" type="image/png" href="https://koreayjk.github.io/imessenger/favicon.png"/>
 <link rel="apple-touch-icon" href="https://koreayjk.github.io/imessenger/favicon.png"/>
-<!-- Google API -->
-<script src="https://accounts.google.com/gsi/client" async defer></script>
-<script src="https://apis.google.com/js/api.js" async defer></script>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
@@ -669,6 +666,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--ink3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 7l-6.5 6.5a3 3 0 104.2 4.2L19 10a5 5 0 10-7-7L5.4 9.6"/></svg>
             </div>
             <input type="file" id="fileInput" style="display:none" accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt" onchange="handleFileUpload(this)"/>
+            <input type="file" id="schedFileInput" style="display:none" accept="image/*" onchange="handleScheduleFile(this)"/>
             <div class="icon-btn">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--ink3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8.5 14.5a4.5 4.5 0 007 0"/><circle cx="9" cy="10" r="1" fill="var(--ink3)"/><circle cx="15" cy="10" r="1" fill="var(--ink3)"/></svg>
             </div>
@@ -2299,11 +2297,10 @@ function closeImageModal() {
 // ── 일정 사진 등록 ──
 let pendingScheduleDate = null;
 let pendingScheduleFile = null;
+let pendingScheduleTitle = '';
 
 function showScheduleImageForm() {
   pendingScheduleDate = new Date().toISOString().slice(0,10);
-
-  // 제목 입력 모달 표시
   const modal = document.createElement('div');
   modal.id = 'sched-title-modal';
   modal.style.cssText = 'position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center';
@@ -2322,66 +2319,30 @@ function showScheduleImageForm() {
   setTimeout(() => document.getElementById('sched-title-input')?.focus(), 100);
 }
 
-let pendingScheduleTitle = '';
-
 function confirmScheduleTitle() {
-  const title = document.getElementById('sched-title-input')?.value.trim() || '주간 일정';
-  pendingScheduleTitle = title;
+  pendingScheduleTitle = document.getElementById('sched-title-input')?.value.trim() || '주간 일정표';
   document.getElementById('sched-title-modal')?.remove();
-
-  if (!gdriveToken) {
-    if (!tokenClient) { alert('구글 API 로딩 중이에요. 잠시 후 다시 시도해주세요.'); return; }
-    tokenClient.callback = async (resp) => {
-      if (resp.error) { showUploadToast('구글 로그인 실패 😥'); return; }
-      gdriveToken = resp.access_token;
-      gdriveReady = true;
-      const expiry = Date.now() + (resp.expires_in || 3600) * 1000;
-      sessionStorage.setItem('gdrive_token', gdriveToken);
-      sessionStorage.setItem('gdrive_expiry', expiry);
-      openScheduleFilePicker();
-    };
-    tokenClient.requestAccessToken({ prompt: '' });
-  } else {
-    openScheduleFilePicker();
-  }
+  document.getElementById('schedFileInput').click();
 }
 
-function openScheduleFilePicker() {
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = 'image/*';
-  input.onchange = async (e) => {
-    const file = e.target.files[0];
-    if (!file || !pendingScheduleDate) return;
-    await uploadScheduleImage(file, pendingScheduleDate);
-  };
-  input.click();
+async function handleScheduleFile(input) {
+  const file = input.files[0];
+  input.value = '';
+  if (!file || !pendingScheduleDate) return;
+  await uploadScheduleImage(file, pendingScheduleDate);
 }
 
 async function uploadScheduleImage(file, dateStr) {
   showUploadToast('일정 사진 업로드 중... ⏳');
   try {
-    const folderId = await getOrCreateFolder('IM 메신저 일정');
-    const metadata = { name: `schedule_${dateStr}_${file.name}`, parents: [folderId] };
-    const form = new FormData();
-    form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-    form.append('file', file);
-    const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${gdriveToken}` },
-      body: form,
-    });
-    const data = await res.json();
-    if (data.error) throw new Error(data.error.message);
-    await fetch(`https://www.googleapis.com/drive/v3/files/${data.id}/permissions`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${gdriveToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ role: 'reader', type: 'anyone' }),
-    });
-    const imageUrl = `https://drive.google.com/thumbnail?id=${data.id}&sz=w1200`;
+    const ext = file.name.split('.').pop();
+    const path = `schedule/${dateStr}_${Date.now()}.${ext}`;
+    const { error } = await sb.storage.from('messenger').upload(path, file, { upsert: true });
+    if (error) throw error;
+    const { data: urlData } = sb.storage.from('messenger').getPublicUrl(path);
     await sb.from('schedule_images').insert({
       date: dateStr,
-      image_url: imageUrl,
+      image_url: urlData.publicUrl,
       title: pendingScheduleTitle || '주간 일정표',
       created_by: ME.id
     });
@@ -3109,150 +3070,48 @@ async function submitEditChannel() {
 }
 
 // ── Google Drive 연동 ──
-const GDRIVE_CLIENT_ID = '218054665901-m0u2dru174ddu5bjc0upvje03nvmhq7i.apps.googleusercontent.com';
-const GDRIVE_SCOPES = 'https://www.googleapis.com/auth/drive.file';
-let gdriveToken = null;
-let tokenClient = null;
-let pendingFile = null;
-let gdriveReady = false;
-
-function initGoogleDrive() {
-  try {
-    tokenClient = google.accounts.oauth2.initTokenClient({
-      client_id: GDRIVE_CLIENT_ID,
-      scope: GDRIVE_SCOPES,
-      callback: (resp) => {
-        if (resp.error) { showUploadToast('구글 로그인 실패 😥'); return; }
-        gdriveToken = resp.access_token;
-        gdriveReady = true;
-        const expiry = Date.now() + (resp.expires_in || 3600) * 1000;
-        sessionStorage.setItem('gdrive_token', gdriveToken);
-        sessionStorage.setItem('gdrive_expiry', expiry);
-        // 채팅 파일 업로드용
-        document.getElementById('fileInput').click();
-      },
-    });
-    const savedToken = sessionStorage.getItem('gdrive_token');
-    const savedExpiry = sessionStorage.getItem('gdrive_expiry');
-    if (savedToken && savedExpiry && Date.now() < Number(savedExpiry)) {
-      gdriveToken = savedToken;
-      gdriveReady = true;
-    }
-  } catch(e) { console.warn('Google Drive init error', e); }
-}
-
-// 📎 버튼 클릭시 → 구글 로그인 먼저, 그 다음 파일 선택
+// ── Supabase Storage 파일 업로드 ──
 function openFileChooser() {
-  // 토큰 만료 체크
-  const savedToken = sessionStorage.getItem('gdrive_token');
-  const savedExpiry = sessionStorage.getItem('gdrive_expiry');
-  if (savedToken && savedExpiry && Date.now() < Number(savedExpiry)) {
-    gdriveToken = savedToken;
-    gdriveReady = true;
-  }
-
-  if (!gdriveToken) {
-    if (!tokenClient) {
-      showUploadToast('구글 API 로딩 중... 잠시 후 다시 시도해주세요 😊');
-      return;
-    }
-    tokenClient.requestAccessToken({ prompt: '' });
-  } else {
-    document.getElementById('fileInput').click();
-  }
+  document.getElementById('fileInput').click();
 }
 
 function handleFileUpload(input) {
   const file = input.files[0];
   if (!file) return;
   input.value = '';
-  if (!gdriveToken) { showUploadToast('구글 로그인이 필요해요 😊'); return; }
-  uploadFileToDrive(file);
+  uploadFileToStorage(file);
 }
 
-async function uploadFileToDrive(file) {
+async function uploadFileToStorage(file) {
   showUploadToast('업로드 중... ⏳');
   try {
-    let folderId = await getOrCreateFolder('IM 메신저');
-    const metadata = { name: file.name, parents: [folderId] };
-    const form = new FormData();
-    form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-    form.append('file', file);
-
-    const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink,mimeType,size', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${gdriveToken}` },
-      body: form,
-    });
-    const data = await res.json();
-    if (data.error) throw new Error(data.error.message);
-
-    // 공유 설정
-    await fetch(`https://www.googleapis.com/drive/v3/files/${data.id}/permissions`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${gdriveToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ role: 'reader', type: 'anyone' }),
-    });
-
-    const fileId = data.id;
-    const mimeType = file.type || data.mimeType || '';
+    const ext = file.name.split('.').pop();
+    const fileName = `${Date.now()}_${ME.id}.${ext}`;
+    const path = `chat/${currentChannel.id}/${fileName}`;
+    const { error } = await sb.storage.from('messenger').upload(path, file, { cacheControl: '3600', upsert: false });
+    if (error) throw error;
+    const { data: urlData } = sb.storage.from('messenger').getPublicUrl(path);
+    const publicUrl = urlData.publicUrl;
+    const mimeType = file.type || '';
     const isImage = mimeType.startsWith('image/');
     const isVideo = mimeType.startsWith('video/');
-    const thumbUrl = `https://drive.google.com/thumbnail?id=${fileId}&sz=w800`;
-    const directUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
-    const viewUrl = data.webViewLink || `https://drive.google.com/file/d/${fileId}/view`;
-
     const msgText = JSON.stringify({
-      type: 'file', name: file.name, fileId,
-      viewUrl, directUrl, thumbUrl,
+      type: 'file', name: file.name,
+      viewUrl: publicUrl, directUrl: publicUrl, thumbUrl: publicUrl,
       mimeType, isImage, isVideo, size: file.size,
     });
-
-    // 재시도 로직 (연결 끊길 경우 대비)
-    let retries = 3;
-    while (retries > 0) {
-      try {
-        await sb.from('messages').insert({
-          channel_id: currentChannel.id,
-          sender_id: ME.id,
-          sender_name: ME.name,
-          text: msgText,
-          kind: 'file',
-        });
-        break;
-      } catch(insertErr) {
-        retries--;
-        if (retries === 0) throw insertErr;
-        await new Promise(r => setTimeout(r, 1000));
-        showUploadToast('재시도 중... ⏳');
-      }
-    }
-
+    await sb.from('messages').insert({
+      channel_id: currentChannel.id,
+      sender_id: ME.id,
+      sender_name: ME.name,
+      text: msgText,
+      kind: 'file',
+    });
     showUploadToast('업로드 완료! ✅');
-    pendingFile = null;
   } catch(e) {
-    showUploadToast('업로드 실패 😥 다시 시도해주세요');
+    showUploadToast('업로드 실패 😥 ' + e.message);
     console.error('Upload error:', e);
-    pendingFile = null;
   }
-}
-
-async function getOrCreateFolder(name) {
-  // 기존 폴더 검색
-  const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=name='${name}' and mimeType='application/vnd.google-apps.folder' and trashed=false&fields=files(id)`, {
-    headers: { Authorization: `Bearer ${gdriveToken}` },
-  });
-  const data = await res.json();
-  if (data.files && data.files.length > 0) return data.files[0].id;
-
-  // 없으면 생성
-  const createRes = await fetch('https://www.googleapis.com/drive/v3/files?fields=id', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${gdriveToken}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, mimeType: 'application/vnd.google-apps.folder' }),
-  });
-  const folder = await createRes.json();
-  return folder.id;
 }
 
 function showUploadToast(msg) {
@@ -3271,18 +3130,8 @@ function showUploadToast(msg) {
   }
 }
 
-// window.onload에서 Google Drive 초기화
+// window.onload
 window.addEventListener('load', async () => {
-  // Google API 로드 대기 후 초기화 (최대 10초)
-  let attempts = 0;
-  const waitForGoogle = setInterval(() => {
-    attempts++;
-    if (typeof google !== 'undefined' && typeof gapi !== 'undefined') {
-      clearInterval(waitForGoogle);
-      initGoogleDrive();
-    }
-    if (attempts > 20) clearInterval(waitForGoogle);
-  }, 500);
 
   // 기존 세션 복원
   try {
