@@ -491,7 +491,9 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
     <div class="auth-left">
       <div style="display:flex;flex-direction:column;align-items:center;text-align:center">
         <img src="https://koreayjk.github.io/imessenger/tcs_logo.png" alt="TCS 로고"
-          style="width:180px;margin-bottom:20px;filter:drop-shadow(0 4px 20px rgba(0,0,0,.4)) brightness(0) invert(1);mix-blend-mode:normal"/>
+          style="width:180px;margin-bottom:20px;filter:drop-shadow(0 4px 20px rgba(0,0,0,.4)) brightness(0) invert(1)"
+          onerror="this.style.display='none';this.nextElementSibling.style.display='block'"/>
+        <div style="display:none;font-size:64px;font-weight:900;color:white;letter-spacing:-2px;margin-bottom:20px;text-shadow:0 4px 20px rgba(0,0,0,.3)">TCS</div>
         <div style="font-size:13px;font-weight:600;color:rgba(255,255,255,.5);letter-spacing:3px;text-transform:uppercase;margin-bottom:6px">Total Care System</div>
         <div class="tagline">학생 한 명 한 명을 온전히 품는<br>교육 공동체 통합 플랫폼</div>
       </div>
@@ -570,7 +572,8 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
   <div style="max-width:640px;width:100%">
     <div style="text-align:center;margin-bottom:36px">
       <img src="https://koreayjk.github.io/imessenger/tcs_logo.png" alt="TCS"
-        style="width:72px;height:72px;object-fit:contain;margin-bottom:14px;opacity:.85"/>
+        style="width:72px;height:72px;object-fit:contain;margin-bottom:14px;opacity:.85"
+        onerror="this.style.display='none'"/>
       <div style="font-size:26px;font-weight:700;color:var(--adeep);margin-bottom:6px">공동체 선택</div>
       <div style="font-size:14px;color:var(--ink3)">입장할 공동체를 선택해주세요</div>
     </div>
@@ -585,7 +588,10 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
   <!-- 1) 아이콘 사이드바 -->
   <div id="sidebar">
     <div class="logo">
-      <img src="https://koreayjk.github.io/imessenger/tcs_logo.png" alt="TCS" style="width:38px;height:38px;object-fit:contain;filter:brightness(0) invert(1);opacity:.9"/>
+      <img src="https://koreayjk.github.io/imessenger/tcs_logo.png" alt="TCS"
+        style="width:38px;height:38px;object-fit:contain;filter:brightness(0) invert(1);opacity:.9"
+        onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"/>
+      <div style="display:none;width:38px;height:38px;border-radius:10px;background:rgba(255,255,255,.2);align-items:center;justify-content:center;font-size:14px;font-weight:800;color:white;letter-spacing:-1px">TCS</div>
     </div>
     <div class="sb-btn active" id="sb-home" onclick="setMode('home')" title="홈">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.85)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11.5L12 4l9 7.5"/><path d="M5 10v10h14V10"/></svg>
@@ -995,6 +1001,7 @@ function switchTab(t) {
   document.getElementById('form-signup').style.display = t==='signup' ? 'flex' : 'none';
   if (t === 'signup') loadCommunitiesForSignup();
 }
+window.switchTab = switchTab;
 
 // ── 공동체 목록 로드 (회원가입 폼용) ──
 async function loadCommunitiesForSignup() {
