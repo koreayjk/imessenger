@@ -2974,15 +2974,16 @@ async function renderProfilePage() {
         ${inp('career_goal', '진로 희망', ME.career_goal, 'text', '예: 선교사 / 교사 / 의사')}
       </div>
       ` : `
-      <!-- 학생: 학교 정보 읽기 전용 -->
-      <div class="adm-card" style="margin-bottom:16px;opacity:.8">
-        <div style="font-size:14px;font-weight:700;color:var(--adeep);margin-bottom:12px">🏫 학교 정보 <span style="font-size:11px;color:var(--ink3);font-weight:400">(교사가 관리해요)</span></div>
-        <div style="display:flex;flex-wrap:wrap;gap:12px">
+      <!-- 학생: 현재 학년은 본인 수정 가능, 학교명·담임은 교사 관리 -->
+      <div class="adm-card" style="margin-bottom:16px">
+        <div style="font-size:14px;font-weight:700;color:var(--adeep);margin-bottom:16px">🏫 학교 정보</div>
+        ${sel('grade', '현재 학년', ME.grade, ['K','1','2','3','4','5','6','G7 (중1)','G8 (중2)','G9 (중3)','G10 (고1)','G11 (고2)','G12 (고3)','졸업'])}
+        <div style="font-size:11px;color:var(--ink3);margin:-8px 0 14px">학년은 직접 선택할 수 있어요. 담임 선생님이 확인 후 조정할 수도 있습니다.</div>
+        <div style="display:flex;flex-wrap:wrap;gap:12px;padding-top:4px;border-top:1px dashed var(--border)">
           ${ME.school_name?`<div style="font-size:13px;color:var(--ink2)">🏫 ${ME.school_name}</div>`:''}
-          ${ME.grade?`<div style="font-size:13px;color:var(--ink2)">📚 ${ME.grade}</div>`:''}
           ${ME.homeroom_teacher?`<div style="font-size:13px;color:var(--ink2)">👩‍🏫 ${ME.homeroom_teacher} 선생님</div>`:''}
         </div>
-        ${!ME.school_name&&!ME.grade?`<div style="font-size:12px;color:var(--ink3)">담임 선생님이 등록해드릴 거예요</div>`:''}
+        ${!ME.school_name&&!ME.homeroom_teacher?`<div style="font-size:12px;color:var(--ink3);margin-top:8px">학교명·담임은 선생님이 등록해드릴 거예요</div>`:''}
       </div>
       `}
 
@@ -3008,7 +3009,11 @@ async function renderProfilePage() {
 }
 
 async function saveProfile() {
-  const get = id => document.getElementById(`prof-${id}`)?.value?.trim() || '';
+  const el = id => document.getElementById(`prof-${id}`);
+  const get = id => el(id)?.value?.trim() || '';
+  // 화면에 입력칸이 있는 항목만 저장 대상에 포함 (없는 칸을 빈 값으로 덮어쓰지 않도록)
+  const has = id => !!el(id);
+  const put = (obj, id, val) => { if (has(id)) obj[id] = (val !== undefined ? val : get(id)); };
 
   const updates = {
     name:             get('name'),
@@ -3021,13 +3026,14 @@ async function saveProfile() {
     address:          get('address'),
     guardian_name:    get('guardian_name'),
     guardian_phone:   get('guardian_phone'),
-    school_name:      get('school_name'),
-    grade:            get('grade'),
-    homeroom_teacher: get('homeroom_teacher'),
-    enroll_date:      get('enroll_date') || null,
     church:           get('church'),
     career_goal:      get('career_goal'),
   };
+  // 학교 정보: 해당 입력칸이 렌더된 경우에만 반영 (학생/교사 화면 구성이 다름)
+  put(updates, 'school_name');
+  put(updates, 'grade');
+  put(updates, 'homeroom_teacher');
+  put(updates, 'enroll_date', get('enroll_date') || null);
   if (updates.name) updates.initials = updates.name[0];
 
   const { error } = await sb.from('members').update(updates).eq('id', ME.id);
@@ -3190,6 +3196,8 @@ async function selectTcsStudent(student) {
   // 이 학생의 최신 프로필로 TCS 자동 동기화 (교사가 열 때)
   const { data: studentProfile } = await sb.from('members').select('*').eq('id', student.id).single();
   if (studentProfile) {
+    // 현재 학년을 항상 최신 프로필 값으로 반영 (패널 클릭 시 학년 누락 방지)
+    tcsCurrentStudent.grade = studentProfile.grade || '';
     const communityId = ME.community_id || '00000000-0000-0000-0000-000000000001';
     const personalMerge = {
       name_ko: studentProfile.name || '',
@@ -3219,6 +3227,19 @@ async function selectTcsStudent(student) {
   renderTcsSectionList();
 }
 
+async function setTcsStudentGrade(grade) {
+  if (!tcsCurrentStudent?.id) return;
+  if (!isTeacher()) { showUploadToast('권한이 없어요'); return; }
+  const { error } = await sb.from('members').update({ grade }).eq('id', tcsCurrentStudent.id);
+  if (error) { showUploadToast('학년 저장 실패 😥'); return; }
+  // 로컬 상태 갱신
+  tcsCurrentStudent.grade = grade;
+  const idx = tcsStudents.findIndex(s => s.id === tcsCurrentStudent.id);
+  if (idx > -1) tcsStudents[idx].grade = grade;
+  showUploadToast(grade ? `✅ 학년을 ${grade}(으)로 저장했어요` : '학년을 비웠어요');
+  renderTcsSectionList();
+}
+
 function renderTcsSectionList() {
   const main = document.getElementById('tcs-main');
 
@@ -3231,18 +3252,19 @@ function renderTcsSectionList() {
   })();
 
   const gradeKeyMap = {
+    0:'k', 1:'g1', 2:'g2', 3:'g3', 4:'g4', 5:'g5', 6:'g6',
     7:'g7', 8:'g8', 9:'g9', 10:'g10', 11:'g11', 12:'g12'
   };
 
   function isSectionComplete(sec) {
     const d = tcsRecords[sec.id] || {};
     if (!Object.keys(d).length) return false;
+    // gradeNum이 0(K)일 수도 있으므로 !== null 로 판별 (0을 falsy로 흘리지 않도록)
+    const k = gradeNum !== null ? gradeKeyMap[gradeNum] : null;
     if (sec.id === 'academic') {
-      const k = gradeNum ? gradeKeyMap[gradeNum] : null;
       return k ? !!(d[k+'_grades']?.trim()) : Object.values(d).some(v=>v&&String(v).trim());
     }
     if (sec.id === 'attendance') {
-      const k = gradeNum ? gradeKeyMap[gradeNum] : null;
       return k ? !!(d[k]?.trim()) : Object.values(d).some(v=>v&&String(v).trim());
     }
     return Object.values(d).some(v => v && String(v).trim());
@@ -3265,13 +3287,29 @@ function renderTcsSectionList() {
         </div>
       </div>
 
-      ${gradeNum !== null ? `
+      ${isTeacher() ? `
+      <div style="background:${gradeNum!==null?'#eff6ff':'#fef9c3'};border:1.5px solid ${gradeNum!==null?'#bfdbfe':'#fde047'};border-radius:12px;padding:12px 14px;margin-bottom:16px">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <label style="font-size:12px;font-weight:700;color:${gradeNum!==null?'#1d4ed8':'#854d0e'}">현재 학년</label>
+          <select onchange="setTcsStudentGrade(this.value)"
+            style="height:34px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:white;font:13px var(--font);color:var(--ink);cursor:pointer;outline:none">
+            <option value="">선택 안 함</option>
+            ${['K','1','2','3','4','5','6','G7 (중1)','G8 (중2)','G9 (중3)','G10 (고1)','G11 (고2)','G12 (고3)','졸업']
+              .map(o=>`<option value="${o}" ${gradeStr===o?'selected':''}>${o}</option>`).join('')}
+          </select>
+        </div>
+        <div style="font-size:11px;margin-top:8px;color:${gradeNum!==null?'#1d4ed8':'#854d0e'}">
+          ${gradeNum!==null
+            ? `📌 <b>${gradeStr}</b> 기준으로 완료 여부 표시. 출결·성적은 현재 학년 칸이 채워져야 ✅ 완료예요.`
+            : `⚠️ 학년이 아직 없어요. 여기서 학년을 정하면 출결·성적 완료 여부가 표시됩니다. (학생 본인도 프로필에서 설정 가능)`}
+        </div>
+      </div>` : (gradeNum !== null ? `
       <div style="background:#dbeafe;border:1.5px solid #93c5fd;border-radius:12px;padding:10px 14px;margin-bottom:16px;font-size:12px;color:#1d4ed8">
         📌 <b>${gradeStr}</b> 기준으로 완료 여부 표시. 출결·성적은 현재 학년 칸이 채워져야 ✅ 완료예요.
       </div>` : `
       <div style="background:#fef9c3;border:1.5px solid #fde047;border-radius:12px;padding:10px 14px;margin-bottom:16px;font-size:12px;color:#854d0e">
         ⚠️ 학생 프로필에 학년이 등록되지 않았어요. 프로필에서 학년을 먼저 설정해주세요.
-      </div>`}
+      </div>`)}
 
       <div style="background:var(--border);border-radius:99px;height:6px;margin-bottom:20px;overflow:hidden">
         <div style="height:100%;width:${Math.round(completedSections/TCS_SECTIONS.length*100)}%;background:linear-gradient(90deg,#1d3a5f,#2a5298);border-radius:99px;transition:width .4s"></div>
