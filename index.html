@@ -491,9 +491,10 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
     <div class="auth-left">
       <div style="display:flex;flex-direction:column;align-items:center;text-align:center">
         <img src="https://koreayjk.github.io/imessenger/tcs_logo.png" alt="TCS 로고"
-          style="width:180px;margin-bottom:20px;filter:drop-shadow(0 4px 20px rgba(0,0,0,.4)) brightness(0) invert(1)"
-          onerror="this.style.display='none';this.nextElementSibling.style.display='block'"/>
-        <div style="display:none;font-size:64px;font-weight:900;color:white;letter-spacing:-2px;margin-bottom:20px;text-shadow:0 4px 20px rgba(0,0,0,.3)">TCS</div>
+          id="auth-logo-img"
+          style="width:160px;margin-bottom:20px;filter:brightness(0) invert(1);drop-shadow(0 4px 20px rgba(0,0,0,.4))"
+          onerror="document.getElementById('auth-logo-img').style.display='none';document.getElementById('auth-logo-txt').style.display='block'"/>
+        <div id="auth-logo-txt" style="display:none;font-size:56px;font-weight:900;color:white;letter-spacing:-2px;margin-bottom:16px;text-shadow:0 4px 20px rgba(0,0,0,.3)">TCS</div>
         <div style="font-size:13px;font-weight:600;color:rgba(255,255,255,.5);letter-spacing:3px;text-transform:uppercase;margin-bottom:6px">Total Care System</div>
         <div class="tagline">학생 한 명 한 명을 온전히 품는<br>교육 공동체 통합 플랫폼</div>
       </div>
@@ -588,10 +589,10 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
   <!-- 1) 아이콘 사이드바 -->
   <div id="sidebar">
     <div class="logo">
-      <img src="https://koreayjk.github.io/imessenger/tcs_logo.png" alt="TCS"
+      <img src="https://koreayjk.github.io/imessenger/tcs_logo.png" alt="TCS" id="sidebar-logo-img"
         style="width:38px;height:38px;object-fit:contain;filter:brightness(0) invert(1);opacity:.9"
-        onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"/>
-      <div style="display:none;width:38px;height:38px;border-radius:10px;background:rgba(255,255,255,.2);align-items:center;justify-content:center;font-size:14px;font-weight:800;color:white;letter-spacing:-1px">TCS</div>
+        onerror="document.getElementById('sidebar-logo-img').style.display='none';document.getElementById('sidebar-logo-txt').style.display='flex'"/>
+      <div id="sidebar-logo-txt" style="display:none;width:38px;height:38px;border-radius:10px;background:rgba(255,255,255,.2);align-items:center;justify-content:center;font-size:13px;font-weight:800;color:white">TCS</div>
     </div>
     <div class="sb-btn active" id="sb-home" onclick="setMode('home')" title="홈">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.85)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11.5L12 4l9 7.5"/><path d="M5 10v10h14V10"/></svg>
@@ -1003,6 +1004,13 @@ function switchTab(t) {
 }
 window.switchTab = switchTab;
 
+// ── 전역 함수 노출 (HTML onclick 사용) ──
+window.doSignIn = doSignIn;
+window.doSignUp = doSignUp;
+window.doLogout = doLogout;
+window.loadCommunitiesForSignup = loadCommunitiesForSignup;
+window.enterCommunity = enterCommunity;
+
 // ── 공동체 목록 로드 (회원가입 폼용) ──
 async function loadCommunitiesForSignup() {
   const { data } = await sb.from('communities').select('id, name, description, color').order('name');
@@ -1068,14 +1076,6 @@ async function doSignUp() {
       msg.textContent = '비밀번호는 6자 이상으로 입력해주세요 🔒';
     } else {
       msg.textContent = err || '오류가 발생했어요. 다시 시도해주세요';
-    }
-    btn.textContent='가입하기'; btn.disabled=false;
-  }
-}
-    } else if (err.includes('network') || err.includes('fetch')) {
-      msg.textContent = '인터넷 연결을 확인해주세요 🌐';
-    } else {
-      msg.textContent = '가입 중 오류가 발생했어요. 잠시 후 다시 시도해주세요 😅';
     }
     btn.textContent='가입하기'; btn.disabled=false;
   }
