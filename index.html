@@ -3130,6 +3130,27 @@ const TCS_SECTIONS = [
   { id:'comment',    icon:'✍️',  label:'담임 종합의견',   labelEn:'Assessment' },
 ];
 
+// ── 성적(교과) 에디터 설정 ──
+const TCS_DEFAULT_SUBJECTS = ['성경','국어','영어','수학','사회','과학'];
+const TCS_GRADE_OPTIONS = ['A','A-','B','B-','C','C-','D','F'];
+const TCS_GRADE_POINTS = { 'A':4.0, 'A-':3.7, 'B':3.0, 'B-':2.7, 'C':2.0, 'C-':1.7, 'D':1.0, 'F':0.0 };
+const TCS_ACADEMIC_GRADES = [
+  ['k_grades','K','K (유치원)'],
+  ['g1_grades','G1','G1 (1학년)'],
+  ['g2_grades','G2','G2 (2학년)'],
+  ['g3_grades','G3','G3 (3학년)'],
+  ['g4_grades','G4','G4 (4학년)'],
+  ['g5_grades','G5','G5 (5학년)'],
+  ['g6_grades','G6','G6 (6학년)'],
+  ['g7_grades','G7','G7 (중1)'],
+  ['g8_grades','G8','G8 (중2)'],
+  ['g9_grades','G9','G9 (중3)'],
+  ['g10_grades','G10','G10 (고1)'],
+  ['g11_grades','G11','G11 (고2)'],
+  ['g12_grades','G12','G12 (고3)'],
+];
+let tcsAcademicDraft = null; // { active:'g9_grades', grades:{ key:[{name,grade,fixed}] } }
+
 let tcsCurrentStudent = null;
 let tcsRecords = {};
 let tcsStudents = [];
@@ -3344,6 +3365,7 @@ function renderTcsSectionList() {
 
 function openTcsSection(sectionId) {
   tcsCurrentSection = sectionId;
+  if (sectionId === 'academic') { openAcademicEditor(); return; }
   const sec = TCS_SECTIONS.find(s => s.id === sectionId);
   const data = tcsRecords[sectionId] || {};
   const main = document.getElementById('tcs-main');
@@ -3477,6 +3499,207 @@ function getTcsSectionFields(sectionId) {
     ],
   };
   return F[sectionId] || [];
+}
+
+// ── 성적(교과) 전용 에디터 ──
+function parseGradeStr(str) {
+  // "성경:A, 국어:B-, 수학:A" → [{name,grade}]
+  if (!str) return [];
+  return String(str).split(',').map(s => s.trim()).filter(Boolean).map(pair => {
+    const i = pair.lastIndexOf(':');
+    if (i === -1) return { name: pair.trim(), grade: '' };
+    return { name: pair.slice(0, i).trim(), grade: pair.slice(i + 1).trim() };
+  }).filter(r => r.name);
+}
+function serializeGradeRows(rows) {
+  return rows.filter(r => r.name.trim() && r.grade).map(r => `${r.name.trim()}:${r.grade}`).join(', ');
+}
+function initAcademicGradeRows(savedStr) {
+  const parsed = parseGradeStr(savedStr);
+  const rows = [];
+  const seen = {};
+  TCS_DEFAULT_SUBJECTS.forEach(s => {
+    const found = parsed.find(p => p.name === s);
+    rows.push({ name: s, grade: found ? found.grade : '', fixed: true });
+    seen[s] = true;
+  });
+  parsed.forEach(p => { if (!seen[p.name]) rows.push({ name: p.name, grade: p.grade, fixed: false }); });
+  return rows;
+}
+function gradeGpa(rows) {
+  let sum = 0, n = 0;
+  rows.forEach(r => { if (r.grade && r.grade in TCS_GRADE_POINTS) { sum += TCS_GRADE_POINTS[r.grade]; n++; } });
+  return { sum, n, avg: n ? sum / n : null };
+}
+function cumulativeGpa() {
+  let sum = 0, n = 0;
+  Object.values(tcsAcademicDraft.grades).forEach(rows => {
+    rows.forEach(r => { if (r.grade && r.grade in TCS_GRADE_POINTS) { sum += TCS_GRADE_POINTS[r.grade]; n++; } });
+  });
+  return { sum, n, avg: n ? sum / n : null };
+}
+
+function openAcademicEditor() {
+  tcsCurrentSection = 'academic';
+  const saved = tcsRecords.academic || {};
+
+  // 드래프트 초기화: 저장된 학년별 문자열 → 구조화
+  const grades = {};
+  TCS_ACADEMIC_GRADES.forEach(([key]) => { grades[key] = initAcademicGradeRows(saved[key]); });
+
+  // 활성 학년 기본값: 학생의 현재 학년 → 데이터 있는 첫 학년 → K
+  const gradeStr = (tcsCurrentStudent.grade || '').trim();
+  const gradeNum = gradeStr === 'K' ? 0 : (gradeStr.match(/(\d+)/) ? parseInt(gradeStr.match(/(\d+)/)[1]) : null);
+  const numKeyMap = { 0:'k_grades',1:'g1_grades',2:'g2_grades',3:'g3_grades',4:'g4_grades',5:'g5_grades',6:'g6_grades',7:'g7_grades',8:'g8_grades',9:'g9_grades',10:'g10_grades',11:'g11_grades',12:'g12_grades' };
+  let active = gradeNum !== null ? numKeyMap[gradeNum] : null;
+  if (!active) {
+    const withData = TCS_ACADEMIC_GRADES.find(([key]) => (saved[key] || '').trim());
+    active = withData ? withData[0] : 'k_grades';
+  }
+
+  tcsAcademicDraft = { active, grades };
+  renderAcademicEditor();
+}
+
+function renderAcademicEditor() {
+  const main = document.getElementById('tcs-main');
+  const active = tcsAcademicDraft.active;
+  const activeLabel = (TCS_ACADEMIC_GRADES.find(([k]) => k === active) || [,,active])[2];
+
+  // 학년 선택 pill (데이터 있으면 점 표시)
+  const pills = TCS_ACADEMIC_GRADES.map(([key, short]) => {
+    const has = (tcsAcademicDraft.grades[key] || []).some(r => r.grade);
+    const on = key === active;
+    return `<button onclick="switchAcademicGrade('${key}')"
+      style="position:relative;height:32px;padding:0 12px;border-radius:9px;cursor:pointer;font:600 12px var(--font);
+      border:1.5px solid ${on ? '#1d3a5f' : 'var(--border)'};
+      background:${on ? 'linear-gradient(135deg,#1d3a5f,#2a5298)' : 'white'};
+      color:${on ? 'white' : 'var(--ink2)'}">
+      ${short}${has ? `<span style="position:absolute;top:-3px;right:-3px;width:8px;height:8px;border-radius:50%;background:#22c55e;border:1.5px solid white"></span>` : ''}
+    </button>`;
+  }).join('');
+
+  main.innerHTML = `
+    <div style="max-width:680px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+        <button onclick="renderTcsSectionList()" style="height:32px;padding:0 12px;border-radius:8px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:500 12px var(--font);cursor:pointer">← 목록</button>
+        <div style="font-size:22px">📚</div>
+        <div style="font-size:16px;font-weight:700;color:var(--ink)">교과학습 발달 (성적)</div>
+      </div>
+
+      <div style="font-size:11px;font-weight:600;color:var(--ink3);margin-bottom:8px;text-transform:uppercase;letter-spacing:.04em">학년 선택</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:18px">${pills}</div>
+
+      <div class="adm-card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+          <div style="font-size:14px;font-weight:700;color:var(--adeep)">${activeLabel} 성적</div>
+          <div id="acad-grade-avg" style="font-size:12px;font-weight:700;color:#1d4ed8"></div>
+        </div>
+        <div id="acad-rows"></div>
+        <button onclick="addAcademicSubject()"
+          style="width:100%;height:38px;border-radius:10px;border:1.5px dashed var(--border);background:var(--s2);color:var(--ink2);font:600 13px var(--font);cursor:pointer;margin-top:4px">
+          ＋ 과목 추가
+        </button>
+      </div>
+
+      <div style="background:linear-gradient(135deg,#1d3a5f,#2a5298);border-radius:14px;padding:18px 22px;margin-top:16px;display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-size:12px;color:rgba(255,255,255,.7)">총 GPA (전 학년 누적)</div>
+          <div id="acad-total-detail" style="font-size:11px;color:rgba(255,255,255,.55);margin-top:2px"></div>
+        </div>
+        <div id="acad-total-gpa" style="font-size:30px;font-weight:800;color:white">–</div>
+      </div>
+
+      <button onclick="saveAcademicSection()"
+        style="width:100%;height:44px;border-radius:11px;border:none;background:#1d3a5f;color:white;font:700 14px var(--font);cursor:pointer;margin-top:16px">
+        💾 저장하기
+      </button>
+    </div>`;
+
+  renderAcademicRows();
+  refreshAcademicGpa();
+}
+
+function renderAcademicRows() {
+  const rows = tcsAcademicDraft.grades[tcsAcademicDraft.active] || [];
+  const box = document.getElementById('acad-rows');
+  const sel = (i, grade) => `
+    <select onchange="setAcademicGrade(${i}, this.value)"
+      style="width:96px;height:38px;padding:0 10px;border-radius:9px;border:1.5px solid var(--border);background:white;font:600 13px var(--font);color:${grade?'var(--ink)':'var(--ink3)'};cursor:pointer;outline:none">
+      <option value="">–</option>
+      ${TCS_GRADE_OPTIONS.map(g => `<option value="${g}" ${grade===g?'selected':''}>${g}</option>`).join('')}
+    </select>`;
+  box.innerHTML = rows.map((r, i) => {
+    const nameCell = r.fixed
+      ? `<div style="flex:1;font-size:14px;font-weight:600;color:var(--ink);padding:0 4px">${r.name}</div>`
+      : `<input value="${(r.name||'').replace(/"/g,'&quot;')}" placeholder="과목명"
+           oninput="setAcademicName(${i}, this.value)"
+           style="flex:1;height:38px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--s2);font:14px var(--font);color:var(--ink);outline:none"/>`;
+    const del = r.fixed ? '' :
+      `<button onclick="removeAcademicSubject(${i})" title="삭제"
+         style="width:34px;height:38px;border-radius:9px;border:1.5px solid var(--border);background:white;color:#ef4444;font-size:16px;cursor:pointer;flex-shrink:0">×</button>`;
+    return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">${nameCell}${sel(i, r.grade)}${del}</div>`;
+  }).join('');
+}
+
+function refreshAcademicGpa() {
+  const g = gradeGpa(tcsAcademicDraft.grades[tcsAcademicDraft.active] || []);
+  const avgEl = document.getElementById('acad-grade-avg');
+  if (avgEl) avgEl.textContent = g.avg !== null ? `이 학년 평균 ${g.avg.toFixed(2)} (${g.n}과목)` : '';
+  const c = cumulativeGpa();
+  const totEl = document.getElementById('acad-total-gpa');
+  const detEl = document.getElementById('acad-total-detail');
+  if (totEl) totEl.textContent = c.avg !== null ? `${c.avg.toFixed(2)} / 4.0` : '–';
+  if (detEl) detEl.textContent = c.avg !== null ? `총 ${c.n}개 과목 평균` : '과목 점수를 입력하면 자동 계산돼요';
+}
+
+function setAcademicGrade(i, val) {
+  tcsAcademicDraft.grades[tcsAcademicDraft.active][i].grade = val;
+  renderAcademicRows();     // 색상 갱신
+  refreshAcademicGpa();
+}
+function setAcademicName(i, val) {
+  tcsAcademicDraft.grades[tcsAcademicDraft.active][i].name = val;
+}
+function addAcademicSubject() {
+  tcsAcademicDraft.grades[tcsAcademicDraft.active].push({ name: '', grade: '', fixed: false });
+  renderAcademicRows();
+  refreshAcademicGpa();
+  const inputs = document.querySelectorAll('#acad-rows input');
+  if (inputs.length) inputs[inputs.length - 1].focus();
+}
+function removeAcademicSubject(i) {
+  tcsAcademicDraft.grades[tcsAcademicDraft.active].splice(i, 1);
+  renderAcademicRows();
+  refreshAcademicGpa();
+}
+function switchAcademicGrade(key) {
+  tcsAcademicDraft.active = key;
+  renderAcademicEditor();
+}
+
+async function saveAcademicSection() {
+  const data = {};
+  TCS_ACADEMIC_GRADES.forEach(([key]) => {
+    const s = serializeGradeRows(tcsAcademicDraft.grades[key] || []);
+    if (s) data[key] = s;
+  });
+  const c = cumulativeGpa();
+  if (c.avg !== null) data.gpa = c.avg.toFixed(2);
+
+  const { error } = await sb.from('tcs_records').upsert({
+    student_id: tcsCurrentStudent.id,
+    community_id: ME.community_id || '00000000-0000-0000-0000-000000000001',
+    section: 'academic',
+    data,
+    updated_at: new Date().toISOString(),
+    updated_by: ME.id,
+  }, { onConflict: 'student_id,section' });
+
+  if (error) { showUploadToast('저장 실패 😥 ' + error.message); return; }
+  tcsRecords.academic = data;
+  showUploadToast('✅ 성적이 저장됐어요!');
+  renderTcsSectionList();
 }
 
 function renderTcsField(field, value) {
@@ -3631,7 +3854,7 @@ function buildTcsPreviewHtml(lang) {
       ${sectionTitle('📚','교과학습 발달상황')}
       ${(() => {
         const ac = d.academic || {};
-        const grades = [['G7(중1)','g7_grades'],['G8(중2)','g8_grades'],['G9(중3)','g9_grades'],['G10(고1)','g10_grades'],['G11(고2)','g11_grades'],['G12(고3)','g12_grades']];
+        const grades = [['K (유치원)','k_grades'],['G1 (1학년)','g1_grades'],['G2 (2학년)','g2_grades'],['G3 (3학년)','g3_grades'],['G4 (4학년)','g4_grades'],['G5 (5학년)','g5_grades'],['G6 (6학년)','g6_grades'],['G7 (중1)','g7_grades'],['G8 (중2)','g8_grades'],['G9 (중3)','g9_grades'],['G10 (고1)','g10_grades'],['G11 (고2)','g11_grades'],['G12 (고3)','g12_grades']];
         const rows = grades.filter(([,k]) => ac[k]).map(([label,k]) =>
           `<tr><td style="padding:7px 12px;background:#dce6f2;font-size:12px;font-weight:600;color:#1d3a5f;border:1px solid #b8cfe0;width:120px;vertical-align:top">${label}</td><td style="padding:7px 12px;font-size:13px;border:1px solid #d1d5db">${ac[k]}</td></tr>`
         ).join('');
