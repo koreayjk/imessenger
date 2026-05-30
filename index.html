@@ -767,7 +767,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
         <div style="width:36px;height:36px;border-radius:11px;background:var(--s3);display:flex;align-items:center;justify-content:center;font-size:18px">📅</div>
         <div style="flex:1">
           <div style="font-size:15px;font-weight:700" id="cal-month-title">2026년 5월</div>
-          <div style="font-size:12px;color:var(--ink3);margin-top:1px">선교회 공동체 일정</div>
+          <div style="font-size:12px;color:var(--ink3);margin-top:1px">IMUSA 공동체 일정</div>
         </div>
         <button onclick="showEventForm()" style="height:34px;padding:0 16px;border-radius:10px;border:none;background:var(--accent);color:white;font:600 13px var(--font);cursor:pointer">+ 일정 추가</button>
       </div>
@@ -1083,6 +1083,17 @@ async function doSignUp() {
   }
 }
 
+// ── 권한 체크 헬퍼 ──
+function isSuperAdmin() {
+  return ME && (ME.community_role === 'super_admin');
+}
+function isCommunityAdmin() {
+  return ME && (ME.community_role === 'super_admin' || ME.community_role === 'community_admin');
+}
+function isTeacher() {
+  return ME && (ME.community_role === 'super_admin' || ME.community_role === 'community_admin' || ME.community_role === 'teacher');
+}
+
 // ── 로그인 ──
 async function doSignIn() {
   const email = document.getElementById('si-email').value.trim();
@@ -1120,7 +1131,7 @@ async function doSignIn() {
     ME = member;
 
     // 총관리자는 공동체 선택 화면 없이 바로 진입
-    if (member.email === 'koreayjk@gmail.com') {
+    if (isSuperAdmin()) {
       enterApp();
       return;
     }
@@ -1193,10 +1204,16 @@ function enterApp() {
   document.getElementById('my-av').title = ME.name;
   const mav = document.getElementById('mobile-av');
   if (mav) { mav.textContent = ME.initials || ME.name[0]; mav.style.background = ME.color || '#1d3a5f'; }
-  if (ME.email === 'koreayjk@gmail.com') {
+  // 역할에 따라 관리 탭 표시
+  if (isSuperAdmin() || isCommunityAdmin()) {
     document.getElementById('sb-admin').style.display = 'flex';
     const mnAdmin = document.getElementById('mn-admin');
     if (mnAdmin) mnAdmin.style.display = 'flex';
+  }
+  // 총관리자 배지 표시
+  if (isSuperAdmin()) {
+    const myAvEl = document.getElementById('my-av');
+    if (myAvEl) myAvEl.title = `${ME.name} (총관리자)`;
   }
   initPresence();
   init();
@@ -1331,7 +1348,7 @@ async function init() {
   members = {};
   (mems||[]).forEach(m => { members[m.id] = m; });
 
-  const isAdmin = ME.email === 'koreayjk@gmail.com';
+  const isAdmin = isSuperAdmin();
   if (isAdmin) {
     const { data: myDMs } = await sb.from('channel_members').select('channel_id').eq('member_id', ME.id);
     const myDMIds = new Set((myDMs||[]).map(m => m.channel_id));
@@ -1349,7 +1366,7 @@ async function init() {
     .on('postgres_changes', { event: '*', schema: 'public', table: 'channels' }, async () => {
       const { data: newChs } = await sb.from('channels').select('*').order('pinned', {ascending:false}).order('created_at');
       channels = newChs || [];
-      if (ME.email === 'koreayjk@gmail.com') {
+      if (isSuperAdmin()) {
         const { data: myDMs } = await sb.from('channel_members').select('channel_id').eq('member_id', ME.id);
         const myDMIds = new Set((myDMs||[]).map(m => m.channel_id));
         myChannelIds = new Set(channels.map(c => {
@@ -1427,7 +1444,7 @@ function setMode(m) {
 
 // ── 채널 패널 렌더 ──
 function renderPanel() {
-  const isAdmin = ME.email === 'koreayjk@gmail.com';
+  const isAdmin = isSuperAdmin();
   const visibleChannels = isAdmin ? channels : channels.filter(c => myChannelIds.has(c.id));
   const pinned = visibleChannels.filter(c => c.pinned && c.kind !== 'dm');
   const topics = visibleChannels.filter(c => !c.pinned && c.kind !== 'dm');
@@ -1527,7 +1544,7 @@ function updateUnreadBadges() {
 
 function chRow(ch) {
   const active = currentChannel && currentChannel.id === ch.id;
-  const isAdmin = ME && ME.email === 'koreayjk@gmail.com';
+  const isAdmin = ME && isSuperAdmin();
   const unread = (!active && unreadCounts[ch.id]) ? unreadCounts[ch.id] : 0;
   return `<div class="ch-row${active?' active':''}" style="position:relative" onclick="openChannel('${ch.id}')"
     onmouseenter="this.querySelector('.ch-edit-btn') && (this.querySelector('.ch-edit-btn').style.opacity='1')"
@@ -1547,7 +1564,7 @@ function chRow(ch) {
 
 function filterChannels(q) {
   if (!q) { renderPanel(); return; }
-  const isAdmin = ME.email === 'koreayjk@gmail.com';
+  const isAdmin = isSuperAdmin();
   const visibleChannels = isAdmin ? channels : channels.filter(c => myChannelIds.has(c.id));
   const filtered = visibleChannels.filter(c => c.name.includes(q) || (c.description||'').includes(q));
   const pinned = filtered.filter(c => c.pinned && c.kind !== 'dm');
@@ -2312,7 +2329,7 @@ async function renderHome() {
   if (!area) return;
   const d = new Date();
   const wk = ['일','월','화','수','목','금','토'];
-  const isAdmin = ME.email === 'koreayjk@gmail.com';
+  const isAdmin = isSuperAdmin();
   const todayStr = d.toISOString().slice(0,10);
 
   // 오늘의 묵상 로드
@@ -2872,7 +2889,7 @@ async function renderAdminMembers() {
             <option value="리더" ${m.role==='리더'?'selected':''}>리더</option>
             <option value="관리자" ${m.role==='관리자'?'selected':''}>관리자</option>
           </select>
-          ${m.email !== 'koreayjk@gmail.com' ? `<button class="adm-btn danger" onclick="deleteMember('${m.id}','${m.name}')">탈퇴</button>` : '<span style="font-size:11px;color:var(--ink3)">최고관리자</span>'}
+          ${m.community_role !== 'super_admin' ? `<button class="adm-btn danger" onclick="deleteMember('${m.id}','${m.name}')">탈퇴</button>` : '<span style="font-size:11px;color:var(--ink3)">총관리자</span>'}
         `}
       </div>
     </div>`;
