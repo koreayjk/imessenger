@@ -1246,6 +1246,12 @@ async function enterCommunity(communityId) {
 
 // ── 앱 진입 ──
 function enterApp() {
+  // community_id 없으면 IMUSA로 자동 설정
+  if (!ME.community_id) {
+    ME.community_id = DEFAULT_CID;
+    sb.from('members').update({ community_id: DEFAULT_CID }).eq('id', ME.id);
+  }
+
   document.getElementById('auth-screen').style.display = 'none';
   document.getElementById('app').style.display = 'flex';
   document.getElementById('my-av').textContent = ME.initials || ME.name[0];
@@ -4072,21 +4078,28 @@ async function changeMemberCommunityRole(memberId, role) {
 async function renderAdminMembers() {
   const area = document.getElementById('admin-content');
 
-  // 총관리자: 교사/관리자급만 표시 (학생 제외)
-  // 공동체 관리자: 자기 공동체 멤버 전체 표시
-  let query = sb.from('members').select('*').order('created_at');
+  // 총관리자: 현재 공동체 전체 멤버 (교사/관리자급) + pending은 전체 공동체
+  // 공동체 관리자: 자기 공동체 전체 멤버
+  let query = sb.from('members').select('*')
+    .eq('community_id', CID())
+    .order('created_at');
+
   if (isSuperAdmin()) {
-    query = query.not('community_role', 'in', '("student","member")');
-  } else if (isCommunityAdmin()) {
-    query = query.eq('community_id', ME.community_id || '00000000-0000-0000-0000-000000000001');
+    // 총관리자는 현재 공동체의 교사/관리자급 + pending 전체 표시
+    // pending은 student도 보여야 승인 가능
   }
 
   const { data } = await query;
   const list = data || [];
 
+  // 총관리자: 승인된 멤버 중에서는 교사/관리자만, pending/rejected는 전부 표시
   const pending  = list.filter(m => m.status === 'pending');
-  const approved = list.filter(m => m.status === 'approved' || !m.status);
   const rejected = list.filter(m => m.status === 'rejected');
+  const approved = list.filter(m => (m.status === 'approved' || !m.status) &&
+    (isCommunityAdmin() && !isSuperAdmin()
+      ? true  // 공동체 관리자: 전체
+      : !['student','member'].includes(m.community_role)) // 총관리자: 교사/관리자급만
+  );
 
   const roleLabel = { super_admin:'총관리자', community_admin:'공동체관리자', teacher:'교사', student:'학생', member:'멤버' };
   const roleColor = { super_admin:'#7c3aed', community_admin:'#1d4ed8', teacher:'#0369a1', student:'#15803d', member:'#6b7280' };
