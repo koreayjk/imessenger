@@ -297,35 +297,35 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
 /* 인증 화면 */
 #auth-screen {
   position: fixed; inset: 0; z-index: 100;
-  background: radial-gradient(900px at 30% 30%, #F4EDDA, transparent 60%), #E8DFC8;
+  background: linear-gradient(135deg, #e8eef6 0%, #dce6f2 50%, #eef1f7 100%);
   display: flex; align-items: center; justify-content: center;
 }
 .auth-wrap {
   display: flex; gap: 0;
-  background: var(--surface); border-radius: 28px;
-  box-shadow: 0 24px 70px rgba(70,50,20,.18);
+  background: white; border-radius: 28px;
+  box-shadow: 0 32px 80px rgba(29,58,95,.18), 0 4px 16px rgba(29,58,95,.08);
   overflow: hidden; width: 820px; min-height: 520px;
 }
 .auth-left {
   width: 320px; flex-shrink: 0;
-  background: linear-gradient(160deg, #2C1F14 0%, #4A2E1A 100%);
+  background: linear-gradient(160deg, #1d3a5f 0%, #2a5298 100%);
   padding: 48px 40px; display: flex; flex-direction: column;
   justify-content: space-between;
   align-items: center;
 }
-.auth-left .brand { font-family: var(--serif); font-size: 32px; color: #E9C9B0; font-weight: 500; margin-bottom: 10px; }
-.auth-left .tagline { font-size: 14px; color: rgba(255,255,255,.55); line-height: 1.7; text-align: center; }
+.auth-left .brand { font-family: var(--serif); font-size: 32px; color: #c5d9ef; font-weight: 500; margin-bottom: 10px; }
+.auth-left .tagline { font-size: 14px; color: rgba(255,255,255,.65); line-height: 1.7; text-align: center; }
 .auth-left .features { display: flex; flex-direction: column; gap: 12px; align-self: flex-start; width: 100%; }
-.auth-left .feat { display: flex; align-items: center; gap: 10px; color: rgba(255,255,255,.7); font-size: 13.5px; }
-.auth-left .feat-icon { width: 32px; height: 32px; border-radius: 10px; background: rgba(255,255,255,.1); display: flex; align-items: center; justify-content: center; font-size: 15px; flex-shrink: 0; }
-.auth-right { flex: 1; padding: 48px 44px; display: flex; flex-direction: column; }
+.auth-left .feat { display: flex; align-items: center; gap: 10px; color: rgba(255,255,255,.8); font-size: 13.5px; }
+.auth-left .feat-icon { width: 32px; height: 32px; border-radius: 10px; background: rgba(255,255,255,.12); display: flex; align-items: center; justify-content: center; font-size: 15px; flex-shrink: 0; }
+.auth-right { flex: 1; padding: 48px 44px; display: flex; flex-direction: column; background: white; }
 .auth-tabs { display: flex; gap: 0; margin-bottom: 32px; border-bottom: 2px solid var(--border); }
 .auth-tab {
   padding: 10px 20px 12px; font-size: 15px; font-weight: 600;
   cursor: pointer; color: var(--ink3); border-bottom: 2px solid transparent;
   margin-bottom: -2px; transition: color .15s, border-color .15s;
 }
-.auth-tab.active { color: var(--adeep); border-bottom-color: var(--accent); }
+.auth-tab.active { color: #1d3a5f; border-bottom-color: #1d3a5f; }
 .auth-form { display: flex; flex-direction: column; gap: 10px; flex: 1; }
 .auth-form h2 { font-size: 22px; font-weight: 700; letter-spacing: -.02em; margin-bottom: 4px; }
 .auth-form .sub { font-size: 13.5px; color: var(--ink3); margin-bottom: 8px; line-height: 1.5; }
@@ -333,20 +333,22 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
 .field-row .auth-input { flex: 1; }
 .auth-input {
   width: 100%; padding: 12px 15px; border-radius: 12px;
-  border: 1.5px solid var(--border); background: var(--bg);
+  border: 1.5px solid var(--border); background: #f4f7fb;
   font: 14.5px var(--font); color: var(--ink); outline: none;
-  transition: border-color .15s;
+  transition: border-color .15s, background .15s;
 }
-.auth-input:focus { border-color: var(--accent); background: white; }
+.auth-input:focus { border-color: #1d3a5f; background: white; box-shadow: 0 0 0 3px rgba(29,58,95,.08); }
 .auth-input::placeholder { color: var(--ink3); }
 .auth-btn {
   width: 100%; padding: 14px; border-radius: 12px; border: none;
-  background: var(--accent); color: white;
-  font: 600 15px var(--font); cursor: pointer; transition: opacity .15s;
-  margin-top: 4px;
+  background: linear-gradient(135deg, #1d3a5f, #2a5298);
+  color: white;
+  font: 600 15px var(--font); cursor: pointer; transition: opacity .15s, transform .1s;
+  margin-top: 4px; box-shadow: 0 4px 14px rgba(29,58,95,.3);
 }
-.auth-btn:hover { opacity: .88; }
-.auth-btn.secondary { background: var(--s3); color: var(--adeep); }
+.auth-btn:hover { opacity: .92; transform: translateY(-1px); }
+.auth-btn:active { transform: translateY(0); }
+.auth-btn.secondary { background: #eef3fa; color: #1d3a5f; box-shadow: none; }
 .auth-msg { font-size: 12.5px; text-align: center; min-height: 18px; }
 .auth-msg.error { color: var(--rose); }
 .auth-msg.success { color: var(--sage); }
@@ -492,7 +494,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
       <div style="display:flex;flex-direction:column;align-items:center;text-align:center">
         <img src="https://koreayjk.github.io/imessenger/tcs_logo.png" alt="TCS 로고"
           id="auth-logo-img"
-          style="width:200px;margin-bottom:20px;filter:drop-shadow(0 4px 20px rgba(0,0,0,.3))"
+          style="width:140px;margin-bottom:16px;filter:brightness(0) invert(1);opacity:.95"
           onerror="document.getElementById('auth-logo-img').style.display='none';document.getElementById('auth-logo-txt').style.display='block'"/>
         <div id="auth-logo-txt" style="display:none;font-size:56px;font-weight:900;color:white;letter-spacing:-2px;margin-bottom:16px;text-shadow:0 4px 20px rgba(0,0,0,.3)">TCS</div>
         <div style="font-size:13px;font-weight:600;color:rgba(255,255,255,.5);letter-spacing:3px;text-transform:uppercase;margin-bottom:6px">Total Care System</div>
@@ -590,7 +592,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
   <div id="sidebar">
     <div class="logo">
       <img src="https://koreayjk.github.io/imessenger/tcs_logo.png" alt="TCS" id="sidebar-logo-img"
-        style="width:38px;height:38px;object-fit:contain;filter:brightness(0) invert(1);opacity:.9"
+        style="width:40px;height:40px;object-fit:contain;"
         onerror="document.getElementById('sidebar-logo-img').style.display='none';document.getElementById('sidebar-logo-txt').style.display='flex'"/>
       <div id="sidebar-logo-txt" style="display:none;width:38px;height:38px;border-radius:10px;background:rgba(255,255,255,.2);align-items:center;justify-content:center;font-size:13px;font-weight:800;color:white">TCS</div>
     </div>
