@@ -360,6 +360,8 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
 .adm-card { background:var(--surface);border-radius:16px;padding:18px 20px;margin-bottom:12px;box-shadow:0 1px 4px rgba(29,58,95,.07); }
 .adm-row { display:flex;align-items:center;gap:14px;padding:12px 0;border-bottom:1px solid var(--bs); }
 .adm-row:last-child { border-bottom:none; }
+.adm-input { height:38px;padding:0 12px;border-radius:10px;border:1.5px solid var(--border);background:var(--s2);font:14px var(--font);color:var(--ink);outline:none;transition:border-color .15s; }
+.adm-input:focus { border-color:var(--accent);background:white; }
 .adm-btn { height:30px;padding:0 14px;border-radius:9px;display:inline-flex;align-items:center;font-size:12px;font-weight:600;cursor:pointer;border:none; }
 .adm-btn.primary { background:var(--accent);color:white; }
 .adm-btn.sage { background:var(--sage);color:white; }
@@ -418,7 +420,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
   #panel.chat-open { transform: translateX(-100%); }
 
   /* 입력창이 하단 탭바에 가리지 않도록 */
-  #chat-view, #prayer-view, #home-view, #calendar-view, #admin-view {
+  #chat-view, #prayer-view, #home-view, #calendar-view, #admin-view, #tcs-view {
     padding-bottom: calc(72px + env(safe-area-inset-bottom));
   }
   #composer {
@@ -612,12 +614,16 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>
       <span>일정</span>
     </div>
+    <div class="sb-btn" id="sb-tcs" onclick="setMode('tcs')" title="TCS 기록부" style="display:none">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+      <span>TCS</span>
+    </div>
     <div class="sb-btn" id="sb-admin" onclick="setMode('admin')" title="관리자" style="display:none">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M12 14c-5 0-8 2-8 4v1h16v-1c0-2-3-4-8-4z"/><path d="M17 3l1.5 1.5L20 3l-1.5 1.5L20 6l-1.5-1.5L17 6l1.5-1.5z"/></svg>
       <span>관리</span>
     </div>
     <div class="sb-spacer"></div>
-    <div class="sb-btn" id="sb-me" title="내 프로필" style="margin-bottom:4px">
+    <div class="sb-btn" id="sb-me" title="내 프로필" style="margin-bottom:4px" onclick="setMode('profile')">
       <div id="my-av" style="width:36px;height:36px;border-radius:11px;background:#1d3a5f;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:14px;color:white">?</div>
     </div>
     <div class="sb-btn" onclick="doLogout()" title="로그아웃" style="margin-bottom:0">
@@ -807,16 +813,52 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
         <div style="width:36px;height:36px;border-radius:11px;background:#1d3a5f;display:flex;align-items:center;justify-content:center;font-size:18px">⚙️</div>
         <div style="flex:1">
           <div style="font-size:15px;font-weight:700">관리자 페이지</div>
-          <div style="font-size:12px;color:var(--ink3)">멤버·채널·공지·목표 관리</div>
+          <div style="font-size:12px;color:var(--ink3)" id="admin-role-label">멤버·채널·공지·목표 관리</div>
         </div>
       </div>
-      <div style="display:flex;gap:0;padding:0 20px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0">
-        <div id="adm-tab-members" onclick="switchAdminTab('members')" class="adm-tab active-adm">👥 멤버</div>
-        <div id="adm-tab-channels" onclick="switchAdminTab('channels')" class="adm-tab">💬 채널</div>
-        <div id="adm-tab-notices" onclick="switchAdminTab('notices')" class="adm-tab">📢 공지사항</div>
-        <div id="adm-tab-goals" onclick="switchAdminTab('goals')" class="adm-tab">🎯 이달의 목표</div>
+      <div style="display:flex;gap:0;padding:0 20px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;overflow-x:auto">
+        <div id="adm-tab-communities" onclick="switchAdminTab('communities')" class="adm-tab" style="display:none;white-space:nowrap">🏛️ 공동체</div>
+        <div id="adm-tab-mysettings" onclick="switchAdminTab('mysettings')" class="adm-tab" style="display:none;white-space:nowrap">⚙️ 공동체 설정</div>
+        <div id="adm-tab-members" onclick="switchAdminTab('members')" class="adm-tab active-adm" style="white-space:nowrap">👥 멤버</div>
+        <div id="adm-tab-channels" onclick="switchAdminTab('channels')" class="adm-tab" style="white-space:nowrap">💬 채널</div>
+        <div id="adm-tab-notices" onclick="switchAdminTab('notices')" class="adm-tab" style="white-space:nowrap">📢 공지사항</div>
+        <div id="adm-tab-goals" onclick="switchAdminTab('goals')" class="adm-tab" style="white-space:nowrap">🎯 이달의 목표</div>
       </div>
       <div id="admin-content" style="flex:1;overflow-y:auto;padding:24px 28px"></div>
+    </div>
+
+    <!-- 내 프로필 뷰 -->
+    <div id="profile-view" style="display:none;flex-direction:column;height:100%;background:var(--bg)">
+      <div style="height:56px;padding:0 24px;display:flex;align-items:center;gap:12px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0">
+        <div style="width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#1d3a5f,#2a5298);display:flex;align-items:center;justify-content:center;font-size:16px">👤</div>
+        <div style="flex:1">
+          <div style="font-size:15px;font-weight:700">내 프로필</div>
+          <div style="font-size:11px;color:var(--ink3)">개인정보를 입력하면 TCS 기록부에 자동 반영돼요</div>
+        </div>
+      </div>
+      <div id="profile-content" style="flex:1;overflow-y:auto;padding:24px 28px"></div>
+    </div>
+
+    <!-- TCS 기록부 뷰 -->
+    <div id="tcs-view" style="display:none;flex-direction:column;height:100%;background:var(--bg)">
+      <!-- 헤더 -->
+      <div style="height:56px;padding:0 24px;display:flex;align-items:center;justify-content:space-between;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#1d3a5f,#2a5298);display:flex;align-items:center;justify-content:center;font-size:16px">📋</div>
+          <div>
+            <div style="font-size:15px;font-weight:700;color:var(--ink)">TCS 학생 기록부</div>
+            <div style="font-size:11px;color:var(--ink3)" id="tcs-header-sub">학생을 선택하세요</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px" id="tcs-header-actions"></div>
+      </div>
+      <!-- 콘텐츠 -->
+      <div style="display:flex;flex:1;overflow:hidden">
+        <!-- 학생 목록 사이드 -->
+        <div id="tcs-student-panel" style="width:220px;flex-shrink:0;background:var(--surface);border-right:1px solid var(--border);overflow-y:auto;padding:12px 8px"></div>
+        <!-- 메인 영역 -->
+        <div id="tcs-main" style="flex:1;overflow-y:auto;padding:24px 28px"></div>
+      </div>
     </div>
   </div>
 
@@ -1210,7 +1252,11 @@ function enterApp() {
     const mnAdmin = document.getElementById('mn-admin');
     if (mnAdmin) mnAdmin.style.display = 'flex';
   }
-  // 총관리자 배지 표시
+  // 교사 이상은 TCS 탭 표시
+  if (isTeacher()) {
+    document.getElementById('sb-tcs').style.display = 'flex';
+  }
+  // 총관리자 배지
   if (isSuperAdmin()) {
     const myAvEl = document.getElementById('my-av');
     if (myAvEl) myAvEl.title = `${ME.name} (총관리자)`;
@@ -1424,10 +1470,11 @@ function setMode(m) {
   document.getElementById('home-view').style.display = m==='home' ? 'flex' : 'none';
   document.getElementById('calendar-view').style.display = m==='calendar' ? 'flex' : 'none';
   document.getElementById('admin-view').style.display = m==='admin' ? 'flex' : 'none';
+  document.getElementById('tcs-view').style.display = m==='tcs' ? 'flex' : 'none';
+  document.getElementById('profile-view').style.display = m==='profile' ? 'flex' : 'none';
 
-  // 홈, 캘린더, 관리자에선 패널 숨기기
   const panel = document.getElementById('panel');
-  if (m === 'home' || m === 'calendar' || m === 'admin') {
+  if (m === 'home' || m === 'calendar' || m === 'admin' || m === 'tcs' || m === 'profile') {
     panel.style.display = 'none';
   } else {
     panel.style.display = 'flex';
@@ -1437,9 +1484,11 @@ function setMode(m) {
   if (m==='home') renderHome();
   if (m==='chat') { renderPanel(); sessionStorage.removeItem('last_channel_id'); }
   if (m==='calendar') { loadCalendar(); }
-  if (m==='admin') { switchAdminTab('members'); }
+  if (m==='admin') { initAdminPage(); }
+  if (m==='tcs') { initTcsPage(); }
+  if (m==='profile') { renderProfilePage(); }
   sessionStorage.setItem('last_mode', m);
-  document.getElementById('panel-title').textContent = {chat:'채팅',prayer:'기도제목',home:'홈',calendar:'일정',admin:'관리자'}[m] || m;
+  document.getElementById('panel-title').textContent = {chat:'채팅',prayer:'기도제목',home:'홈',calendar:'일정',admin:'관리자',tcs:'TCS',profile:'내 프로필'}[m] || m;
 }
 
 // ── 채널 패널 렌더 ──
@@ -2767,7 +2816,7 @@ let adminTab = 'members';
 
 function switchAdminTab(tab) {
   adminTab = tab;
-  ['members','channels','notices','goals'].forEach(t => {
+  ['communities','mysettings','members','channels','notices','goals'].forEach(t => {
     const el = document.getElementById('adm-tab-'+t);
     if (!el) return;
     el.classList.toggle('active-adm', t===tab);
@@ -2775,10 +2824,1108 @@ function switchAdminTab(tab) {
   const area = document.getElementById('admin-content');
   if (!area) return;
   area.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink3)">불러오는 중...</div>';
-  if (tab==='members') renderAdminMembers();
+  if (tab==='communities') renderAdminCommunities();
+  else if (tab==='mysettings') renderCommunitySettings();
+  else if (tab==='members') renderAdminMembers();
   else if (tab==='channels') renderAdminChannels();
   else if (tab==='notices') renderAdminNotices();
   else if (tab==='goals') renderAdminGoals();
+}
+
+function initAdminPage() {
+  if (isSuperAdmin()) {
+    // 총관리자: 공동체 탭 표시, 공동체 탭으로 시작
+    const commTab = document.getElementById('adm-tab-communities');
+    if (commTab) commTab.style.display = 'block';
+    const label = document.getElementById('admin-role-label');
+    if (label) label.textContent = '총관리자 — 공동체·멤버·채널 전체 관리';
+    switchAdminTab('communities');
+  } else if (isCommunityAdmin()) {
+    // 공동체 관리자: 공동체 설정 탭 표시, 설정 탭으로 시작
+    const settingsTab = document.getElementById('adm-tab-mysettings');
+    if (settingsTab) settingsTab.style.display = 'block';
+    const label = document.getElementById('admin-role-label');
+    if (label) label.textContent = '공동체 관리자 — 공동체 설정 및 멤버 관리';
+    switchAdminTab('mysettings');
+  } else {
+    switchAdminTab('members');
+  }
+}
+
+// ══════════════════════════════════════════
+// 내 프로필 — 학생 개인정보 입력
+// ══════════════════════════════════════════
+
+async function renderProfilePage() {
+  const area = document.getElementById('profile-content');
+  area.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink3)">불러오는 중...</div>';
+
+  // 최신 프로필 로드
+  const { data: me } = await sb.from('members').select('*').eq('id', ME.id).single();
+  if (me) Object.assign(ME, me);
+
+  const isStudent = ME.community_role === 'student';
+  const roleLabel = {super_admin:'총관리자', community_admin:'공동체관리자', teacher:'교사', student:'학생', member:'멤버'}[ME.community_role] || '멤버';
+  const roleColor = {super_admin:'#7c3aed', community_admin:'#1d4ed8', teacher:'#0369a1', student:'#15803d', member:'#6b7280'}[ME.community_role] || '#6b7280';
+
+  const inp = (id, label, val, type='text', placeholder='') => `
+    <div style="margin-bottom:16px">
+      <label style="font-size:12px;font-weight:600;color:var(--ink3);display:block;margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em">${label}</label>
+      <input id="prof-${id}" type="${type}" value="${(val||'').replace(/"/g,'&quot;')}" placeholder="${placeholder}"
+        style="width:100%;padding:11px 14px;border-radius:11px;border:1.5px solid var(--border);background:var(--s2);font:14px var(--font);color:var(--ink);outline:none;transition:all .15s"
+        onfocus="this.style.borderColor='#1d3a5f';this.style.background='white'"
+        onblur="this.style.borderColor='var(--border)';this.style.background='var(--s2)'"/>
+    </div>`;
+
+  const sel = (id, label, val, options) => `
+    <div style="margin-bottom:16px">
+      <label style="font-size:12px;font-weight:600;color:var(--ink3);display:block;margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em">${label}</label>
+      <select id="prof-${id}" style="width:100%;padding:11px 14px;border-radius:11px;border:1.5px solid var(--border);background:var(--s2);font:14px var(--font);color:var(--ink);outline:none;cursor:pointer;appearance:none">
+        <option value="">선택해주세요</option>
+        ${options.map(o => `<option value="${o}" ${val===o?'selected':''}>${o}</option>`).join('')}
+      </select>
+    </div>`;
+
+  area.innerHTML = `
+    <div style="max-width:580px">
+
+      <!-- 프로필 카드 -->
+      <div style="background:linear-gradient(135deg,#1d3a5f,#2a5298);border-radius:20px;padding:24px;margin-bottom:28px;display:flex;align-items:center;gap:16px">
+        <div style="width:60px;height:60px;border-radius:16px;background:${ME.color||'rgba(255,255,255,.2)'};display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:white;flex-shrink:0">${ME.initials||ME.name?.[0]||'?'}</div>
+        <div style="flex:1">
+          <div style="font-size:18px;font-weight:700;color:white">${ME.name}</div>
+          <div style="font-size:12px;color:rgba(255,255,255,.7);margin-top:2px">${ME.email}</div>
+          <span style="display:inline-block;margin-top:6px;font-size:11px;font-weight:700;padding:3px 10px;border-radius:99px;background:rgba(255,255,255,.2);color:white">${roleLabel}</span>
+        </div>
+      </div>
+
+      <!-- 기본 정보 -->
+      <div class="adm-card" style="margin-bottom:16px">
+        <div style="font-size:14px;font-weight:700;color:var(--adeep);margin-bottom:16px">👤 기본 정보</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px">
+          <div>${inp('name', '이름', ME.name)}</div>
+          <div>${inp('family_name', '영문 성 (Family Name)', ME.family_name, 'text', '예: Kim')}</div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px">
+          <div>${sel('gender', '성별', ME.gender, ['남','여'])}</div>
+          <div>${inp('birth_date', '생년월일', ME.birth_date, 'date')}</div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px">
+          <div>${inp('nationality', '국적', ME.nationality||'대한민국', 'text', '대한민국')}</div>
+          <div>${inp('native_lang', '모국어', ME.native_lang||'한국어', 'text', '한국어')}</div>
+        </div>
+      </div>
+
+      <!-- 연락처 -->
+      <div class="adm-card" style="margin-bottom:16px">
+        <div style="font-size:14px;font-weight:700;color:var(--adeep);margin-bottom:16px">📱 연락처</div>
+        ${inp('phone', '전화번호', ME.phone, 'tel', '010-0000-0000')}
+        ${inp('address', '주소', ME.address, 'text', '예: 서울시 강남구...')}
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px">
+          <div>${inp('guardian_name', '보호자 성명', ME.guardian_name, 'text')}</div>
+          <div>${inp('guardian_phone', '보호자 연락처', ME.guardian_phone, 'tel', '010-0000-0000')}</div>
+        </div>
+      </div>
+
+      <!-- 학교 정보 -->
+      <div class="adm-card" style="margin-bottom:16px">
+        <div style="font-size:14px;font-weight:700;color:var(--adeep);margin-bottom:16px">🏫 학교 정보</div>
+        ${inp('school_name', '학교명', ME.school_name, 'text', '예: IM선교회 대안학교')}
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px">
+          <div>${sel('grade', '현재 학년', ME.grade, ['G7 (중1)','G8 (중2)','G9 (중3)','G10 (고1)','G11 (고2)','G12 (고3)','졸업'])}</div>
+          <div>${inp('homeroom_teacher', '담임 선생님', ME.homeroom_teacher, 'text')}</div>
+        </div>
+        ${inp('enroll_date', '입학일', ME.enroll_date, 'date')}
+      </div>
+
+      <!-- 신앙 -->
+      <div class="adm-card" style="margin-bottom:16px">
+        <div style="font-size:14px;font-weight:700;color:var(--adeep);margin-bottom:16px">✝️ 신앙</div>
+        ${inp('church', '소속 교회', ME.church, 'text', '예: ○○교회')}
+      </div>
+
+      <!-- 진로 -->
+      <div class="adm-card" style="margin-bottom:24px">
+        <div style="font-size:14px;font-weight:700;color:var(--adeep);margin-bottom:16px">🎯 진로</div>
+        ${inp('career_goal', '진로 희망', ME.career_goal, 'text', '예: 선교사 / 교사 / 의사')}
+      </div>
+
+      <!-- 비밀번호 변경 -->
+      <div class="adm-card" style="margin-bottom:16px">
+        <div style="font-size:14px;font-weight:700;color:var(--adeep);margin-bottom:16px">🔒 비밀번호 변경</div>
+        <input id="prof-pw1" type="password" placeholder="새 비밀번호 (6자 이상)"
+          style="width:100%;padding:11px 14px;border-radius:11px;border:1.5px solid var(--border);background:var(--s2);font:14px var(--font);color:var(--ink);outline:none;margin-bottom:10px"/>
+        <input id="prof-pw2" type="password" placeholder="새 비밀번호 확인"
+          style="width:100%;padding:11px 14px;border-radius:11px;border:1.5px solid var(--border);background:var(--s2);font:14px var(--font);color:var(--ink);outline:none;margin-bottom:12px"/>
+        <button onclick="changeProfilePassword()"
+          style="height:38px;padding:0 18px;border-radius:10px;border:1.5px solid var(--accent);background:white;color:var(--accent);font:600 13px var(--font);cursor:pointer">
+          비밀번호 변경
+        </button>
+      </div>
+
+      <!-- 저장 버튼 -->
+      <button onclick="saveProfile()"
+        style="width:100%;height:46px;border-radius:13px;border:none;background:linear-gradient(135deg,#1d3a5f,#2a5298);color:white;font:600 15px var(--font);cursor:pointer;box-shadow:0 4px 14px rgba(29,58,95,.3);margin-bottom:24px">
+        ✅ 저장하기
+      </button>
+    </div>`;
+}
+
+async function saveProfile() {
+  const get = id => document.getElementById(`prof-${id}`)?.value?.trim() || '';
+
+  const updates = {
+    name:             get('name'),
+    family_name:      get('family_name'),
+    gender:           get('gender'),
+    birth_date:       get('birth_date') || null,
+    nationality:      get('nationality'),
+    native_lang:      get('native_lang'),
+    phone:            get('phone'),
+    address:          get('address'),
+    guardian_name:    get('guardian_name'),
+    guardian_phone:   get('guardian_phone'),
+    school_name:      get('school_name'),
+    grade:            get('grade'),
+    homeroom_teacher: get('homeroom_teacher'),
+    enroll_date:      get('enroll_date') || null,
+    church:           get('church'),
+    career_goal:      get('career_goal'),
+  };
+  if (updates.name) updates.initials = updates.name[0];
+
+  const { error } = await sb.from('members').update(updates).eq('id', ME.id);
+  if (error) { showUploadToast('저장 실패 😥'); return; }
+
+  // ME 로컬 업데이트
+  Object.assign(ME, updates);
+  // 아바타 이름 업데이트
+  const av = document.getElementById('my-av');
+  if (av) { av.textContent = ME.initials || ME.name[0]; }
+
+  // TCS 기록부 인적사항·학적사항·신앙·진로에 자동 반영
+  await syncProfileToTcs();
+
+  showUploadToast('✅ 프로필이 저장됐어요!');
+}
+
+async function syncProfileToTcs() {
+  // 학생 본인 기록에만 자동 반영
+  const communityId = ME.community_id || '00000000-0000-0000-0000-000000000001';
+
+  // 1. 인적사항
+  const personalData = {
+    name_ko:  ME.name || '',
+    name_en:  ME.family_name ? `${ME.name} ${ME.family_name}` : '',
+    birth:    ME.birth_date || '',
+    gender:   ME.gender || '',
+    nationality: ME.nationality || '',
+    native_lang: ME.native_lang || '',
+    guardian: ME.guardian_name || '',
+    contact:  ME.guardian_phone || '',
+    address:  ME.address || '',
+  };
+
+  // 2. 학적사항
+  const schoolData = {
+    school_name: ME.school_name || '',
+    enroll_date: ME.enroll_date || '',
+  };
+
+  // 3. 신앙
+  const faithData = { church: ME.church || '' };
+
+  // 4. 진로
+  const careerData = { career_goal: ME.career_goal || '' };
+
+  const upserts = [
+    { section: 'personal', data: personalData },
+    { section: 'school',   data: schoolData },
+    { section: 'faith',    data: faithData },
+    { section: 'career',   data: careerData },
+  ];
+
+  for (const u of upserts) {
+    // 기존 기록 가져와서 머지 (기존 데이터 덮어쓰지 않도록)
+    const { data: existing } = await sb.from('tcs_records')
+      .select('data').eq('student_id', ME.id).eq('section', u.section).single();
+    const merged = { ...(existing?.data || {}), ...u.data };
+
+    await sb.from('tcs_records').upsert({
+      student_id:   ME.id,
+      community_id: communityId,
+      section:      u.section,
+      data:         merged,
+      updated_at:   new Date().toISOString(),
+      updated_by:   ME.id,
+    }, { onConflict: 'student_id,section' });
+  }
+}
+
+async function changeProfilePassword() {
+  const pw1 = document.getElementById('prof-pw1')?.value;
+  const pw2 = document.getElementById('prof-pw2')?.value;
+  if (!pw1 || pw1.length < 6) { showUploadToast('비밀번호는 6자 이상이어야 해요'); return; }
+  if (pw1 !== pw2) { showUploadToast('비밀번호가 일치하지 않아요'); return; }
+  const { error } = await sb.auth.updateUser({ password: pw1 });
+  if (error) { showUploadToast('변경 실패: ' + error.message); return; }
+  showUploadToast('✅ 비밀번호가 변경됐어요!');
+  document.getElementById('prof-pw1').value = '';
+  document.getElementById('prof-pw2').value = '';
+}
+
+const TCS_SECTIONS = [
+  { id:'personal',   icon:'👤', label:'인적사항',        labelEn:'Personal Info' },
+  { id:'school',     icon:'🏫', label:'학적사항',        labelEn:'School Info' },
+  { id:'attendance', icon:'📅', label:'출결사항',        labelEn:'Attendance' },
+  { id:'academic',   icon:'📚', label:'교과학습 발달',    labelEn:'Academic' },
+  { id:'faith',      icon:'✝️',  label:'신앙 및 인성',    labelEn:'Faith & Character' },
+  { id:'activities', icon:'🏃', label:'창의적 체험활동',  labelEn:'Activities' },
+  { id:'service',    icon:'🤝', label:'봉사활동',        labelEn:'Service' },
+  { id:'awards',     icon:'🏆', label:'수상 및 자격증',  labelEn:'Awards' },
+  { id:'reading',    icon:'📖', label:'독서활동',        labelEn:'Reading' },
+  { id:'career',     icon:'🎯', label:'진로 및 진학',    labelEn:'Career' },
+  { id:'comment',    icon:'✍️',  label:'담임 종합의견',   labelEn:'Assessment' },
+];
+
+let tcsCurrentStudent = null;
+let tcsRecords = {};
+let tcsStudents = [];
+let tcsCurrentSection = 'personal';
+
+async function initTcsPage() {
+  const panel = document.getElementById('tcs-student-panel');
+  const main = document.getElementById('tcs-main');
+  panel.innerHTML = '<div style="text-align:center;padding:20px;color:var(--ink3);font-size:12px">불러오는 중...</div>';
+  main.innerHTML = '';
+
+  // 소속 공동체 학생 목록 로드
+  const { data: students } = await sb.from('members')
+    .select('*')
+    .eq('community_id', ME.community_id || '00000000-0000-0000-0000-000000000001')
+    .in('community_role', ['student'])
+    .order('name');
+  tcsStudents = students || [];
+
+  renderTcsStudentPanel();
+  if (tcsStudents.length > 0) {
+    selectTcsStudent(tcsStudents[0]);
+  } else {
+    main.innerHTML = `<div style="text-align:center;padding:60px 20px">
+      <div style="font-size:48px;margin-bottom:12px">👨‍🎓</div>
+      <div style="font-size:15px;font-weight:600;color:var(--ink2);margin-bottom:6px">등록된 학생이 없어요</div>
+      <div style="font-size:13px;color:var(--ink3)">관리자 페이지에서 학생을 먼저 승인해주세요</div>
+    </div>`;
+  }
+}
+
+function renderTcsStudentPanel() {
+  const panel = document.getElementById('tcs-student-panel');
+  panel.innerHTML = `
+    <div style="font-size:11px;font-weight:600;color:var(--ink3);padding:4px 8px 8px;letter-spacing:.05em;text-transform:uppercase">학생 목록 (${tcsStudents.length}명)</div>
+    ${tcsStudents.map(s => `
+      <div onclick="selectTcsStudent(${JSON.stringify({id:s.id,name:s.name,color:s.color,initials:s.initials}).replace(/"/g,'&quot;')})" id="tcs-student-${s.id}"
+        style="display:flex;align-items:center;gap:8px;padding:9px 10px;border-radius:10px;cursor:pointer;transition:background .12s;margin-bottom:2px;
+        ${tcsCurrentStudent?.id===s.id?'background:var(--asoft)':''}"
+        onmouseover="if('${s.id}'!==tcsCurrentStudent?.id)this.style.background='var(--s3)'"
+        onmouseout="if('${s.id}'!==tcsCurrentStudent?.id)this.style.background=''">
+        <div style="width:28px;height:28px;border-radius:8px;background:${s.color||'#1d3a5f'};display:flex;align-items:center;justify-content:center;color:white;font-size:11px;font-weight:700;flex-shrink:0">${s.initials||s.name?.[0]||'?'}</div>
+        <span style="font-size:13px;font-weight:${tcsCurrentStudent?.id===s.id?'700':'400'};color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${s.name}</span>
+      </div>`).join('')}`;
+}
+
+async function selectTcsStudent(student) {
+  if (typeof student === 'string') student = JSON.parse(student);
+  tcsCurrentStudent = student;
+  tcsCurrentSection = 'personal';
+
+  // 헤더 업데이트
+  document.getElementById('tcs-header-sub').textContent = `${student.name} 학생의 기록부`;
+  document.getElementById('tcs-header-actions').innerHTML = `
+    <button onclick="showTcsPreview()" style="height:34px;padding:0 14px;border-radius:9px;border:1.5px solid var(--accent);background:white;color:var(--accent);font:600 12px var(--font);cursor:pointer">👁️ 미리보기</button>
+    <button onclick="printTcsPdf()" style="height:34px;padding:0 14px;border-radius:9px;border:none;background:linear-gradient(135deg,#1d3a5f,#2a5298);color:white;font:600 12px var(--font);cursor:pointer">📄 PDF 출력</button>`;
+
+  // 이 학생의 기록 로드
+  const { data: records } = await sb.from('tcs_records')
+    .select('*').eq('student_id', student.id);
+  tcsRecords = {};
+  (records || []).forEach(r => { tcsRecords[r.section] = r.data || {}; });
+
+  // 이 학생의 최신 프로필로 TCS 자동 동기화 (교사가 열 때)
+  const { data: studentProfile } = await sb.from('members').select('*').eq('id', student.id).single();
+  if (studentProfile) {
+    const communityId = ME.community_id || '00000000-0000-0000-0000-000000000001';
+    const personalMerge = {
+      name_ko: studentProfile.name || '',
+      birth:   studentProfile.birth_date || '',
+      gender:  studentProfile.gender || '',
+      nationality: studentProfile.nationality || '',
+      native_lang: studentProfile.native_lang || '',
+      guardian: studentProfile.guardian_name || '',
+      contact:  studentProfile.guardian_phone || '',
+      address:  studentProfile.address || '',
+    };
+    if (studentProfile.family_name) personalMerge.name_en = `${studentProfile.name} ${studentProfile.family_name}`;
+    const schoolMerge = {
+      school_name: studentProfile.school_name || '',
+      enroll_date: studentProfile.enroll_date || '',
+    };
+    // 기존 기록과 머지
+    for (const [section, merge] of [['personal', personalMerge], ['school', schoolMerge]]) {
+      const existing = tcsRecords[section] || {};
+      tcsRecords[section] = { ...merge, ...existing };
+    }
+    if (studentProfile.church) tcsRecords.faith = { church: studentProfile.church, ...(tcsRecords.faith||{}) };
+    if (studentProfile.career_goal) tcsRecords.career = { career_goal: studentProfile.career_goal, ...(tcsRecords.career||{}) };
+  }
+
+  renderTcsStudentPanel();
+  renderTcsSectionList();
+}
+
+function renderTcsSectionList() {
+  const main = document.getElementById('tcs-main');
+  const completedSections = TCS_SECTIONS.filter(s => tcsRecords[s.id] && Object.keys(tcsRecords[s.id]).length > 0).length;
+
+  main.innerHTML = `
+    <div style="max-width:700px">
+      <!-- 학생 카드 -->
+      <div style="background:linear-gradient(135deg,#1d3a5f,#2a5298);border-radius:18px;padding:20px 24px;margin-bottom:24px;display:flex;align-items:center;gap:16px">
+        <div style="width:52px;height:52px;border-radius:14px;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;color:white;font-size:20px;font-weight:700;flex-shrink:0">${tcsCurrentStudent.initials||tcsCurrentStudent.name?.[0]||'?'}</div>
+        <div style="flex:1">
+          <div style="font-size:18px;font-weight:700;color:white">${tcsCurrentStudent.name}</div>
+          <div style="font-size:12px;color:rgba(255,255,255,.7);margin-top:2px">TCS 학생 종합 기록부</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:22px;font-weight:700;color:white">${completedSections}/${TCS_SECTIONS.length}</div>
+          <div style="font-size:11px;color:rgba(255,255,255,.6)">섹션 완성</div>
+        </div>
+      </div>
+
+      <!-- 진행률 바 -->
+      <div style="background:var(--border);border-radius:99px;height:6px;margin-bottom:24px;overflow:hidden">
+        <div style="height:100%;width:${Math.round(completedSections/TCS_SECTIONS.length*100)}%;background:linear-gradient(90deg,#1d3a5f,#2a5298);border-radius:99px;transition:width .4s"></div>
+      </div>
+
+      <!-- 섹션 그리드 -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        ${TCS_SECTIONS.map(sec => {
+          const hasData = tcsRecords[sec.id] && Object.keys(tcsRecords[sec.id]).length > 0;
+          return `<div onclick="openTcsSection('${sec.id}')"
+            style="background:var(--surface);border-radius:14px;padding:16px 18px;cursor:pointer;
+            border:2px solid ${hasData?'#2a5298':'var(--border)'};
+            transition:all .15s;display:flex;align-items:center;gap:12px"
+            onmouseover="this.style.borderColor='#2a5298';this.style.transform='translateY(-1px)'"
+            onmouseout="this.style.borderColor='${hasData?'#2a5298':'var(--border)}'}';this.style.transform=''">
+            <div style="font-size:22px">${sec.icon}</div>
+            <div style="flex:1">
+              <div style="font-size:13px;font-weight:600;color:var(--ink)">${sec.label}</div>
+              <div style="font-size:11px;color:var(--ink3);margin-top:1px">${sec.labelEn}</div>
+            </div>
+            <div style="width:20px;height:20px;border-radius:50%;background:${hasData?'#2a5298':'var(--border)'};display:flex;align-items:center;justify-content:center;flex-shrink:0">
+              ${hasData?'<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>':''}
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+}
+
+function openTcsSection(sectionId) {
+  tcsCurrentSection = sectionId;
+  const sec = TCS_SECTIONS.find(s => s.id === sectionId);
+  const data = tcsRecords[sectionId] || {};
+  const main = document.getElementById('tcs-main');
+
+  const fields = getTcsSectionFields(sectionId);
+  main.innerHTML = `
+    <div style="max-width:680px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
+        <button onclick="renderTcsSectionList()" style="height:32px;padding:0 12px;border-radius:8px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:500 12px var(--font);cursor:pointer">← 목록</button>
+        <div style="font-size:22px">${sec.icon}</div>
+        <div style="font-size:16px;font-weight:700;color:var(--ink)">${sec.label}</div>
+      </div>
+
+      <div class="adm-card">
+        ${fields.map(f => renderTcsField(f, data[f.key])).join('')}
+        <button onclick="saveTcsSection('${sectionId}')"
+          style="width:100%;height:42px;border-radius:11px;border:none;background:linear-gradient(135deg,#1d3a5f,#2a5298);color:white;font:600 14px var(--font);cursor:pointer;margin-top:8px;box-shadow:0 4px 12px rgba(29,58,95,.25)">
+          💾 저장하기
+        </button>
+      </div>
+    </div>`;
+}
+
+function getTcsSectionFields(sectionId) {
+  const F = {
+    personal: [
+      {key:'name_ko', label:'성명 (한글)', type:'text', placeholder:'홍길동'},
+      {key:'name_en', label:'성명 (영문)', type:'text', placeholder:'Hong Gildong'},
+      {key:'birth', label:'생년월일', type:'date'},
+      {key:'gender', label:'성별', type:'select', options:['남','여']},
+      {key:'nationality', label:'국적', type:'text', placeholder:'대한민국'},
+      {key:'native_lang', label:'모국어', type:'text', placeholder:'한국어'},
+      {key:'guardian', label:'보호자 성명', type:'text'},
+      {key:'contact', label:'연락처', type:'text'},
+      {key:'address', label:'주소', type:'text'},
+    ],
+    school: [
+      {key:'school_name', label:'학교명', type:'text'},
+      {key:'school_type', label:'학교 구분', type:'select', options:['대안학교','홈스쿨','기독학교','기타']},
+      {key:'enroll_date', label:'입학일', type:'date'},
+      {key:'grad_date', label:'졸업(예정)일', type:'date'},
+      {key:'course', label:'재학 과정', type:'select', options:['중학','고등','중·고통합']},
+      {key:'principal', label:'학교장', type:'text'},
+    ],
+    attendance: [
+      {key:'g7', label:'G7 (중1) — 수업일수 / 결석 / 지각 / 조퇴', type:'text', placeholder:'예: 190 / 2 / 1 / 0'},
+      {key:'g8', label:'G8 (중2)', type:'text', placeholder:'예: 190 / 0 / 0 / 0'},
+      {key:'g9', label:'G9 (중3)', type:'text', placeholder:''},
+      {key:'g10', label:'G10 (고1)', type:'text', placeholder:''},
+      {key:'g11', label:'G11 (고2)', type:'text', placeholder:''},
+      {key:'g12', label:'G12 (고3)', type:'text', placeholder:''},
+    ],
+    academic: [
+      {key:'g7_grades', label:'G7 성적 (과목: 등급, …)', type:'textarea', placeholder:'국어:A, 영어:B, 수학:A, 사회:B, 과학:A, 성경:A'},
+      {key:'g8_grades', label:'G8 성적', type:'textarea', placeholder:''},
+      {key:'g9_grades', label:'G9 성적', type:'textarea', placeholder:''},
+      {key:'g10_grades', label:'G10 성적', type:'textarea', placeholder:''},
+      {key:'g11_grades', label:'G11 성적', type:'textarea', placeholder:''},
+      {key:'g12_grades', label:'G12 성적', type:'textarea', placeholder:''},
+      {key:'gpa', label:'누적 GPA (4.0 만점)', type:'text', placeholder:'예: 3.75'},
+    ],
+    faith: [
+      {key:'baptism', label:'세례 여부 / 날짜', type:'text', placeholder:'예: 세례 완료 / 2022-03-15'},
+      {key:'church', label:'소속 교회', type:'text'},
+      {key:'scripture', label:'성경 암송 (구절 수)', type:'text', placeholder:'예: 50구절'},
+      {key:'devotion', label:'큐티 / 경건 생활', type:'select', options:['매우 성실','성실','보통','미흡']},
+      {key:'faith_note', label:'신앙 성장 서술 (담임 기재)', type:'textarea', rows:6},
+    ],
+    activities: [
+      {key:'act1', label:'활동 1 (학년 / 구분 / 내용 / 시간)', type:'text', placeholder:'G9 / 동아리 / 성경 스터디 / 40h'},
+      {key:'act2', label:'활동 2', type:'text'},
+      {key:'act3', label:'활동 3', type:'text'},
+      {key:'act4', label:'활동 4', type:'text'},
+      {key:'act5', label:'활동 5', type:'text'},
+      {key:'act6', label:'활동 6', type:'text'},
+      {key:'act7', label:'활동 7', type:'text'},
+      {key:'act8', label:'활동 8', type:'text'},
+    ],
+    service: [
+      {key:'svc1', label:'봉사 1 (날짜 / 내용 / 기관 / 시간)', type:'text', placeholder:'2023-07 / 지역사회 청소 / 교회 / 8h'},
+      {key:'svc2', label:'봉사 2', type:'text'},
+      {key:'svc3', label:'봉사 3', type:'text'},
+      {key:'svc4', label:'봉사 4', type:'text'},
+      {key:'svc5', label:'봉사 5', type:'text'},
+    ],
+    awards: [
+      {key:'awd1', label:'수상/자격증 1 (날짜 / 명칭 / 수여기관 / 급수)', type:'text', placeholder:'2023-11 / 영어경시 우수상 / 학교 / -'},
+      {key:'awd2', label:'수상/자격증 2', type:'text'},
+      {key:'awd3', label:'수상/자격증 3', type:'text'},
+      {key:'awd4', label:'수상/자격증 4', type:'text'},
+      {key:'awd5', label:'수상/자격증 5', type:'text'},
+    ],
+    reading: [
+      {key:'book1', label:'도서 1 (제목 / 저자 / 출판사 / 학년학기)', type:'text', placeholder:'리스본행 야간열차 / 파스칼 메르시에 / 들녘 / G9-1학기'},
+      {key:'book2', label:'도서 2', type:'text'},
+      {key:'book3', label:'도서 3', type:'text'},
+      {key:'book4', label:'도서 4', type:'text'},
+      {key:'book5', label:'도서 5', type:'text'},
+      {key:'book6', label:'도서 6', type:'text'},
+      {key:'book7', label:'도서 7', type:'text'},
+      {key:'book8', label:'도서 8', type:'text'},
+    ],
+    career: [
+      {key:'career_goal', label:'진로 희망', type:'text', placeholder:'예: 선교사 / 교사 / 의사'},
+      {key:'ged', label:'검정고시 성적', type:'text', placeholder:'예: 전과목 합격 (2024)'},
+      {key:'sat', label:'SAT (총점 / 날짜)', type:'text', placeholder:'예: 1450 / 2024-03'},
+      {key:'act', label:'ACT (점수 / 날짜)', type:'text'},
+      {key:'ap', label:'AP 과목 및 점수', type:'text', placeholder:'예: AP English 4, AP Calculus 3'},
+      {key:'toefl', label:'TOEFL / IELTS', type:'text'},
+      {key:'final_college', label:'최종 진학 결과', type:'text', placeholder:'예: 한동대학교 국제어문학부 (2025 입학)'},
+    ],
+    comment: [
+      {key:'comment_ko', label:'담임교사 종합의견 (한국어)', type:'textarea', rows:10, placeholder:'학생의 학교생활, 성품, 성장 과정, 강점 중심으로 서술해주세요...'},
+      {key:'comment_en', label:"Teacher's Assessment (English)", type:'textarea', rows:10, placeholder:'Describe the student\'s character, growth, and unique strengths...'},
+      {key:'teacher_name', label:'담임교사 성명', type:'text'},
+      {key:'issue_date', label:'작성일', type:'date'},
+    ],
+  };
+  return F[sectionId] || [];
+}
+
+function renderTcsField(field, value) {
+  const val = value || '';
+  const labelStyle = 'font-size:12px;font-weight:600;color:var(--ink3);margin-bottom:6px;display:block;text-transform:uppercase;letter-spacing:.04em';
+  const inputStyle = 'width:100%;padding:10px 13px;border-radius:10px;border:1.5px solid var(--border);background:var(--s2);font:14px var(--font);color:var(--ink);outline:none;transition:border-color .15s';
+
+  if (field.type === 'textarea') {
+    return `<div style="margin-bottom:16px">
+      <label style="${labelStyle}">${field.label}</label>
+      <textarea id="tcs-${field.key}" rows="${field.rows||4}" placeholder="${field.placeholder||''}"
+        style="${inputStyle};resize:vertical;line-height:1.6"
+        onfocus="this.style.borderColor='#1d3a5f';this.style.background='white'"
+        onblur="this.style.borderColor='var(--border)';this.style.background='var(--s2)'">${val}</textarea>
+    </div>`;
+  }
+  if (field.type === 'select') {
+    return `<div style="margin-bottom:16px">
+      <label style="${labelStyle}">${field.label}</label>
+      <select id="tcs-${field.key}" style="${inputStyle};cursor:pointer;appearance:none">
+        <option value="">선택해주세요</option>
+        ${field.options.map(o => `<option value="${o}" ${val===o?'selected':''}>${o}</option>`).join('')}
+      </select>
+    </div>`;
+  }
+  return `<div style="margin-bottom:16px">
+    <label style="${labelStyle}">${field.label}</label>
+    <input id="tcs-${field.key}" type="${field.type||'text'}" value="${val.replace(/"/g,'&quot;')}" placeholder="${field.placeholder||''}"
+      style="${inputStyle}"
+      onfocus="this.style.borderColor='#1d3a5f';this.style.background='white'"
+      onblur="this.style.borderColor='var(--border)';this.style.background='var(--s2)'"/>
+  </div>`;
+}
+
+async function saveTcsSection(sectionId) {
+  const fields = getTcsSectionFields(sectionId);
+  const data = {};
+  fields.forEach(f => {
+    const el = document.getElementById(`tcs-${f.key}`);
+    if (el) data[f.key] = el.value.trim();
+  });
+
+  // upsert
+  const { error } = await sb.from('tcs_records').upsert({
+    student_id: tcsCurrentStudent.id,
+    community_id: ME.community_id || '00000000-0000-0000-0000-000000000001',
+    section: sectionId,
+    data,
+    updated_at: new Date().toISOString(),
+    updated_by: ME.id,
+  }, { onConflict: 'student_id,section' });
+
+  if (error) { showUploadToast('저장 실패 😥 ' + error.message); return; }
+  tcsRecords[sectionId] = data;
+  showUploadToast('✅ 저장됐어요!');
+  renderTcsSectionList();
+}
+
+// ── TCS 미리보기 ──
+function showTcsPreview() {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+  overlay.innerHTML = `
+    <div style="background:white;border-radius:20px;width:100%;max-width:860px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.3)">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 24px;border-bottom:1px solid #e5e7eb;flex-shrink:0">
+        <div style="font-size:16px;font-weight:700;color:#1d3a5f">📄 TCS 기록부 미리보기 — ${tcsCurrentStudent.name}</div>
+        <div style="display:flex;gap:8px">
+          <button onclick="printTcsPdf()" style="height:34px;padding:0 16px;border-radius:8px;border:none;background:#1d3a5f;color:white;font:600 13px sans-serif;cursor:pointer">📄 PDF 저장</button>
+          <button onclick="this.closest('[style*=fixed]').remove()" style="height:34px;padding:0 12px;border-radius:8px;border:1.5px solid #e5e7eb;background:white;color:#6b7280;font:500 13px sans-serif;cursor:pointer">✕ 닫기</button>
+        </div>
+      </div>
+      <div style="overflow-y:auto;flex:1;padding:32px 40px" id="tcs-preview-content">
+        ${buildTcsPreviewHtml('ko')}
+      </div>
+    </div>`;
+  overlay.addEventListener('click', e => { if(e.target===overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+}
+
+function buildTcsPreviewHtml(lang) {
+  const d = tcsRecords;
+  const s = tcsCurrentStudent;
+  const personal = d.personal || {};
+  const school = d.school || {};
+  const faith = d.faith || {};
+  const career = d.career || {};
+  const comment = d.comment || {};
+
+  const row = (label, value) => value ? `
+    <tr>
+      <td style="padding:7px 12px;background:#dce6f2;font-size:12px;font-weight:600;color:#1d3a5f;white-space:nowrap;border:1px solid #b8cfe0;width:140px">${label}</td>
+      <td style="padding:7px 12px;font-size:13px;border:1px solid #d1d5db">${value}</td>
+    </tr>` : '';
+
+  const sectionTitle = (icon, title) => `
+    <div style="margin:20px 0 10px;border-left:4px solid #1d3a5f;padding-left:12px">
+      <span style="font-size:14px;font-weight:700;color:#1d3a5f">${icon} ${title}</span>
+    </div>`;
+
+  const listSection = (sectionId, rowLabel) => {
+    const sd = d[sectionId] || {};
+    const rows = Object.values(sd).filter(v => v && v.trim());
+    if (!rows.length) return '';
+    return `<table style="width:100%;border-collapse:collapse;margin-bottom:4px">
+      ${rows.map((v,i) => `<tr>
+        <td style="padding:6px 12px;background:#dce6f2;font-size:12px;font-weight:600;color:#1d3a5f;border:1px solid #b8cfe0;width:40px;text-align:center">${i+1}</td>
+        <td style="padding:6px 12px;font-size:13px;border:1px solid #d1d5db">${v}</td>
+      </tr>`).join('')}
+    </table>`;
+  };
+
+  return `
+    <div style="font-family:Arial,sans-serif;color:#111;max-width:780px;margin:0 auto">
+      <!-- 타이틀 -->
+      <div style="text-align:center;margin-bottom:28px;border-bottom:3px solid #1d3a5f;padding-bottom:16px">
+        <div style="font-size:28px;font-weight:900;color:#1d3a5f;letter-spacing:2px;margin-bottom:4px">학생 종합 기록부</div>
+        <div style="font-size:13px;color:#6b7280">Student Comprehensive Record — TCS Total Care System</div>
+        ${school.school_name ? `<div style="font-size:13px;font-weight:600;color:#1d3a5f;margin-top:4px">${school.school_name}</div>` : ''}
+      </div>
+
+      ${sectionTitle('👤','인적사항')}
+      <table style="width:100%;border-collapse:collapse;margin-bottom:4px">
+        ${row('성명 (한글)', personal.name_ko || s.name)}
+        ${row('성명 (영문)', personal.name_en)}
+        ${row('생년월일', personal.birth)}
+        ${row('성별', personal.gender)}
+        ${row('국적', personal.nationality)}
+        ${row('보호자', personal.guardian)}
+        ${row('연락처', personal.contact)}
+        ${row('주소', personal.address)}
+      </table>
+
+      ${sectionTitle('🏫','학적사항')}
+      <table style="width:100%;border-collapse:collapse;margin-bottom:4px">
+        ${row('학교명', school.school_name)}
+        ${row('학교 구분', school.school_type)}
+        ${row('입학일', school.enroll_date)}
+        ${row('졸업(예정)일', school.grad_date)}
+        ${row('재학 과정', school.course)}
+      </table>
+
+      ${sectionTitle('📅','출결사항')}
+      ${(() => {
+        const att = d.attendance || {};
+        const grades = [['G7(중1)','g7'],['G8(중2)','g8'],['G9(중3)','g9'],['G10(고1)','g10'],['G11(고2)','g11'],['G12(고3)','g12']];
+        const rows = grades.filter(([,k]) => att[k]).map(([label,k]) =>
+          `<tr><td style="padding:6px 12px;background:#dce6f2;font-size:12px;font-weight:600;color:#1d3a5f;border:1px solid #b8cfe0;width:120px">${label}</td><td style="padding:6px 12px;font-size:13px;border:1px solid #d1d5db">${att[k]}</td></tr>`
+        ).join('');
+        return rows ? `<table style="width:100%;border-collapse:collapse;margin-bottom:4px">${rows}</table>` : '<p style="font-size:12px;color:#9ca3af;margin-bottom:8px">미기재</p>';
+      })()}
+
+      ${sectionTitle('📚','교과학습 발달상황')}
+      ${(() => {
+        const ac = d.academic || {};
+        const grades = [['G7(중1)','g7_grades'],['G8(중2)','g8_grades'],['G9(중3)','g9_grades'],['G10(고1)','g10_grades'],['G11(고2)','g11_grades'],['G12(고3)','g12_grades']];
+        const rows = grades.filter(([,k]) => ac[k]).map(([label,k]) =>
+          `<tr><td style="padding:7px 12px;background:#dce6f2;font-size:12px;font-weight:600;color:#1d3a5f;border:1px solid #b8cfe0;width:120px;vertical-align:top">${label}</td><td style="padding:7px 12px;font-size:13px;border:1px solid #d1d5db">${ac[k]}</td></tr>`
+        ).join('');
+        const gpaRow = ac.gpa ? `<tr><td style="padding:7px 12px;background:#dce6f2;font-size:12px;font-weight:600;color:#1d3a5f;border:1px solid #b8cfe0">누적 GPA</td><td style="padding:7px 12px;font-size:13px;font-weight:700;border:1px solid #d1d5db">${ac.gpa} / 4.0</td></tr>` : '';
+        return (rows||gpaRow) ? `<table style="width:100%;border-collapse:collapse;margin-bottom:4px">${rows}${gpaRow}</table>` : '<p style="font-size:12px;color:#9ca3af;margin-bottom:8px">미기재</p>';
+      })()}
+
+      ${sectionTitle('✝️','신앙 및 인성')}
+      <table style="width:100%;border-collapse:collapse;margin-bottom:8px">
+        ${row('세례 여부 / 날짜', faith.baptism)}
+        ${row('소속 교회', faith.church)}
+        ${row('성경 암송', faith.scripture)}
+        ${row('큐티 / 경건 생활', faith.devotion)}
+      </table>
+      ${faith.faith_note ? `<div style="background:#f0f6ff;border:1px solid #b8cfe0;border-radius:8px;padding:12px 14px;font-size:13px;line-height:1.8;margin-bottom:4px;white-space:pre-wrap">${faith.faith_note}</div>` : ''}
+
+      ${sectionTitle('🏃','창의적 체험활동')}
+      ${listSection('activities','활동')}
+
+      ${sectionTitle('🤝','봉사활동')}
+      ${listSection('service','봉사')}
+
+      ${sectionTitle('🏆','수상 및 자격증')}
+      ${listSection('awards','수상')}
+
+      ${sectionTitle('📖','독서활동')}
+      ${listSection('reading','도서')}
+
+      ${sectionTitle('🎯','진로 및 진학')}
+      <table style="width:100%;border-collapse:collapse;margin-bottom:4px">
+        ${row('진로 희망', career.career_goal)}
+        ${row('검정고시', career.ged)}
+        ${row('SAT', career.sat)}
+        ${row('ACT', career.act)}
+        ${row('AP 과목 및 점수', career.ap)}
+        ${row('TOEFL / IELTS', career.toefl)}
+        ${row('최종 진학 결과', career.final_college)}
+      </table>
+
+      ${sectionTitle('✍️','담임교사 종합의견')}
+      ${comment.comment_ko ? `<div style="background:#f8fafc;border:1px solid #d1d5db;border-radius:8px;padding:14px 16px;font-size:13px;line-height:1.9;margin-bottom:12px;white-space:pre-wrap;min-height:120px">${comment.comment_ko}</div>` : '<div style="background:#f8fafc;border:1px solid #d1d5db;border-radius:8px;padding:14px 16px;font-size:12px;color:#9ca3af;min-height:80px">미기재</div>'}
+
+      <!-- 서명란 -->
+      <div style="margin-top:24px;display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div style="border:1px solid #d1d5db;border-radius:8px;padding:12px 16px">
+          <div style="font-size:11px;font-weight:600;color:#6b7280;margin-bottom:4px">담임교사</div>
+          <div style="font-size:13px;font-weight:600">${comment.teacher_name||''}</div>
+          <div style="font-size:11px;color:#9ca3af;margin-top:4px">서명: _______________</div>
+        </div>
+        <div style="border:1px solid #d1d5db;border-radius:8px;padding:12px 16px">
+          <div style="font-size:11px;font-weight:600;color:#6b7280;margin-bottom:4px">작성일</div>
+          <div style="font-size:13px">${comment.issue_date||''}</div>
+          <div style="font-size:11px;color:#9ca3af;margin-top:4px">학교장 확인: ___________</div>
+        </div>
+      </div>
+    </div>`;
+}
+
+// ── TCS PDF 출력 ──
+function printTcsPdf() {
+  const content = buildTcsPreviewHtml('ko');
+  const win = window.open('', '_blank');
+  win.document.write(`<!DOCTYPE html><html><head>
+    <meta charset="utf-8"/>
+    <title>TCS 기록부 — ${tcsCurrentStudent.name}</title>
+    <style>
+      * { box-sizing:border-box; margin:0; padding:0; }
+      body { font-family:Arial,'Malgun Gothic',sans-serif; padding:20mm 18mm; color:#111; }
+      @page { size:A4; margin:18mm; }
+      @media print { button { display:none!important; } }
+    </style>
+  </head><body>${content}</body></html>`);
+  win.document.close();
+  setTimeout(() => { win.print(); }, 600);
+}
+async function renderCommunitySettings() {
+  const area = document.getElementById('admin-content');
+  if (!ME.community_id) {
+    area.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink3)">소속 공동체가 없어요</div>';
+    return;
+  }
+  const { data: comm } = await sb.from('communities').select('*').eq('id', ME.community_id).single();
+  if (!comm) { area.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink3)">공동체 정보를 불러올 수 없어요</div>'; return; }
+
+  area.innerHTML = `
+    <div style="max-width:600px">
+      <div style="font-size:18px;font-weight:700;color:var(--adeep);margin-bottom:6px">⚙️ 공동체 설정</div>
+      <div style="font-size:13px;color:var(--ink3);margin-bottom:24px">공동체의 이름, 로고, 색상을 설정할 수 있어요</div>
+
+      <!-- 현재 공동체 미리보기 -->
+      <div style="background:linear-gradient(135deg,${comm.color||'#1d3a5f'},${comm.color||'#1d3a5f'}cc);border-radius:20px;padding:24px;margin-bottom:24px;display:flex;align-items:center;gap:16px">
+        <div id="comm-preview-logo" style="width:64px;height:64px;border-radius:16px;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700;color:white;overflow:hidden;flex-shrink:0">
+          ${comm.logo_url ? `<img src="${comm.logo_url}" style="width:64px;height:64px;object-fit:cover"/>` : (comm.name||'?')[0]}
+        </div>
+        <div>
+          <div id="comm-preview-name" style="font-size:20px;font-weight:700;color:white">${comm.name}</div>
+          <div id="comm-preview-desc" style="font-size:13px;color:rgba(255,255,255,.7);margin-top:3px">${comm.description||'설명 없음'}</div>
+        </div>
+      </div>
+
+      <!-- 설정 폼 -->
+      <div class="adm-card">
+        <!-- 이름 -->
+        <div style="margin-bottom:18px">
+          <div style="font-size:12px;font-weight:600;color:var(--ink3);margin-bottom:7px;text-transform:uppercase;letter-spacing:.05em">공동체 이름</div>
+          <input id="cs-name" class="adm-input" value="${comm.name}" style="width:100%"
+            oninput="document.getElementById('comm-preview-name').textContent=this.value"/>
+        </div>
+
+        <!-- 설명 -->
+        <div style="margin-bottom:18px">
+          <div style="font-size:12px;font-weight:600;color:var(--ink3);margin-bottom:7px;text-transform:uppercase;letter-spacing:.05em">공동체 설명</div>
+          <input id="cs-desc" class="adm-input" value="${comm.description||''}" placeholder="공동체를 한 줄로 소개해주세요" style="width:100%"
+            oninput="document.getElementById('comm-preview-desc').textContent=this.value||'설명 없음'"/>
+        </div>
+
+        <!-- 대표 색상 -->
+        <div style="margin-bottom:18px">
+          <div style="font-size:12px;font-weight:600;color:var(--ink3);margin-bottom:7px;text-transform:uppercase;letter-spacing:.05em">대표 색상</div>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            ${['#1d3a5f','#2a5298','#2a7a5a','#7B6BA0','#B05865','#B89146','#5A7C8B','#c0392b'].map(c =>
+              `<div onclick="selectCommSettingColor('${c}')" data-cs-color="${c}"
+                style="width:32px;height:32px;border-radius:9px;background:${c};cursor:pointer;transition:transform .1s;${comm.color===c?'transform:scale(1.2);outline:2.5px solid #000;outline-offset:2px':''}">`
+            ).join('')}
+            <input type="color" id="cs-color-pick" value="${comm.color||'#1d3a5f'}"
+              style="width:32px;height:32px;border:none;border-radius:9px;cursor:pointer;padding:0"
+              oninput="applyCommSettingColor(this.value)"/>
+            <input type="hidden" id="cs-color" value="${comm.color||'#1d3a5f'}"/>
+            <span style="font-size:12px;color:var(--ink3)">또는 직접 선택</span>
+          </div>
+        </div>
+
+        <!-- 로고 업로드 -->
+        <div style="margin-bottom:24px">
+          <div style="font-size:12px;font-weight:600;color:var(--ink3);margin-bottom:7px;text-transform:uppercase;letter-spacing:.05em">로고 이미지</div>
+          <div style="display:flex;align-items:center;gap:12px">
+            <div id="cs-logo-preview" style="width:56px;height:56px;border-radius:14px;background:${comm.color||'#1d3a5f'};display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0">
+              ${comm.logo_url ? `<img src="${comm.logo_url}" style="width:56px;height:56px;object-fit:cover"/>` : `<span style="font-size:22px;color:white;font-weight:700">${(comm.name||'?')[0]}</span>`}
+            </div>
+            <div>
+              <button onclick="document.getElementById('cs-logo-input').click()"
+                style="height:36px;padding:0 16px;border-radius:9px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:500 13px var(--font);cursor:pointer;margin-bottom:6px">
+                📷 로고 업로드
+              </button>
+              ${comm.logo_url ? `<button onclick="removeCommLogo('${comm.id}')"
+                style="height:36px;padding:0 12px;border-radius:9px;border:1.5px solid #fca5a5;background:#fef2f2;color:#dc2626;font:500 13px var(--font);cursor:pointer;margin-left:8px">
+                삭제
+              </button>` : ''}
+              <div style="font-size:11px;color:var(--ink3)">PNG, JPG 권장 · 정사각형 이미지가 가장 잘 어울려요</div>
+            </div>
+          </div>
+          <input type="file" id="cs-logo-input" accept="image/*" style="display:none" onchange="uploadCommLogo(this,'${comm.id}')"/>
+          <input type="hidden" id="cs-logo-url" value="${comm.logo_url||''}"/>
+        </div>
+
+        <!-- 저장 버튼 -->
+        <button onclick="saveCommSettings('${comm.id}')"
+          style="width:100%;height:44px;border-radius:12px;border:none;background:linear-gradient(135deg,#1d3a5f,#2a5298);color:white;font:600 15px var(--font);cursor:pointer;box-shadow:0 4px 14px rgba(29,58,95,.3)">
+          ✅ 설정 저장하기
+        </button>
+      </div>
+
+      <!-- 위험 구역 -->
+      <div class="adm-card" style="border:1.5px solid #fca5a5;margin-top:16px">
+        <div style="font-size:13px;font-weight:700;color:#dc2626;margin-bottom:8px">⚠️ 위험 구역</div>
+        <div style="font-size:12px;color:var(--ink3);margin-bottom:12px">공동체를 삭제하면 되돌릴 수 없어요. 총관리자에게 요청해주세요.</div>
+      </div>
+    </div>`;
+}
+
+function selectCommSettingColor(color) {
+  document.getElementById('cs-color').value = color;
+  document.getElementById('cs-color-pick').value = color;
+  applyCommSettingColor(color);
+}
+
+function applyCommSettingColor(color) {
+  document.getElementById('cs-color').value = color;
+  // 미리보기 배경 업데이트
+  const preview = document.querySelector('#admin-content [style*="linear-gradient"]');
+  if (preview) preview.style.background = `linear-gradient(135deg,${color},${color}cc)`;
+  const logoPreview = document.getElementById('cs-logo-preview');
+  if (logoPreview) logoPreview.style.background = color;
+  // 선택된 색상 강조
+  document.querySelectorAll('[data-cs-color]').forEach(el => {
+    const isSelected = el.dataset.csColor === color;
+    el.style.transform = isSelected ? 'scale(1.2)' : 'scale(1)';
+    el.style.outline = isSelected ? '2.5px solid #000' : 'none';
+    el.style.outlineOffset = '2px';
+  });
+}
+
+async function uploadCommLogo(input, commId) {
+  const file = input.files[0];
+  if (!file) return;
+  showUploadToast('로고 업로드 중... ⏳');
+  const ext = file.name.split('.').pop();
+  const path = `community/${commId}/logo.${ext}`;
+  const { error } = await sb.storage.from('messenger').upload(path, file, { cacheControl: '3600', upsert: true });
+  if (error) { showUploadToast('업로드 실패 😥'); return; }
+  const { data: urlData } = sb.storage.from('messenger').getPublicUrl(path);
+  const url = urlData.publicUrl + '?t=' + Date.now();
+  document.getElementById('cs-logo-url').value = url;
+  // 미리보기 업데이트
+  const preview = document.getElementById('cs-logo-preview');
+  if (preview) preview.innerHTML = `<img src="${url}" style="width:56px;height:56px;object-fit:cover"/>`;
+  const bigPreview = document.getElementById('comm-preview-logo');
+  if (bigPreview) bigPreview.innerHTML = `<img src="${url}" style="width:64px;height:64px;object-fit:cover"/>`;
+  showUploadToast('업로드 완료! ✅');
+}
+
+async function removeCommLogo(commId) {
+  if (!confirm('로고를 삭제할까요?')) return;
+  await sb.from('communities').update({ logo_url: null }).eq('id', commId);
+  document.getElementById('cs-logo-url').value = '';
+  showUploadToast('로고가 삭제됐어요');
+  renderCommunitySettings();
+}
+
+async function saveCommSettings(commId) {
+  const name = document.getElementById('cs-name').value.trim();
+  const desc = document.getElementById('cs-desc').value.trim();
+  const color = document.getElementById('cs-color').value;
+  const logoUrl = document.getElementById('cs-logo-url').value;
+  if (!name) { showUploadToast('공동체 이름을 입력해주세요'); return; }
+  const updateData = { name, description: desc, color };
+  if (logoUrl) updateData.logo_url = logoUrl;
+  const { error } = await sb.from('communities').update(updateData).eq('id', commId);
+  if (error) { showUploadToast('저장 실패: ' + error.message); return; }
+  showUploadToast('✅ 공동체 설정이 저장됐어요!');
+  // ME의 공동체 정보도 업데이트
+  if (ME.selectedCommunity) {
+    ME.selectedCommunity.name = name;
+    ME.selectedCommunity.color = color;
+    ME.selectedCommunity.logo_url = logoUrl || ME.selectedCommunity.logo_url;
+  }
+}
+
+// ── 공동체 관리 (총관리자 전용) ──
+async function renderAdminCommunities() {
+  const area = document.getElementById('admin-content');
+  const { data: communities } = await sb.from('communities').select('*').order('created_at');
+  const list = communities || [];
+
+  area.innerHTML = `
+    <div style="max-width:720px">
+      <!-- 새 공동체 생성 -->
+      <div class="adm-card" style="border:2px dashed var(--border);background:var(--s2);margin-bottom:20px">
+        <div style="font-size:14px;font-weight:700;margin-bottom:14px;color:var(--adeep)">🏛️ 새 공동체 만들기</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+          <div>
+            <div style="font-size:12px;color:var(--ink3);margin-bottom:5px;font-weight:500">공동체 이름 *</div>
+            <input id="new-comm-name" class="adm-input" placeholder="예: IM선교회 리뉴젠" style="width:100%"/>
+          </div>
+          <div>
+            <div style="font-size:12px;color:var(--ink3);margin-bottom:5px;font-weight:500">색상</div>
+            <div style="display:flex;gap:8px;align-items:center">
+              ${['#1d3a5f','#2a7a5a','#7B6BA0','#B05865','#B89146','#5A7C8B'].map(c =>
+                `<div onclick="selectNewCommColor('${c}')" data-comm-color="${c}" style="width:28px;height:28px;border-radius:8px;background:${c};cursor:pointer;transition:transform .1s" title="${c}"></div>`
+              ).join('')}
+              <input type="color" id="new-comm-color-pick" value="#1d3a5f" style="width:28px;height:28px;border:none;border-radius:8px;cursor:pointer;padding:0" onchange="document.getElementById('new-comm-color').value=this.value"/>
+              <input type="hidden" id="new-comm-color" value="#1d3a5f"/>
+            </div>
+          </div>
+        </div>
+        <div style="margin-bottom:12px">
+          <div style="font-size:12px;color:var(--ink3);margin-bottom:5px;font-weight:500">설명 (선택)</div>
+          <input id="new-comm-desc" class="adm-input" placeholder="공동체 소개" style="width:100%"/>
+        </div>
+        <button onclick="createCommunity()" style="height:38px;padding:0 20px;border-radius:10px;border:none;background:var(--accent);color:white;font:600 13px var(--font);cursor:pointer">+ 공동체 생성</button>
+      </div>
+
+      <!-- 공동체 목록 -->
+      <div style="font-size:13px;font-weight:700;color:var(--ink2);margin-bottom:12px">전체 공동체 (${list.length}개)</div>
+      ${list.map(c => `
+        <div class="adm-card" style="border-left:4px solid ${c.color||'#1d3a5f'};margin-bottom:12px">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+            <div style="display:flex;align-items:center;gap:12px;flex:1">
+              <div style="width:44px;height:44px;border-radius:12px;background:${c.color||'#1d3a5f'};display:flex;align-items:center;justify-content:center;font-size:20px;color:white;font-weight:700;flex-shrink:0">
+                ${c.logo_url ? `<img src="${c.logo_url}" style="width:44px;height:44px;border-radius:12px;object-fit:cover"/>` : (c.name||'?')[0]}
+              </div>
+              <div>
+                <div style="font-size:15px;font-weight:700;color:var(--ink)">${c.name}</div>
+                <div style="font-size:12px;color:var(--ink3);margin-top:2px">${c.description||'설명 없음'}</div>
+                <div style="font-size:11px;color:var(--ink3);margin-top:3px">생성일: ${new Date(c.created_at).toLocaleDateString('ko-KR')}</div>
+              </div>
+            </div>
+            <div style="display:flex;gap:8px;flex-shrink:0">
+              <button onclick="editCommunity('${c.id}','${escAttr(c.name)}','${escAttr(c.description||'')}','${c.color||'#1d3a5f'}')"
+                style="height:32px;padding:0 12px;border-radius:8px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:500 12px var(--font);cursor:pointer">수정</button>
+              ${c.id !== '00000000-0000-0000-0000-000000000001' ? `
+              <button onclick="deleteCommunity('${c.id}','${escAttr(c.name)}')"
+                style="height:32px;padding:0 12px;border-radius:8px;border:1.5px solid #fca5a5;background:#fef2f2;color:#dc2626;font:500 12px var(--font);cursor:pointer">삭제</button>
+              ` : '<span style="font-size:11px;color:var(--ink3);padding:0 4px">기본</span>'}
+            </div>
+          </div>
+
+          <!-- 해당 공동체 멤버 수 -->
+          <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border);display:flex;gap:16px">
+            <span style="font-size:12px;color:var(--ink3)">🆔 ${c.id.slice(0,8)}...</span>
+            <button onclick="viewCommunityMembers('${c.id}','${escAttr(c.name)}')"
+              style="font-size:12px;color:var(--accent);background:none;border:none;cursor:pointer;font-weight:600;padding:0">멤버 보기 →</button>
+          </div>
+        </div>
+      `).join('')}
+    </div>`;
+
+  // 첫 번째 색상 선택 표시
+  setTimeout(() => highlightCommColor('#1d3a5f'), 100);
+}
+
+function selectNewCommColor(color) {
+  document.getElementById('new-comm-color').value = color;
+  highlightCommColor(color);
+}
+
+function highlightCommColor(color) {
+  document.querySelectorAll('[data-comm-color]').forEach(el => {
+    el.style.transform = el.dataset.commColor === color ? 'scale(1.25)' : 'scale(1)';
+    el.style.outline = el.dataset.commColor === color ? '2px solid var(--ink)' : 'none';
+    el.style.outlineOffset = '2px';
+  });
+}
+
+async function createCommunity() {
+  const name = document.getElementById('new-comm-name').value.trim();
+  const desc = document.getElementById('new-comm-desc').value.trim();
+  const color = document.getElementById('new-comm-color').value || '#1d3a5f';
+  if (!name) { showUploadToast('공동체 이름을 입력해주세요'); return; }
+  const { error } = await sb.from('communities').insert({
+    name, description: desc, color, created_by: ME.id
+  });
+  if (error) { showUploadToast('생성 실패: ' + error.message); return; }
+  showUploadToast('✅ 공동체가 생성됐어요!');
+  renderAdminCommunities();
+}
+
+async function deleteCommunity(id, name) {
+  if (!confirm(`"${name}" 공동체를 삭제할까요?\n\n⚠️ 이 공동체에 속한 멤버들의 community_id가 초기화됩니다.`)) return;
+  const { error } = await sb.from('communities').delete().eq('id', id);
+  if (error) { showUploadToast('삭제 실패: ' + error.message); return; }
+  showUploadToast('삭제됐어요');
+  renderAdminCommunities();
+}
+
+function editCommunity(id, name, desc, color) {
+  const area = document.getElementById('admin-content');
+  const editHtml = `
+    <div class="adm-card" style="max-width:500px;border:2px solid var(--accent)">
+      <div style="font-size:14px;font-weight:700;margin-bottom:16px;color:var(--adeep)">✏️ 공동체 수정</div>
+      <div style="margin-bottom:12px">
+        <div style="font-size:12px;color:var(--ink3);margin-bottom:5px;font-weight:500">공동체 이름</div>
+        <input id="edit-comm-name" class="adm-input" value="${name}" style="width:100%"/>
+      </div>
+      <div style="margin-bottom:12px">
+        <div style="font-size:12px;color:var(--ink3);margin-bottom:5px;font-weight:500">설명</div>
+        <input id="edit-comm-desc" class="adm-input" value="${desc}" style="width:100%"/>
+      </div>
+      <div style="margin-bottom:16px">
+        <div style="font-size:12px;color:var(--ink3);margin-bottom:5px;font-weight:500">대표 색상</div>
+        <input type="color" id="edit-comm-color" value="${color}" style="width:44px;height:36px;border:none;border-radius:8px;cursor:pointer;padding:0"/>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button onclick="saveCommunity('${id}')" style="height:36px;padding:0 20px;border-radius:9px;border:none;background:var(--accent);color:white;font:600 13px var(--font);cursor:pointer">저장</button>
+        <button onclick="renderAdminCommunities()" style="height:36px;padding:0 16px;border-radius:9px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:500 13px var(--font);cursor:pointer">취소</button>
+      </div>
+    </div>`;
+  area.innerHTML = editHtml;
+}
+
+async function saveCommunity(id) {
+  const name = document.getElementById('edit-comm-name').value.trim();
+  const desc = document.getElementById('edit-comm-desc').value.trim();
+  const color = document.getElementById('edit-comm-color').value;
+  if (!name) { showUploadToast('이름을 입력해주세요'); return; }
+  const { error } = await sb.from('communities').update({ name, description: desc, color }).eq('id', id);
+  if (error) { showUploadToast('저장 실패: ' + error.message); return; }
+  showUploadToast('✅ 저장됐어요!');
+  renderAdminCommunities();
+}
+
+async function viewCommunityMembers(communityId, communityName) {
+  const area = document.getElementById('admin-content');
+  area.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink3)">불러오는 중...</div>';
+  const { data: members } = await sb.from('members').select('*').eq('community_id', communityId).order('created_at');
+  const list = members || [];
+  const roleLabel = { super_admin:'총관리자', community_admin:'공동체관리자', teacher:'교사', student:'학생', member:'멤버' };
+  const roleColor = { super_admin:'#7c3aed', community_admin:'#1d4ed8', teacher:'#0369a1', student:'#15803d', member:'#6b7280' };
+
+  area.innerHTML = `
+    <div style="max-width:720px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+        <button onclick="renderAdminCommunities()" style="height:32px;padding:0 12px;border-radius:8px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:500 12px var(--font);cursor:pointer">← 뒤로</button>
+        <div style="font-size:15px;font-weight:700">${communityName} 멤버 (${list.length}명)</div>
+      </div>
+      ${list.length === 0 ? '<div style="text-align:center;padding:40px;color:var(--ink3)">멤버가 없어요</div>' :
+        list.map(m => `
+        <div class="adm-row" style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--bs)">
+          <div style="width:36px;height:36px;border-radius:10px;background:${m.color||'#1d3a5f'};display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:14px;flex-shrink:0">${m.initials||m.name?.[0]||'?'}</div>
+          <div style="flex:1">
+            <div style="font-size:13px;font-weight:600">${m.name}</div>
+            <div style="font-size:11px;color:var(--ink3)">${m.email}</div>
+          </div>
+          <span style="font-size:11px;font-weight:600;padding:3px 9px;border-radius:99px;background:${roleColor[m.community_role]||'#6b7280'}22;color:${roleColor[m.community_role]||'#6b7280'}">${roleLabel[m.community_role]||m.community_role||'멤버'}</span>
+          <select onchange="changeMemberCommunityRole('${m.id}',this.value)" style="height:28px;padding:0 8px;border-radius:7px;border:1.5px solid var(--border);font:500 12px var(--font);color:var(--ink);background:white;cursor:pointer">
+            <option value="member" ${m.community_role==='member'?'selected':''}>멤버</option>
+            <option value="student" ${m.community_role==='student'?'selected':''}>학생</option>
+            <option value="teacher" ${m.community_role==='teacher'?'selected':''}>교사</option>
+            <option value="community_admin" ${m.community_role==='community_admin'?'selected':''}>공동체관리자</option>
+            <option value="super_admin" ${m.community_role==='super_admin'?'selected':''}>총관리자</option>
+          </select>
+        </div>`).join('')}
+    </div>`;
+}
+
+async function changeMemberCommunityRole(memberId, role) {
+  const { error } = await sb.from('members').update({ community_role: role }).eq('id', memberId);
+  if (error) showUploadToast('변경 실패');
+  else showUploadToast('✅ 역할이 변경됐어요');
 }
 
 // ── 멤버 관리 ──
