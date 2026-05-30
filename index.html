@@ -2,9 +2,9 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8"/>
-<title>IM 메신저</title>
-<link rel="icon" type="image/png" href="https://koreayjk.github.io/imessenger/favicon.png"/>
-<link rel="apple-touch-icon" href="https://koreayjk.github.io/imessenger/favicon.png"/>
+<title>TCS — Total Care System</title>
+<link rel="icon" type="image/png" href="https://koreayjk.github.io/imessenger/tcs_logo.png"/>
+<link rel="apple-touch-icon" href="https://koreayjk.github.io/imessenger/tcs_logo.png"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
@@ -490,14 +490,16 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
     <!-- 왼쪽 브랜드 -->
     <div class="auth-left">
       <div style="display:flex;flex-direction:column;align-items:center;text-align:center">
-        <img src="https://koreayjk.github.io/imessenger/ilogo.png" alt="IM 메신저 로고" style="width:160px;margin-bottom:16px;filter:drop-shadow(0 4px 16px rgba(0,0,0,.5));mix-blend-mode:lighten;background:transparent"/>
-        <div class="tagline">선교회 가족들이 한 자리에서 소통하고, 함께 기도하는 공동체 메신저</div>
+        <img src="https://koreayjk.github.io/imessenger/tcs_logo.png" alt="TCS 로고"
+          style="width:180px;margin-bottom:20px;filter:drop-shadow(0 4px 20px rgba(0,0,0,.4)) brightness(0) invert(1);mix-blend-mode:normal"/>
+        <div style="font-size:13px;font-weight:600;color:rgba(255,255,255,.5);letter-spacing:3px;text-transform:uppercase;margin-bottom:6px">Total Care System</div>
+        <div class="tagline">학생 한 명 한 명을 온전히 품는<br>교육 공동체 통합 플랫폼</div>
       </div>
       <div class="features">
-        <div class="feat"><div class="feat-icon">💬</div>실시간 채팅 & 채널</div>
-        <div class="feat"><div class="feat-icon">🙏</div>중보기도 나눔</div>
-        <div class="feat"><div class="feat-icon">📖</div>말씀 묵상 공유</div>
-        <div class="feat"><div class="feat-icon">👥</div>공동체 멤버 관리</div>
+        <div class="feat"><div class="feat-icon">🏫</div>공동체별 독립 공간</div>
+        <div class="feat"><div class="feat-icon">📋</div>학생 종합 기록부 (TCS)</div>
+        <div class="feat"><div class="feat-icon">💬</div>교사·학생 실시간 메신저</div>
+        <div class="feat"><div class="feat-icon">📊</div>성적·활동·신앙 통합 관리</div>
       </div>
     </div>
 
@@ -511,7 +513,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
       <!-- 로그인 폼 -->
       <div class="auth-form" id="form-signin">
         <h2>다시 만나서 반가워요 🌿</h2>
-        <div class="sub">이메일과 비밀번호로 로그인하세요</div>
+        <div class="sub">TCS 계정으로 로그인하세요</div>
         <input class="auth-input" id="si-email" type="email" placeholder="이메일 주소" onkeydown="if(event.key==='Enter')doSignIn()"/>
         <input class="auth-input" id="si-pw" type="password" placeholder="비밀번호" onkeydown="if(event.key==='Enter')doSignIn()"/>
         <button class="auth-btn" onclick="doSignIn()" id="si-btn">로그인</button>
@@ -523,13 +525,35 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
 
       <!-- 회원가입 폼 -->
       <div class="auth-form" id="form-signup" style="display:none">
-        <h2>IM 메신저 가입하기 ✨</h2>
+        <h2>TCS 가입하기 ✨</h2>
         <div class="sub">아래 정보를 입력해서 가입해주세요</div>
         <input class="auth-input" id="su-email" type="email" placeholder="이메일 주소"/>
         <input class="auth-input" id="su-pw" type="password" placeholder="비밀번호 (6자 이상)"/>
         <div class="field-row">
-          <input class="auth-input" id="su-nick" placeholder="닉네임 (예: 은혜)"/>
+          <input class="auth-input" id="su-nick" placeholder="이름 (실명)"/>
           <input class="auth-input" id="su-birth" type="date" placeholder="생년월일" style="color:var(--ink2)"/>
+        </div>
+        <!-- 공동체 선택 -->
+        <div style="margin-bottom:8px">
+          <div style="font-size:12px;color:var(--ink3);margin-bottom:6px;font-weight:500">소속 공동체 선택</div>
+          <select class="auth-input" id="su-community" style="cursor:pointer">
+            <option value="">-- 공동체를 선택해주세요 --</option>
+          </select>
+        </div>
+        <!-- 역할 선택 -->
+        <div style="margin-bottom:14px">
+          <div style="font-size:12px;color:var(--ink3);margin-bottom:6px;font-weight:500">역할</div>
+          <div style="display:flex;gap:8px">
+            <label style="flex:1;display:flex;align-items:center;gap:8px;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;cursor:pointer;font-size:13px;transition:all .15s" id="role-teacher-label">
+              <input type="radio" name="su-role" value="teacher" id="role-teacher" style="width:auto"/> 👩‍🏫 교사
+            </label>
+            <label style="flex:1;display:flex;align-items:center;gap:8px;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;cursor:pointer;font-size:13px;transition:all .15s" id="role-student-label">
+              <input type="radio" name="su-role" value="student" id="role-student" style="width:auto"/> 🎓 학생
+            </label>
+            <label style="flex:1;display:flex;align-items:center;gap:8px;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;cursor:pointer;font-size:13px;transition:all .15s" id="role-member-label">
+              <input type="radio" name="su-role" value="member" id="role-member" style="width:auto" checked/> 👤 멤버
+            </label>
+          </div>
         </div>
         <button class="auth-btn" onclick="doSignUp()" id="su-btn">가입하기</button>
         <div class="auth-msg" id="su-msg"></div>
@@ -541,13 +565,27 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
   </div>
 </div>
 
+<!-- 공동체 선택 화면 -->
+<div id="community-select-screen" style="display:none;position:fixed;inset:0;z-index:150;background:var(--bg);flex-direction:column;align-items:center;justify-content:center;padding:24px">
+  <div style="max-width:640px;width:100%">
+    <div style="text-align:center;margin-bottom:36px">
+      <img src="https://koreayjk.github.io/imessenger/tcs_logo.png" alt="TCS"
+        style="width:72px;height:72px;object-fit:contain;margin-bottom:14px;opacity:.85"/>
+      <div style="font-size:26px;font-weight:700;color:var(--adeep);margin-bottom:6px">공동체 선택</div>
+      <div style="font-size:14px;color:var(--ink3)">입장할 공동체를 선택해주세요</div>
+    </div>
+    <div id="community-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px;margin-bottom:24px"></div>
+    <div id="community-select-msg" style="text-align:center;font-size:13px;color:var(--ink3)"></div>
+  </div>
+</div>
+
 <!-- 메인 앱 -->
 <div id="app" style="display:none">
 
   <!-- 1) 아이콘 사이드바 -->
   <div id="sidebar">
     <div class="logo">
-      <img src="https://koreayjk.github.io/imessenger/ilogo.png" alt="IM" style="width:44px;height:44px;object-fit:contain;mix-blend-mode:lighten;filter:drop-shadow(0 2px 6px rgba(0,0,0,.4))"/>
+      <img src="https://koreayjk.github.io/imessenger/tcs_logo.png" alt="TCS" style="width:38px;height:38px;object-fit:contain;filter:brightness(0) invert(1);opacity:.9"/>
     </div>
     <div class="sb-btn active" id="sb-home" onclick="setMode('home')" title="홈">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.85)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11.5L12 4l9 7.5"/><path d="M5 10v10h14V10"/></svg>
@@ -955,6 +993,18 @@ function switchTab(t) {
   document.getElementById('tab-signup').classList.toggle('active', t==='signup');
   document.getElementById('form-signin').style.display = t==='signin' ? 'flex' : 'none';
   document.getElementById('form-signup').style.display = t==='signup' ? 'flex' : 'none';
+  if (t === 'signup') loadCommunitiesForSignup();
+}
+
+// ── 공동체 목록 로드 (회원가입 폼용) ──
+async function loadCommunitiesForSignup() {
+  const { data } = await sb.from('communities').select('id, name, description, color').order('name');
+  const sel = document.getElementById('su-community');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">-- 공동체를 선택해주세요 --</option>';
+  (data||[]).forEach(c => {
+    sel.innerHTML += `<option value="${c.id}">${c.name}${c.description?' — '+c.description:''}</option>`;
+  });
 }
 
 // ── 회원가입 ──
@@ -963,35 +1013,35 @@ async function doSignUp() {
   const pw    = document.getElementById('su-pw').value;
   const nick  = document.getElementById('su-nick').value.trim();
   const birth = document.getElementById('su-birth').value;
+  const communityId = document.getElementById('su-community').value;
+  const roleEl = document.querySelector('input[name="su-role"]:checked');
+  const role = roleEl ? roleEl.value : 'member';
   const msg   = document.getElementById('su-msg');
   const btn   = document.getElementById('su-btn');
 
   if (!email || !pw || !nick || !birth) { msg.className='auth-msg error'; msg.textContent='모든 항목을 입력해주세요'; return; }
+  if (!communityId) { msg.className='auth-msg error'; msg.textContent='소속 공동체를 선택해주세요'; return; }
   if (pw.length < 6) { msg.className='auth-msg error'; msg.textContent='비밀번호는 6자 이상이어야 해요'; return; }
 
   btn.textContent='가입 중...'; btn.disabled=true;
   msg.textContent='';
 
   try {
-    // Supabase Auth 가입
     const { data: authData, error: authErr } = await sb.auth.signUp({ email, password: pw });
     if (authErr) throw authErr;
 
     const uid = authData.user?.id;
     if (!uid) throw new Error('가입 처리 중 오류가 발생했어요');
 
-    // members 테이블에 프로필 저장
-    const colors = ['#B5683C','#6F8A5C','#5A7C8B','#7B6BA0','#B89146','#B05865','#4C7363','#8B4A24'];
+    const colors = ['#1d3a5f','#2a5298','#6F8A5C','#5A7C8B','#7B6BA0','#B89146','#B05865','#4C7363'];
     const color = colors[Math.floor(Math.random()*colors.length)];
-    const { data: member, error: mErr } = await sb.from('members').insert({
-      id: uid,
-      name: nick,
-      initials: nick[0],
-      color,
-      role: '멤버',
-      email,
-      birth_date: birth,
-      status: 'pending', // 승인 대기
+    const { error: mErr } = await sb.from('members').insert({
+      id: uid, name: nick, initials: nick[0], color,
+      role: role === 'teacher' ? '교사' : role === 'student' ? '학생' : '멤버',
+      community_role: role,
+      email, birth_date: birth,
+      status: 'pending',
+      community_id: communityId,
     }).select().single();
 
     if (mErr) throw mErr;
@@ -999,8 +1049,6 @@ async function doSignUp() {
     msg.className='auth-msg success';
     msg.textContent='가입 신청 완료! 관리자 승인 후 이용 가능해요 ✅';
     btn.textContent='가입하기'; btn.disabled=false;
-
-    // 승인 대기 상태이므로 바로 앱 진입 안 함
     setTimeout(() => switchTab('signin'), 2500);
   } catch(e) {
     msg.className='auth-msg error';
@@ -1008,11 +1056,15 @@ async function doSignUp() {
     if (err.includes('already registered') || err.includes('already been registered')) {
       msg.textContent = '이미 가입된 이메일이에요. 로그인해주세요 😊';
     } else if (err.includes('duplicate') || err.includes('unique constraint')) {
-      msg.textContent = '이미 사용 중인 이메일이에요. 다른 이메일로 가입해주세요 😊';
+      msg.textContent = '이미 사용 중인 이메일이에요 😊';
     } else if (err.includes('Password should be')) {
       msg.textContent = '비밀번호는 6자 이상으로 입력해주세요 🔒';
-    } else if (err.includes('invalid') || err.includes('Invalid')) {
-      msg.textContent = '이메일 형식이 올바르지 않아요. 다시 확인해주세요 📧';
+    } else {
+      msg.textContent = err || '오류가 발생했어요. 다시 시도해주세요';
+    }
+    btn.textContent='가입하기'; btn.disabled=false;
+  }
+}
     } else if (err.includes('network') || err.includes('fetch')) {
       msg.textContent = '인터넷 연결을 확인해주세요 🌐';
     } else {
@@ -1057,7 +1109,24 @@ async function doSignIn() {
     }
 
     ME = member;
-    enterApp();
+
+    // 총관리자는 공동체 선택 화면 없이 바로 진입
+    if (member.email === 'koreayjk@gmail.com') {
+      enterApp();
+      return;
+    }
+
+    // 여러 공동체 접근 권한이 있는 관리자 → 공동체 선택
+    const { data: multiCommunities } = await sb.from('communities').select('*').order('name');
+    const hasMultiAccess = member.community_role === 'super_admin' ||
+      (multiCommunities && multiCommunities.length > 1 && member.community_role === 'community_admin');
+
+    if (hasMultiAccess && multiCommunities && multiCommunities.length > 1) {
+      showCommunitySelect(multiCommunities);
+    } else {
+      // 일반 사용자 → 소속 공동체로 바로 진입
+      enterApp();
+    }
   } catch(e) {
     const err = e.message || '';
     if (err.includes('Invalid login') || err.includes('invalid') || err.includes('Invalid')) {
@@ -1075,6 +1144,35 @@ async function doSignIn() {
     }
     btn.textContent='로그인'; btn.disabled=false;
   }
+}
+
+// ── 공동체 선택 화면 ──
+function showCommunitySelect(communities) {
+  document.getElementById('auth-screen').style.display = 'none';
+  document.getElementById('community-select-screen').style.display = 'flex';
+  const list = document.getElementById('community-list');
+  list.innerHTML = communities.map(c => `
+    <div onclick="enterCommunity('${c.id}')"
+      style="background:var(--surface);border:1.5px solid var(--border);border-radius:18px;
+      padding:20px 16px;text-align:center;cursor:pointer;transition:all .15s;
+      border-top:4px solid ${c.color||'var(--accent)'}"
+      onmouseover="this.style.borderColor='${c.color||'var(--accent)'}';this.style.transform='translateY(-2px)'"
+      onmouseout="this.style.borderColor='var(--border)';this.style.borderTopColor='${c.color||'var(--accent)'}';this.style.transform=''">
+      ${c.logo_url ? `<img src="${c.logo_url}" style="width:52px;height:52px;border-radius:12px;object-fit:cover;margin-bottom:10px"/>` :
+        `<div style="width:52px;height:52px;border-radius:12px;background:${c.color||'var(--accent)'};
+          display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;
+          color:white;margin:0 auto 10px">${(c.name||'?')[0]}</div>`}
+      <div style="font-size:14px;font-weight:700;color:var(--ink);margin-bottom:4px">${c.name}</div>
+      ${c.description ? `<div style="font-size:11px;color:var(--ink3)">${c.description}</div>` : ''}
+    </div>`).join('');
+}
+
+async function enterCommunity(communityId) {
+  // 선택한 공동체로 ME 업데이트
+  const { data: community } = await sb.from('communities').select('*').eq('id', communityId).single();
+  if (community) ME.selectedCommunity = community;
+  document.getElementById('community-select-screen').style.display = 'none';
+  enterApp();
 }
 
 // ── 앱 진입 ──
