@@ -555,10 +555,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
               <input type="radio" name="su-role" value="teacher" id="role-teacher" style="width:auto"/> 👩‍🏫 교사
             </label>
             <label style="flex:1;display:flex;align-items:center;gap:8px;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;cursor:pointer;font-size:13px;transition:all .15s" id="role-student-label">
-              <input type="radio" name="su-role" value="student" id="role-student" style="width:auto"/> 🎓 학생
-            </label>
-            <label style="flex:1;display:flex;align-items:center;gap:8px;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;cursor:pointer;font-size:13px;transition:all .15s" id="role-member-label">
-              <input type="radio" name="su-role" value="member" id="role-member" style="width:auto" checked/> 👤 멤버
+              <input type="radio" name="su-role" value="student" id="role-student" style="width:auto" checked/> 🎓 학생
             </label>
           </div>
         </div>
@@ -617,6 +614,10 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
     <div class="sb-btn" id="sb-tcs" onclick="setMode('tcs')" title="TCS 기록부" style="display:none">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
       <span>TCS</span>
+    </div>
+    <div class="sb-btn" id="sb-switch-community" onclick="showCommunitySwitcher()" title="공동체 전환" style="display:none">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+      <span>공동체</span>
     </div>
     <div class="sb-btn" id="sb-admin" onclick="setMode('admin')" title="관리자" style="display:none">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M12 14c-5 0-8 2-8 4v1h16v-1c0-2-3-4-8-4z"/><path d="M17 3l1.5 1.5L20 3l-1.5 1.5L20 6l-1.5-1.5L17 6l1.5-1.5z"/></svg>
@@ -1126,14 +1127,20 @@ async function doSignUp() {
 }
 
 // ── 권한 체크 헬퍼 ──
+const DEFAULT_CID = '00000000-0000-0000-0000-000000000001';
+function CID() { return ME?.community_id || DEFAULT_CID; }
+
 function isSuperAdmin() {
-  return ME && (ME.community_role === 'super_admin');
+  return ME && ME.community_role === 'super_admin';
 }
 function isCommunityAdmin() {
   return ME && (ME.community_role === 'super_admin' || ME.community_role === 'community_admin');
 }
 function isTeacher() {
   return ME && (ME.community_role === 'super_admin' || ME.community_role === 'community_admin' || ME.community_role === 'teacher');
+}
+function isStudent() {
+  return ME && ME.community_role === 'student';
 }
 
 // ── 로그인 ──
@@ -1246,18 +1253,22 @@ function enterApp() {
   document.getElementById('my-av').title = ME.name;
   const mav = document.getElementById('mobile-av');
   if (mav) { mav.textContent = ME.initials || ME.name[0]; mav.style.background = ME.color || '#1d3a5f'; }
-  // 역할에 따라 관리 탭 표시
+  // 역할에 따라 탭 표시 — 학생은 관리/TCS 탭 숨김
+  document.getElementById('sb-admin').style.display = 'none';
+  document.getElementById('sb-tcs').style.display = 'none';
+  document.getElementById('sb-switch-community').style.display = 'none';
+  const mnAdmin = document.getElementById('mn-admin');
+  if (mnAdmin) mnAdmin.style.display = 'none';
+
   if (isSuperAdmin() || isCommunityAdmin()) {
     document.getElementById('sb-admin').style.display = 'flex';
-    const mnAdmin = document.getElementById('mn-admin');
     if (mnAdmin) mnAdmin.style.display = 'flex';
   }
-  // 교사 이상은 TCS 탭 표시
   if (isTeacher()) {
     document.getElementById('sb-tcs').style.display = 'flex';
   }
-  // 총관리자 배지
   if (isSuperAdmin()) {
+    document.getElementById('sb-switch-community').style.display = 'flex';
     const myAvEl = document.getElementById('my-av');
     if (myAvEl) myAvEl.title = `${ME.name} (총관리자)`;
   }
@@ -1387,10 +1398,13 @@ function fmtTime(ts) {
 let myChannelIds = new Set();
 
 async function init() {
-  const { data: chs } = await sb.from('channels').select('*').order('pinned', {ascending:false}).order('created_at');
+  const { data: chs } = await sb.from('channels').select('*')
+    .eq('community_id', CID())
+    .order('pinned', {ascending:false}).order('created_at');
   channels = chs || [];
 
-  const { data: mems } = await sb.from('members').select('*');
+  const { data: mems } = await sb.from('members').select('*')
+    .eq('community_id', CID());
   members = {};
   (mems||[]).forEach(m => { members[m.id] = m; });
 
@@ -1410,7 +1424,9 @@ async function init() {
   // 채널 실시간 구독 (새 채널 추가 즉시 반영)
   sb.channel('channels-changes')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'channels' }, async () => {
-      const { data: newChs } = await sb.from('channels').select('*').order('pinned', {ascending:false}).order('created_at');
+      const { data: newChs } = await sb.from('channels').select('*')
+        .eq('community_id', CID())
+        .order('pinned', {ascending:false}).order('created_at');
       channels = newChs || [];
       if (isSuperAdmin()) {
         const { data: myDMs } = await sb.from('channel_members').select('channel_id').eq('member_id', ME.id);
@@ -1484,8 +1500,8 @@ function setMode(m) {
   if (m==='home') renderHome();
   if (m==='chat') { renderPanel(); sessionStorage.removeItem('last_channel_id'); }
   if (m==='calendar') { loadCalendar(); }
-  if (m==='admin') { initAdminPage(); }
-  if (m==='tcs') { initTcsPage(); }
+  if (m==='admin') { if(isCommunityAdmin()) initAdminPage(); else setMode('home'); return; }
+  if (m==='tcs') { if(isTeacher()) initTcsPage(); else setMode('home'); return; }
   if (m==='profile') { renderProfilePage(); }
   sessionStorage.setItem('last_mode', m);
   document.getElementById('panel-title').textContent = {chat:'채팅',prayer:'기도제목',home:'홈',calendar:'일정',admin:'관리자',tcs:'TCS',profile:'내 프로필'}[m] || m;
@@ -2256,7 +2272,7 @@ async function openDMwith(memberId) {
     // 없으면 새로 만들기
     const dmName = `${ME.name} · ${target.name}`;
     const { data, error } = await sb.from('channels').insert({
-      name: dmName, emoji: '💬', description: '1:1 대화', pinned: false, kind: 'dm'
+      name: dmName, emoji: '💬', description: '1:1 대화', pinned: false, kind: 'dm', community_id: CID()
     }).select().single();
     if (error || !data) return;
     await sb.from('channel_members').insert([
@@ -2275,7 +2291,7 @@ async function openDMwith(memberId) {
 
 // ── 기도제목 ──
 async function loadPrayers() {
-  const { data } = await sb.from('prayers').select('*').order('created_at', {ascending:false});
+  const { data } = await sb.from('prayers').select('*').eq('community_id', CID()).order('created_at', {ascending:false});
   prayers = data || [];
   renderPrayerContent();
 }
@@ -2366,7 +2382,7 @@ async function submitPrayer(btn) {
   const scopeEl = form.querySelector('[data-selected]');
   const scope = scopeEl ? scopeEl.dataset.scope : '전체';
   if (!title) { form.querySelector('#ptitle').style.borderColor='var(--rose)'; return; }
-  await sb.from('prayers').insert({ member_id: ME.id, member_name: ME.name, title, body, scope, prayer_count: 0 });
+  await sb.from('prayers').insert({ member_id: ME.id, member_name: ME.name, title, body, scope, prayer_count: 0, community_id: CID() });
   form.remove();
   loadPrayers();
 }
@@ -2382,10 +2398,10 @@ async function renderHome() {
   const todayStr = d.toISOString().slice(0,10);
 
   // 오늘의 묵상 로드
-  const { data: wordData } = await sb.from('daily_word').select('*').eq('date', todayStr).single();
+  const { data: wordData } = await sb.from('daily_word').select('*').eq('date', todayStr).eq('community_id', CID()).single();
 
   // 주간 일정표 로드 (가장 최근 것)
-  const { data: schedImgs } = await sb.from('schedule_images').select('*')
+  const { data: schedImgs } = await sb.from('schedule_images').select('*').eq('community_id', CID())
     .order('created_at', {ascending: false}).limit(1);
   const schedImg = schedImgs?.[0] || null;
 
@@ -2631,7 +2647,8 @@ async function uploadScheduleImage(file, dateStr) {
       date: dateStr,
       image_url: urlData.publicUrl,
       title: pendingScheduleTitle || '주간 일정표',
-      created_by: ME.id
+      created_by: ME.id,
+      community_id: CID()
     });
     showUploadToast('일정 사진 등록 완료! ✅');
     renderHome();
@@ -2756,7 +2773,7 @@ async function submitAddChannel() {
     const emoji = document.getElementById('new-ch-emoji').value.trim() || null;
     const desc = document.getElementById('new-ch-desc').value.trim() || '';
 
-    const { data, error } = await sb.from('channels').insert({ name, emoji, description: desc, pinned: false, kind: 'topic' }).select().single();
+    const { data, error } = await sb.from('channels').insert({ name, emoji, description: desc, pinned: false, kind: 'topic', community_id: CID() }).select().single();
     if (error) { alert('채널 생성 실패: ' + error.message); return; }
     if (data) {
       const memberInserts = Array.from(selectedNewChMembers).map(mid => ({ channel_id: data.id, member_id: mid }));
@@ -2899,7 +2916,7 @@ async function renderProfilePage() {
         </div>
       </div>
 
-      <!-- 기본 정보 -->
+      <!-- 기본 정보 (모두 접근 가능) -->
       <div class="adm-card" style="margin-bottom:16px">
         <div style="font-size:14px;font-weight:700;color:var(--adeep);margin-bottom:16px">👤 기본 정보</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px">
@@ -2916,7 +2933,7 @@ async function renderProfilePage() {
         </div>
       </div>
 
-      <!-- 연락처 -->
+      <!-- 연락처 (모두 접근 가능) -->
       <div class="adm-card" style="margin-bottom:16px">
         <div style="font-size:14px;font-weight:700;color:var(--adeep);margin-bottom:16px">📱 연락처</div>
         ${inp('phone', '전화번호', ME.phone, 'tel', '010-0000-0000')}
@@ -2927,12 +2944,13 @@ async function renderProfilePage() {
         </div>
       </div>
 
-      <!-- 학교 정보 -->
+      ${!isStudent() ? `
+      <!-- 학교 정보 (교사/관리자만) -->
       <div class="adm-card" style="margin-bottom:16px">
         <div style="font-size:14px;font-weight:700;color:var(--adeep);margin-bottom:16px">🏫 학교 정보</div>
         ${inp('school_name', '학교명', ME.school_name, 'text', '예: IM선교회 대안학교')}
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px">
-          <div>${sel('grade', '현재 학년', ME.grade, ['G7 (중1)','G8 (중2)','G9 (중3)','G10 (고1)','G11 (고2)','G12 (고3)','졸업'])}</div>
+          <div>${sel('grade', '현재 학년', ME.grade, ['K','1','2','3','4','5','6','G7 (중1)','G8 (중2)','G9 (중3)','G10 (고1)','G11 (고2)','G12 (고3)','졸업'])}</div>
           <div>${inp('homeroom_teacher', '담임 선생님', ME.homeroom_teacher, 'text')}</div>
         </div>
         ${inp('enroll_date', '입학일', ME.enroll_date, 'date')}
@@ -2945,12 +2963,24 @@ async function renderProfilePage() {
       </div>
 
       <!-- 진로 -->
-      <div class="adm-card" style="margin-bottom:24px">
+      <div class="adm-card" style="margin-bottom:16px">
         <div style="font-size:14px;font-weight:700;color:var(--adeep);margin-bottom:16px">🎯 진로</div>
         ${inp('career_goal', '진로 희망', ME.career_goal, 'text', '예: 선교사 / 교사 / 의사')}
       </div>
+      ` : `
+      <!-- 학생: 학교 정보 읽기 전용 -->
+      <div class="adm-card" style="margin-bottom:16px;opacity:.8">
+        <div style="font-size:14px;font-weight:700;color:var(--adeep);margin-bottom:12px">🏫 학교 정보 <span style="font-size:11px;color:var(--ink3);font-weight:400">(교사가 관리해요)</span></div>
+        <div style="display:flex;flex-wrap:wrap;gap:12px">
+          ${ME.school_name?`<div style="font-size:13px;color:var(--ink2)">🏫 ${ME.school_name}</div>`:''}
+          ${ME.grade?`<div style="font-size:13px;color:var(--ink2)">📚 ${ME.grade}</div>`:''}
+          ${ME.homeroom_teacher?`<div style="font-size:13px;color:var(--ink2)">👩‍🏫 ${ME.homeroom_teacher} 선생님</div>`:''}
+        </div>
+        ${!ME.school_name&&!ME.grade?`<div style="font-size:12px;color:var(--ink3)">담임 선생님이 등록해드릴 거예요</div>`:''}
+      </div>
+      `}
 
-      <!-- 비밀번호 변경 -->
+      <!-- 비밀번호 변경 (모두 접근 가능) -->
       <div class="adm-card" style="margin-bottom:16px">
         <div style="font-size:14px;font-weight:700;color:var(--adeep);margin-bottom:16px">🔒 비밀번호 변경</div>
         <input id="prof-pw1" type="password" placeholder="새 비밀번호 (6자 이상)"
@@ -3185,15 +3215,42 @@ async function selectTcsStudent(student) {
 
 function renderTcsSectionList() {
   const main = document.getElementById('tcs-main');
-  const completedSections = TCS_SECTIONS.filter(s => tcsRecords[s.id] && Object.keys(tcsRecords[s.id]).length > 0).length;
+
+  // 학생 학년에서 숫자 추출 (K-12)
+  const gradeStr = (tcsCurrentStudent.grade || '').trim();
+  const gradeNum = (() => {
+    if (gradeStr === 'K') return 0;
+    const m = gradeStr.match(/(\d+)/);
+    return m ? parseInt(m[1]) : null;
+  })();
+
+  const gradeKeyMap = {
+    7:'g7', 8:'g8', 9:'g9', 10:'g10', 11:'g11', 12:'g12'
+  };
+
+  function isSectionComplete(sec) {
+    const d = tcsRecords[sec.id] || {};
+    if (!Object.keys(d).length) return false;
+    if (sec.id === 'academic') {
+      const k = gradeNum ? gradeKeyMap[gradeNum] : null;
+      return k ? !!(d[k+'_grades']?.trim()) : Object.values(d).some(v=>v&&String(v).trim());
+    }
+    if (sec.id === 'attendance') {
+      const k = gradeNum ? gradeKeyMap[gradeNum] : null;
+      return k ? !!(d[k]?.trim()) : Object.values(d).some(v=>v&&String(v).trim());
+    }
+    return Object.values(d).some(v => v && String(v).trim());
+  }
+
+  const completedSections = TCS_SECTIONS.filter(s => isSectionComplete(s)).length;
+  const gradeLabel = gradeStr ? ` (${gradeStr})` : '';
 
   main.innerHTML = `
     <div style="max-width:700px">
-      <!-- 학생 카드 -->
-      <div style="background:linear-gradient(135deg,#1d3a5f,#2a5298);border-radius:18px;padding:20px 24px;margin-bottom:24px;display:flex;align-items:center;gap:16px">
+      <div style="background:linear-gradient(135deg,#1d3a5f,#2a5298);border-radius:18px;padding:20px 24px;margin-bottom:16px;display:flex;align-items:center;gap:16px">
         <div style="width:52px;height:52px;border-radius:14px;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;color:white;font-size:20px;font-weight:700;flex-shrink:0">${tcsCurrentStudent.initials||tcsCurrentStudent.name?.[0]||'?'}</div>
         <div style="flex:1">
-          <div style="font-size:18px;font-weight:700;color:white">${tcsCurrentStudent.name}</div>
+          <div style="font-size:18px;font-weight:700;color:white">${tcsCurrentStudent.name}${gradeLabel}</div>
           <div style="font-size:12px;color:rgba(255,255,255,.7);margin-top:2px">TCS 학생 종합 기록부</div>
         </div>
         <div style="text-align:right">
@@ -3202,28 +3259,38 @@ function renderTcsSectionList() {
         </div>
       </div>
 
-      <!-- 진행률 바 -->
-      <div style="background:var(--border);border-radius:99px;height:6px;margin-bottom:24px;overflow:hidden">
+      ${gradeNum !== null ? `
+      <div style="background:#dbeafe;border:1.5px solid #93c5fd;border-radius:12px;padding:10px 14px;margin-bottom:16px;font-size:12px;color:#1d4ed8">
+        📌 <b>${gradeStr}</b> 기준으로 완료 여부 표시. 출결·성적은 현재 학년 칸이 채워져야 ✅ 완료예요.
+      </div>` : `
+      <div style="background:#fef9c3;border:1.5px solid #fde047;border-radius:12px;padding:10px 14px;margin-bottom:16px;font-size:12px;color:#854d0e">
+        ⚠️ 학생 프로필에 학년이 등록되지 않았어요. 프로필에서 학년을 먼저 설정해주세요.
+      </div>`}
+
+      <div style="background:var(--border);border-radius:99px;height:6px;margin-bottom:20px;overflow:hidden">
         <div style="height:100%;width:${Math.round(completedSections/TCS_SECTIONS.length*100)}%;background:linear-gradient(90deg,#1d3a5f,#2a5298);border-radius:99px;transition:width .4s"></div>
       </div>
 
-      <!-- 섹션 그리드 -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         ${TCS_SECTIONS.map(sec => {
-          const hasData = tcsRecords[sec.id] && Object.keys(tcsRecords[sec.id]).length > 0;
+          const done = isSectionComplete(sec);
+          const hasAny = tcsRecords[sec.id] && Object.keys(tcsRecords[sec.id]).length > 0;
+          const partial = hasAny && !done;
           return `<div onclick="openTcsSection('${sec.id}')"
-            style="background:var(--surface);border-radius:14px;padding:16px 18px;cursor:pointer;
-            border:2px solid ${hasData?'#2a5298':'var(--border)'};
+            style="background:${done?'#f0f7ff':partial?'#f8fbff':'var(--surface)'};border-radius:14px;padding:16px 18px;cursor:pointer;
+            border:2px solid ${done?'#2a5298':partial?'#93c5fd':'var(--border)'};
             transition:all .15s;display:flex;align-items:center;gap:12px"
             onmouseover="this.style.borderColor='#2a5298';this.style.transform='translateY(-1px)'"
-            onmouseout="this.style.borderColor='${hasData?'#2a5298':'var(--border)}'}';this.style.transform=''">
+            onmouseout="this.style.borderColor='${done?'#2a5298':partial?'#93c5fd':'var(--border)'}';this.style.transform=''">
             <div style="font-size:22px">${sec.icon}</div>
             <div style="flex:1">
               <div style="font-size:13px;font-weight:600;color:var(--ink)">${sec.label}</div>
-              <div style="font-size:11px;color:var(--ink3);margin-top:1px">${sec.labelEn}</div>
+              <div style="font-size:11px;margin-top:1px;color:${done?'#2a5298':partial?'#3b82f6':'var(--ink3)'}">
+                ${done?'✅ 완료':partial?'📝 일부 입력됨':'미입력'}
+              </div>
             </div>
-            <div style="width:20px;height:20px;border-radius:50%;background:${hasData?'#2a5298':'var(--border)'};display:flex;align-items:center;justify-content:center;flex-shrink:0">
-              ${hasData?'<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>':''}
+            <div style="width:20px;height:20px;border-radius:50%;background:${done?'#2a5298':partial?'#93c5fd':'var(--border)'};display:flex;align-items:center;justify-content:center;flex-shrink:0">
+              ${done?'<svg width=\"10\" height=\"10\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"white\" stroke-width=\"3\"><polyline points=\"20 6 9 17 4 12\"/></svg>':partial?'<div style=\"width:6px;height:6px;border-radius:50%;background:white\"></div>':''}
             </div>
           </div>`;
         }).join('')}
@@ -3278,14 +3345,28 @@ function getTcsSectionFields(sectionId) {
       {key:'principal', label:'학교장', type:'text'},
     ],
     attendance: [
+      {key:'k',  label:'K (유치원) — 수업일수 / 결석 / 지각 / 조퇴', type:'text', placeholder:'예: 180 / 0 / 0 / 0'},
+      {key:'g1', label:'G1 (1학년)', type:'text', placeholder:''},
+      {key:'g2', label:'G2 (2학년)', type:'text', placeholder:''},
+      {key:'g3', label:'G3 (3학년)', type:'text', placeholder:''},
+      {key:'g4', label:'G4 (4학년)', type:'text', placeholder:''},
+      {key:'g5', label:'G5 (5학년)', type:'text', placeholder:''},
+      {key:'g6', label:'G6 (6학년)', type:'text', placeholder:''},
       {key:'g7', label:'G7 (중1) — 수업일수 / 결석 / 지각 / 조퇴', type:'text', placeholder:'예: 190 / 2 / 1 / 0'},
-      {key:'g8', label:'G8 (중2)', type:'text', placeholder:'예: 190 / 0 / 0 / 0'},
+      {key:'g8', label:'G8 (중2)', type:'text', placeholder:''},
       {key:'g9', label:'G9 (중3)', type:'text', placeholder:''},
       {key:'g10', label:'G10 (고1)', type:'text', placeholder:''},
       {key:'g11', label:'G11 (고2)', type:'text', placeholder:''},
       {key:'g12', label:'G12 (고3)', type:'text', placeholder:''},
     ],
     academic: [
+      {key:'k_grades',  label:'K (유치원) 성취도', type:'textarea', placeholder:'예: 읽기:A, 수학:A, 생활:A'},
+      {key:'g1_grades', label:'G1 성적', type:'textarea', placeholder:'국어:A, 수학:A, 사회:A, 과학:A, 성경:A'},
+      {key:'g2_grades', label:'G2 성적', type:'textarea', placeholder:''},
+      {key:'g3_grades', label:'G3 성적', type:'textarea', placeholder:''},
+      {key:'g4_grades', label:'G4 성적', type:'textarea', placeholder:''},
+      {key:'g5_grades', label:'G5 성적', type:'textarea', placeholder:''},
+      {key:'g6_grades', label:'G6 성적', type:'textarea', placeholder:''},
       {key:'g7_grades', label:'G7 성적 (과목: 등급, …)', type:'textarea', placeholder:'국어:A, 영어:B, 수학:A, 사회:B, 과학:A, 성경:A'},
       {key:'g8_grades', label:'G8 성적', type:'textarea', placeholder:''},
       {key:'g9_grades', label:'G9 성적', type:'textarea', placeholder:''},
@@ -3582,6 +3663,64 @@ function printTcsPdf() {
   win.document.close();
   setTimeout(() => { win.print(); }, 600);
 }
+
+// ── 총관리자 공동체 전환 ──
+async function showCommunitySwitcher() {
+  const { data: communities } = await sb.from('communities').select('*').order('name');
+  const list = communities || [];
+  const currentId = ME.community_id || '00000000-0000-0000-0000-000000000001';
+
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+  overlay.innerHTML = `
+    <div style="background:var(--surface);border-radius:20px;width:100%;max-width:420px;box-shadow:0 24px 60px rgba(29,58,95,.2);overflow:hidden">
+      <div style="padding:20px 24px;border-bottom:1px solid var(--border)">
+        <div style="font-size:16px;font-weight:700;color:var(--ink)">🏛️ 공동체 전환</div>
+        <div style="font-size:12px;color:var(--ink3);margin-top:3px">입장할 공동체를 선택하세요</div>
+      </div>
+      <div style="padding:12px;max-height:400px;overflow-y:auto">
+        ${list.map(c => `
+          <div onclick="switchToCommunity('${c.id}')"
+            style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:12px;cursor:pointer;transition:background .12s;
+            ${c.id===currentId?'background:var(--asoft)':''}"
+            onmouseover="this.style.background='var(--s3)'"
+            onmouseout="this.style.background='${c.id===currentId?'var(--asoft)':''}'">
+            <div style="width:42px;height:42px;border-radius:12px;background:${c.color||'#1d3a5f'};display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:white;flex-shrink:0;overflow:hidden">
+              ${c.logo_url?`<img src="${c.logo_url}" style="width:42px;height:42px;object-fit:cover"/>`:(c.name||'?')[0]}
+            </div>
+            <div style="flex:1">
+              <div style="font-size:14px;font-weight:${c.id===currentId?'700':'500'};color:var(--ink)">${c.name}</div>
+              <div style="font-size:11px;color:var(--ink3);margin-top:1px">${c.description||''}</div>
+            </div>
+            ${c.id===currentId?'<span style="font-size:11px;color:var(--accent);font-weight:600">현재</span>':''}
+          </div>`).join('')}
+      </div>
+      <div style="padding:12px 16px;border-top:1px solid var(--border)">
+        <button onclick="this.closest('[style*=fixed]').remove()"
+          style="width:100%;height:38px;border-radius:10px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:500 13px var(--font);cursor:pointer">
+          취소
+        </button>
+      </div>
+    </div>`;
+  overlay.addEventListener('click', e => { if(e.target===overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+}
+
+async function switchToCommunity(communityId) {
+  document.querySelector('[style*="z-index: 9999"]')?.remove();
+  document.querySelector('[style*="z-index:9999"]')?.remove();
+
+  await sb.from('members').update({ community_id: communityId }).eq('id', ME.id);
+  ME.community_id = communityId;
+
+  const { data: comm } = await sb.from('communities').select('*').eq('id', communityId).single();
+  if (comm) ME.selectedCommunity = comm;
+
+  showUploadToast(`✅ ${comm?.name||'공동체'}로 전환됐어요!`);
+  await init();
+  setMode('home');
+}
+
 async function renderCommunitySettings() {
   const area = document.getElementById('admin-content');
   if (!ME.community_id) {
@@ -3930,167 +4069,141 @@ async function changeMemberCommunityRole(memberId, role) {
 
 // ── 멤버 관리 ──
 async function renderAdminMembers() {
-  const { data } = await sb.from('members').select('*').order('created_at');
-  const list = data || [];
   const area = document.getElementById('admin-content');
 
-  const pending = list.filter(m => m.status === 'pending');
+  // 총관리자: 교사/관리자급만 표시 (학생 제외)
+  // 공동체 관리자: 자기 공동체 멤버 전체 표시
+  let query = sb.from('members').select('*').order('created_at');
+  if (isSuperAdmin()) {
+    query = query.not('community_role', 'in', '("student","member")');
+  } else if (isCommunityAdmin()) {
+    query = query.eq('community_id', ME.community_id || '00000000-0000-0000-0000-000000000001');
+  }
+
+  const { data } = await query;
+  const list = data || [];
+
+  const pending  = list.filter(m => m.status === 'pending');
   const approved = list.filter(m => m.status === 'approved' || !m.status);
   const rejected = list.filter(m => m.status === 'rejected');
 
-  // Supabase Storage 사용량 계산
+  const roleLabel = { super_admin:'총관리자', community_admin:'공동체관리자', teacher:'교사', student:'학생', member:'멤버' };
+  const roleColor = { super_admin:'#7c3aed', community_admin:'#1d4ed8', teacher:'#0369a1', student:'#15803d', member:'#6b7280' };
+
+  // 스토리지 사용량 (총관리자만)
   let storageHtml = '';
-  try {
-    const { data: chatFiles } = await sb.storage.from('messenger').list('chat', { limit: 1000 });
-    const { data: schedFiles } = await sb.storage.from('messenger').list('schedule', { limit: 1000 });
-
-    // 채널별 파일 로드
-    const allFiles = [];
-    if (chatFiles) {
-      for (const folder of chatFiles) {
-        const { data: files } = await sb.storage.from('messenger').list(`chat/${folder.name}`, { limit: 1000 });
-        if (files) files.forEach(f => allFiles.push({ ...f, path: `chat/${folder.name}/${f.name}`, channelId: folder.name }));
+  if (isSuperAdmin()) {
+    try {
+      const { data: chatFiles } = await sb.storage.from('messenger').list('chat', { limit: 1000 });
+      const { data: schedFiles } = await sb.storage.from('messenger').list('schedule', { limit: 1000 });
+      const allFiles = [];
+      if (chatFiles) {
+        for (const folder of chatFiles) {
+          const { data: files } = await sb.storage.from('messenger').list(`chat/${folder.name}`, { limit: 1000 });
+          if (files) files.forEach(f => allFiles.push({ ...f, path: `chat/${folder.name}/${f.name}` }));
+        }
       }
-    }
-    if (schedFiles) schedFiles.forEach(f => allFiles.push({ ...f, path: `schedule/${f.name}` }));
-
-    // 메시지에서 sender_id 매핑
-    const { data: fileMsgs } = await sb.from('messages').select('sender_id, text').eq('kind', 'file');
-    const urlToSender = {};
-    (fileMsgs || []).forEach(m => {
-      try {
-        const f = JSON.parse(m.text);
-        if (f.directUrl) urlToSender[f.directUrl] = m.sender_id;
-      } catch(e) {}
-    });
-
-    // 멤버별 용량 합산
-    const memberUsage = {}; // member_id → bytes
-    let totalBytes = 0;
-    allFiles.forEach(f => {
-      const size = f.metadata?.size || 0;
-      totalBytes += size;
-      // URL로 sender 찾기
-      const { data: urlData } = sb.storage.from('messenger').getPublicUrl(f.path);
-      const senderId = urlToSender[urlData?.publicUrl];
-      if (senderId) {
-        memberUsage[senderId] = (memberUsage[senderId] || 0) + size;
-      }
-    });
-
-    const fmtSize = (b) => b > 1048576 ? (b/1048576).toFixed(1)+'MB' : b > 1024 ? (b/1024).toFixed(0)+'KB' : b+'B';
-    const totalMB = (totalBytes / 1048576).toFixed(1);
-    const limitMB = 100 * 1024; // 100GB
-
-    // 용량 쓰는 멤버 정렬
-    const usageList = Object.entries(memberUsage)
-      .map(([id, bytes]) => ({ member: list.find(m => m.id === id), bytes }))
-      .filter(x => x.member)
-      .sort((a, b) => b.bytes - a.bytes);
-
-    storageHtml = `
-    <div class="adm-card" style="margin-bottom:20px">
-      <div style="font-size:14px;font-weight:700;margin-bottom:14px">💾 스토리지 사용량</div>
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
-        <div style="flex:1;background:var(--s3);border-radius:999px;height:10px;overflow:hidden">
-          <div style="height:100%;background:var(--accent);border-radius:999px;width:${Math.min(100, totalBytes/1048576/limitMB*100).toFixed(2)}%"></div>
-        </div>
-        <div style="font-size:13px;font-weight:600;color:var(--ink);white-space:nowrap">${totalMB}MB / 100GB</div>
-      </div>
-      <div style="display:flex;flex-direction:column;gap:8px">
-        ${usageList.length ? usageList.map(({member: m, bytes}) => `
-        <div style="display:flex;align-items:center;gap:10px">
-          <div style="width:28px;height:28px;border-radius:8px;background:${m.color||'#999'};color:white;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;flex-shrink:0">${m.initials||m.name[0]}</div>
-          <div style="flex:1;min-width:0">
-            <div style="display:flex;justify-content:space-between;margin-bottom:3px">
-              <span style="font-size:12px;font-weight:600">${m.name}</span>
-              <span style="font-size:12px;color:var(--ink3)">${fmtSize(bytes)}</span>
+      if (schedFiles) schedFiles.forEach(f => allFiles.push({ ...f, path: `schedule/${f.name}` }));
+      const totalBytes = allFiles.reduce((s,f) => s + (f.metadata?.size||0), 0);
+      const totalMB = (totalBytes/1048576).toFixed(1);
+      storageHtml = `
+        <div class="adm-card" style="margin-bottom:20px">
+          <div style="font-size:14px;font-weight:700;margin-bottom:10px">💾 스토리지 사용량</div>
+          <div style="display:flex;align-items:center;gap:12px">
+            <div style="flex:1;background:var(--s3);border-radius:999px;height:10px;overflow:hidden">
+              <div style="height:100%;background:var(--accent);border-radius:999px;width:${Math.min(100,totalBytes/1048576/102400*100).toFixed(2)}%"></div>
             </div>
-            <div style="background:var(--s3);border-radius:999px;height:5px;overflow:hidden">
-              <div style="height:100%;background:${m.color||'var(--accent)'};border-radius:999px;width:${Math.min(100, bytes/totalBytes*100).toFixed(1)}%"></div>
-            </div>
+            <div style="font-size:13px;font-weight:600;white-space:nowrap">${totalMB}MB / 100GB</div>
           </div>
-        </div>`).join('') : `<div style="font-size:13px;color:var(--ink3);text-align:center;padding:8px">파일이 없어요</div>`}
-      </div>
-      <div style="font-size:11px;color:var(--ink3);margin-top:10px;text-align:right">총 파일 ${allFiles.length}개</div>
-    </div>`;
-  } catch(e) {
-    storageHtml = '';
+          <div style="font-size:11px;color:var(--ink3);margin-top:6px">파일 ${allFiles.length}개</div>
+        </div>`;
+    } catch(e) {}
   }
 
   const memberRow = (m, showApproval=false) => `
     <div class="adm-row" style="padding:14px 20px;flex-wrap:wrap;gap:10px">
       <div style="width:38px;height:38px;border-radius:12px;background:${m.color||'#999'};color:white;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;flex-shrink:0">${m.initials||m.name[0]}</div>
       <div style="flex:1;min-width:0">
-        <div style="font-size:14px;font-weight:600">${m.name}</div>
-        <div style="font-size:12px;color:var(--ink3);margin-top:2px">${m.email||'이메일 없음'} · ${m.birth_date||''}</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:14px;font-weight:600">${m.name}</span>
+          <span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:99px;background:${roleColor[m.community_role]||'#6b728022'}22;color:${roleColor[m.community_role]||'#6b7280'}">${roleLabel[m.community_role]||m.community_role||'멤버'}</span>
+        </div>
+        <div style="font-size:12px;color:var(--ink3);margin-top:2px">${m.email||''} ${m.birth_date?'· '+m.birth_date:''}</div>
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;flex-wrap:wrap">
         ${showApproval ? `
           <button class="adm-btn sage" onclick="approveMember('${m.id}')">✅ 승인</button>
           <button class="adm-btn danger" onclick="rejectMember('${m.id}')">❌ 거절</button>
         ` : `
-          <select onchange="updateMemberRole('${m.id}',this.value)"
+          <select onchange="changeMemberCommunityRole('${m.id}',this.value)"
             style="height:30px;padding:0 10px;border-radius:9px;border:1.5px solid var(--border);font:12px var(--font);background:white;cursor:pointer;outline:none">
-            <option value="멤버" ${(m.role||'멤버')==='멤버'?'selected':''}>멤버</option>
-            <option value="리더" ${m.role==='리더'?'selected':''}>리더</option>
-            <option value="관리자" ${m.role==='관리자'?'selected':''}>관리자</option>
+            <option value="member"           ${m.community_role==='member'?'selected':''}>멤버</option>
+            <option value="teacher"          ${m.community_role==='teacher'?'selected':''}>교사</option>
+            <option value="community_admin"  ${m.community_role==='community_admin'?'selected':''}>공동체관리자</option>
+            ${isSuperAdmin()?`<option value="super_admin" ${m.community_role==='super_admin'?'selected':''}>총관리자</option>`:''}
           </select>
           ${m.community_role !== 'super_admin' ? `<button class="adm-btn danger" onclick="deleteMember('${m.id}','${m.name}')">탈퇴</button>` : '<span style="font-size:11px;color:var(--ink3)">총관리자</span>'}
         `}
       </div>
     </div>`;
 
+  const titleNote = isSuperAdmin()
+    ? '교사 및 관리자급 멤버만 표시 · 학생은 각 공동체 관리자가 관리'
+    : `${ME.community_id ? '' : ''} 공동체 전체 멤버`;
+
   area.innerHTML = `
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
-    <div>
-      <div style="font-size:18px;font-weight:700">👥 멤버 관리</div>
-      <div style="font-size:13px;color:var(--ink3);margin-top:3px">전체 ${list.length}명</div>
-    </div>
-  </div>
-
-  ${storageHtml}
-
-  ${pending.length ? `
-  <div style="background:#FFF8E7;border:1.5px solid #F0D080;border-radius:16px;padding:16px 20px;margin-bottom:20px">
-    <div style="font-size:14px;font-weight:700;color:#8B6914;margin-bottom:12px;display:flex;align-items:center;gap:8px">
-      ⏳ 승인 대기 중 <span style="background:#F0D080;color:#8B6914;padding:2px 8px;border-radius:999px;font-size:12px">${pending.length}명</span>
-    </div>
-    ${pending.map(m => memberRow(m, true)).join('')}
-  </div>` : ''}
-
-  <div class="adm-card" style="padding:0;overflow:hidden;margin-bottom:16px">
-    <div style="padding:12px 20px;font-size:12px;font-weight:600;color:var(--ink3);border-bottom:1px solid var(--bs)">승인된 멤버 ${approved.length}명</div>
-    ${approved.map(m => memberRow(m, false)).join('')}
-  </div>
-
-  ${rejected.length ? `
-  <div class="adm-card" style="padding:0;overflow:hidden;opacity:.6">
-    <div style="padding:12px 20px;font-size:12px;font-weight:600;color:var(--ink3);border-bottom:1px solid var(--bs)">거절된 멤버 ${rejected.length}명</div>
-    ${rejected.map(m => `
-    <div class="adm-row" style="padding:14px 20px">
-      <div style="width:38px;height:38px;border-radius:12px;background:${m.color||'#999'};color:white;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;flex-shrink:0">${m.initials||m.name[0]}</div>
-      <div style="flex:1;min-width:0">
-        <div style="font-size:14px;font-weight:600">${m.name}</div>
-        <div style="font-size:12px;color:var(--ink3)">${m.email||''}</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+      <div>
+        <div style="font-size:18px;font-weight:700">👥 멤버 관리</div>
+        <div style="font-size:12px;color:var(--ink3);margin-top:3px">${titleNote}</div>
       </div>
-      <button class="adm-btn sage" onclick="approveMember('${m.id}')">재승인</button>
-      <button class="adm-btn danger" onclick="deleteMember('${m.id}','${m.name}')">삭제</button>
-    </div>`).join('')}
-  </div>` : ''}`;
+    </div>
+
+    ${storageHtml}
+
+    ${pending.length ? `
+    <div style="background:#FFF8E7;border:1.5px solid #F0D080;border-radius:16px;padding:16px 20px;margin-bottom:20px">
+      <div style="font-size:14px;font-weight:700;color:#8B6914;margin-bottom:12px;display:flex;align-items:center;gap:8px">
+        ⏳ 승인 대기 중 <span style="background:#F0D080;color:#8B6914;padding:2px 8px;border-radius:999px;font-size:12px">${pending.length}명</span>
+      </div>
+      ${pending.map(m => memberRow(m, true)).join('')}
+    </div>` : ''}
+
+    <div class="adm-card" style="padding:0;overflow:hidden;margin-bottom:16px">
+      <div style="padding:12px 20px;font-size:12px;font-weight:600;color:var(--ink3);border-bottom:1px solid var(--bs)">
+        ${isSuperAdmin() ? `교사/관리자 ${approved.length}명` : `멤버 ${approved.length}명`}
+      </div>
+      ${approved.length ? approved.map(m => memberRow(m, false)).join('') : `<div style="padding:24px;text-align:center;color:var(--ink3);font-size:13px">등록된 멤버가 없어요</div>`}
+    </div>
+
+    ${rejected.length ? `
+    <div class="adm-card" style="padding:0;overflow:hidden;opacity:.6">
+      <div style="padding:12px 20px;font-size:12px;font-weight:600;color:var(--ink3);border-bottom:1px solid var(--bs)">거절된 멤버 ${rejected.length}명</div>
+      ${rejected.map(m => `
+      <div class="adm-row" style="padding:14px 20px">
+        <div style="width:38px;height:38px;border-radius:12px;background:${m.color||'#999'};color:white;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;flex-shrink:0">${m.initials||m.name[0]}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:14px;font-weight:600">${m.name}</div>
+          <div style="font-size:12px;color:var(--ink3)">${m.email||''}</div>
+        </div>
+        <button class="adm-btn sage" onclick="approveMember('${m.id}')">재승인</button>
+        <button class="adm-btn danger" onclick="deleteMember('${m.id}','${m.name}')">삭제</button>
+      </div>`).join('')}
+    </div>` : ''}`;
 }
 
 async function approveMember(id) {
   await sb.from('members').update({ status: 'approved' }).eq('id', id);
-  // 기존 채널들에 자동 추가 (고정 채널만)
-  const pinnedChannels = channels.filter(c => c.pinned);
-  if (pinnedChannels.length) {
-    const inserts = pinnedChannels.map(ch => ({ channel_id: ch.id, member_id: id }));
+  // 해당 공동체 고정 채널에만 자동 추가
+  const { data: commChannels } = await sb.from('channels').select('*')
+    .eq('community_id', CID()).eq('pinned', true);
+  if (commChannels?.length) {
+    const inserts = commChannels.map(ch => ({ channel_id: ch.id, member_id: id }));
     await sb.from('channel_members').upsert(inserts, { onConflict: 'channel_id,member_id', ignoreDuplicates: true });
   }
   renderAdminMembers();
-  // 전체 멤버 목록 새로고침
-  const { data: mems } = await sb.from('members').select('*');
+  // 공동체 멤버 목록 새로고침
+  const { data: mems } = await sb.from('members').select('*').eq('community_id', CID());
   members = {};
   (mems||[]).forEach(m => { members[m.id] = m; });
   renderMembers();
@@ -4269,7 +4382,7 @@ async function deleteChannel(id, name) {
 
 // ── 공지사항 관리 ──
 async function renderAdminNotices() {
-  const { data } = await sb.from('announcements').select('*').order('created_at', {ascending:false});
+  const { data } = await sb.from('announcements').select('*').eq('community_id', CID()).order('created_at', {ascending:false});
   const list = data || [];
   const area = document.getElementById('admin-content');
   area.innerHTML = `
@@ -4325,7 +4438,7 @@ async function submitNotice(id) {
   if (id) {
     await sb.from('announcements').update({title,body,pinned}).eq('id',id);
   } else {
-    await sb.from('announcements').insert({title,body,pinned,created_by:ME.id,created_by_name:ME.name});
+    await sb.from('announcements').insert({title,body,pinned,created_by:ME.id,created_by_name:ME.name,community_id:CID()});
   }
   renderAdminNotices();
 }
@@ -4351,7 +4464,7 @@ async function renderAdminGoals() {
   const area = document.getElementById('admin-content');
   const now = new Date();
   const monthStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
-  const { data } = await sb.from('monthly_goals').select('*').eq('month', monthStr).single();
+  const { data } = await sb.from('monthly_goals').select('*').eq('month', monthStr).eq('community_id', CID()).single();
   const goals = data?.goals || ['매일 말씀 묵상하기','기도 모임 참석하기','새가족 섬기기'];
   const goalId = data?.id;
 
@@ -4395,7 +4508,7 @@ async function saveGoals(id, monthStr) {
   if (id) {
     await sb.from('monthly_goals').update({goals, updated_at: new Date()}).eq('id', id);
   } else {
-    await sb.from('monthly_goals').insert({month: monthStr, goals, created_by: ME.id});
+    await sb.from('monthly_goals').insert({month: monthStr, goals, created_by: ME.id, community_id: CID()});
   }
   alert('저장됐어요! ✅');
   renderAdminGoals();
@@ -4418,7 +4531,7 @@ function toggleTodoPanel() {
 
 async function loadTodos() {
   if (!currentChannel) return;
-  const { data } = await sb.from('todos').select('*')
+  const { data } = await sb.from('todos').select('*').eq('community_id', CID())
     .eq('channel_id', currentChannel.id)
     .order('completed').order('created_at', {ascending:false});
   todos = data || [];
@@ -4428,7 +4541,7 @@ async function loadTodos() {
   todoSub = sb.channel(`todos:${currentChannel.id}`)
     .on('postgres_changes', { event:'*', schema:'public', table:'todos', filter:`channel_id=eq.${currentChannel.id}` },
       async () => {
-        const { data } = await sb.from('todos').select('*').eq('channel_id', currentChannel.id).order('completed').order('created_at',{ascending:false});
+        const { data } = await sb.from('todos').select('*').eq('channel_id', currentChannel.id).eq('community_id', CID()).order('completed').order('created_at',{ascending:false});
         todos = data||[];
         renderTodos();
       })
@@ -4480,7 +4593,7 @@ async function submitTodo() {
   const assignedTo = sel.value || null;
   const assignedName = assignedTo ? sel.options[sel.selectedIndex].dataset.name : null;
   const dueDate = document.getElementById('todo-due').value || null;
-  await sb.from('todos').insert({
+  await sb.from('todos').insert({community_id: CID(),
     channel_id: currentChannel.id, title,
     assigned_to: assignedTo, assigned_name: assignedName,
     due_date: dueDate, created_by: ME.id, created_by_name: ME.name,
@@ -4849,7 +4962,8 @@ async function submitDailyWord() {
     date: dailyWordDate, url, verse, title,
     scripture_text: scriptureText || null,
     created_by: ME.id,
-  }, { onConflict: 'date' });
+    community_id: CID(),
+  }, { onConflict: 'date,community_id' });
   document.getElementById('daily-word-modal').style.display = 'none';
   renderHome();
 }
@@ -4863,7 +4977,7 @@ let editingEventId = null;
 let selectedEventColor = '#2a5298';
 
 async function loadCalendar() {
-  const { data } = await sb.from('events').select('*').order('start_date').order('start_time');
+  const { data } = await sb.from('events').select('*').eq('community_id', CID()).order('start_date').order('start_time');
   calEvents = data || [];
   renderCalendar();
 }
@@ -5132,6 +5246,7 @@ async function submitEvent() {
     color: selectedEventColor,
     created_by: ME.id,
     created_by_name: ME.name,
+    community_id: CID(),
   };
   if (!payload.start_date) { document.getElementById('ev-date').style.borderColor='var(--rose)'; return; }
 
