@@ -13,22 +13,22 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 :root {
-  --bg: #F4ECDC;
+  --bg: #eef2f8;
   --surface: #FFFFFF;
-  --s2: #FBF6EC;
-  --s3: #F0E6D2;
-  --ink: #25201A;
-  --ink2: #6E6358;
-  --ink3: #A39787;
-  --border: #E7DCC4;
-  --bs: #EEE7D6;
-  --accent: #B5683C;
-  --asoft: #E9C9B0;
-  --adeep: #8B4A24;
-  --sage: #6F8A5C;
-  --sagsoft: #DCE3CE;
-  --gold: #B89146;
-  --rose: #B05865;
+  --s2: #f4f7fc;
+  --s3: #e8eef6;
+  --ink: #1a2336;
+  --ink2: #4a5670;
+  --ink3: #8a96aa;
+  --border: #d4dce8;
+  --bs: #dde4ef;
+  --accent: #1d3a5f;
+  --asoft: #c5d9ef;
+  --adeep: #1d3a5f;
+  --sage: #2a7a5a;
+  --sagsoft: #c8e6d8;
+  --gold: #2a5298;
+  --rose: #c0392b;
   --sidebar-w: 68px;
   --panel-w: 280px;
   --font: 'Pretendard Variable', Pretendard, -apple-system, system-ui, sans-serif;
@@ -43,7 +43,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
 /* 아이콘 사이드바 */
 #sidebar {
   width: var(--sidebar-w);
-  background: #2C1F14;
+  background: linear-gradient(180deg, #1d3a5f 0%, #152d4a 100%);
   display: flex; flex-direction: column; align-items: center;
   padding: 0 0 16px;
   flex-shrink: 0;
@@ -52,9 +52,9 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
 #sidebar .logo {
   width: 100%; height: 56px;
   display: flex; align-items: center; justify-content: center;
-  border-bottom: 1px solid rgba(255,255,255,.08);
+  border-bottom: 1px solid rgba(255,255,255,.1);
   margin-bottom: 8px;
-  font-family: var(--serif); font-size: 18px; color: #E9C9B0; font-weight: 500;
+  font-family: var(--serif); font-size: 18px; color: #c5d9ef; font-weight: 500;
   letter-spacing: -.01em;
 }
 .sb-btn {
@@ -64,15 +64,15 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
   transition: background .15s;
   position: relative;
 }
-.sb-btn:hover { background: rgba(255,255,255,.08); }
-.sb-btn.active { background: rgba(181,104,60,.35); }
+.sb-btn:hover { background: rgba(255,255,255,.1); }
+.sb-btn.active { background: rgba(255,255,255,.18); }
 .sb-btn svg { flex-shrink: 0; }
 .sb-btn span { font-size: 9.5px; color: rgba(255,255,255,.5); font-weight: 500; }
-.sb-btn.active span { color: #E9C9B0; }
+.sb-btn.active span { color: #c5d9ef; }
 .sb-btn .badge {
   position: absolute; top: 6px; right: 6px;
   min-width: 16px; height: 16px; border-radius: 8px; padding: 0 4px;
-  background: var(--accent); color: white;
+  background: #4f8ef7; color: white;
   font-size: 9px; font-weight: 700;
   display: flex; align-items: center; justify-content: center;
 }
@@ -81,7 +81,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
 /* 채널 패널 */
 #panel {
   width: var(--panel-w);
-  background: #F9F3E8;
+  background: #f4f7fc;
   border-right: 1px solid var(--border);
   display: flex; flex-direction: column;
   flex-shrink: 0;
@@ -130,7 +130,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
   justify-content: center; font-size: 17px; flex-shrink: 0;
   color: var(--adeep); font-weight: 700;
 }
-.ch-row.active .ch-icon { background: rgba(139,74,36,.15); }
+.ch-row.active .ch-icon { background: rgba(29,58,95,.15); }
 .ch-info { flex: 1; min-width: 0; }
 .ch-name { font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ch-preview { font-size: 11.5px; color: var(--ink3); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -357,7 +357,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
 .adm-tab { padding:12px 16px;font-size:13px;font-weight:500;cursor:pointer;border-bottom:2px solid transparent;color:var(--ink3);margin-bottom:-1px;transition:color .15s; }
 .adm-tab:hover { color:var(--ink); }
 .adm-tab.active-adm { border-bottom-color:var(--accent);color:var(--adeep);font-weight:600; }
-.adm-card { background:var(--surface);border-radius:16px;padding:18px 20px;margin-bottom:12px;box-shadow:0 1px 4px rgba(70,50,20,.07); }
+.adm-card { background:var(--surface);border-radius:16px;padding:18px 20px;margin-bottom:12px;box-shadow:0 1px 4px rgba(29,58,95,.07); }
 .adm-row { display:flex;align-items:center;gap:14px;padding:12px 0;border-bottom:1px solid var(--bs); }
 .adm-row:last-child { border-bottom:none; }
 .adm-btn { height:30px;padding:0 14px;border-radius:9px;display:inline-flex;align-items:center;font-size:12px;font-weight:600;cursor:pointer;border:none; }
@@ -618,7 +618,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
     </div>
     <div class="sb-spacer"></div>
     <div class="sb-btn" id="sb-me" title="내 프로필" style="margin-bottom:4px">
-      <div id="my-av" style="width:36px;height:36px;border-radius:11px;background:#8B4A24;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:14px;color:white">?</div>
+      <div id="my-av" style="width:36px;height:36px;border-radius:11px;background:#1d3a5f;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:14px;color:white">?</div>
     </div>
     <div class="sb-btn" onclick="doLogout()" title="로그아웃" style="margin-bottom:0">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.45)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>
@@ -804,7 +804,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
     <!-- 관리자 뷰 -->
     <div id="admin-view" style="display:none;flex-direction:column;height:100%">
       <div style="height:56px;padding:0 20px;display:flex;align-items:center;gap:12px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0">
-        <div style="width:36px;height:36px;border-radius:11px;background:#2C1F14;display:flex;align-items:center;justify-content:center;font-size:18px">⚙️</div>
+        <div style="width:36px;height:36px;border-radius:11px;background:#1d3a5f;display:flex;align-items:center;justify-content:center;font-size:18px">⚙️</div>
         <div style="flex:1">
           <div style="font-size:15px;font-weight:700">관리자 페이지</div>
           <div style="font-size:12px;color:var(--ink3)">멤버·채널·공지·목표 관리</div>
@@ -845,7 +845,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
       <span>일정</span>
     </div>
     <div class="mn-btn" id="mn-me" onclick="mobileTab('me')">
-      <div id="mobile-av" style="width:26px;height:26px;border-radius:8px;background:#8B4A24;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:white">?</div>
+      <div id="mobile-av" style="width:26px;height:26px;border-radius:8px;background:#1d3a5f;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:white">?</div>
       <span>내정보</span>
     </div>
     <div class="mn-btn" id="mn-admin" onclick="mobileTab('admin')" style="display:none">
@@ -966,11 +966,11 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
       <div style="margin-bottom:16px">
         <div style="font-size:11.5px;color:var(--ink3);margin-bottom:8px">색상</div>
         <div style="display:flex;gap:8px">
-          <div onclick="selectEventColor(this,'#B5683C')" data-color="#B5683C" style="width:28px;height:28px;border-radius:8px;background:#B5683C;cursor:pointer;outline:3px solid #B5683C;outline-offset:2px"></div>
+          <div onclick="selectEventColor(this,'#2a5298')" data-color="#2a5298" style="width:28px;height:28px;border-radius:8px;background:#2a5298;cursor:pointer;outline:3px solid #2a5298;outline-offset:2px"></div>
           <div onclick="selectEventColor(this,'#6F8A5C')" data-color="#6F8A5C" style="width:28px;height:28px;border-radius:8px;background:#6F8A5C;cursor:pointer"></div>
           <div onclick="selectEventColor(this,'#5A7C8B')" data-color="#5A7C8B" style="width:28px;height:28px;border-radius:8px;background:#5A7C8B;cursor:pointer"></div>
           <div onclick="selectEventColor(this,'#7B6BA0')" data-color="#7B6BA0" style="width:28px;height:28px;border-radius:8px;background:#7B6BA0;cursor:pointer"></div>
-          <div onclick="selectEventColor(this,'#B89146')" data-color="#B89146" style="width:28px;height:28px;border-radius:8px;background:#B89146;cursor:pointer"></div>
+          <div onclick="selectEventColor(this,'#2a7ab8')" data-color="#2a7ab8" style="width:28px;height:28px;border-radius:8px;background:#2a7ab8;cursor:pointer"></div>
           <div onclick="selectEventColor(this,'#B05865')" data-color="#B05865" style="width:28px;height:28px;border-radius:8px;background:#B05865;cursor:pointer"></div>
         </div>
       </div>
@@ -1050,7 +1050,7 @@ async function doSignUp() {
     const uid = authData.user?.id;
     if (!uid) throw new Error('가입 처리 중 오류가 발생했어요');
 
-    const colors = ['#1d3a5f','#2a5298','#6F8A5C','#5A7C8B','#7B6BA0','#B89146','#B05865','#4C7363'];
+    const colors = ['#1d3a5f','#2a5298','#6F8A5C','#5A7C8B','#7B6BA0','#2a7ab8','#B05865','#4C7363'];
     const color = colors[Math.floor(Math.random()*colors.length)];
     const { error: mErr } = await sb.from('members').insert({
       id: uid, name: nick, initials: nick[0], color,
@@ -1189,10 +1189,10 @@ function enterApp() {
   document.getElementById('auth-screen').style.display = 'none';
   document.getElementById('app').style.display = 'flex';
   document.getElementById('my-av').textContent = ME.initials || ME.name[0];
-  document.getElementById('my-av').style.background = ME.color || '#8B4A24';
+  document.getElementById('my-av').style.background = ME.color || '#1d3a5f';
   document.getElementById('my-av').title = ME.name;
   const mav = document.getElementById('mobile-av');
-  if (mav) { mav.textContent = ME.initials || ME.name[0]; mav.style.background = ME.color || '#8B4A24'; }
+  if (mav) { mav.textContent = ME.initials || ME.name[0]; mav.style.background = ME.color || '#1d3a5f'; }
   if (ME.email === 'koreayjk@gmail.com') {
     document.getElementById('sb-admin').style.display = 'flex';
     const mnAdmin = document.getElementById('mn-admin');
@@ -1285,7 +1285,7 @@ function showMobileProfile() {
   const area = document.getElementById('content-area');
   if (area) area.innerHTML = `
     <div style="padding:20px 0">
-      <div style="display:flex;align-items:center;gap:14px;padding:18px;border-radius:18px;background:var(--surface);box-shadow:0 1px 4px rgba(70,50,20,.07);margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:14px;padding:18px;border-radius:18px;background:var(--surface);box-shadow:0 1px 4px rgba(29,58,95,.07);margin-bottom:16px">
         <div style="width:52px;height:52px;border-radius:16px;background:${ME.color};color:white;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:600">${ME.initials||ME.name[0]}</div>
         <div>
           <div style="font-size:17px;font-weight:700">${ME.name}</div>
@@ -1293,7 +1293,7 @@ function showMobileProfile() {
         </div>
       </div>
 
-      <div style="border-radius:16px;background:var(--surface);overflow:hidden;box-shadow:0 1px 4px rgba(70,50,20,.07);margin-bottom:12px">
+      <div style="border-radius:16px;background:var(--surface);overflow:hidden;box-shadow:0 1px 4px rgba(29,58,95,.07);margin-bottom:12px">
         ${[{icon:'👥',label:'교우 명부'},{icon:'📅',label:'교회 일정'},{icon:'📁',label:'드라이브'}].map((r,i,a)=>`
         <div style="display:flex;align-items:center;gap:12px;padding:15px 16px;border-bottom:${i<a.length-1?'1px solid var(--bs)':'none'}">
           <div style="width:32px;height:32px;border-radius:10px;background:var(--s3);display:flex;align-items:center;justify-content:center;font-size:16px">${r.icon}</div>
@@ -1302,7 +1302,7 @@ function showMobileProfile() {
         </div>`).join('')}
       </div>
 
-      <div onclick="doLogout()" style="display:flex;align-items:center;gap:12px;padding:16px;border-radius:16px;background:#FFF0F0;box-shadow:0 1px 4px rgba(70,50,20,.07);cursor:pointer;border:1px solid #FFD6D6">
+      <div onclick="doLogout()" style="display:flex;align-items:center;gap:12px;padding:16px;border-radius:16px;background:#FFF0F0;box-shadow:0 1px 4px rgba(29,58,95,.07);cursor:pointer;border:1px solid #FFD6D6">
         <div style="width:36px;height:36px;border-radius:11px;background:#FEE2E2;color:var(--rose);display:flex;align-items:center;justify-content:center;font-size:18px">🚪</div>
         <div style="font-size:15px;font-weight:600;color:var(--rose)">로그아웃</div>
       </div>
@@ -1400,7 +1400,7 @@ function setMode(m) {
     const svg = el.querySelector('svg');
     if (svg) svg.style.stroke = x===m ? 'rgba(255,255,255,.85)' : 'rgba(255,255,255,.5)';
     const span = el.querySelector('span');
-    if (span) span.style.color = x===m ? '#E9C9B0' : 'rgba(255,255,255,.5)';
+    if (span) span.style.color = x===m ? '#c5d9ef' : 'rgba(255,255,255,.5)';
   });
   document.getElementById('chat-view').style.display = m==='chat' ? 'flex' : 'none';
   document.getElementById('prayer-view').style.display = m==='prayer' ? 'flex' : 'none';
@@ -1666,7 +1666,7 @@ async function refreshReactions() {
         ${groupReactions(reactionData).map(r => `
           <div onclick="toggleReaction('${id}','${r.emoji}')"
             style="display:flex;align-items:center;gap:3px;padding:2px 7px;border-radius:999px;
-            background:${r.mine?'rgba(181,104,60,.15)':'var(--s3)'};
+            background:${r.mine?'rgba(42,82,152,.15)':'var(--s3)'};
             border:1.5px solid ${r.mine?'var(--accent)':'transparent'};
             cursor:pointer;font-size:13px">
             ${r.emoji}<span style="font-size:11px;font-weight:600;color:var(--ink2)">${r.count}</span>
@@ -1859,7 +1859,7 @@ function msgHtml(m, prev, readMap={}) {
 
   // 답장 인용
   const replyQuote = m.reply_to_id ? `
-    <div style="border-left:3px solid var(--accent);padding:5px 10px;border-radius:0 8px 8px 0;background:rgba(181,104,60,.08);margin-bottom:5px;font-size:12px;color:var(--ink2)">
+    <div style="border-left:3px solid var(--accent);padding:5px 10px;border-radius:0 8px 8px 0;background:rgba(42,82,152,.08);margin-bottom:5px;font-size:12px;color:var(--ink2)">
       <div style="font-weight:600;color:var(--adeep);margin-bottom:2px">${escHtml(m.reply_to_name||'')}</div>
       <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:240px">${escHtml(m.reply_to_text||'')}</div>
     </div>` : '';
@@ -1870,7 +1870,7 @@ function msgHtml(m, prev, readMap={}) {
       ${groupReactions(m.reactions).map(r => `
         <div onclick="toggleReaction('${m.id}','${r.emoji}')"
           style="display:flex;align-items:center;gap:3px;padding:2px 7px;border-radius:999px;
-          background:${r.mine?'rgba(181,104,60,.15)':'var(--s3)'};
+          background:${r.mine?'rgba(42,82,152,.15)':'var(--s3)'};
           border:1.5px solid ${r.mine?'var(--accent)':'transparent'};
           cursor:pointer;font-size:13px;transition:all .1s">
           ${r.emoji}<span style="font-size:11px;font-weight:600;color:var(--ink2)">${r.count}</span>
@@ -2215,7 +2215,7 @@ async function loadPrayers() {
 }
 
 function renderPrayerPanel() {
-  const colors = ['#B5683C','#6F8A5C','#5A7C8B','#7B6BA0','#B89146'];
+  const colors = ['#2a5298','#6F8A5C','#5A7C8B','#7B6BA0','#2a7ab8'];
   let html = '';
   document.getElementById('panel-body').innerHTML = prayers.length
     ? prayers.map((p,i) => `<div class="ch-row${false?' active':''}" onclick="scrollToPrayer('${p.id}')">
@@ -2226,7 +2226,7 @@ function renderPrayerPanel() {
 }
 
 function renderPrayerContent() {
-  const colors = ['#B5683C','#6F8A5C','#5A7C8B','#7B6BA0','#B89146'];
+  const colors = ['#2a5298','#6F8A5C','#5A7C8B','#7B6BA0','#2a7ab8'];
   const area = document.getElementById('content-area');
   if (!area) return;
   if (!prayers.length) {
@@ -2324,7 +2324,7 @@ async function renderHome() {
   const schedImg = schedImgs?.[0] || null;
 
   // IMUSA 팀 점수 로드 (실시간은 별도 위젯으로 렌더 후 구독)
-  let imusaHtml = `<div id="imusa-score-widget" style="background:var(--surface);border-radius:18px;padding:18px 20px;box-shadow:0 1px 4px rgba(70,50,20,.07)">
+  let imusaHtml = `<div id="imusa-score-widget" style="background:var(--surface);border-radius:18px;padding:18px 20px;box-shadow:0 1px 4px rgba(29,58,95,.07)">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
       <div style="font-size:14px;font-weight:700">🏆 IMUSA 팀 점수</div>
       <a href="https://imusa-team-building.web.app" target="_blank" style="font-size:11px;color:var(--accent);text-decoration:none;font-weight:600">자세히 →</a>
@@ -2350,7 +2350,7 @@ async function renderHome() {
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:20px">
 
       <!-- 맥체인 성경읽기 -->
-      <div style="background:var(--surface);border-radius:18px;padding:18px 20px;box-shadow:0 1px 4px rgba(70,50,20,.07)">
+      <div style="background:var(--surface);border-radius:18px;padding:18px 20px;box-shadow:0 1px 4px rgba(29,58,95,.07)">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
           <div style="font-size:14px;font-weight:700">📖 맥체인 성경읽기</div>
           <span style="font-size:11px;color:var(--ink3)">오늘의 4구절</span>
@@ -2360,7 +2360,7 @@ async function renderHome() {
           <a href="${getMcCheyneUrl(r)}" target="_blank"
             style="display:flex;align-items:center;gap:9px;padding:9px 12px;border-radius:10px;background:var(--bg);text-decoration:none;transition:background .12s"
             onmouseover="this.style.background='var(--asoft)'" onmouseout="this.style.background='var(--bg)'">
-            <div style="width:22px;height:22px;border-radius:6px;background:${['#B5683C','#6F8A5C','#5A7C8B','#7B6BA0'][i]};color:white;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">${i+1}</div>
+            <div style="width:22px;height:22px;border-radius:6px;background:${['#2a5298','#6F8A5C','#5A7C8B','#7B6BA0'][i]};color:white;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">${i+1}</div>
             <div style="font-size:13px;font-weight:600;color:var(--ink)">${r}</div>
           </a>`).join('')}
         </div>
@@ -2369,24 +2369,24 @@ async function renderHome() {
       <!-- 오늘의 묵상 -->
       <div>
         ${wordData ? `
-        <div style="border-radius:18px;background:linear-gradient(160deg,#FAF3E1,#F1E3C5);border:1px solid #E6D6B4;padding:20px 24px;position:relative;overflow:hidden;height:100%;box-sizing:border-box">
-          <div style="position:absolute;top:-20px;right:-10px;font-size:80px;color:rgba(139,74,36,.07);line-height:1">"</div>
+        <div style="border-radius:18px;background:linear-gradient(160deg,#1d3a5f,#2a5298);border:1px solid #1d3a5f;padding:20px 24px;position:relative;overflow:hidden;height:100%;box-sizing:border-box">
+          <div style="position:absolute;top:-20px;right:-10px;font-size:80px;color:rgba(255,255,255,.06);line-height:1">"</div>
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
-            <div style="font-size:11px;font-weight:600;color:var(--adeep);letter-spacing:.05em">✦ 오늘의 묵상 — Tabletalk</div>
-            ${isAdmin ? `<div onclick="showDailyWordForm('${todayStr}')" style="font-size:11.5px;color:var(--accent);cursor:pointer;font-weight:600">수정</div>` : ''}
+            <div style="font-size:11px;font-weight:600;color:rgba(255,255,255,.7);letter-spacing:.05em">✦ 오늘의 묵상 — Tabletalk</div>
+            ${isAdmin ? `<div onclick="showDailyWordForm('${todayStr}')" style="font-size:11.5px;color:#c5d9ef;cursor:pointer;font-weight:600">수정</div>` : ''}
           </div>
-          ${wordData.title ? `<div style="font-size:15px;font-weight:600;color:var(--ink);margin-bottom:12px">${wordData.title}</div>` : ''}
-          <a href="${wordData.url}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 14px;border-radius:9px;background:var(--accent);color:white;font:600 12px var(--font);text-decoration:none">Tabletalk에서 읽기 →</a>
+          ${wordData.title ? `<div style="font-size:15px;font-weight:600;color:white;margin-bottom:12px">${wordData.title}</div>` : ''}
+          <a href="${wordData.url}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 14px;border-radius:9px;background:rgba(255,255,255,.2);color:white;font:600 12px var(--font);text-decoration:none">Tabletalk에서 읽기 →</a>
           ${wordData.scripture_text ? `
-          <div style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(139,74,36,.15)">
-            <div style="font-size:11px;color:var(--adeep);font-weight:600;margin-bottom:6px">📖 ${wordData.verse||''} (ESV)</div>
-            <div style="font-size:13px;line-height:1.8;color:var(--ink2);white-space:pre-wrap">${wordData.scripture_text}</div>
-          </div>` : wordData.verse ? `<div style="font-size:12px;font-weight:600;color:var(--adeep);margin-top:14px;padding-top:12px;border-top:1px solid rgba(139,74,36,.15)">📖 ${wordData.verse}</div>` : ''}
+          <div style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,.15)">
+            <div style="font-size:11px;color:rgba(255,255,255,.6);font-weight:600;margin-bottom:6px">📖 ${wordData.verse||''} (ESV)</div>
+            <div style="font-size:13px;line-height:1.8;color:rgba(255,255,255,.85);white-space:pre-wrap">${wordData.scripture_text}</div>
+          </div>` : wordData.verse ? `<div style="font-size:12px;font-weight:600;color:rgba(255,255,255,.7);margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,.15)">📖 ${wordData.verse}</div>` : ''}
         </div>` : `
-        <div style="border-radius:18px;background:linear-gradient(160deg,#FAF3E1,#F1E3C5);border:1px solid #E6D6B4;padding:20px 24px;text-align:center;height:100%;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center">
-          <div style="font-size:11px;font-weight:600;color:var(--adeep);letter-spacing:.05em;margin-bottom:10px">✦ 오늘의 묵상</div>
-          <div style="font-size:14px;line-height:1.7;color:var(--ink2);font-style:italic">오늘의 묵상이 아직 등록되지 않았어요</div>
-          ${isAdmin ? `<button onclick="showDailyWordForm('${todayStr}')" style="margin-top:12px;height:32px;padding:0 14px;border-radius:9px;border:none;background:var(--accent);color:white;font:600 12px var(--font);cursor:pointer">+ 지금 등록하기</button>` : ''}
+        <div style="border-radius:18px;background:linear-gradient(160deg,#1d3a5f,#2a5298);border:1px solid #1d3a5f;padding:20px 24px;text-align:center;height:100%;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center">
+          <div style="font-size:11px;font-weight:600;color:rgba(255,255,255,.6);letter-spacing:.05em;margin-bottom:10px">✦ 오늘의 묵상</div>
+          <div style="font-size:14px;line-height:1.7;color:rgba(255,255,255,.7);font-style:italic">오늘의 묵상이 아직 등록되지 않았어요</div>
+          ${isAdmin ? `<button onclick="showDailyWordForm('${todayStr}')" style="margin-top:12px;height:32px;padding:0 14px;border-radius:9px;border:none;background:rgba(255,255,255,.2);color:white;font:600 12px var(--font);cursor:pointer">+ 지금 등록하기</button>` : ''}
         </div>`}
       </div>
 
@@ -2395,7 +2395,7 @@ async function renderHome() {
     </div>
 
     <!-- 주간 일정표 -->
-    <div style="background:var(--surface);border-radius:18px;overflow:hidden;box-shadow:0 1px 4px rgba(70,50,20,.07)">
+    <div style="background:var(--surface);border-radius:18px;overflow:hidden;box-shadow:0 1px 4px rgba(29,58,95,.07)">
       <div style="padding:14px 18px 12px;display:flex;align-items:center;justify-content:space-between">
         <div style="font-size:14px;font-weight:700">📅 ${schedImg?.title || '주간 일정표'}</div>
         ${isAdmin ? `<button onclick="showScheduleImageForm()" style="height:28px;padding:0 12px;border-radius:8px;border:1px solid var(--border);background:white;color:var(--ink2);font:500 12px var(--font);cursor:pointer">+ 새 일정 등록</button>` : ''}
@@ -3696,7 +3696,7 @@ let calMonth = new Date().getMonth();
 let calEvents = [];
 let calSelectedDate = null;
 let editingEventId = null;
-let selectedEventColor = '#B5683C';
+let selectedEventColor = '#2a5298';
 
 async function loadCalendar() {
   const { data } = await sb.from('events').select('*').order('start_date').order('start_time');
@@ -3825,9 +3825,9 @@ function renderCalendar() {
       const moreEvt = dayEvts.length > 2 ? `<div style="font-size:10px;color:var(--ink3)">+${dayEvts.length-2}개</div>` : '';
 
       html += `<div onclick="selectCalDate('${dateStr}')"
-        style="background:${isSelected?'rgba(181,104,60,.07)':'var(--surface)'};height:100%;padding:5px 6px;cursor:pointer;transition:background .1s;overflow:hidden"
-        onmouseover="this.style.background='${isSelected?'rgba(181,104,60,.1)':'var(--s2)'}'"
-        onmouseout="this.style.background='${isSelected?'rgba(181,104,60,.07)':'var(--surface)'}'">
+        style="background:${isSelected?'rgba(42,82,152,.07)':'var(--surface)'};height:100%;padding:5px 6px;cursor:pointer;transition:background .1s;overflow:hidden"
+        onmouseover="this.style.background='${isSelected?'rgba(42,82,152,.1)':'var(--s2)'}'"
+        onmouseout="this.style.background='${isSelected?'rgba(42,82,152,.07)':'var(--surface)'}'">
         <div style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:${numBg};font-size:12px;font-weight:${numFw};color:${numColor};margin-bottom:${(maxMultiRow+1)*22}px">${d}</div>
         <div>${evtTags}${moreEvt}</div>
       </div>`;
@@ -3918,7 +3918,7 @@ function selectEventColor(el, color) {
 // 일정 추가 모달
 function showEventForm(dateStr) {
   editingEventId = null;
-  selectedEventColor = '#B5683C';
+  selectedEventColor = '#2a5298';
   document.getElementById('event-modal-title').textContent = '📅 일정 추가';
   document.getElementById('ev-title').value = '';
   document.getElementById('ev-desc').value = '';
@@ -3928,8 +3928,8 @@ function showEventForm(dateStr) {
   document.getElementById('ev-end-time').value = '';
   document.getElementById('ev-delete-btn').style.display = 'none';
   document.querySelectorAll('#event-modal [data-color]').forEach(x => { x.style.outline='none'; x.style.transform=''; });
-  document.querySelector('#event-modal [data-color="#B5683C"]').style.outline = '3px solid #B5683C';
-  document.querySelector('#event-modal [data-color="#B5683C"]').style.outlineOffset = '2px';
+  document.querySelector('#event-modal [data-color="#2a5298"]').style.outline = '3px solid #2a5298';
+  document.querySelector('#event-modal [data-color="#2a5298"]').style.outlineOffset = '2px';
   document.getElementById('event-modal').style.display = 'flex';
 }
 
@@ -3938,7 +3938,7 @@ function editEvent(id) {
   if (!ev) return;
   if (ev.created_by !== ME.id) { return; }
   editingEventId = id;
-  selectedEventColor = ev.color || '#B5683C';
+  selectedEventColor = ev.color || '#2a5298';
   document.getElementById('event-modal-title').textContent = '✏️ 일정 수정';
   document.getElementById('ev-title').value = ev.title;
   document.getElementById('ev-desc').value = ev.description || '';
