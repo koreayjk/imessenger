@@ -3121,6 +3121,7 @@ const TCS_SECTIONS = [
   { id:'school',     icon:'🏫', label:'학적사항',        labelEn:'School Info' },
   { id:'attendance', icon:'📅', label:'출결사항',        labelEn:'Attendance' },
   { id:'academic',   icon:'📚', label:'교과학습 발달',    labelEn:'Academic' },
+  { id:'mockexam',   icon:'🧠', label:'모의고사 분석',    labelEn:'Mock Exam AI' },
   { id:'faith',      icon:'✝️',  label:'신앙 및 인성',    labelEn:'Faith & Character' },
   { id:'activities', icon:'🏃', label:'창의적 체험활동',  labelEn:'Activities' },
   { id:'service',    icon:'🤝', label:'봉사활동',        labelEn:'Service' },
@@ -3150,6 +3151,44 @@ const TCS_ACADEMIC_GRADES = [
   ['g12_grades','G12','G12 (고3)'],
 ];
 let tcsAcademicDraft = null; // { active:'g9_grades', grades:{ key:[{name,grade,fixed}] } }
+
+// ── 출결 에디터 설정 (학년별 고정 항목) ──
+const TCS_ATTENDANCE_GRADES = [
+  ['k','K','K (유치원)'],['g1','G1','G1 (1학년)'],['g2','G2','G2 (2학년)'],['g3','G3','G3 (3학년)'],
+  ['g4','G4','G4 (4학년)'],['g5','G5','G5 (5학년)'],['g6','G6','G6 (6학년)'],['g7','G7','G7 (중1)'],
+  ['g8','G8','G8 (중2)'],['g9','G9','G9 (중3)'],['g10','G10','G10 (고1)'],['g11','G11','G11 (고2)'],['g12','G12','G12 (고3)'],
+];
+const TCS_ATT_FIELDS = ['수업일수','결석','지각','조퇴'];
+let tcsAttendanceDraft = null; // { active:'g9', grades:{ key:{수업일수,결석,지각,조퇴} } }
+
+// ── 목록형 섹션 설정 (칸 고정) ──
+const TCS_LIST_SPECS = {
+  activities: { prefix:'act', max:12, columns:[
+    {key:'grade', label:'학년', type:'select', options:['K','G1','G2','G3','G4','G5','G6','G7','G8','G9','G10','G11','G12'], w:'90px'},
+    {key:'area',  label:'영역', type:'select', options:['자율활동','동아리활동','진로활동','봉사활동','기타'], w:'130px'},
+    {key:'content', label:'내용', type:'text', flex:true},
+    {key:'hours', label:'시간', type:'text', w:'80px', suffix:'h'},
+  ]},
+  service: { prefix:'svc', max:12, columns:[
+    {key:'date', label:'날짜', type:'month', w:'150px'},
+    {key:'content', label:'내용', type:'text', flex:true},
+    {key:'org', label:'기관', type:'text', w:'150px'},
+    {key:'hours', label:'시간', type:'text', w:'80px', suffix:'h'},
+  ]},
+  awards: { prefix:'awd', max:12, columns:[
+    {key:'date', label:'날짜', type:'month', w:'150px'},
+    {key:'title', label:'명칭', type:'text', flex:true},
+    {key:'org', label:'수여기관', type:'text', w:'150px'},
+    {key:'level', label:'급수/등급', type:'text', w:'110px'},
+  ]},
+  reading: { prefix:'book', max:20, columns:[
+    {key:'title', label:'제목', type:'text', flex:true},
+    {key:'author', label:'저자', type:'text', w:'130px'},
+    {key:'pub', label:'출판사', type:'text', w:'130px'},
+    {key:'term', label:'학년학기', type:'text', w:'120px'},
+  ]},
+};
+let tcsListDraft = null; // { section, entries:[{col:val}] }
 
 let tcsCurrentStudent = null;
 let tcsRecords = {};
@@ -3366,6 +3405,9 @@ function renderTcsSectionList() {
 function openTcsSection(sectionId) {
   tcsCurrentSection = sectionId;
   if (sectionId === 'academic') { openAcademicEditor(); return; }
+  if (sectionId === 'attendance') { openAttendanceEditor(); return; }
+  if (sectionId === 'mockexam') { openMockExamEditor(); return; }
+  if (TCS_LIST_SPECS[sectionId]) { openListEditor(sectionId); return; }
   const sec = TCS_SECTIONS.find(s => s.id === sectionId);
   const data = tcsRecords[sectionId] || {};
   const main = document.getElementById('tcs-main');
@@ -3702,6 +3744,441 @@ async function saveAcademicSection() {
   renderTcsSectionList();
 }
 
+// ── 출결 전용 에디터 (학년별 고정 항목 + 숫자 입력) ──
+function parseAttendance(str) {
+  const out = { 수업일수:'', 결석:'', 지각:'', 조퇴:'' };
+  if (!str) return out;
+  const s = String(str).trim();
+  if (/[가-힣]/.test(s) && s.includes(':') === false && /수업일수|결석|지각|조퇴/.test(s)) {
+    // 라벨 형식: "수업일수 190 / 결석 2 / 지각 1 / 조퇴 0"
+    TCS_ATT_FIELDS.forEach(f => { const m = s.match(new RegExp(f + '\\s*([0-9]+)')); if (m) out[f] = m[1]; });
+    return out;
+  }
+  // 구형 위치 형식: "190 / 2 / 1 / 0"
+  const parts = s.split('/').map(x => x.trim());
+  TCS_ATT_FIELDS.forEach((f, i) => { if (parts[i] !== undefined && parts[i] !== '') out[f] = parts[i].replace(/[^0-9]/g, ''); });
+  return out;
+}
+function serializeAttendance(obj) {
+  const filled = TCS_ATT_FIELDS.filter(f => (obj[f] || '').toString().trim() !== '');
+  if (!filled.length) return '';
+  return TCS_ATT_FIELDS.map(f => `${f} ${obj[f] !== '' && obj[f] != null ? obj[f] : 0}`).join(' / ');
+}
+
+function openAttendanceEditor() {
+  tcsCurrentSection = 'attendance';
+  const saved = tcsRecords.attendance || {};
+  const grades = {};
+  TCS_ATTENDANCE_GRADES.forEach(([key]) => { grades[key] = parseAttendance(saved[key]); });
+
+  const gradeStr = (tcsCurrentStudent.grade || '').trim();
+  const gradeNum = gradeStr === 'K' ? 0 : (gradeStr.match(/(\d+)/) ? parseInt(gradeStr.match(/(\d+)/)[1]) : null);
+  const numKeyMap = { 0:'k',1:'g1',2:'g2',3:'g3',4:'g4',5:'g5',6:'g6',7:'g7',8:'g8',9:'g9',10:'g10',11:'g11',12:'g12' };
+  let active = gradeNum !== null ? numKeyMap[gradeNum] : null;
+  if (!active) {
+    const withData = TCS_ATTENDANCE_GRADES.find(([key]) => (saved[key] || '').trim());
+    active = withData ? withData[0] : 'k';
+  }
+  tcsAttendanceDraft = { active, grades };
+  renderAttendanceEditor();
+}
+
+function renderAttendanceEditor() {
+  const main = document.getElementById('tcs-main');
+  const active = tcsAttendanceDraft.active;
+  const activeLabel = (TCS_ATTENDANCE_GRADES.find(([k]) => k === active) || [,,active])[2];
+
+  const pills = TCS_ATTENDANCE_GRADES.map(([key, short]) => {
+    const g = tcsAttendanceDraft.grades[key] || {};
+    const has = TCS_ATT_FIELDS.some(f => (g[f] || '').toString().trim() !== '');
+    const on = key === active;
+    return `<button onclick="switchAttendanceGrade('${key}')"
+      style="position:relative;height:32px;padding:0 12px;border-radius:9px;cursor:pointer;font:600 12px var(--font);
+      border:1.5px solid ${on ? '#1d3a5f' : 'var(--border)'};
+      background:${on ? 'linear-gradient(135deg,#1d3a5f,#2a5298)' : 'white'};color:${on ? 'white' : 'var(--ink2)'}">
+      ${short}${has ? `<span style="position:absolute;top:-3px;right:-3px;width:8px;height:8px;border-radius:50%;background:#22c55e;border:1.5px solid white"></span>` : ''}
+    </button>`;
+  }).join('');
+
+  const g = tcsAttendanceDraft.grades[active];
+  const fieldRow = (f) => `
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+      <div style="width:90px;font-size:14px;font-weight:600;color:var(--ink)">${f}</div>
+      <input type="number" min="0" inputmode="numeric" value="${g[f] || ''}" placeholder="0"
+        oninput="setAttendance('${f}', this.value)"
+        style="width:120px;height:38px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--s2);font:14px var(--font);color:var(--ink);outline:none;text-align:right"
+        onfocus="this.style.borderColor='#1d3a5f';this.style.background='white'"
+        onblur="this.style.borderColor='var(--border)';this.style.background='var(--s2)'"/>
+      <div style="font-size:13px;color:var(--ink3)">일${f==='수업일수'?'':' '}</div>
+    </div>`;
+
+  main.innerHTML = `
+    <div style="max-width:680px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+        <button onclick="renderTcsSectionList()" style="height:32px;padding:0 12px;border-radius:8px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:500 12px var(--font);cursor:pointer">← 목록</button>
+        <div style="font-size:22px">📅</div>
+        <div style="font-size:16px;font-weight:700;color:var(--ink)">출결사항</div>
+      </div>
+
+      <div style="font-size:11px;font-weight:600;color:var(--ink3);margin-bottom:8px;text-transform:uppercase;letter-spacing:.04em">학년 선택</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:18px">${pills}</div>
+
+      <div class="adm-card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+          <div style="font-size:14px;font-weight:700;color:var(--adeep)">${activeLabel} 출결</div>
+          <div id="att-rate" style="font-size:12px;font-weight:700;color:#1d4ed8"></div>
+        </div>
+        ${TCS_ATT_FIELDS.map(fieldRow).join('')}
+        <div style="font-size:11px;color:var(--ink3);margin-top:6px">숫자만 입력하세요. 출석률은 (수업일수 − 결석) ÷ 수업일수 로 자동 계산됩니다.</div>
+      </div>
+
+      <button onclick="saveAttendanceSection()"
+        style="width:100%;height:44px;border-radius:11px;border:none;background:#1d3a5f;color:white;font:700 14px var(--font);cursor:pointer;margin-top:16px">
+        💾 저장하기
+      </button>
+    </div>`;
+  refreshAttendanceRate();
+}
+
+function refreshAttendanceRate() {
+  const g = tcsAttendanceDraft.grades[tcsAttendanceDraft.active];
+  const el = document.getElementById('att-rate');
+  if (!el) return;
+  const total = parseInt(g['수업일수']); const absent = parseInt(g['결석']) || 0;
+  if (!isNaN(total) && total > 0) {
+    const rate = Math.max(0, Math.min(100, ((total - absent) / total) * 100));
+    el.textContent = `출석률 ${rate.toFixed(1)}%`;
+  } else el.textContent = '';
+}
+function setAttendance(f, val) {
+  tcsAttendanceDraft.grades[tcsAttendanceDraft.active][f] = val.replace(/[^0-9]/g, '');
+  refreshAttendanceRate();
+}
+function switchAttendanceGrade(key) {
+  tcsAttendanceDraft.active = key;
+  renderAttendanceEditor();
+}
+async function saveAttendanceSection() {
+  const data = {};
+  TCS_ATTENDANCE_GRADES.forEach(([key]) => {
+    const s = serializeAttendance(tcsAttendanceDraft.grades[key] || {});
+    if (s) data[key] = s;
+  });
+  const { error } = await sb.from('tcs_records').upsert({
+    student_id: tcsCurrentStudent.id,
+    community_id: ME.community_id || '00000000-0000-0000-0000-000000000001',
+    section: 'attendance', data,
+    updated_at: new Date().toISOString(), updated_by: ME.id,
+  }, { onConflict: 'student_id,section' });
+  if (error) { showUploadToast('저장 실패 😥 ' + error.message); return; }
+  tcsRecords.attendance = data;
+  showUploadToast('✅ 출결이 저장됐어요!');
+  renderTcsSectionList();
+}
+
+// ── 목록형 섹션 전용 에디터 (칸 고정) ──
+function openListEditor(sectionId) {
+  tcsCurrentSection = sectionId;
+  const spec = TCS_LIST_SPECS[sectionId];
+  const saved = tcsRecords[sectionId] || {};
+  // 저장된 act1.. 문자열을 칸 객체로 파싱
+  const entries = [];
+  Object.keys(saved).sort((a,b) => {
+    const na = parseInt(a.replace(/\D/g,'')) || 0, nb = parseInt(b.replace(/\D/g,'')) || 0; return na - nb;
+  }).forEach(k => {
+    const v = saved[k]; if (!v || !String(v).trim()) return;
+    const parts = String(v).split('/').map(x => x.trim());
+    const e = {}; spec.columns.forEach((c, i) => { e[c.key] = parts[i] || ''; });
+    entries.push(e);
+  });
+  tcsListDraft = { section: sectionId, entries };
+  renderListEditor();
+}
+
+function renderListEditor() {
+  const main = document.getElementById('tcs-main');
+  const sectionId = tcsListDraft.section;
+  const spec = TCS_LIST_SPECS[sectionId];
+  const sec = TCS_SECTIONS.find(s => s.id === sectionId);
+
+  const colInput = (c, ei, val) => {
+    const base = `height:36px;padding:0 10px;border-radius:8px;border:1.5px solid var(--border);background:var(--s2);font:13px var(--font);color:var(--ink);outline:none`;
+    const width = c.flex ? 'flex:1;min-width:120px' : `width:${c.w||'120px'};flex-shrink:0`;
+    if (c.type === 'select') {
+      return `<select onchange="setListField(${ei},'${c.key}',this.value)" style="${base};${width};cursor:pointer">
+        <option value="">${c.label}</option>
+        ${c.options.map(o => `<option value="${o}" ${val===o?'selected':''}>${o}</option>`).join('')}
+      </select>`;
+    }
+    const type = c.type === 'month' ? 'month' : 'text';
+    return `<input type="${type}" value="${(val||'').replace(/"/g,'&quot;')}" placeholder="${c.label}${c.suffix?' ('+c.suffix+')':''}"
+      oninput="setListField(${ei},'${c.key}',this.value)" style="${base};${width}"/>`;
+  };
+
+  const entryCards = tcsListDraft.entries.map((e, ei) => `
+    <div style="border:1.5px solid var(--border);border-radius:12px;padding:12px;margin-bottom:10px;background:white">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div style="font-size:12px;font-weight:700;color:var(--adeep)">${ei+1}</div>
+        <button onclick="removeListEntry(${ei})" title="삭제"
+          style="width:28px;height:28px;border-radius:7px;border:1.5px solid var(--border);background:white;color:#ef4444;font-size:15px;cursor:pointer">×</button>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">
+        ${spec.columns.map(c => colInput(c, ei, e[c.key])).join('')}
+      </div>
+    </div>`).join('');
+
+  const guideline = spec.columns.map(c => c.label).join(' · ');
+
+  main.innerHTML = `
+    <div style="max-width:680px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <button onclick="renderTcsSectionList()" style="height:32px;padding:0 12px;border-radius:8px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:500 12px var(--font);cursor:pointer">← 목록</button>
+        <div style="font-size:22px">${sec.icon}</div>
+        <div style="font-size:16px;font-weight:700;color:var(--ink)">${sec.label}</div>
+      </div>
+      <div style="background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:10px;padding:9px 13px;margin-bottom:16px;font-size:12px;color:#1d4ed8">
+        📋 입력 항목: <b>${guideline}</b>
+      </div>
+
+      <div class="adm-card">
+        <div id="list-entries">${entryCards || '<div style="text-align:center;color:var(--ink3);font-size:13px;padding:16px 0">아직 항목이 없어요. 아래 버튼으로 추가하세요.</div>'}</div>
+        <button onclick="addListEntry()"
+          style="width:100%;height:38px;border-radius:10px;border:1.5px dashed var(--border);background:var(--s2);color:var(--ink2);font:600 13px var(--font);cursor:pointer;margin-top:4px">
+          ＋ 항목 추가
+        </button>
+      </div>
+
+      <button onclick="saveListSection()"
+        style="width:100%;height:44px;border-radius:11px;border:none;background:#1d3a5f;color:white;font:700 14px var(--font);cursor:pointer;margin-top:16px">
+        💾 저장하기
+      </button>
+    </div>`;
+}
+
+function setListField(ei, key, val) { tcsListDraft.entries[ei][key] = val; }
+function addListEntry() {
+  const spec = TCS_LIST_SPECS[tcsListDraft.section];
+  if (tcsListDraft.entries.length >= spec.max) { showUploadToast(`최대 ${spec.max}개까지 추가할 수 있어요`); return; }
+  const e = {}; spec.columns.forEach(c => e[c.key] = '');
+  tcsListDraft.entries.push(e);
+  renderListEditor();
+  const cards = document.querySelectorAll('#list-entries input, #list-entries select');
+  if (cards.length) cards[cards.length - spec.columns.length].focus();
+}
+function removeListEntry(ei) { tcsListDraft.entries.splice(ei, 1); renderListEditor(); }
+async function saveListSection() {
+  const spec = TCS_LIST_SPECS[tcsListDraft.section];
+  const data = {};
+  let n = 0;
+  tcsListDraft.entries.forEach(e => {
+    const vals = spec.columns.map(c => (e[c.key] || '').trim());
+    if (vals.some(v => v)) { n++; data[`${spec.prefix}${n}`] = vals.join(' / '); }
+  });
+  const { error } = await sb.from('tcs_records').upsert({
+    student_id: tcsCurrentStudent.id,
+    community_id: ME.community_id || '00000000-0000-0000-0000-000000000001',
+    section: tcsListDraft.section, data,
+    updated_at: new Date().toISOString(), updated_by: ME.id,
+  }, { onConflict: 'student_id,section' });
+  if (error) { showUploadToast('저장 실패 😥 ' + error.message); return; }
+  tcsRecords[tcsListDraft.section] = data;
+  showUploadToast('✅ 저장됐어요!');
+  renderTcsSectionList();
+}
+
+// ── 모의고사 AI 분석 (Gemini) ──
+const TCS_MOCK_FN = 'analyze-mockexam'; // Supabase Edge Function 이름
+let tcsMockState = null; // { files:[File], result:obj|null, analyzing:bool }
+
+function tcsFileToB64(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(String(r.result).split(',')[1]);
+    r.onerror = rej; r.readAsDataURL(file);
+  });
+}
+
+function openMockExamEditor() {
+  tcsCurrentSection = 'mockexam';
+  tcsMockState = { files: [], result: null, analyzing: false };
+  renderMockExamEditor();
+}
+
+function renderMockExamEditor() {
+  const main = document.getElementById('tcs-main');
+  const saved = (tcsRecords.mockexam && tcsRecords.mockexam.items) || [];
+
+  const savedList = saved.length ? saved.map((it, i) => `
+    <div style="border:1.5px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:10px;background:white">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <div style="font-size:14px;font-weight:700;color:var(--ink)">${it.subject||'과목 미상'} <span style="font-size:12px;font-weight:400;color:var(--ink3)">${it.exam||''} · ${it.date||''}</span></div>
+        <button onclick="deleteMockItem(${i})" style="width:26px;height:26px;border-radius:7px;border:1.5px solid var(--border);background:white;color:#ef4444;font-size:14px;cursor:pointer">×</button>
+      </div>
+      ${it.score?`<div style="font-size:12px;color:#1d4ed8;font-weight:600;margin-top:4px">${it.score}</div>`:''}
+      ${it.mode?`<div style="font-size:11px;color:var(--ink3);margin-top:2px">${it.mode}</div>`:''}
+      ${(it.weak&&it.weak.length)?`<div style="margin-top:8px"><b style="font-size:12px;color:var(--adeep)">약점</b><ul style="margin:4px 0 0;padding-left:18px;font-size:13px;color:var(--ink2)">${it.weak.map(w=>`<li>${w}</li>`).join('')}</ul></div>`:''}
+      ${(it.focus&&it.focus.length)?`<div style="margin-top:6px"><b style="font-size:12px;color:var(--adeep)">집중 학습</b><ul style="margin:4px 0 0;padding-left:18px;font-size:13px;color:var(--ink2)">${it.focus.map(w=>`<li>${w}</li>`).join('')}</ul></div>`:''}
+      ${it.comment?`<div style="margin-top:8px;background:var(--s2);border-radius:8px;padding:8px 10px;font-size:12px;color:var(--ink2);line-height:1.6">${it.comment}</div>`:''}
+    </div>`).join('') : '<div style="text-align:center;color:var(--ink3);font-size:13px;padding:14px 0">저장된 분석이 없어요.</div>';
+
+  main.innerHTML = `
+    <div style="max-width:680px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <button onclick="renderTcsSectionList()" style="height:32px;padding:0 12px;border-radius:8px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:500 12px var(--font);cursor:pointer">← 목록</button>
+        <div style="font-size:22px">🧠</div>
+        <div style="font-size:16px;font-weight:700;color:var(--ink)">모의고사 분석 (AI)</div>
+      </div>
+      <div style="background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:10px;padding:9px 13px;margin-bottom:16px;font-size:12px;color:#1d4ed8;line-height:1.6">
+        📷 시험지 스캔을 올리면 AI가 과목·약점·학습 방향을 분석합니다. <b>정답지나 점수표를 같이 올리면</b> 정확도가 올라가요. (정답이 없으면 AI 추정 채점 — 참고용)
+      </div>
+
+      <div class="adm-card" style="margin-bottom:16px">
+        <label style="font-size:12px;font-weight:600;color:var(--ink3);display:block;margin-bottom:6px">시험지 / 정답지 업로드 (이미지·PDF, 여러 장 가능)</label>
+        <input id="mock-files" type="file" accept="image/*,application/pdf" multiple onchange="onMockFiles(this.files)"
+          style="width:100%;font:13px var(--font);margin-bottom:10px"/>
+        <div id="mock-filelist" style="font-size:12px;color:var(--ink2);margin-bottom:12px"></div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+          <input id="mock-exam" type="text" placeholder="시험명 (예: 3월 모의고사)"
+            style="height:38px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--s2);font:13px var(--font);outline:none"/>
+          <input id="mock-subject" type="text" placeholder="과목 힌트 (선택, 비우면 자동 판별)"
+            style="height:38px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--s2);font:13px var(--font);outline:none"/>
+        </div>
+        <textarea id="mock-answerkey" rows="2" placeholder="정답 입력 (선택) — 예: 1.③ 2.① 3.⑤ … 있으면 정밀 채점"
+          style="width:100%;padding:10px 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--s2);font:13px var(--font);outline:none;resize:vertical;line-height:1.6;margin-bottom:12px"></textarea>
+
+        <button id="mock-analyze-btn" onclick="runMockAnalysis()"
+          style="width:100%;height:42px;border-radius:11px;border:none;background:linear-gradient(135deg,#1d3a5f,#2a5298);color:white;font:700 14px var(--font);cursor:pointer">
+          🔍 AI 분석하기
+        </button>
+      </div>
+
+      <div id="mock-result"></div>
+
+      <div style="font-size:13px;font-weight:700;color:var(--adeep);margin:20px 0 10px">📋 저장된 분석 (${saved.length})</div>
+      <div id="mock-saved">${savedList}</div>
+    </div>`;
+}
+
+function onMockFiles(files) {
+  tcsMockState.files = Array.from(files || []);
+  const el = document.getElementById('mock-filelist');
+  if (el) el.textContent = tcsMockState.files.length ? '선택됨: ' + tcsMockState.files.map(f => f.name).join(', ') : '';
+}
+
+async function runMockAnalysis() {
+  if (!tcsMockState.files.length) { showUploadToast('먼저 시험지를 올려주세요'); return; }
+  const btn = document.getElementById('mock-analyze-btn');
+  const resBox = document.getElementById('mock-result');
+  btn.disabled = true; btn.textContent = '⏳ 분석 중… (10~30초)';
+  resBox.innerHTML = '<div style="text-align:center;color:var(--ink3);padding:20px;font-size:13px">AI가 시험지를 읽고 있어요…</div>';
+
+  try {
+    const images = [];
+    for (const f of tcsMockState.files) {
+      images.push({ mime: f.type || 'image/jpeg', data: await tcsFileToB64(f) });
+    }
+    const body = {
+      images,
+      examName: document.getElementById('mock-exam')?.value?.trim() || '',
+      subjectHint: document.getElementById('mock-subject')?.value?.trim() || '',
+      answerKey: document.getElementById('mock-answerkey')?.value?.trim() || '',
+      studentName: tcsCurrentStudent?.name || '',
+    };
+    const { data, error } = await sb.functions.invoke(TCS_MOCK_FN, { body });
+    if (error) throw new Error(error.message || '함수 호출 실패');
+    const r = (data && data.result) ? data.result : data;
+    if (!r || (!r.subject && !r.weak_areas)) throw new Error('분석 결과를 해석하지 못했어요. 스캔 화질을 확인해주세요.');
+    tcsMockState.result = r;
+    renderMockResult(r);
+  } catch (e) {
+    resBox.innerHTML = `<div style="background:#fef2f2;border:1.5px solid #fecaca;border-radius:10px;padding:14px;font-size:13px;color:#b91c1c">분석 실패: ${e.message}<br><span style="font-size:11px;color:#9ca3af">Edge Function(${TCS_MOCK_FN})이 배포·설정됐는지, Gemini 키가 등록됐는지 확인해주세요.</span></div>`;
+  } finally {
+    btn.disabled = false; btn.textContent = '🔍 AI 분석하기';
+  }
+}
+
+function renderMockResult(r) {
+  const list = (arr) => (arr && arr.length) ? `<ul style="margin:4px 0 0;padding-left:18px;font-size:13px;color:var(--ink2);line-height:1.7">${arr.map(x => `<li>${x}</li>`).join('')}</ul>` : '<div style="font-size:12px;color:var(--ink3)">—</div>';
+  const resBox = document.getElementById('mock-result');
+  resBox.innerHTML = `
+    <div class="adm-card" style="border:2px solid #2a5298">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="font-size:16px;font-weight:800;color:var(--adeep)">${r.subject||'과목 미상'}</div>
+        <span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:99px;background:${/추정/.test(r.grading_mode||'')?'#fef9c3':'#dcfce7'};color:${/추정/.test(r.grading_mode||'')?'#854d0e':'#166534'}">${r.grading_mode||'분석 완료'}</span>
+      </div>
+      ${r.score_summary?`<div style="font-size:14px;font-weight:700;color:#1d4ed8;margin-bottom:10px">${r.score_summary}</div>`:''}
+      <div style="margin-bottom:12px"><b style="font-size:13px;color:var(--adeep)">📉 약점 단원</b>${list(r.weak_areas)}</div>
+      <div style="margin-bottom:12px"><b style="font-size:13px;color:var(--adeep)">🎯 집중 학습 포인트</b>${list(r.focus)}</div>
+      <div style="margin-bottom:12px"><b style="font-size:13px;color:var(--adeep)">📚 추천 학습법</b>${list(r.study_plan)}</div>
+      ${r.comment?`<div style="background:var(--s2);border-radius:9px;padding:11px 13px;font-size:13px;color:var(--ink2);line-height:1.7;margin-bottom:12px">${r.comment}</div>`:''}
+      <button onclick="saveMockItem()" style="width:100%;height:42px;border-radius:11px;border:none;background:#1d3a5f;color:white;font:700 14px var(--font);cursor:pointer">💾 이 분석을 기록부에 저장</button>
+    </div>`;
+}
+
+async function saveMockItem() {
+  const r = tcsMockState.result;
+  if (!r) return;
+  showUploadToast('저장 중…');
+  // 스캔 파일 업로드 (선택적, 실패해도 분석은 저장)
+  const filePaths = [];
+  try {
+    for (let i = 0; i < tcsMockState.files.length; i++) {
+      const f = tcsMockState.files[i];
+      const ext = (f.name.split('.').pop() || 'jpg').toLowerCase();
+      const path = `mockexam/${tcsCurrentStudent.id}/${Date.now()}_${i}.${ext}`;
+      const { error } = await sb.storage.from('messenger').upload(path, f, { cacheControl: '3600', upsert: false });
+      if (!error) filePaths.push(path);
+    }
+  } catch (e) {}
+
+  const item = {
+    id: Date.now().toString(),
+    date: new Date().toISOString().slice(0, 10),
+    exam: document.getElementById('mock-exam')?.value?.trim() || r.exam_name || '',
+    subject: r.subject || '',
+    mode: r.grading_mode || '',
+    score: r.score_summary || '',
+    weak: r.weak_areas || [],
+    focus: r.focus || [],
+    method: r.study_plan || [],
+    comment: r.comment || '',
+    files: filePaths,
+  };
+
+  const items = (tcsRecords.mockexam && tcsRecords.mockexam.items) ? [...tcsRecords.mockexam.items] : [];
+  items.unshift(item);
+  const data = { items };
+
+  const { error } = await sb.from('tcs_records').upsert({
+    student_id: tcsCurrentStudent.id,
+    community_id: ME.community_id || '00000000-0000-0000-0000-000000000001',
+    section: 'mockexam', data,
+    updated_at: new Date().toISOString(), updated_by: ME.id,
+  }, { onConflict: 'student_id,section' });
+  if (error) { showUploadToast('저장 실패 😥 ' + error.message); return; }
+  tcsRecords.mockexam = data;
+  tcsMockState.result = null; tcsMockState.files = [];
+  showUploadToast('✅ 기록부에 저장됐어요!');
+  renderMockExamEditor();
+}
+
+async function deleteMockItem(i) {
+  const items = (tcsRecords.mockexam && tcsRecords.mockexam.items) ? [...tcsRecords.mockexam.items] : [];
+  items.splice(i, 1);
+  const data = { items };
+  const { error } = await sb.from('tcs_records').upsert({
+    student_id: tcsCurrentStudent.id,
+    community_id: ME.community_id || '00000000-0000-0000-0000-000000000001',
+    section: 'mockexam', data,
+    updated_at: new Date().toISOString(), updated_by: ME.id,
+  }, { onConflict: 'student_id,section' });
+  if (error) { showUploadToast('삭제 실패 😥'); return; }
+  tcsRecords.mockexam = data;
+  showUploadToast('삭제됐어요');
+  renderMockExamEditor();
+}
+
 function renderTcsField(field, value) {
   const val = value || '';
   const labelStyle = 'font-size:12px;font-weight:600;color:var(--ink3);margin-bottom:6px;display:block;text-transform:uppercase;letter-spacing:.04em';
@@ -3844,7 +4321,7 @@ function buildTcsPreviewHtml(lang) {
       ${sectionTitle('📅','출결사항')}
       ${(() => {
         const att = d.attendance || {};
-        const grades = [['G7(중1)','g7'],['G8(중2)','g8'],['G9(중3)','g9'],['G10(고1)','g10'],['G11(고2)','g11'],['G12(고3)','g12']];
+        const grades = [['K (유치원)','k'],['G1 (1학년)','g1'],['G2 (2학년)','g2'],['G3 (3학년)','g3'],['G4 (4학년)','g4'],['G5 (5학년)','g5'],['G6 (6학년)','g6'],['G7 (중1)','g7'],['G8 (중2)','g8'],['G9 (중3)','g9'],['G10 (고1)','g10'],['G11 (고2)','g11'],['G12 (고3)','g12']];
         const rows = grades.filter(([,k]) => att[k]).map(([label,k]) =>
           `<tr><td style="padding:6px 12px;background:#dce6f2;font-size:12px;font-weight:600;color:#1d3a5f;border:1px solid #b8cfe0;width:120px">${label}</td><td style="padding:6px 12px;font-size:13px;border:1px solid #d1d5db">${att[k]}</td></tr>`
         ).join('');
@@ -3860,6 +4337,19 @@ function buildTcsPreviewHtml(lang) {
         ).join('');
         const gpaRow = ac.gpa ? `<tr><td style="padding:7px 12px;background:#dce6f2;font-size:12px;font-weight:600;color:#1d3a5f;border:1px solid #b8cfe0">누적 GPA</td><td style="padding:7px 12px;font-size:13px;font-weight:700;border:1px solid #d1d5db">${ac.gpa} / 4.0</td></tr>` : '';
         return (rows||gpaRow) ? `<table style="width:100%;border-collapse:collapse;margin-bottom:4px">${rows}${gpaRow}</table>` : '<p style="font-size:12px;color:#9ca3af;margin-bottom:8px">미기재</p>';
+      })()}
+
+      ${(() => {
+        const items = (d.mockexam && d.mockexam.items) || [];
+        if (!items.length) return '';
+        const cards = items.map(it => `
+          <div style="border:1px solid #d1d5db;border-radius:8px;padding:10px 12px;margin-bottom:8px">
+            <div style="font-size:13px;font-weight:700;color:#1d3a5f">${it.subject||'과목 미상'} <span style="font-size:11px;font-weight:400;color:#6b7280">${it.exam||''} ${it.date||''}</span></div>
+            ${it.score?`<div style="font-size:12px;color:#1d4ed8;margin-top:2px">${it.score}</div>`:''}
+            ${(it.weak&&it.weak.length)?`<div style="font-size:12px;color:#374151;margin-top:4px"><b>약점:</b> ${it.weak.join(', ')}</div>`:''}
+            ${(it.focus&&it.focus.length)?`<div style="font-size:12px;color:#374151;margin-top:2px"><b>집중 학습:</b> ${it.focus.join(', ')}</div>`:''}
+          </div>`).join('');
+        return `${sectionTitle('🧠','모의고사 분석 (AI)')}${cards}`;
       })()}
 
       ${sectionTitle('✝️','신앙 및 인성')}
