@@ -2423,7 +2423,7 @@ async function renderHome() {
   const todayStr = d.toISOString().slice(0,10);
 
   // 오늘의 묵상 로드
-  const { data: wordData } = await sb.from('daily_word').select('*').eq('date', todayStr).eq('community_id', CID()).single();
+  const { data: wordData } = await sb.from('daily_word').select('*').eq('date', todayStr).eq('community_id', CID()).maybeSingle();
 
   // 주간 일정표 로드 (가장 최근 것)
   const { data: schedImgs } = await sb.from('schedule_images').select('*').eq('community_id', CID())
