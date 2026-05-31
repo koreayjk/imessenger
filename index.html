@@ -150,6 +150,8 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
   background: var(--bg);
   overflow: hidden;
 }
+#tcs-view > div:first-child, #mock-view > div:first-child, #reading-view > div:first-child, #profile-view > div:first-child { position: relative; }
+.subnav-center { position: absolute; left: 50%; top: 0; height: 100%; display: flex; align-items: center; transform: translateX(-50%); }
 
 /* 빈 화면 */
 #empty {
@@ -840,7 +842,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
           <div style="font-size:15px;font-weight:700">내 프로필</div>
           <div style="font-size:11px;color:var(--ink3)">개인정보를 입력하면 TCS 기록부에 자동 반영돼요</div>
         </div>
-        <div id="subnav-profile"></div>
+        <div id="subnav-profile" class="subnav-center"></div>
       </div>
       <div id="profile-content" style="flex:1;overflow-y:auto;padding:24px 28px"></div>
     </div>
@@ -856,7 +858,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
             <div style="font-size:11px;color:var(--ink3)" id="tcs-header-sub">학생을 선택하세요</div>
           </div>
         </div>
-        <div id="subnav-tcs"></div>
+        <div id="subnav-tcs" class="subnav-center"></div>
         <div style="display:flex;gap:8px" id="tcs-header-actions"></div>
       </div>
       <!-- 콘텐츠 -->
@@ -878,7 +880,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
             <div style="font-size:11px;color:var(--ink3)">학생을 선택하고 시험지를 올려 분석하세요</div>
           </div>
         </div>
-        <div id="subnav-mock"></div>
+        <div id="subnav-mock" class="subnav-center"></div>
       </div>
       <div id="mock-page" style="flex:1;overflow-y:auto;padding:24px 28px"></div>
     </div>
@@ -893,7 +895,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
             <div style="font-size:11px;color:var(--ink3)" id="reading-header-sub">신앙훈련 필독서 현황</div>
           </div>
         </div>
-        <div id="subnav-reading"></div>
+        <div id="subnav-reading" class="subnav-center"></div>
       </div>
       <div id="reading-page" style="flex:1;overflow-y:auto;padding:24px 28px"></div>
     </div>
@@ -4063,6 +4065,35 @@ function tcsFileToB64(file) {
   });
 }
 
+// 이미지를 업로드 전 자동 축소(용량↓ 속도↑). PDF 등은 원본 그대로.
+function tcsImageToB64Resized(file, maxDim = 1600, quality = 0.82) {
+  return new Promise((resolve, reject) => {
+    if (!file.type || !file.type.startsWith('image/')) {
+      tcsFileToB64(file).then(b64 => resolve({ mime: file.type || 'application/octet-stream', data: b64 })).catch(reject);
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      let w = img.width, h = img.height;
+      if (Math.max(w, h) > maxDim) {
+        const s = maxDim / Math.max(w, h);
+        w = Math.round(w * s); h = Math.round(h * s);
+      }
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      c.getContext('2d').drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      try {
+        const dataUrl = c.toDataURL('image/jpeg', quality);
+        resolve({ mime: 'image/jpeg', data: dataUrl.split(',')[1] });
+      } catch (e) { reject(e); }
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('이미지를 읽지 못했어요')); };
+    img.src = url;
+  });
+}
+
 function openMockExamEditor() {
   tcsCurrentSection = 'mockexam';
   tcsMockTarget = 'tcs-main';
@@ -4197,18 +4228,19 @@ async function runMockAnalysis() {
   if (!tcsMockState.files.length) { showUploadToast('먼저 학생 시험지를 올려주세요'); return; }
   const btn = document.getElementById('mock-analyze-btn');
   const resBox = document.getElementById('mock-result');
-  btn.disabled = true; btn.textContent = '⏳ 분석 중… (10~30초)';
-  resBox.innerHTML = '<div style="text-align:center;color:var(--ink3);padding:20px;font-size:13px">AI가 시험지를 읽고 있어요…</div>';
+  btn.disabled = true; btn.textContent = '⏳ 분석 중… (최대 1~2분)';
+  resBox.innerHTML = '<div style="text-align:center;color:var(--ink3);padding:20px;font-size:13px">이미지 준비 중…</div>';
 
   try {
     const examImages = [];
     for (const f of tcsMockState.files) {
-      examImages.push({ mime: f.type || 'image/jpeg', data: await tcsFileToB64(f) });
+      examImages.push(await tcsImageToB64Resized(f));
     }
     const answerImages = [];
     for (const f of (tcsMockState.answerFiles || [])) {
-      answerImages.push({ mime: f.type || 'image/jpeg', data: await tcsFileToB64(f) });
+      answerImages.push(await tcsImageToB64Resized(f));
     }
+    resBox.innerHTML = '<div style="text-align:center;color:var(--ink3);padding:20px;font-size:13px">AI가 시험지를 읽고 있어요… (최대 1~2분 걸릴 수 있어요)</div>';
     const body = {
       examImages,
       answerImages,
@@ -4218,14 +4250,19 @@ async function runMockAnalysis() {
       answerKey: document.getElementById('mock-answerkey')?.value?.trim() || '',
       studentName: tcsCurrentStudent?.name || '',
     };
-    const { data, error } = await sb.functions.invoke(TCS_MOCK_FN, { body });
+    const invokeP = sb.functions.invoke(TCS_MOCK_FN, { body });
+    const timeoutP = new Promise((_, rej) => setTimeout(() => rej(new Error('TIMEOUT')), 150000));
+    const { data, error } = await Promise.race([invokeP, timeoutP]);
     if (error) throw new Error(error.message || '함수 호출 실패');
     const r = (data && data.result) ? data.result : data;
     if (!r || (!r.subject && !r.weak_areas)) throw new Error('분석 결과를 해석하지 못했어요. 스캔 화질을 확인해주세요.');
     tcsMockState.result = r;
     renderMockResult(r);
   } catch (e) {
-    resBox.innerHTML = `<div style="background:#fef2f2;border:1.5px solid #fecaca;border-radius:10px;padding:14px;font-size:13px;color:#b91c1c">분석 실패: ${e.message}<br><span style="font-size:11px;color:#9ca3af">Edge Function(${TCS_MOCK_FN})이 배포·설정됐는지, Gemini 키가 등록됐는지 확인해주세요.</span></div>`;
+    const msg = e.message === 'TIMEOUT'
+      ? '응답이 너무 오래 걸려요(2분 초과). 이미지 장수를 줄이거나 화질을 낮춰 다시 시도해주세요. 계속 안 되면 Edge Function 로그를 확인해주세요.'
+      : '분석 실패: ' + e.message;
+    resBox.innerHTML = `<div style="background:#fef2f2;border:1.5px solid #fecaca;border-radius:10px;padding:14px;font-size:13px;color:#b91c1c">${msg}<br><span style="font-size:11px;color:#9ca3af">Edge Function(${TCS_MOCK_FN}) 배포·Gemini 키 등록 여부도 확인해주세요.</span></div>`;
   } finally {
     btn.disabled = false; btn.textContent = '🔍 AI 분석하기';
   }
@@ -4400,7 +4437,9 @@ function renderReadingStudent() {
     </div>`;
 
   if (!total) {
-    html += `<div style="text-align:center;color:var(--ink3);font-size:13px;padding:30px">아직 등록된 필독서가 없어요. 관리자가 책을 추가하면 여기에 표시됩니다.</div>`;
+    html += `<div style="text-align:center;color:var(--ink3);font-size:13px;padding:30px;line-height:1.8">아직 등록된 필독서가 없어요.<br>선생님(관리자)이 [TCS → Triple School → 책 관리]에서 책을 추가하면<br>여기서 읽은 책을 눌러 기록할 수 있어요.</div>`;
+  } else {
+    html += `<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:11px 14px;margin-bottom:10px;font-size:12.5px;color:#1d4ed8;line-height:1.6">📖 읽은 책을 누르면 <b>읽은 날짜</b>와 <b>독후감</b>을 적는 칸이 열려요. 거기서 기록을 남기세요.</div>`;
   }
 
   ordered.forEach(cat => {
