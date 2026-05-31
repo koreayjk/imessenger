@@ -420,7 +420,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
   #panel.chat-open { transform: translateX(-100%); }
 
   /* 입력창이 하단 탭바에 가리지 않도록 */
-  #chat-view, #prayer-view, #home-view, #calendar-view, #admin-view, #tcs-view {
+  #chat-view, #prayer-view, #home-view, #calendar-view, #admin-view, #tcs-view, #mock-view {
     padding-bottom: calc(72px + env(safe-area-inset-bottom));
   }
   #composer {
@@ -615,7 +615,10 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
       <span>TCS</span>
     </div>
-    <div class="sb-btn" id="sb-switch-community" onclick="showCommunitySwitcher()" title="공동체 전환" style="display:none">
+    <div class="sb-btn" id="sb-mock" onclick="setMode('mock')" title="모의고사 분석" style="display:none">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+      <span>모의고사</span>
+    </div>
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
       <span>공동체</span>
     </div>
@@ -860,6 +863,18 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
         <!-- 메인 영역 -->
         <div id="tcs-main" style="flex:1;overflow-y:auto;padding:24px 28px"></div>
       </div>
+    </div>
+
+    <!-- 모의고사 분석 뷰 (독립 탭) -->
+    <div id="mock-view" style="display:none;flex-direction:column;height:100%;background:var(--bg)">
+      <div style="height:56px;padding:0 24px;display:flex;align-items:center;gap:10px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0">
+        <div style="width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#1d3a5f,#2a5298);display:flex;align-items:center;justify-content:center;font-size:16px">🧠</div>
+        <div>
+          <div style="font-size:15px;font-weight:700;color:var(--ink)">모의고사 AI 분석</div>
+          <div style="font-size:11px;color:var(--ink3)">학생을 선택하고 시험지를 올려 분석하세요</div>
+        </div>
+      </div>
+      <div id="mock-page" style="flex:1;overflow-y:auto;padding:24px 28px"></div>
     </div>
   </div>
 
@@ -1272,6 +1287,8 @@ function enterApp() {
   }
   if (isTeacher()) {
     document.getElementById('sb-tcs').style.display = 'flex';
+    const sbMock = document.getElementById('sb-mock');
+    if (sbMock) sbMock.style.display = 'flex';
   }
   if (isSuperAdmin()) {
     document.getElementById('sb-switch-community').style.display = 'flex';
@@ -1493,10 +1510,11 @@ function setMode(m) {
   document.getElementById('calendar-view').style.display = m==='calendar' ? 'flex' : 'none';
   document.getElementById('admin-view').style.display = m==='admin' ? 'flex' : 'none';
   document.getElementById('tcs-view').style.display = m==='tcs' ? 'flex' : 'none';
+  document.getElementById('mock-view').style.display = m==='mock' ? 'flex' : 'none';
   document.getElementById('profile-view').style.display = m==='profile' ? 'flex' : 'none';
 
   const panel = document.getElementById('panel');
-  if (m === 'home' || m === 'calendar' || m === 'admin' || m === 'tcs' || m === 'profile') {
+  if (m === 'home' || m === 'calendar' || m === 'admin' || m === 'tcs' || m === 'mock' || m === 'profile') {
     panel.style.display = 'none';
   } else {
     panel.style.display = 'flex';
@@ -1508,9 +1526,10 @@ function setMode(m) {
   if (m==='calendar') { loadCalendar(); }
   if (m==='admin') { if(isCommunityAdmin()) initAdminPage(); else setMode('home'); return; }
   if (m==='tcs') { if(isTeacher()) initTcsPage(); else setMode('home'); return; }
+  if (m==='mock') { if(isTeacher()) initMockPage(); else setMode('home'); return; }
   if (m==='profile') { renderProfilePage(); }
   sessionStorage.setItem('last_mode', m);
-  document.getElementById('panel-title').textContent = {chat:'채팅',prayer:'기도제목',home:'홈',calendar:'일정',admin:'관리자',tcs:'TCS',profile:'내 프로필'}[m] || m;
+  document.getElementById('panel-title').textContent = {chat:'채팅',prayer:'기도제목',home:'홈',calendar:'일정',admin:'관리자',tcs:'TCS',mock:'모의고사 분석',profile:'내 프로필'}[m] || m;
 }
 
 // ── 채널 패널 렌더 ──
@@ -3121,7 +3140,6 @@ const TCS_SECTIONS = [
   { id:'school',     icon:'🏫', label:'학적사항',        labelEn:'School Info' },
   { id:'attendance', icon:'📅', label:'출결사항',        labelEn:'Attendance' },
   { id:'academic',   icon:'📚', label:'교과학습 발달',    labelEn:'Academic' },
-  { id:'mockexam',   icon:'🧠', label:'모의고사 분석',    labelEn:'Mock Exam AI' },
   { id:'faith',      icon:'✝️',  label:'신앙 및 인성',    labelEn:'Faith & Character' },
   { id:'activities', icon:'🏃', label:'창의적 체험활동',  labelEn:'Activities' },
   { id:'service',    icon:'🤝', label:'봉사활동',        labelEn:'Service' },
@@ -3989,6 +4007,8 @@ async function saveListSection() {
 // ── 모의고사 AI 분석 (Gemini) ──
 const TCS_MOCK_FN = 'analyze-mockexam'; // Supabase Edge Function 이름
 let tcsMockState = null; // { files:[File], result:obj|null, analyzing:bool }
+let tcsMockTarget = 'tcs-main'; // 렌더 대상: TCS 카드='tcs-main', 독립탭='mock-page'
+let tcsMockStudents = [];
 
 function tcsFileToB64(file) {
   return new Promise((res, rej) => {
@@ -4000,12 +4020,63 @@ function tcsFileToB64(file) {
 
 function openMockExamEditor() {
   tcsCurrentSection = 'mockexam';
-  tcsMockState = { files: [], result: null, analyzing: false };
+  tcsMockTarget = 'tcs-main';
+  tcsMockState = { files: [], answerFiles: [], result: null, analyzing: false };
+  renderMockExamEditor();
+}
+
+// ── 독립 탭: 모의고사 분석 페이지 ──
+async function initMockPage() {
+  tcsMockTarget = 'mock-page';
+  const page = document.getElementById('mock-page');
+  page.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink3)">불러오는 중...</div>';
+
+  const { data: students } = await sb.from('members')
+    .select('id,name,color,initials,grade')
+    .eq('community_id', ME.community_id || '00000000-0000-0000-0000-000000000001')
+    .in('community_role', ['student'])
+    .order('name');
+  tcsMockStudents = students || [];
+
+  if (!tcsMockStudents.length) {
+    page.innerHTML = `<div style="text-align:center;padding:60px 20px">
+      <div style="font-size:48px;margin-bottom:12px">👨‍🎓</div>
+      <div style="font-size:15px;font-weight:600;color:var(--ink2);margin-bottom:6px">등록된 학생이 없어요</div>
+      <div style="font-size:13px;color:var(--ink3)">관리자 페이지에서 학생을 먼저 승인해주세요</div>
+    </div>`;
+    return;
+  }
+  await loadMockStudent(tcsMockStudents[0].id);
+}
+
+async function loadMockStudent(id) {
+  const s = tcsMockStudents.find(x => x.id === id) || tcsMockStudents[0];
+  tcsCurrentStudent = { id: s.id, name: s.name, color: s.color, initials: s.initials, grade: s.grade };
+  tcsMockState = { files: [], answerFiles: [], result: null, analyzing: false };
+
+  // 이 학생의 모의고사 기록 로드
+  const { data: rec } = await sb.from('tcs_records').select('data').eq('student_id', s.id).eq('section', 'mockexam').maybeSingle();
+  tcsRecords = { mockexam: (rec && rec.data) ? rec.data : {} };
+
+  const page = document.getElementById('mock-page');
+  const selector = `
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px;flex-wrap:wrap">
+      <label style="font-size:12px;font-weight:700;color:var(--ink3)">학생</label>
+      <select onchange="loadMockStudent(this.value)"
+        style="height:38px;padding:0 14px;border-radius:10px;border:1.5px solid var(--border);background:white;font:600 14px var(--font);color:var(--ink);cursor:pointer;outline:none;min-width:200px">
+        ${tcsMockStudents.map(st => `<option value="${st.id}" ${st.id===s.id?'selected':''}>${st.name}${st.grade?` (${st.grade})`:''}</option>`).join('')}
+      </select>
+    </div>
+    <div id="mock-page-body"></div>`;
+  page.innerHTML = selector;
+  // 에디터는 mock-page-body 안에 그림
+  tcsMockTarget = 'mock-page-body';
   renderMockExamEditor();
 }
 
 function renderMockExamEditor() {
-  const main = document.getElementById('tcs-main');
+  const main = document.getElementById(tcsMockTarget) || document.getElementById('tcs-main');
+  const standalone = tcsMockTarget !== 'tcs-main';
   const saved = (tcsRecords.mockexam && tcsRecords.mockexam.items) || [];
 
   const savedList = saved.length ? saved.map((it, i) => `
@@ -4023,20 +4094,25 @@ function renderMockExamEditor() {
 
   main.innerHTML = `
     <div style="max-width:680px">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+      ${standalone ? '' : `<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
         <button onclick="renderTcsSectionList()" style="height:32px;padding:0 12px;border-radius:8px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:500 12px var(--font);cursor:pointer">← 목록</button>
         <div style="font-size:22px">🧠</div>
         <div style="font-size:16px;font-weight:700;color:var(--ink)">모의고사 분석 (AI)</div>
-      </div>
+      </div>`}
       <div style="background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:10px;padding:9px 13px;margin-bottom:16px;font-size:12px;color:#1d4ed8;line-height:1.6">
         📷 시험지 스캔을 올리면 AI가 과목·약점·학습 방향을 분석합니다. <b>정답지나 점수표를 같이 올리면</b> 정확도가 올라가요. (정답이 없으면 AI 추정 채점 — 참고용)
       </div>
 
       <div class="adm-card" style="margin-bottom:16px">
-        <label style="font-size:12px;font-weight:600;color:var(--ink3);display:block;margin-bottom:6px">시험지 / 정답지 업로드 (이미지·PDF, 여러 장 가능)</label>
+        <label style="font-size:12px;font-weight:700;color:var(--adeep);display:block;margin-bottom:6px">① 학생이 푼 시험지 (필수, 여러 장 가능)</label>
         <input id="mock-files" type="file" accept="image/*,application/pdf" multiple onchange="onMockFiles(this.files)"
-          style="width:100%;font:13px var(--font);margin-bottom:10px"/>
-        <div id="mock-filelist" style="font-size:12px;color:var(--ink2);margin-bottom:12px"></div>
+          style="width:100%;font:13px var(--font);margin-bottom:6px"/>
+        <div id="mock-filelist" style="font-size:12px;color:var(--ink2);margin-bottom:14px"></div>
+
+        <label style="font-size:12px;font-weight:700;color:var(--adeep);display:block;margin-bottom:6px">② 정답지 파일 (선택, 여러 장 가능) — 올리면 정밀 채점</label>
+        <input id="mock-answer-files" type="file" accept="image/*,application/pdf" multiple onchange="onMockAnswerFiles(this.files)"
+          style="width:100%;font:13px var(--font);margin-bottom:6px"/>
+        <div id="mock-answer-filelist" style="font-size:12px;color:var(--ink2);margin-bottom:14px"></div>
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
           <input id="mock-exam" type="text" placeholder="시험명 (예: 3월 모의고사)"
@@ -4044,7 +4120,7 @@ function renderMockExamEditor() {
           <input id="mock-subject" type="text" placeholder="과목 힌트 (선택, 비우면 자동 판별)"
             style="height:38px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--s2);font:13px var(--font);outline:none"/>
         </div>
-        <textarea id="mock-answerkey" rows="2" placeholder="정답 입력 (선택) — 예: 1.③ 2.① 3.⑤ … 있으면 정밀 채점"
+        <textarea id="mock-answerkey" rows="2" placeholder="정답 직접 입력 (선택) — 예: 1.③ 2.① 3.⑤ … 정답지 파일 대신 텍스트로 넣어도 됨"
           style="width:100%;padding:10px 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--s2);font:13px var(--font);outline:none;resize:vertical;line-height:1.6;margin-bottom:12px"></textarea>
 
         <button id="mock-analyze-btn" onclick="runMockAnalysis()"
@@ -4065,21 +4141,32 @@ function onMockFiles(files) {
   const el = document.getElementById('mock-filelist');
   if (el) el.textContent = tcsMockState.files.length ? '선택됨: ' + tcsMockState.files.map(f => f.name).join(', ') : '';
 }
+function onMockAnswerFiles(files) {
+  tcsMockState.answerFiles = Array.from(files || []);
+  const el = document.getElementById('mock-answer-filelist');
+  if (el) el.textContent = tcsMockState.answerFiles.length ? '정답지: ' + tcsMockState.answerFiles.map(f => f.name).join(', ') : '';
+}
 
 async function runMockAnalysis() {
-  if (!tcsMockState.files.length) { showUploadToast('먼저 시험지를 올려주세요'); return; }
+  if (!tcsMockState.files.length) { showUploadToast('먼저 학생 시험지를 올려주세요'); return; }
   const btn = document.getElementById('mock-analyze-btn');
   const resBox = document.getElementById('mock-result');
   btn.disabled = true; btn.textContent = '⏳ 분석 중… (10~30초)';
   resBox.innerHTML = '<div style="text-align:center;color:var(--ink3);padding:20px;font-size:13px">AI가 시험지를 읽고 있어요…</div>';
 
   try {
-    const images = [];
+    const examImages = [];
     for (const f of tcsMockState.files) {
-      images.push({ mime: f.type || 'image/jpeg', data: await tcsFileToB64(f) });
+      examImages.push({ mime: f.type || 'image/jpeg', data: await tcsFileToB64(f) });
+    }
+    const answerImages = [];
+    for (const f of (tcsMockState.answerFiles || [])) {
+      answerImages.push({ mime: f.type || 'image/jpeg', data: await tcsFileToB64(f) });
     }
     const body = {
-      images,
+      examImages,
+      answerImages,
+      images: examImages, // 구버전 함수 호환
       examName: document.getElementById('mock-exam')?.value?.trim() || '',
       subjectHint: document.getElementById('mock-subject')?.value?.trim() || '',
       answerKey: document.getElementById('mock-answerkey')?.value?.trim() || '',
@@ -4122,13 +4209,21 @@ async function saveMockItem() {
   showUploadToast('저장 중…');
   // 스캔 파일 업로드 (선택적, 실패해도 분석은 저장)
   const filePaths = [];
+  const answerPaths = [];
   try {
     for (let i = 0; i < tcsMockState.files.length; i++) {
       const f = tcsMockState.files[i];
       const ext = (f.name.split('.').pop() || 'jpg').toLowerCase();
-      const path = `mockexam/${tcsCurrentStudent.id}/${Date.now()}_${i}.${ext}`;
+      const path = `mockexam/${tcsCurrentStudent.id}/${Date.now()}_exam_${i}.${ext}`;
       const { error } = await sb.storage.from('messenger').upload(path, f, { cacheControl: '3600', upsert: false });
       if (!error) filePaths.push(path);
+    }
+    for (let i = 0; i < (tcsMockState.answerFiles || []).length; i++) {
+      const f = tcsMockState.answerFiles[i];
+      const ext = (f.name.split('.').pop() || 'jpg').toLowerCase();
+      const path = `mockexam/${tcsCurrentStudent.id}/${Date.now()}_ans_${i}.${ext}`;
+      const { error } = await sb.storage.from('messenger').upload(path, f, { cacheControl: '3600', upsert: false });
+      if (!error) answerPaths.push(path);
     }
   } catch (e) {}
 
@@ -4144,6 +4239,7 @@ async function saveMockItem() {
     method: r.study_plan || [],
     comment: r.comment || '',
     files: filePaths,
+    answerFiles: answerPaths,
   };
 
   const items = (tcsRecords.mockexam && tcsRecords.mockexam.items) ? [...tcsRecords.mockexam.items] : [];
@@ -4158,7 +4254,7 @@ async function saveMockItem() {
   }, { onConflict: 'student_id,section' });
   if (error) { showUploadToast('저장 실패 😥 ' + error.message); return; }
   tcsRecords.mockexam = data;
-  tcsMockState.result = null; tcsMockState.files = [];
+  tcsMockState.result = null; tcsMockState.files = []; tcsMockState.answerFiles = [];
   showUploadToast('✅ 기록부에 저장됐어요!');
   renderMockExamEditor();
 }
