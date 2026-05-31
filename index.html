@@ -1113,7 +1113,7 @@ async function doSignUp() {
   const birth = document.getElementById('su-birth').value;
   const communityId = document.getElementById('su-community').value;
   const roleEl = document.querySelector('input[name="su-role"]:checked');
-  const role = roleEl ? roleEl.value : 'member';
+  const role = roleEl ? roleEl.value : 'student';
   const msg   = document.getElementById('su-msg');
   const btn   = document.getElementById('su-btn');
 
@@ -1135,7 +1135,7 @@ async function doSignUp() {
     const color = colors[Math.floor(Math.random()*colors.length)];
     const { error: mErr } = await sb.from('members').insert({
       id: uid, name: nick, initials: nick[0], color,
-      role: role === 'teacher' ? '교사' : role === 'student' ? '학생' : '멤버',
+      role: role === 'teacher' ? '교사' : role === 'staff' ? '간사' : '학생',
       community_role: role,
       email, birth_date: birth,
       status: 'pending',
@@ -2943,8 +2943,8 @@ async function renderProfilePage() {
   const { data: me } = await sb.from('members').select('*').eq('id', ME.id).single();
   if (me) Object.assign(ME, me);
 
-  const roleLabel = {super_admin:'총관리자', community_admin:'공동체관리자', teacher:'교사', student:'학생', member:'멤버'}[ME.community_role] || '멤버';
-  const roleColor = {super_admin:'#7c3aed', community_admin:'#1d4ed8', teacher:'#0369a1', student:'#15803d', member:'#6b7280'}[ME.community_role] || '#6b7280';
+  const roleLabel = {super_admin:'총관리자', community_admin:'관리자', teacher:'교사', staff:'간사', student:'학생', member:'멤버'}[ME.community_role] || '멤버';
+  const roleColor = {super_admin:'#7c3aed', community_admin:'#1d4ed8', teacher:'#0369a1', staff:'#b45309', student:'#15803d', member:'#6b7280'}[ME.community_role] || '#6b7280';
 
   const inp = (id, label, val, type='text', placeholder='') => `
     <div style="margin-bottom:16px">
@@ -5425,8 +5425,8 @@ async function viewCommunityMembers(communityId, communityName) {
   area.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink3)">불러오는 중...</div>';
   const { data: members } = await sb.from('members').select('*').eq('community_id', communityId).order('created_at');
   const list = members || [];
-  const roleLabel = { super_admin:'총관리자', community_admin:'공동체관리자', teacher:'교사', student:'학생', member:'멤버' };
-  const roleColor = { super_admin:'#7c3aed', community_admin:'#1d4ed8', teacher:'#0369a1', student:'#15803d', member:'#6b7280' };
+  const roleLabel = { super_admin:'총관리자', community_admin:'관리자', teacher:'교사', staff:'간사', student:'학생', member:'멤버' };
+  const roleColor = { super_admin:'#7c3aed', community_admin:'#1d4ed8', teacher:'#0369a1', staff:'#b45309', student:'#15803d', member:'#6b7280' };
 
   area.innerHTML = `
     <div style="max-width:720px">
@@ -5444,10 +5444,10 @@ async function viewCommunityMembers(communityId, communityName) {
           </div>
           <span style="font-size:11px;font-weight:600;padding:3px 9px;border-radius:99px;background:${roleColor[m.community_role]||'#6b7280'}22;color:${roleColor[m.community_role]||'#6b7280'}">${roleLabel[m.community_role]||m.community_role||'멤버'}</span>
           <select onchange="changeMemberCommunityRole('${m.id}',this.value)" style="height:28px;padding:0 8px;border-radius:7px;border:1.5px solid var(--border);font:500 12px var(--font);color:var(--ink);background:white;cursor:pointer">
-            <option value="member" ${m.community_role==='member'?'selected':''}>멤버</option>
             <option value="student" ${m.community_role==='student'?'selected':''}>학생</option>
+            <option value="staff" ${m.community_role==='staff'?'selected':''}>간사</option>
             <option value="teacher" ${m.community_role==='teacher'?'selected':''}>교사</option>
-            <option value="community_admin" ${m.community_role==='community_admin'?'selected':''}>공동체관리자</option>
+            <option value="community_admin" ${m.community_role==='community_admin'?'selected':''}>관리자</option>
             <option value="super_admin" ${m.community_role==='super_admin'?'selected':''}>총관리자</option>
           </select>
         </div>`).join('')}
@@ -5455,7 +5455,8 @@ async function viewCommunityMembers(communityId, communityName) {
 }
 
 async function changeMemberCommunityRole(memberId, role) {
-  const { error } = await sb.from('members').update({ community_role: role }).eq('id', memberId);
+  const koMap = { super_admin:'총관리자', community_admin:'관리자', teacher:'교사', staff:'간사', student:'학생' };
+  const { error } = await sb.from('members').update({ community_role: role, role: koMap[role] || role }).eq('id', memberId);
   if (error) showUploadToast('변경 실패');
   else showUploadToast('✅ 역할이 변경됐어요');
 }
@@ -5487,8 +5488,8 @@ async function renderAdminMembers() {
       : !['student','member'].includes(m.community_role)) // 총관리자: 교사/관리자급만
   );
 
-  const roleLabel = { super_admin:'총관리자', community_admin:'공동체관리자', teacher:'교사', student:'학생', member:'멤버' };
-  const roleColor = { super_admin:'#7c3aed', community_admin:'#1d4ed8', teacher:'#0369a1', student:'#15803d', member:'#6b7280' };
+  const roleLabel = { super_admin:'총관리자', community_admin:'관리자', teacher:'교사', staff:'간사', student:'학생', member:'멤버' };
+  const roleColor = { super_admin:'#7c3aed', community_admin:'#1d4ed8', teacher:'#0369a1', staff:'#b45309', student:'#15803d', member:'#6b7280' };
 
   // 스토리지 사용량 (총관리자만)
   let storageHtml = '';
@@ -5537,9 +5538,10 @@ async function renderAdminMembers() {
         ` : `
           <select onchange="changeMemberCommunityRole('${m.id}',this.value)"
             style="height:30px;padding:0 10px;border-radius:9px;border:1.5px solid var(--border);font:12px var(--font);background:white;cursor:pointer;outline:none">
-            <option value="member"           ${m.community_role==='member'?'selected':''}>멤버</option>
+            <option value="student"          ${m.community_role==='student'?'selected':''}>학생</option>
+            <option value="staff"            ${m.community_role==='staff'?'selected':''}>간사</option>
             <option value="teacher"          ${m.community_role==='teacher'?'selected':''}>교사</option>
-            <option value="community_admin"  ${m.community_role==='community_admin'?'selected':''}>공동체관리자</option>
+            <option value="community_admin"  ${m.community_role==='community_admin'?'selected':''}>관리자</option>
             ${isSuperAdmin()?`<option value="super_admin" ${m.community_role==='super_admin'?'selected':''}>총관리자</option>`:''}
           </select>
           ${m.community_role !== 'super_admin' ? `<button class="adm-btn danger" onclick="deleteMember('${m.id}','${m.name}')">탈퇴</button>` : '<span style="font-size:11px;color:var(--ink3)">총관리자</span>'}
