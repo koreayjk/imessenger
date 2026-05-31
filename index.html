@@ -2924,7 +2924,6 @@ async function renderProfilePage() {
   const { data: me } = await sb.from('members').select('*').eq('id', ME.id).single();
   if (me) Object.assign(ME, me);
 
-  const isStudent = ME.community_role === 'student';
   const roleLabel = {super_admin:'총관리자', community_admin:'공동체관리자', teacher:'교사', student:'학생', member:'멤버'}[ME.community_role] || '멤버';
   const roleColor = {super_admin:'#7c3aed', community_admin:'#1d4ed8', teacher:'#0369a1', student:'#15803d', member:'#6b7280'}[ME.community_role] || '#6b7280';
 
