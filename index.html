@@ -1948,6 +1948,7 @@ function appendMessage(m, readMap={}) {
     // 마지막 메시지와 날짜 다르면 구분선 추가
     const lastRow = area.querySelector('.msg-row:last-child');
     const lastDateDiv = area.querySelector('.date-divider:last-of-type');
+    const today = new Date().toDateString();
     const newDate = m.created_at ? new Date(m.created_at).toDateString() : today;
     const lastDate = lastRow?.dataset.date || today;
     if (newDate !== lastDate) {
@@ -2044,6 +2045,24 @@ function msgHtml(m, prev, readMap={}) {
             ${size?`<span style="font-size:10.5px;color:var(--ink3);flex-shrink:0">${size}</span>`:''}
           </a>`;
         }
+      } else if (f.type === 'files' && Array.isArray(f.items)) {
+        const items = f.items;
+        const imgs = items.filter(x => x.isImage);
+        const others = items.filter(x => !x.isImage);
+        let g = '';
+        if (imgs.length) {
+          const cols = imgs.length === 2 ? 2 : 3;
+          const w = imgs.length === 2 ? 188 : 282;
+          g += `<div style="display:grid;grid-template-columns:repeat(${cols},1fr);gap:4px;max-width:${w}px">${imgs.map(x => `<img src="${x.thumbUrl||x.directUrl}" alt="${x.name}" onclick="openImageModal('${x.viewUrl}')" onerror="this.src='${x.directUrl}';this.onerror=null" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;display:block;cursor:pointer"/>`).join('')}</div>`;
+        }
+        if (others.length) {
+          g += `<div style="display:flex;flex-direction:column;gap:4px;margin-top:${imgs.length?'5px':'0'}">${others.map(x => {
+            const size = x.size ? (x.size > 1048576 ? (x.size/1048576).toFixed(1)+'MB' : (x.size/1024).toFixed(0)+'KB') : '';
+            const icon = x.mimeType?.includes('pdf')?'📄':x.mimeType?.includes('word')?'📝':x.mimeType?.includes('sheet')||x.mimeType?.includes('excel')?'📊':x.mimeType?.includes('presentation')||x.mimeType?.includes('powerpoint')?'📊':'📎';
+            return `<a href="${x.viewUrl}" target="_blank" style="display:inline-flex;align-items:center;gap:7px;padding:6px 10px;background:rgba(0,0,0,.05);border-radius:9px;text-decoration:none;color:var(--ink);max-width:260px"><span style="font-size:16px;flex-shrink:0;line-height:1">${icon}</span><span style="font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${x.name}</span>${size?`<span style="font-size:10.5px;color:var(--ink3);flex-shrink:0">${size}</span>`:''}</a>`;
+          }).join('')}</div>`;
+        }
+        bubbleContent = g;
       }
     } catch(e) { bubbleContent = escHtml(m.text); }
   }
@@ -2197,13 +2216,25 @@ async function sendMsg() {
     const filesToUpload = [...pendingFiles];
     clearPendingFiles();
     showUploadToast(`업로드 중... (0/${filesToUpload.length})`);
+    const metas = [];
     for (let i = 0; i < filesToUpload.length; i++) {
       try {
         showUploadToast(`업로드 중... (${i+1}/${filesToUpload.length})`);
-        await uploadFileToStorage(filesToUpload[i].file);
+        metas.push(await uploadFileGetMeta(filesToUpload[i].file));
       } catch(e) {
         showUploadToast('파일 업로드 실패 😥');
       }
+    }
+    if (metas.length === 1) {
+      await sb.from('messages').insert({
+        channel_id: currentChannel.id, sender_id: ME.id, sender_name: ME.name,
+        text: JSON.stringify({ type: 'file', ...metas[0] }), kind: 'file',
+      });
+    } else if (metas.length > 1) {
+      await sb.from('messages').insert({
+        channel_id: currentChannel.id, sender_id: ME.id, sender_name: ME.name,
+        text: JSON.stringify({ type: 'files', items: metas }), kind: 'file',
+      });
     }
     showUploadToast('업로드 완료! ✅');
   }
@@ -6156,29 +6187,19 @@ function clearPendingFiles() {
   updateSendBtn();
 }
 
-async function uploadFileToStorage(file) {
+async function uploadFileGetMeta(file) {
   const ext = file.name.split('.').pop();
-  const fileName = `${Date.now()}_${ME.id}.${ext}`;
+  const fileName = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}_${ME.id}.${ext}`;
   const path = `chat/${currentChannel.id}/${fileName}`;
   const { error } = await sb.storage.from('messenger').upload(path, file, { cacheControl: '3600', upsert: false });
   if (error) throw error;
   const { data: urlData } = sb.storage.from('messenger').getPublicUrl(path);
   const publicUrl = urlData.publicUrl;
   const mimeType = file.type || '';
-  const isImage = mimeType.startsWith('image/');
-  const isVideo = mimeType.startsWith('video/');
-  const msgText = JSON.stringify({
-    type: 'file', name: file.name,
-    viewUrl: publicUrl, directUrl: publicUrl, thumbUrl: publicUrl,
-    mimeType, isImage, isVideo, size: file.size,
-  });
-  await sb.from('messages').insert({
-    channel_id: currentChannel.id,
-    sender_id: ME.id,
-    sender_name: ME.name,
-    text: msgText,
-    kind: 'file',
-  });
+  return {
+    name: file.name, viewUrl: publicUrl, directUrl: publicUrl, thumbUrl: publicUrl,
+    mimeType, isImage: mimeType.startsWith('image/'), isVideo: mimeType.startsWith('video/'), size: file.size,
+  };
 }
 
 function showUploadToast(msg) {
