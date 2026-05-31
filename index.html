@@ -4526,7 +4526,7 @@ async function renderReadingAdmin() {
   logs.forEach(l => { if (byStudent[l.student_id] !== undefined) byStudent[l.student_id]++; if (byBook[l.book_id] !== undefined) byBook[l.book_id]++; });
   const avg = studs.length ? (logs.length / studs.length) : 0;
 
-  const canManage = isCommunityAdmin();
+  const canManage = isTeacher();
 
   const summary = `
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px">
@@ -4552,7 +4552,7 @@ async function renderReadingAdmin() {
       <div style="font-size:12px;font-weight:600;color:#1d4ed8">${byBook[b.id] || 0}명</div>
     </div>`).join('') : '<div style="font-size:13px;color:var(--ink3);padding:12px 0">데이터 없음</div>';
 
-  // 책 관리 (관리자만)
+  // 책 관리 (교사·관리자)
   let manageHtml = '';
   if (canManage) {
     const { cats, ordered } = groupBooksByCategory();
@@ -4564,8 +4564,8 @@ async function renderReadingAdmin() {
       </div>`).join('')}`).join('');
     const catOpts = READING_CATEGORIES.map(c => `<option value="${c}">${c}</option>`).join('');
     manageHtml = `
-      <div style="font-size:14px;font-weight:700;color:var(--adeep);margin:24px 0 10px">📚 책 관리 <span style="font-size:11px;font-weight:500;color:var(--ink3)">(전 공동체 공통 목록)</span></div>
-      <div class="adm-card" style="margin-bottom:16px">
+      <div style="font-size:14px;font-weight:700;color:var(--adeep);margin:0 0 10px">📚 책 관리 <span style="font-size:11px;font-weight:500;color:var(--ink3)">(전 공동체 공통 목록)</span></div>
+      <div class="adm-card" style="margin-bottom:24px">
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
           <select id="rb-cat" style="height:38px;padding:0 10px;border-radius:9px;border:1.5px solid var(--border);background:white;font:13px var(--font);cursor:pointer">${catOpts}</select>
           <input id="rb-title" type="text" placeholder="책 제목" style="flex:1;min-width:160px;height:38px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--s2);font:13px var(--font);outline:none"/>
@@ -4578,11 +4578,11 @@ async function renderReadingAdmin() {
 
   page.innerHTML = `<div style="max-width:760px">
     ${summary}
+    ${manageHtml}
     <div style="font-size:14px;font-weight:700;color:var(--adeep);margin:0 0 8px">👥 학생별 진도</div>
     <div class="adm-card" style="margin-bottom:20px">${studentRows}</div>
     <div style="font-size:14px;font-weight:700;color:var(--adeep);margin:0 0 8px">🔥 많이 읽은 책 TOP 10</div>
     <div class="adm-card" style="margin-bottom:4px">${popularRows}</div>
-    ${manageHtml}
   </div>`;
 }
 
