@@ -1316,8 +1316,10 @@ function enterApp() {
 }
 
 async function restoreLastState() {
-  // 마지막 상태 복원
-  const lastMode = sessionStorage.getItem('last_mode') || 'home';
+  // 마지막 상태 복원 (단, 비어 보일 수 있는 탭은 시작 시 홈으로 — 빈 화면 방지)
+  const SAFE_RESTORE = ['home', 'chat', 'prayer', 'calendar'];
+  const saved = sessionStorage.getItem('last_mode') || 'home';
+  const lastMode = SAFE_RESTORE.includes(saved) ? saved : 'home';
   const lastChannelId = sessionStorage.getItem('last_channel_id');
 
   if (lastMode === 'chat' && lastChannelId) {
