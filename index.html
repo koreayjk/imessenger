@@ -4314,18 +4314,22 @@ async function initReadingPage() {
   const sub = document.getElementById('reading-header-sub');
   page.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink3)">불러오는 중...</div>';
 
-  const { data: books, error: bErr } = await sb.from('reading_books').select('*').order('category').order('sort').order('title');
-  if (bErr) { renderReadingSetupNeeded(bErr); return; }
-  readingBooks = books || [];
+  try {
+    const { data: books, error: bErr } = await sb.from('reading_books').select('*').order('category').order('sort').order('title');
+    if (bErr) { renderReadingSetupNeeded(bErr); return; }
+    readingBooks = books || [];
 
-  if (isTeacher()) {
-    if (sub) sub.textContent = '전체 현황 · 책 관리';
-    await renderReadingAdmin();
-  } else {
-    if (sub) sub.textContent = '내가 읽은 필독서';
-    const { data: logs } = await sb.from('reading_logs').select('*').eq('student_id', ME.id);
-    readingMyLogs = logs || [];
-    renderReadingStudent();
+    if (isTeacher()) {
+      if (sub) sub.textContent = '전체 현황 · 책 관리';
+      await renderReadingAdmin();
+    } else {
+      if (sub) sub.textContent = '내가 읽은 필독서';
+      const { data: logs } = await sb.from('reading_logs').select('*').eq('student_id', ME.id);
+      readingMyLogs = logs || [];
+      renderReadingStudent();
+    }
+  } catch (e) {
+    renderReadingSetupNeeded(e);
   }
 }
 
