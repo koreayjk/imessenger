@@ -611,7 +611,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>
       <span>일정</span>
     </div>
-    <div class="sb-btn" id="sb-tcs" onclick="setMode('tcs')" title="TCS 기록부" style="display:none">
+    <div class="sb-btn" id="sb-tcs" onclick="setMode('tcs')" title="TCS" style="display:none">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
       <span>TCS</span>
     </div>
@@ -840,6 +840,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
           <div style="font-size:15px;font-weight:700">내 프로필</div>
           <div style="font-size:11px;color:var(--ink3)">개인정보를 입력하면 TCS 기록부에 자동 반영돼요</div>
         </div>
+        <div id="subnav-profile"></div>
       </div>
       <div id="profile-content" style="flex:1;overflow-y:auto;padding:24px 28px"></div>
     </div>
@@ -1275,6 +1276,7 @@ async function enterCommunity(communityId) {
   // 선택한 공동체로 ME 업데이트
   const { data: community } = await sb.from('communities').select('*').eq('id', communityId).single();
   if (community) ME.selectedCommunity = community;
+  ME.community_id = communityId;   // ← 선택한 공동체를 활성 공동체로 설정 (데이터 격리)
   document.getElementById('community-select-screen').style.display = 'none';
   enterApp();
 }
@@ -1305,15 +1307,11 @@ function enterApp() {
     document.getElementById('sb-admin').style.display = 'flex';
     if (mnAdmin) mnAdmin.style.display = 'flex';
   }
-  // 교사·관리자: TCS (그 안에 모의고사·Triple School 하위 탭) / 학생·멤버: Triple School 단독
+  // TCS 버튼: 모두 표시 (교사=기록부/모의고사/Triple School, 학생·멤버=개인정보/Triple School)
+  document.getElementById('sb-tcs').style.display = 'flex';
+  // 단독 Triple School 버튼은 숨김 — TCS 하위 탭으로 접근
   const sbReading = document.getElementById('sb-reading');
-  if (isTeacher()) {
-    document.getElementById('sb-tcs').style.display = 'flex';
-    if (sbReading) sbReading.style.display = 'none';
-  } else {
-    document.getElementById('sb-tcs').style.display = 'none';
-    if (sbReading) sbReading.style.display = 'flex';
-  }
+  if (sbReading) sbReading.style.display = 'none';
   if (isSuperAdmin()) {
     document.getElementById('sb-switch-community').style.display = 'flex';
     const myAvEl = document.getElementById('my-av');
@@ -1541,9 +1539,10 @@ function setMode(m) {
   document.getElementById('profile-view').style.display = m==='profile' ? 'flex' : 'none';
 
   const sbTcsBtn = document.getElementById('sb-tcs');
-  if (sbTcsBtn) sbTcsBtn.classList.toggle('active', m==='tcs' || m==='mock' || m==='reading');
-  const sbReadBtn = document.getElementById('sb-reading');
-  if (sbReadBtn) sbReadBtn.classList.toggle('active', m==='reading');
+  if (sbTcsBtn) {
+    const tcsActive = isTeacher() ? (m==='tcs' || m==='mock' || m==='reading') : (m==='profile' || m==='reading');
+    sbTcsBtn.classList.toggle('active', tcsActive);
+  }
 
   const panel = document.getElementById('panel');
   if (m === 'home' || m === 'calendar' || m === 'admin' || m === 'tcs' || m === 'mock' || m === 'reading' || m === 'profile') {
@@ -1557,7 +1556,7 @@ function setMode(m) {
   if (m==='chat') { renderPanel(); sessionStorage.removeItem('last_channel_id'); }
   if (m==='calendar') { loadCalendar(); }
   if (m==='admin') { if(isCommunityAdmin()) initAdminPage(); else setMode('home'); return; }
-  if (m==='tcs') { if(isTeacher()) initTcsPage(); else setMode('home'); return; }
+  if (m==='tcs') { if(isTeacher()) initTcsPage(); else setMode('profile'); return; }
   if (m==='mock') { if(isTeacher()) initMockPage(); else setMode('home'); return; }
   if (m==='reading') { initReadingPage(); return; }
   if (m==='profile') { renderProfilePage(); }
@@ -2852,7 +2851,7 @@ async function submitAddChannel() {
     const dmName = `${ME.name} · ${target.name}`;
     const existing = channels.find(c => c.kind === 'dm' && c.name.includes(ME.name) && c.name.includes(target.name));
     if (existing) { closeAddModal(); openChannel(existing.id); return; }
-    const { data, error } = await sb.from('channels').insert({ name: dmName, emoji: '💬', description: '1:1 대화', pinned: false, kind: 'dm' }).select().single();
+    const { data, error } = await sb.from('channels').insert({ name: dmName, emoji: '💬', description: '1:1 대화', pinned: false, kind: 'dm', community_id: CID() }).select().single();
     if (error) { alert('DM 생성 실패: ' + error.message); return; }
     if (data) {
       await sb.from('channel_members').insert([
@@ -2932,6 +2931,8 @@ function initAdminPage() {
 // ══════════════════════════════════════════
 
 async function renderProfilePage() {
+  const sn = document.getElementById('subnav-profile');
+  if (sn) sn.innerHTML = isTeacher() ? '' : tcsSubnavHtml('profile');
   const area = document.getElementById('profile-content');
   area.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink3)">불러오는 중...</div>';
 
@@ -4325,14 +4326,19 @@ const READING_CATEGORIES = ['Gospel School', 'Disciple School', 'Calling School'
 let readingBooks = [];
 let readingMyLogs = [];
 
-// TCS 내부 하위 탭 (기록부 / 모의고사 / Triple School) — 교사·관리자만
+// TCS 내부 하위 탭 — 역할별로 다름
 function tcsSubnavHtml(active) {
-  if (!isTeacher()) return '';
   const tab = (m, label) => {
     const on = active === m;
     return `<button onclick="setMode('${m}')" style="height:30px;padding:0 13px;border:none;border-radius:8px;font:600 12px var(--font);cursor:pointer;background:${on ? '#1d3a5f' : 'transparent'};color:${on ? '#fff' : 'var(--ink2)'}">${label}</button>`;
   };
-  return `<div style="display:inline-flex;gap:2px;background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:3px">${tab('tcs','기록부')}${tab('mock','모의고사')}${tab('reading','Triple School')}</div>`;
+  let tabs = '';
+  if (isTeacher()) {
+    tabs = tab('tcs', '기록부') + tab('mock', '모의고사') + tab('reading', 'Triple School');
+  } else {
+    tabs = tab('profile', '개인정보') + tab('reading', 'Triple School');
+  }
+  return `<div style="display:inline-flex;gap:2px;background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:3px">${tabs}</div>`;
 }
 
 async function initReadingPage() {
@@ -4862,11 +4868,9 @@ async function switchToCommunity(communityId) {
   ME.community_id = communityId;
 
   const { data: comm } = await sb.from('communities').select('*').eq('id', communityId).single();
-  if (comm) ME.selectedCommunity = comm;
-
-  showUploadToast(`✅ ${comm?.name||'공동체'}로 전환됐어요!`);
-  await init();
-  setMode('home');
+  showUploadToast(`✅ ${comm?.name||'공동체'}로 전환 중…`);
+  // 이전 공동체 데이터(채팅·멤버 등)가 남지 않도록 완전히 새로 로드
+  setTimeout(() => location.reload(), 500);
 }
 
 async function renderCommunitySettings() {
