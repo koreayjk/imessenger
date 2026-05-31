@@ -1535,9 +1535,10 @@ function setMode(m) {
   document.getElementById('home-view').style.display = m==='home' ? 'flex' : 'none';
   document.getElementById('calendar-view').style.display = m==='calendar' ? 'flex' : 'none';
   document.getElementById('admin-view').style.display = m==='admin' ? 'flex' : 'none';
-  document.getElementById('tcs-view').style.display = m==='tcs' ? 'flex' : 'none';
-  document.getElementById('mock-view').style.display = m==='mock' ? 'flex' : 'none';
-  document.getElementById('reading-view').style.display = m==='reading' ? 'flex' : 'none';
+  const teacherTcsArea = isTeacher() && (m==='tcs' || m==='mock' || m==='reading');
+  document.getElementById('tcs-view').style.display = teacherTcsArea ? 'flex' : 'none';
+  document.getElementById('mock-view').style.display = 'none';
+  document.getElementById('reading-view').style.display = (!isTeacher() && m==='reading') ? 'flex' : 'none';
   document.getElementById('profile-view').style.display = m==='profile' ? 'flex' : 'none';
 
   const sbTcsBtn = document.getElementById('sb-tcs');
@@ -1558,9 +1559,9 @@ function setMode(m) {
   if (m==='chat') { renderPanel(); sessionStorage.removeItem('last_channel_id'); }
   if (m==='calendar') { loadCalendar(); }
   if (m==='admin') { if(isCommunityAdmin()) initAdminPage(); else setMode('home'); return; }
-  if (m==='tcs') { if(isTeacher()) initTcsPage(); else setMode('profile'); return; }
-  if (m==='mock') { if(isTeacher()) initMockPage(); else setMode('home'); return; }
-  if (m==='reading') { initReadingPage(); return; }
+  if (m==='tcs') { if(isTeacher()){ tcsSubMode='record'; initTcsPage(); } else setMode('profile'); return; }
+  if (m==='mock') { if(isTeacher()){ tcsSubMode='mock'; initTcsPage(); } else setMode('home'); return; }
+  if (m==='reading') { if(isTeacher()){ tcsSubMode='reading'; initTcsPage(); } else initReadingPage(); return; }
   if (m==='profile') { renderProfilePage(); }
   sessionStorage.setItem('last_mode', m);
   document.getElementById('panel-title').textContent = {chat:'채팅',prayer:'기도제목',home:'홈',calendar:'일정',admin:'관리자',tcs:'TCS',mock:'모의고사 분석',reading:'Triple School',profile:'내 프로필'}[m] || m;
@@ -3247,6 +3248,8 @@ let tcsCurrentStudent = null;
 let tcsRecords = {};
 let tcsStudents = [];
 let tcsCurrentSection = 'personal';
+let tcsSubMode = 'record';   // 'record' | 'mock' | 'reading' — TCS 안의 서브탭
+let tcsMockUnified = false;  // true면 모의고사를 TCS 서브탭으로(뒤로가기 버튼 없음)
 
 async function initTcsPage() {
   const sn = document.getElementById('subnav-tcs'); if (sn) sn.innerHTML = tcsSubnavHtml('tcs');
@@ -3259,7 +3262,7 @@ async function initTcsPage() {
   const { data: students } = await sb.from('members')
     .select('*')
     .eq('community_id', ME.community_id || '00000000-0000-0000-0000-000000000001')
-    .in('community_role', ['student'])
+    .or('community_role.eq.student,role.eq.학생')
     .order('name');
   tcsStudents = students || [];
 
@@ -3294,12 +3297,6 @@ async function selectTcsStudent(student) {
   if (typeof student === 'string') student = JSON.parse(student);
   tcsCurrentStudent = student;
   tcsCurrentSection = 'personal';
-
-  // 헤더 업데이트
-  document.getElementById('tcs-header-sub').textContent = `${student.name} 학생의 기록부`;
-  document.getElementById('tcs-header-actions').innerHTML = `
-    <button onclick="showTcsPreview()" style="height:34px;padding:0 14px;border-radius:9px;border:1.5px solid var(--accent);background:white;color:var(--accent);font:600 12px var(--font);cursor:pointer">👁️ 미리보기</button>
-    <button onclick="printTcsPdf()" style="height:34px;padding:0 14px;border-radius:9px;border:none;background:linear-gradient(135deg,#1d3a5f,#2a5298);color:white;font:600 12px var(--font);cursor:pointer">📄 PDF 출력</button>`;
 
   // 이 학생의 기록 로드
   const { data: records } = await sb.from('tcs_records')
@@ -3349,7 +3346,7 @@ async function selectTcsStudent(student) {
   } catch (e) { tcsRecords._reading_included = []; }
 
   renderTcsStudentPanel();
-  renderTcsSectionList();
+  renderTcsMain();
 }
 
 async function setTcsStudentGrade(grade) {
@@ -4097,6 +4094,7 @@ function tcsImageToB64Resized(file, maxDim = 1600, quality = 0.82) {
 function openMockExamEditor() {
   tcsCurrentSection = 'mockexam';
   tcsMockTarget = 'tcs-main';
+  tcsMockUnified = false;
   tcsMockState = { files: [], answerFiles: [], result: null, analyzing: false };
   renderMockExamEditor();
 }
@@ -4111,7 +4109,7 @@ async function initMockPage() {
   const { data: students } = await sb.from('members')
     .select('id,name,color,initials,grade')
     .eq('community_id', ME.community_id || '00000000-0000-0000-0000-000000000001')
-    .in('community_role', ['student'])
+    .or('community_role.eq.student,role.eq.학생')
     .order('name');
   tcsMockStudents = students || [];
 
@@ -4171,7 +4169,10 @@ function renderMockExamEditor() {
 
   main.innerHTML = `
     <div style="max-width:680px">
-      ${standalone ? '' : `<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+      ${(standalone || tcsMockUnified) ? (tcsMockUnified ? `<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <div style="font-size:22px">🧠</div>
+        <div style="font-size:16px;font-weight:700;color:var(--ink)">${tcsCurrentStudent?.name || ''} · 모의고사 분석 (AI)</div>
+      </div>` : '') : `<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
         <button onclick="renderTcsSectionList()" style="height:32px;padding:0 12px;border-radius:8px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:500 12px var(--font);cursor:pointer">← 목록</button>
         <div style="font-size:22px">🧠</div>
         <div style="font-size:16px;font-weight:700;color:var(--ink)">모의고사 분석 (AI)</div>
@@ -4365,17 +4366,74 @@ let readingMyLogs = [];
 
 // TCS 내부 하위 탭 — 역할별로 다름
 function tcsSubnavHtml(active) {
-  const tab = (m, label) => {
-    const on = active === m;
-    return `<button onclick="setMode('${m}')" style="height:30px;padding:0 13px;border:none;border-radius:8px;font:600 12px var(--font);cursor:pointer;background:${on ? '#1d3a5f' : 'transparent'};color:${on ? '#fff' : 'var(--ink2)'}">${label}</button>`;
-  };
   let tabs = '';
   if (isTeacher()) {
-    tabs = tab('tcs', '기록부') + tab('mock', '모의고사') + tab('reading', 'Triple School');
+    const tt = (m, label) => {
+      const on = tcsSubMode === m;
+      return `<button onclick="setTcsSubMode('${m}')" style="height:30px;padding:0 13px;border:none;border-radius:8px;font:600 12px var(--font);cursor:pointer;background:${on ? '#1d3a5f' : 'transparent'};color:${on ? '#fff' : 'var(--ink2)'}">${label}</button>`;
+    };
+    tabs = tt('record', '기록부') + tt('mock', '모의고사') + tt('reading', 'Triple School');
   } else {
+    const tab = (m, label) => {
+      const on = active === m;
+      return `<button onclick="setMode('${m}')" style="height:30px;padding:0 13px;border:none;border-radius:8px;font:600 12px var(--font);cursor:pointer;background:${on ? '#1d3a5f' : 'transparent'};color:${on ? '#fff' : 'var(--ink2)'}">${label}</button>`;
+    };
     tabs = tab('profile', '개인정보') + tab('reading', 'Triple School');
   }
   return `<div style="display:inline-flex;gap:2px;background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:3px">${tabs}</div>`;
+}
+
+// TCS 안에서 서브탭(기록부/모의고사/Triple School) 전환 — 선택된 학생 유지
+function setTcsSubMode(m) {
+  tcsSubMode = m;
+  const sn = document.getElementById('subnav-tcs');
+  if (sn) sn.innerHTML = tcsSubnavHtml();
+  renderTcsMain();
+}
+
+// TCS 헤더(부제 + 액션 버튼)를 서브모드에 맞게 갱신
+function updateTcsHeader() {
+  const sub = document.getElementById('tcs-header-sub');
+  const actions = document.getElementById('tcs-header-actions');
+  const name = tcsCurrentStudent?.name || '';
+  if (!tcsCurrentStudent) {
+    if (sub) sub.textContent = '학생을 선택하세요';
+    if (actions) actions.innerHTML = '';
+    return;
+  }
+  if (tcsSubMode === 'record') {
+    if (sub) sub.textContent = `${name} 학생의 기록부`;
+    if (actions) actions.innerHTML = `
+      <button onclick="showTcsPreview()" style="height:34px;padding:0 14px;border-radius:9px;border:1.5px solid var(--accent);background:white;color:var(--accent);font:600 12px var(--font);cursor:pointer">👁️ 미리보기</button>
+      <button onclick="printTcsPdf()" style="height:34px;padding:0 14px;border-radius:9px;border:none;background:linear-gradient(135deg,#1d3a5f,#2a5298);color:white;font:600 12px var(--font);cursor:pointer">📄 PDF 출력</button>`;
+  } else if (tcsSubMode === 'mock') {
+    if (sub) sub.textContent = `${name} 학생 · 모의고사 분석`;
+    if (actions) actions.innerHTML = '';
+  } else {
+    if (sub) sub.textContent = `${name} 학생 · Triple School`;
+    if (actions) actions.innerHTML = '';
+  }
+}
+
+// TCS 메인 영역을 서브모드에 맞게 렌더
+function renderTcsMain() {
+  const main = document.getElementById('tcs-main');
+  if (!main) return;
+  updateTcsHeader();
+  if (!tcsCurrentStudent) {
+    main.innerHTML = '<div style="text-align:center;padding:70px 20px;color:var(--ink3);font-size:14px">← 왼쪽에서 학생을 선택하세요</div>';
+    return;
+  }
+  if (tcsSubMode === 'mock') {
+    tcsMockTarget = 'tcs-main';
+    tcsMockUnified = true;
+    tcsMockState = { files: [], answerFiles: [], result: null, analyzing: false };
+    renderMockExamEditor();
+  } else if (tcsSubMode === 'reading') {
+    renderTcsReadingUnified();
+  } else {
+    renderTcsSectionList();
+  }
 }
 
 async function initReadingPage() {
@@ -4424,6 +4482,7 @@ function groupBooksByCategory() {
 const READING_CAT_SHORT = { 'Gospel School': 'Gospel', 'Disciple School': 'Disciple', 'Calling School': 'Calling' };
 let readingStudentFilter = { cat: 'all', q: '' };
 let readingShowRead = false;
+let readingShowUnread = false;
 
 function readingBookRow(b, log) {
   const done = !!log;
@@ -4468,10 +4527,12 @@ function renderReadingList() {
     return arr.map(b => readingBookRow(b, readMap[b.id])).join('');
   };
 
-  let html = `<div style="font-size:13px;font-weight:700;color:var(--adeep);margin:6px 0 8px">📖 읽지 않은 책 (${unread.length})</div>`;
-  html += unread.length ? renderGroup(unread) : `<div style="font-size:12px;color:var(--ink3);padding:8px 0">${(q || cat !== 'all') ? '조건에 맞는 책이 없어요' : '모든 책을 다 읽었어요! 🎉'}</div>`;
-  html += `<div onclick="readingShowRead=!readingShowRead;renderReadingList()" style="font-size:13px;font-weight:700;color:var(--adeep);margin:20px 0 8px;cursor:pointer;display:flex;align-items:center;gap:6px">✅ 읽은 책 (${read.length}) <span style="font-size:11px;font-weight:500;color:var(--ink3)">${readingShowRead ? '▲ 접기' : '▼ 펼치기'}</span></div>`;
-  if (readingShowRead) html += read.length ? renderGroup(read) : `<div style="font-size:12px;color:var(--ink3);padding:8px 0">아직 읽은 책이 없어요</div>`;
+  const showUnread = readingShowUnread || !!q;
+  const showRead = readingShowRead || !!q;
+  let html = `<div onclick="readingShowUnread=!readingShowUnread;renderReadingList()" style="font-size:13px;font-weight:700;color:var(--adeep);margin:6px 0 8px;cursor:pointer;display:flex;align-items:center;gap:6px">📖 읽지 않은 책 (${unread.length}) <span style="font-size:11px;font-weight:500;color:var(--ink3)">${showUnread ? '▲ 접기' : '▼ 펼치기'}</span></div>`;
+  if (showUnread) html += unread.length ? renderGroup(unread) : `<div style="font-size:12px;color:var(--ink3);padding:8px 0">${(q || cat !== 'all') ? '조건에 맞는 책이 없어요' : '모든 책을 다 읽었어요! 🎉'}</div>`;
+  html += `<div onclick="readingShowRead=!readingShowRead;renderReadingList()" style="font-size:13px;font-weight:700;color:var(--adeep);margin:20px 0 8px;cursor:pointer;display:flex;align-items:center;gap:6px">✅ 읽은 책 (${read.length}) <span style="font-size:11px;font-weight:500;color:var(--ink3)">${showRead ? '▲ 접기' : '▼ 펼치기'}</span></div>`;
+  if (showRead) html += read.length ? renderGroup(read) : `<div style="font-size:12px;color:var(--ink3);padding:8px 0">아직 읽은 책이 없어요</div>`;
   box.innerHTML = html;
 }
 
@@ -4566,7 +4627,7 @@ async function deleteReadingLog(bookId) {
 async function renderReadingAdmin() {
   const page = document.getElementById('reading-page');
   const { data: students } = await sb.from('members').select('id,name,initials,color')
-    .eq('community_id', CID()).in('community_role', ['student']).order('name');
+    .eq('community_id', CID()).or('community_role.eq.student,role.eq.학생').order('name');
   const studs = students || [];
   const ids = studs.map(s => s.id);
   let logs = [];
@@ -4640,6 +4701,93 @@ async function renderReadingAdmin() {
   </div>`;
 }
 
+// ── 교사 TCS 안의 Triple School 서브탭: 선택 학생 독서현황 + 책관리 + 전체 합산 TOP10 ──
+async function renderTcsReadingUnified() {
+  const main = document.getElementById('tcs-main');
+  if (!main || !tcsCurrentStudent) return;
+  main.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink3)">불러오는 중...</div>';
+
+  try {
+    if (!readingBooks.length) {
+      const { data: books, error: bErr } = await sb.from('reading_books').select('*').order('category').order('sort').order('title');
+      if (bErr) {
+        main.innerHTML = `<div style="max-width:560px;margin:30px auto;text-align:center"><div style="font-size:40px;margin-bottom:12px">🗄️</div><div style="font-size:16px;font-weight:700;margin-bottom:8px">데이터베이스 설정이 필요해요</div><div style="font-size:13px;color:var(--ink3);line-height:1.8">제공해드린 <b>필독서_DB설치.sql</b>을 Supabase → SQL Editor에서 실행해주세요.</div><div style="font-size:11px;color:#b91c1c;margin-top:14px">${bErr.message || ''}</div></div>`;
+        return;
+      }
+      readingBooks = books || [];
+    }
+  } catch (e) {
+    main.innerHTML = `<div style="text-align:center;padding:40px;color:#b91c1c">필독서 데이터를 불러오지 못했어요</div>`;
+    return;
+  }
+
+  const sid = tcsCurrentStudent.id;
+  let myLogs = [];
+  try { const { data: lg } = await sb.from('reading_logs').select('*').eq('student_id', sid); myLogs = lg || []; } catch (e) {}
+  const readMap = {}; myLogs.forEach(l => readMap[l.book_id] = l);
+
+  // 전체 공동체 합산
+  let allLogs = [];
+  try { const { data: al } = await sb.from('reading_logs').select('book_id'); allLogs = al || []; } catch (e) {}
+  const byBook = {}; readingBooks.forEach(b => byBook[b.id] = 0);
+  allLogs.forEach(l => { if (byBook[l.book_id] !== undefined) byBook[l.book_id]++; });
+
+  const total = readingBooks.length;
+  const readCount = readingBooks.filter(b => readMap[b.id]).length;
+  const catStat = c => { const list = readingBooks.filter(b => b.category === c); const r = list.filter(b => readMap[b.id]).length; return { total: list.length, read: r, pct: list.length ? Math.round(r / list.length * 100) : 0 }; };
+  const catCards = READING_CATEGORIES.map(c => { const s = catStat(c); return `<div style="flex:1;min-width:0;background:var(--s2);border-radius:11px;padding:11px 12px"><div style="font-size:12px;font-weight:700;color:var(--adeep)">${READING_CAT_SHORT[c] || c}</div><div style="font-size:16px;font-weight:800;color:var(--ink);margin:2px 0 6px">${s.read}<span style="font-size:12px;font-weight:500;color:var(--ink3)">/${s.total}</span></div><div style="background:var(--s3);border-radius:99px;height:6px;overflow:hidden"><div style="height:100%;width:${s.pct}%;background:#2a5298"></div></div></div>`; }).join('');
+
+  const readBooks = readingBooks.filter(b => readMap[b.id]);
+  const readRows = readBooks.length ? readBooks.map(b => { const l = readMap[b.id]; return `<div style="border:1.5px solid #bfdbfe;background:#f0f7ff;border-radius:11px;padding:11px 13px;margin-bottom:8px">
+    <div style="display:flex;align-items:center;gap:8px"><div style="flex:1;font-size:13.5px;font-weight:700;color:var(--ink)">${b.title} <span style="font-size:11px;font-weight:500;color:var(--ink3)">${READING_CAT_SHORT[b.category] || b.category}</span></div><div style="font-size:11px;color:#1d4ed8">${l.read_date || ''}${l.include_in_record ? ' · 📋기록부' : ''}</div></div>
+    ${l.report ? `<div style="margin-top:6px;font-size:12.5px;color:var(--ink2);line-height:1.6;white-space:pre-wrap">${(l.report || '').replace(/</g, '&lt;')}</div>` : '<div style="margin-top:4px;font-size:12px;color:var(--ink3)">독후감 없음</div>'}
+  </div>`; }).join('') : '<div style="font-size:13px;color:var(--ink3);padding:12px 0">아직 읽은 책 기록이 없어요</div>';
+
+  const { cats, ordered } = groupBooksByCategory();
+  const bookList = ordered.map(cat => `
+    <div style="font-size:12px;font-weight:700;color:var(--adeep);margin:12px 0 6px">${cat} (${cats[cat].length})</div>
+    ${cats[cat].map(b => `<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;border:1px solid var(--border);border-radius:9px;margin-bottom:6px">
+      <div style="flex:1;font-size:13px;color:var(--ink)">${b.title}${b.author ? `<span style="font-size:11px;color:var(--ink3)"> · ${b.author}</span>` : ''}</div>
+      <button onclick="deleteReadingBook('${b.id}')" style="width:26px;height:26px;border-radius:7px;border:1.5px solid var(--border);background:white;color:#ef4444;font-size:14px;cursor:pointer">×</button>
+    </div>`).join('')}`).join('');
+  const catOpts = READING_CATEGORIES.map(c => `<option value="${c}">${c}</option>`).join('');
+
+  const popular = [...readingBooks].sort((a, b) => (byBook[b.id] || 0) - (byBook[a.id] || 0)).slice(0, 10);
+  const popularRows = popular.length ? popular.map(b => `<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border)"><div style="flex:1;font-size:13px;color:var(--ink)">${b.title} <span style="font-size:11px;color:var(--ink3)">${READING_CAT_SHORT[b.category] || b.category}</span></div><div style="font-size:12px;font-weight:600;color:#1d4ed8">${byBook[b.id] || 0}명</div></div>`).join('') : '<div style="font-size:13px;color:var(--ink3);padding:12px 0">데이터 없음</div>';
+
+  main.innerHTML = `<div style="max-width:720px">
+    <div style="background:linear-gradient(135deg,#1d3a5f,#2a5298);border-radius:14px;padding:14px 18px;margin-bottom:12px;color:white">
+      <div style="display:flex;justify-content:space-between;align-items:baseline"><div style="font-size:13px;opacity:.85">${tcsCurrentStudent.name} 학생 · 읽은 책</div><div style="font-size:20px;font-weight:800">${readCount} / ${total}권</div></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:16px">${catCards}</div>
+    <div style="font-size:13px;font-weight:700;color:var(--adeep);margin:0 0 8px">📖 ${tcsCurrentStudent.name} 학생이 읽은 책 · 독후감</div>
+    <div style="margin-bottom:22px">${readRows}</div>
+
+    <div style="font-size:14px;font-weight:700;color:var(--adeep);margin:0 0 10px">📚 책 관리 <span style="font-size:11px;font-weight:500;color:var(--ink3)">(전 공동체 공통 목록)</span></div>
+    <div class="adm-card" style="margin-bottom:22px">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+        <select id="rb-cat" style="height:38px;padding:0 10px;border-radius:9px;border:1.5px solid var(--border);background:white;font:13px var(--font);cursor:pointer">${catOpts}</select>
+        <input id="rb-title" type="text" placeholder="책 제목" style="flex:1;min-width:160px;height:38px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--s2);font:13px var(--font);outline:none"/>
+        <input id="rb-author" type="text" placeholder="저자 (선택)" style="width:130px;height:38px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--s2);font:13px var(--font);outline:none"/>
+        <button onclick="addReadingBook()" style="height:38px;padding:0 16px;border-radius:9px;border:none;background:#1d3a5f;color:white;font:600 13px var(--font);cursor:pointer">추가</button>
+      </div>
+      ${bookList || '<div style="font-size:13px;color:var(--ink3)">아직 등록된 책이 없어요</div>'}
+    </div>
+
+    <div style="font-size:14px;font-weight:700;color:var(--adeep);margin:0 0 8px">🔥 많이 읽은 책 TOP 10 <span style="font-size:11px;font-weight:500;color:var(--ink3)">(전 공동체 합산)</span></div>
+    <div class="adm-card" style="margin-bottom:4px">${popularRows}</div>
+  </div>`;
+}
+
+// 책 추가/삭제 후 화면 갱신 (교사 TCS-Triple School / 학생 reading-view 모두 대응)
+async function refreshReadingAfterBookChange() {
+  try { const { data: books } = await sb.from('reading_books').select('*').order('category').order('sort').order('title'); readingBooks = books || []; } catch (e) {}
+  const tcsView = document.getElementById('tcs-view');
+  const tcsVisible = tcsView && tcsView.style.display !== 'none';
+  if (isTeacher() && tcsVisible && tcsSubMode === 'reading') renderTcsReadingUnified();
+  else initReadingPage();
+}
+
 async function addReadingBook() {
   const cat = document.getElementById('rb-cat').value;
   const title = document.getElementById('rb-title').value.trim();
@@ -4648,13 +4796,13 @@ async function addReadingBook() {
   const { error } = await sb.from('reading_books').insert({ category: cat, title, author });
   if (error) { showUploadToast('추가 실패 😥 ' + error.message); return; }
   showUploadToast('✅ 책이 추가됐어요');
-  initReadingPage();
+  refreshReadingAfterBookChange();
 }
 async function deleteReadingBook(id) {
   const { error } = await sb.from('reading_books').delete().eq('id', id);
   if (error) { showUploadToast('삭제 실패 😥 ' + error.message); return; }
   showUploadToast('삭제됨');
-  initReadingPage();
+  refreshReadingAfterBookChange();
 }
 
 function renderTcsField(field, value) {
