@@ -2484,7 +2484,7 @@ async function renderHome() {
   if (!area) return;
   const d = new Date();
   const wk = ['일','월','화','수','목','금','토'];
-  const isAdmin = isSuperAdmin();
+  const isAdmin = isCommunityAdmin();
   const todayStr = d.toISOString().slice(0,10);
 
   // 오늘의 묵상 로드
@@ -5237,7 +5237,7 @@ async function renderCommunitySettings() {
           <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
             ${['#1d3a5f','#2a5298','#2a7a5a','#7B6BA0','#B05865','#B89146','#5A7C8B','#c0392b'].map(c =>
               `<div onclick="selectCommSettingColor('${c}')" data-cs-color="${c}"
-                style="width:32px;height:32px;border-radius:9px;background:${c};cursor:pointer;transition:transform .1s;${comm.color===c?'transform:scale(1.2);outline:2.5px solid #000;outline-offset:2px':''}">`
+                style="width:32px;height:32px;border-radius:9px;background:${c};cursor:pointer;transition:transform .1s;${comm.color===c?'transform:scale(1.2);outline:2.5px solid #000;outline-offset:2px':''}"></div>`
             ).join('')}
             <input type="color" id="cs-color-pick" value="${comm.color||'#1d3a5f'}"
               style="width:32px;height:32px;border:none;border-radius:9px;cursor:pointer;padding:0"
