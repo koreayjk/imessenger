@@ -5511,23 +5511,49 @@ async function viewCommunityMembers(communityId, communityName) {
         <div style="font-size:15px;font-weight:700">${communityName} 멤버 (${list.length}명)</div>
       </div>
       ${list.length === 0 ? '<div style="text-align:center;padding:40px;color:var(--ink3)">멤버가 없어요</div>' :
-        list.map(m => `
-        <div class="adm-row" style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--bs)">
+        list.map(m => {
+          const st = m.status || 'approved';
+          const stBadge = st === 'pending'
+            ? `<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:99px;background:#fef9c3;color:#854d0e">승인대기</span>`
+            : st === 'rejected'
+            ? `<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:99px;background:#fee2e2;color:#b91c1c">거절됨</span>` : '';
+          return `
+        <div class="adm-row" style="display:flex;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid var(--bs);flex-wrap:wrap">
           <div style="width:36px;height:36px;border-radius:10px;background:${m.color||'#1d3a5f'};display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:14px;flex-shrink:0">${m.initials||m.name?.[0]||'?'}</div>
-          <div style="flex:1">
+          <div style="flex:1;min-width:130px">
             <div style="font-size:13px;font-weight:600">${m.name}</div>
-            <div style="font-size:11px;color:var(--ink3)">${m.email}</div>
+            <div style="font-size:11px;color:var(--ink3)">${m.email||''}</div>
           </div>
-          <span style="font-size:11px;font-weight:600;padding:3px 9px;border-radius:99px;background:${roleColor[m.community_role]||'#6b7280'}22;color:${roleColor[m.community_role]||'#6b7280'}">${roleLabel[m.community_role]||m.community_role||'멤버'}</span>
-          <select onchange="changeMemberCommunityRole('${m.id}',this.value)" style="height:28px;padding:0 8px;border-radius:7px;border:1.5px solid var(--border);font:500 12px var(--font);color:var(--ink);background:white;cursor:pointer">
-            <option value="student" ${m.community_role==='student'?'selected':''}>학생</option>
-            <option value="staff" ${m.community_role==='staff'?'selected':''}>간사</option>
-            <option value="teacher" ${m.community_role==='teacher'?'selected':''}>교사</option>
-            <option value="community_admin" ${m.community_role==='community_admin'?'selected':''}>관리자</option>
-            <option value="super_admin" ${m.community_role==='super_admin'?'selected':''}>총관리자</option>
-          </select>
-        </div>`).join('')}
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+            ${stBadge}
+            <span style="font-size:11px;font-weight:600;padding:3px 9px;border-radius:99px;background:${roleColor[m.community_role]||'#6b7280'}22;color:${roleColor[m.community_role]||'#6b7280'}">${roleLabel[m.community_role]||m.community_role||'멤버'}</span>
+            ${st === 'pending' ? `
+              <button onclick="approveInCommunity('${m.id}','${communityId}','${escAttr(communityName)}')" style="height:28px;padding:0 11px;border-radius:7px;border:none;background:#15803d;color:white;font:600 12px var(--font);cursor:pointer">✅ 승인</button>
+              <button onclick="rejectInCommunity('${m.id}','${communityId}','${escAttr(communityName)}')" style="height:28px;padding:0 11px;border-radius:7px;border:1.5px solid #fca5a5;background:white;color:#dc2626;font:600 12px var(--font);cursor:pointer">거절</button>` : ''}
+            <select onchange="changeMemberCommunityRole('${m.id}',this.value)" style="height:28px;padding:0 8px;border-radius:7px;border:1.5px solid var(--border);font:500 12px var(--font);color:var(--ink);background:white;cursor:pointer">
+              <option value="student" ${m.community_role==='student'?'selected':''}>학생</option>
+              <option value="staff" ${m.community_role==='staff'?'selected':''}>간사</option>
+              <option value="teacher" ${m.community_role==='teacher'?'selected':''}>교사</option>
+              <option value="community_admin" ${m.community_role==='community_admin'?'selected':''}>관리자</option>
+              <option value="super_admin" ${m.community_role==='super_admin'?'selected':''}>총관리자</option>
+            </select>
+          </div>
+        </div>`;
+        }).join('')}
     </div>`;
+}
+
+async function approveInCommunity(id, cid, cname) {
+  const { error } = await sb.from('members').update({ status: 'approved' }).eq('id', id);
+  if (error) { showUploadToast('승인 실패 😥'); return; }
+  showUploadToast('✅ 승인했어요');
+  viewCommunityMembers(cid, cname);
+}
+async function rejectInCommunity(id, cid, cname) {
+  const { error } = await sb.from('members').update({ status: 'rejected' }).eq('id', id);
+  if (error) { showUploadToast('처리 실패 😥'); return; }
+  showUploadToast('거절했어요');
+  viewCommunityMembers(cid, cname);
 }
 
 async function changeMemberCommunityRole(memberId, role) {
