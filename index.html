@@ -5361,9 +5361,17 @@ async function renderAdminCommunities() {
   const area = document.getElementById('admin-content');
   const { data: communities } = await sb.from('communities').select('*').order('created_at');
   const list = communities || [];
+  const { data: pendingRows } = await sb.from('members').select('community_id').eq('status', 'pending');
+  const pendingByComm = {};
+  (pendingRows || []).forEach(r => { pendingByComm[r.community_id] = (pendingByComm[r.community_id] || 0) + 1; });
+  const totalPending = (pendingRows || []).length;
 
   area.innerHTML = `
     <div style="max-width:720px">
+      ${totalPending ? `<div style="background:#fee2e2;border:1.5px solid #fca5a5;border-radius:12px;padding:12px 15px;margin-bottom:16px;display:flex;align-items:center;gap:10px">
+        <span style="font-size:20px">🔔</span>
+        <span style="font-size:13.5px;font-weight:700;color:#b91c1c">승인 대기 ${totalPending}명 — 아래 빨간 배지가 있는 공동체의 "멤버 보기"에서 승인하세요</span>
+      </div>` : ''}
       <!-- 새 공동체 생성 -->
       <div class="adm-card" style="border:2px dashed var(--border);background:var(--s2);margin-bottom:20px">
         <div style="font-size:14px;font-weight:700;margin-bottom:14px;color:var(--adeep)">🏛️ 새 공동체 만들기</div>
@@ -5400,7 +5408,7 @@ async function renderAdminCommunities() {
                 ${c.logo_url ? `<img src="${c.logo_url}" style="width:44px;height:44px;border-radius:12px;object-fit:cover"/>` : (c.name||'?')[0]}
               </div>
               <div>
-                <div style="font-size:15px;font-weight:700;color:var(--ink)">${c.name}</div>
+                <div style="font-size:15px;font-weight:700;color:var(--ink);display:flex;align-items:center;gap:8px;flex-wrap:wrap">${c.name}${pendingByComm[c.id] ? `<span style="font-size:11px;font-weight:700;padding:2px 9px;border-radius:99px;background:#fee2e2;color:#dc2626">🔔 승인대기 ${pendingByComm[c.id]}명</span>` : ''}</div>
                 <div style="font-size:12px;color:var(--ink3);margin-top:2px">${c.description||'설명 없음'}</div>
                 <div style="font-size:11px;color:var(--ink3);margin-top:3px">생성일: ${new Date(c.created_at).toLocaleDateString('ko-KR')}</div>
               </div>
@@ -5419,7 +5427,7 @@ async function renderAdminCommunities() {
           <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border);display:flex;gap:16px">
             <span style="font-size:12px;color:var(--ink3)">🆔 ${c.id.slice(0,8)}...</span>
             <button onclick="viewCommunityMembers('${c.id}','${escAttr(c.name)}')"
-              style="font-size:12px;color:var(--accent);background:none;border:none;cursor:pointer;font-weight:600;padding:0">멤버 보기 →</button>
+              style="font-size:12px;color:${pendingByComm[c.id] ? '#dc2626' : 'var(--accent)'};background:none;border:none;cursor:pointer;font-weight:700;padding:0">멤버 보기${pendingByComm[c.id] ? ` · 승인대기 ${pendingByComm[c.id]}명` : ''} →</button>
           </div>
         </div>
       `).join('')}
