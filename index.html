@@ -908,6 +908,13 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
   </div>
 
   <!-- 모바일 하단 탭바 -->
+  <!-- 이미지 크게 보기 모달 (공통 · 항상 존재) -->
+  <div id="img-modal" style="display:none;position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.9);align-items:center;justify-content:center;overflow:hidden;touch-action:none">
+    <div id="img-modal-close" onclick="closeImageModal()" style="position:absolute;top:16px;right:16px;width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:10;color:white;font-size:18px">✕</div>
+    <img id="img-modal-src" style="max-width:95vw;max-height:95vh;border-radius:8px;object-fit:contain;transform-origin:center center;transition:transform .1s;cursor:grab;user-select:none"/>
+    <div style="position:absolute;bottom:16px;left:50%;transform:translateX(-50%);color:rgba(255,255,255,.5);font-size:12px">핀치로 확대 · 더블탭으로 확대/축소</div>
+  </div>
+
   <div id="mobile-nav" style="display:none">
     <div class="mn-btn active" id="mn-home" onclick="mobileTab('home')">
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11.5L12 4l9 7.5"/><path d="M5 10v10h14V10"/></svg>
@@ -2032,7 +2039,7 @@ function msgHtml(m, prev, readMap={}) {
         if (f.isImage) {
           bubbleContent = `<div style="max-width:260px;line-height:0;border-radius:12px;overflow:hidden">
             <img src="${f.thumbUrl||f.directUrl}" alt="${f.name}" style="width:100%;display:block;cursor:pointer;border-radius:12px" onclick="openImageModal('${f.viewUrl}')" onerror="this.src='${f.directUrl}';this.onerror=null"/>
-            <div style="line-height:1.4;padding:4px 2px 0;font-size:11px;text-align:right"><a href="${f.viewUrl}" target="_blank" style="color:var(--accent);text-decoration:none">크게 보기 ↗</a></div>
+            <div style="line-height:1.4;padding:4px 2px 0;font-size:11px;text-align:right"><span onclick="openImageModal('${f.viewUrl}')" style="color:var(--accent);cursor:pointer">크게 보기 ↗</span></div>
           </div>`;
         } else if (f.isVideo) {
           bubbleContent = `<div style="max-width:280px">
@@ -2587,13 +2594,6 @@ async function renderHome() {
         ${isAdmin ? `<button onclick="showScheduleImageForm()" style="height:32px;padding:0 16px;border-radius:9px;border:none;background:var(--sage);color:white;font:600 12px var(--font);cursor:pointer">📷 지금 등록하기</button>` : ''}
       </div>`}
     </div>
-  </div>
-
-  <!-- 이미지 크게 보기 모달 -->
-  <div id="img-modal" style="display:none;position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.9);align-items:center;justify-content:center;overflow:hidden;touch-action:none">
-    <div id="img-modal-close" onclick="closeImageModal()" style="position:absolute;top:16px;right:16px;width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:10;color:white;font-size:18px">✕</div>
-    <img id="img-modal-src" style="max-width:95vw;max-height:95vh;border-radius:8px;object-fit:contain;transform-origin:center center;transition:transform .1s;cursor:grab;user-select:none"/>
-    <div style="position:absolute;bottom:16px;left:50%;transform:translateX(-50%);color:rgba(255,255,255,.5);font-size:12px">핀치로 확대 · 더블탭으로 확대/축소</div>
   </div>`;}
 
 function openImageModal(url) {
