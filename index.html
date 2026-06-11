@@ -2966,6 +2966,14 @@ function initAdminPage() {
 // 내 프로필 — 학생 개인정보 입력
 // ══════════════════════════════════════════
 
+async function saveMyGroup(gid) {
+  const v = gid || null;
+  const { error } = await sb.from('members').update({ group_id: v }).eq('id', ME.id);
+  if (error) { showUploadToast('변경 실패'); return; }
+  ME.group_id = v;
+  showUploadToast('✅ 그룹이 저장됐어요');
+}
+
 async function renderProfilePage() {
   const sn = document.getElementById('subnav-profile');
   if (sn) sn.innerHTML = isTeacher() ? '' : tcsSubnavHtml('profile');
@@ -2978,6 +2986,11 @@ async function renderProfilePage() {
 
   const roleLabel = {super_admin:'총관리자', community_admin:'관리자', teacher:'교사', staff:'간사', student:'학생', member:'멤버'}[ME.community_role] || '멤버';
   const roleColor = {super_admin:'#7c3aed', community_admin:'#1d4ed8', teacher:'#0369a1', staff:'#b45309', student:'#15803d', member:'#6b7280'}[ME.community_role] || '#6b7280';
+  let myGroups = [];
+  if (isStudent()) {
+    const { data: grps } = await sb.from('student_groups').select('*').eq('community_id', CID()).order('sort').order('name');
+    myGroups = grps || [];
+  }
 
   const inp = (id, label, val, type='text', placeholder='') => `
     <div style="margin-bottom:16px">
@@ -3009,6 +3022,16 @@ async function renderProfilePage() {
           <span style="display:inline-block;margin-top:6px;font-size:11px;font-weight:700;padding:3px 10px;border-radius:99px;background:rgba(255,255,255,.2);color:white">${roleLabel}</span>
         </div>
       </div>
+
+      ${isStudent() && myGroups.length ? `
+      <!-- 내 그룹 (학생 자가 선택) -->
+      <div class="adm-card" style="margin-bottom:16px">
+        <div style="font-size:14px;font-weight:700;color:var(--adeep);margin-bottom:10px">👥 내 그룹</div>
+        <select id="prof-group" onchange="saveMyGroup(this.value)" style="width:100%;padding:11px 14px;border-radius:11px;border:1.5px solid var(--border);background:var(--s2);font:14px var(--font);color:var(--ink);outline:none;cursor:pointer">
+          <option value="">그룹 선택 안 함</option>
+          ${myGroups.map(g => `<option value="${g.id}" ${ME.group_id === g.id ? 'selected' : ''}>${g.name}</option>`).join('')}
+        </select>
+      </div>` : ''}
 
       <!-- 기본 정보 (모두 접근 가능) -->
       <div class="adm-card" style="margin-bottom:16px">
@@ -3283,6 +3306,18 @@ let tcsStudents = [];
 let tcsCurrentSection = 'personal';
 let tcsSubMode = 'record';   // 'record' | 'mock' | 'reading' — TCS 안의 서브탭
 let tcsMockUnified = false;  // true면 모의고사를 TCS 서브탭으로(뒤로가기 버튼 없음)
+let tcsOrgs = [];            // 기록부 기관 프리셋 (공동체별)
+let tcsSelectedOrgId = null; // 현재 선택된 기관
+let tcsGroups = [];          // 학생 그룹 (공동체별)
+async function loadRecordOrgs() {
+  const { data } = await sb.from('record_orgs').select('*').eq('community_id', CID()).order('sort').order('created_at');
+  tcsOrgs = data || [];
+  if ((!tcsSelectedOrgId || !tcsOrgs.find(o => o.id === tcsSelectedOrgId)) && tcsOrgs.length) tcsSelectedOrgId = tcsOrgs[0].id;
+}
+async function loadStudentGroups() {
+  const { data } = await sb.from('student_groups').select('*').eq('community_id', CID()).order('sort').order('name');
+  tcsGroups = data || [];
+}
 
 async function initTcsPage() {
   const sn = document.getElementById('subnav-tcs'); if (sn) sn.innerHTML = tcsSubnavHtml('tcs');
@@ -3298,6 +3333,7 @@ async function initTcsPage() {
     .or('community_role.eq.student,role.eq.학생')
     .order('name');
   tcsStudents = students || [];
+  await loadStudentGroups();
 
   renderTcsStudentPanel();
   if (tcsStudents.length > 0) {
@@ -3313,9 +3349,7 @@ async function initTcsPage() {
 
 function renderTcsStudentPanel() {
   const panel = document.getElementById('tcs-student-panel');
-  panel.innerHTML = `
-    <div style="font-size:11px;font-weight:600;color:var(--ink3);padding:4px 8px 8px;letter-spacing:.05em;text-transform:uppercase">학생 목록 (${tcsStudents.length}명)</div>
-    ${tcsStudents.map(s => `
+  const studentRow = (s) => `
       <div onclick="selectTcsStudent(${JSON.stringify({id:s.id,name:s.name,color:s.color,initials:s.initials}).replace(/"/g,'&quot;')})" id="tcs-student-${s.id}"
         style="display:flex;align-items:center;gap:8px;padding:9px 10px;border-radius:10px;cursor:pointer;transition:background .12s;margin-bottom:2px;
         ${tcsCurrentStudent?.id===s.id?'background:var(--asoft)':''}"
@@ -3323,7 +3357,88 @@ function renderTcsStudentPanel() {
         onmouseout="if('${s.id}'!==tcsCurrentStudent?.id)this.style.background=''">
         <div style="width:28px;height:28px;border-radius:8px;background:${s.color||'#1d3a5f'};display:flex;align-items:center;justify-content:center;color:white;font-size:11px;font-weight:700;flex-shrink:0">${s.initials||s.name?.[0]||'?'}</div>
         <span style="font-size:13px;font-weight:${tcsCurrentStudent?.id===s.id?'700':'400'};color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${s.name}</span>
-      </div>`).join('')}`;
+      </div>`;
+  let body = '';
+  if (tcsGroups.length) {
+    tcsGroups.forEach(g => {
+      const members = tcsStudents.filter(s => s.group_id === g.id);
+      if (!members.length) return;
+      body += `<div style="font-size:11px;font-weight:700;color:var(--adeep);padding:8px 8px 4px">${g.name} <span style="color:var(--ink3);font-weight:500">${members.length}</span></div>`;
+      body += members.map(studentRow).join('');
+    });
+    const ungrouped = tcsStudents.filter(s => !s.group_id || !tcsGroups.find(g => g.id === s.group_id));
+    if (ungrouped.length) {
+      body += `<div style="font-size:11px;font-weight:700;color:var(--ink3);padding:8px 8px 4px">미분류 <span style="font-weight:500">${ungrouped.length}</span></div>`;
+      body += ungrouped.map(studentRow).join('');
+    }
+  } else {
+    body = tcsStudents.map(studentRow).join('');
+  }
+  panel.innerHTML = `
+    <div style="font-size:11px;font-weight:600;color:var(--ink3);padding:4px 8px 8px;letter-spacing:.05em;text-transform:uppercase">학생 목록 (${tcsStudents.length}명)</div>
+    ${isTeacher() ? `<button onclick="openGroupManager()" style="width:100%;margin:0 0 8px;height:30px;border-radius:9px;border:1.5px dashed var(--accent);background:white;color:var(--accent);font:600 11.5px var(--font);cursor:pointer">👥 그룹 관리</button>` : ''}
+    ${body}`;
+}
+
+// ── 학생 그룹 관리 ──
+function openGroupManager() { renderGroupManager(); }
+function renderGroupManager() {
+  const main = document.getElementById('tcs-main');
+  if (!main) return;
+  const groupOpts = (sel) => `<option value="" ${!sel ? 'selected' : ''}>그룹 없음</option>` + tcsGroups.map(g => `<option value="${g.id}" ${sel === g.id ? 'selected' : ''}>${g.name}</option>`).join('');
+  main.innerHTML = `<div style="max-width:640px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px"><span style="font-size:20px">👥</span><span style="font-size:17px;font-weight:700;color:var(--ink)">학생 그룹 관리</span>
+      <button onclick="renderTcsMain()" style="margin-left:auto;height:32px;padding:0 14px;border-radius:9px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:600 12px var(--font);cursor:pointer">← 돌아가기</button></div>
+    <div style="font-size:13px;font-weight:700;color:var(--adeep);margin-bottom:8px">그룹</div>
+    <div class="adm-card" style="margin-bottom:18px">
+      ${tcsGroups.length ? tcsGroups.map(g => `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--bs)">
+        <div style="flex:1;font-size:13.5px;font-weight:600;color:var(--ink)">${g.name} <span style="font-size:11px;font-weight:500;color:var(--ink3)">${tcsStudents.filter(s => s.group_id === g.id).length}명</span></div>
+        <button onclick="renameStudentGroup('${g.id}')" style="height:28px;padding:0 10px;border-radius:7px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:600 12px var(--font);cursor:pointer">이름변경</button>
+        <button onclick="deleteStudentGroup('${g.id}')" style="width:28px;height:28px;border-radius:7px;border:1.5px solid var(--border);background:white;color:#ef4444;font-size:14px;cursor:pointer">×</button>
+      </div>`).join('') : '<div style="font-size:12px;color:var(--ink3);padding:4px 0">아직 그룹이 없어요</div>'}
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <input id="new-group-name" type="text" placeholder="새 그룹 이름 (예: 중등부, A반)" style="flex:1;height:38px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--s2);font:13px var(--font);outline:none"/>
+        <button onclick="addStudentGroup()" style="height:38px;padding:0 16px;border-radius:9px;border:none;background:#1d3a5f;color:white;font:600 13px var(--font);cursor:pointer">추가</button>
+      </div>
+    </div>
+    <div style="font-size:13px;font-weight:700;color:var(--adeep);margin-bottom:8px">학생 배치</div>
+    <div class="adm-card">
+      ${tcsStudents.length ? tcsStudents.map(s => `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--bs)">
+        <div style="width:30px;height:30px;border-radius:8px;background:${s.color || '#1d3a5f'};display:flex;align-items:center;justify-content:center;color:white;font-size:11px;font-weight:700;flex-shrink:0">${s.initials || s.name?.[0] || '?'}</div>
+        <div style="flex:1;font-size:13px;font-weight:600;color:var(--ink)">${s.name}</div>
+        <select onchange="assignStudentGroup('${s.id}',this.value)" style="height:30px;padding:0 8px;border-radius:7px;border:1.5px solid var(--border);font:500 12px var(--font);background:white;cursor:pointer">${groupOpts(s.group_id)}</select>
+      </div>`).join('') : '<div style="font-size:12px;color:var(--ink3)">학생이 없어요</div>'}
+    </div>
+  </div>`;
+}
+async function addStudentGroup() {
+  const name = document.getElementById('new-group-name').value.trim();
+  if (!name) { showUploadToast('그룹 이름을 입력하세요'); return; }
+  const { error } = await sb.from('student_groups').insert({ community_id: CID(), name });
+  if (error) { showUploadToast('추가 실패: ' + error.message); return; }
+  await loadStudentGroups(); renderGroupManager(); renderTcsStudentPanel();
+}
+async function renameStudentGroup(id) {
+  const g = tcsGroups.find(x => x.id === id);
+  const name = prompt('그룹 이름', g ? g.name : ''); if (name === null) return;
+  const t = name.trim(); if (!t) return;
+  await sb.from('student_groups').update({ name: t }).eq('id', id);
+  await loadStudentGroups(); renderGroupManager(); renderTcsStudentPanel();
+}
+async function deleteStudentGroup(id) {
+  if (!confirm('이 그룹을 삭제할까요? (소속 학생은 미분류로 바뀝니다)')) return;
+  await sb.from('members').update({ group_id: null }).eq('group_id', id);
+  await sb.from('student_groups').delete().eq('id', id);
+  tcsStudents.forEach(s => { if (s.group_id === id) s.group_id = null; });
+  await loadStudentGroups(); renderGroupManager(); renderTcsStudentPanel();
+}
+async function assignStudentGroup(studentId, groupId) {
+  const gid = groupId || null;
+  const { error } = await sb.from('members').update({ group_id: gid }).eq('id', studentId);
+  if (error) { showUploadToast('변경 실패'); return; }
+  const s = tcsStudents.find(x => x.id === studentId); if (s) s.group_id = gid;
+  renderTcsStudentPanel();
+  showUploadToast('✅ 그룹이 변경됐어요');
 }
 
 async function selectTcsStudent(student) {
@@ -4941,14 +5056,20 @@ async function saveTcsSection(sectionId) {
 }
 
 // ── TCS 미리보기 ──
-function showTcsPreview() {
+async function showTcsPreview() {
+  await loadRecordOrgs();
+  const orgSelect = tcsOrgs.length ? `
+    <select onchange="tcsSelectedOrgId=this.value;document.getElementById('tcs-preview-content').innerHTML=buildTcsPreviewHtml('ko')" style="height:34px;padding:0 10px;border-radius:8px;border:1.5px solid #e5e7eb;font:500 13px sans-serif;background:white;cursor:pointer">
+      ${tcsOrgs.map(o => `<option value="${o.id}" ${o.id === tcsSelectedOrgId ? 'selected' : ''}>${o.name}</option>`).join('')}
+    </select>` : '';
   const overlay = document.createElement('div');
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
   overlay.innerHTML = `
     <div style="background:white;border-radius:20px;width:100%;max-width:860px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.3)">
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 24px;border-bottom:1px solid #e5e7eb;flex-shrink:0">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 24px;border-bottom:1px solid #e5e7eb;flex-shrink:0;gap:10px;flex-wrap:wrap">
         <div style="font-size:16px;font-weight:700;color:#1d3a5f">📄 TCS 기록부 미리보기 — ${tcsCurrentStudent.name}</div>
-        <div style="display:flex;gap:8px">
+        <div style="display:flex;gap:8px;align-items:center">
+          ${orgSelect}
           <button onclick="printTcsPdf()" style="height:34px;padding:0 16px;border-radius:8px;border:none;background:#1d3a5f;color:white;font:600 13px sans-serif;cursor:pointer">📄 PDF 저장</button>
           <button onclick="this.closest('[style*=fixed]').remove()" style="height:34px;padding:0 12px;border-radius:8px;border:1.5px solid #e5e7eb;background:white;color:#6b7280;font:500 13px sans-serif;cursor:pointer">✕ 닫기</button>
         </div>
@@ -4997,6 +5118,7 @@ function buildTcsPreviewHtml(lang) {
     <div style="font-family:Arial,sans-serif;color:#111;max-width:780px;margin:0 auto">
       <!-- 타이틀 -->
       <div style="text-align:center;margin-bottom:28px;border-bottom:3px solid #1d3a5f;padding-bottom:16px">
+        ${(() => { const o = tcsOrgs.find(x => x.id === tcsSelectedOrgId); return o ? `<div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:10px">${o.logo_url ? `<img src="${o.logo_url}" style="height:46px;max-width:160px;object-fit:contain"/>` : ''}<span style="font-size:18px;font-weight:800;color:#1d3a5f">${o.name}</span></div>` : ''; })()}
         <div style="font-size:28px;font-weight:900;color:#1d3a5f;letter-spacing:2px;margin-bottom:4px">학생 종합 기록부</div>
         <div style="font-size:13px;color:#6b7280">Student Comprehensive Record — TCS Total Care System</div>
         ${school.school_name ? `<div style="font-size:13px;font-weight:600;color:#1d3a5f;margin-top:4px">${school.school_name}</div>` : ''}
@@ -5120,7 +5242,8 @@ function buildTcsPreviewHtml(lang) {
 }
 
 // ── TCS PDF 출력 ──
-function printTcsPdf() {
+async function printTcsPdf() {
+  if (!tcsOrgs.length) await loadRecordOrgs();
   const content = buildTcsPreviewHtml('ko');
   const win = window.open('', '_blank');
   win.document.write(`<!DOCTYPE html><html><head>
@@ -5280,12 +5403,78 @@ async function renderCommunitySettings() {
         </button>
       </div>
 
+      <!-- 기록부 기관 프리셋 -->
+      <div style="font-size:14px;font-weight:700;color:var(--adeep);margin:18px 0 8px">🏷️ 기록부 기관 (이름·로고)</div>
+      <div style="font-size:12px;color:var(--ink3);margin-bottom:10px">학생 종합기록부 맨 위에 찍을 기관을 2~3개 등록해 두면, 기록부를 만들 때 골라 쓸 수 있어요.</div>
+      <div class="adm-card" style="margin-bottom:16px">
+        <div id="cs-orgs-list"><div style="font-size:12px;color:var(--ink3)">불러오는 중...</div></div>
+        <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <div id="org-logo-preview" style="width:44px;height:44px;border-radius:10px;background:var(--s2);display:flex;align-items:center;justify-content:center;font-size:18px;overflow:hidden;flex-shrink:0">🏷️</div>
+          <input id="org-name-input" type="text" placeholder="기관 이름 (예: IM선교회 한국본부)" style="flex:1;min-width:150px;height:38px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--s2);font:13px var(--font);outline:none"/>
+          <input type="file" id="org-logo-input" accept="image/*" style="display:none" onchange="uploadOrgLogo(this)"/>
+          <input type="hidden" id="org-logo-url" value=""/>
+          <button onclick="document.getElementById('org-logo-input').click()" style="height:38px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:600 12px var(--font);cursor:pointer">📷 로고</button>
+          <button onclick="addRecordOrg('${comm.id}')" style="height:38px;padding:0 16px;border-radius:9px;border:none;background:#1d3a5f;color:white;font:600 13px var(--font);cursor:pointer">추가</button>
+        </div>
+      </div>
+
       <!-- 위험 구역 -->
       <div class="adm-card" style="border:1.5px solid #fca5a5;margin-top:16px">
         <div style="font-size:13px;font-weight:700;color:#dc2626;margin-bottom:8px">⚠️ 위험 구역</div>
         <div style="font-size:12px;color:var(--ink3);margin-bottom:12px">공동체를 삭제하면 되돌릴 수 없어요. 총관리자에게 요청해주세요.</div>
       </div>
     </div>`;
+  renderRecordOrgsAdmin();
+}
+
+// ── 기록부 기관 프리셋 CRUD ──
+async function renderRecordOrgsAdmin() {
+  const box = document.getElementById('cs-orgs-list');
+  if (!box) return;
+  const { data } = await sb.from('record_orgs').select('*').eq('community_id', CID()).order('sort').order('created_at');
+  const orgs = data || [];
+  box.innerHTML = orgs.length ? orgs.map(o => `
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--bs)">
+      <div style="width:38px;height:38px;border-radius:9px;background:var(--s2);display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0">${o.logo_url ? `<img src="${o.logo_url}" style="width:38px;height:38px;object-fit:contain"/>` : '🏷️'}</div>
+      <div style="flex:1;font-size:13px;font-weight:600;color:var(--ink)">${o.name}</div>
+      <button onclick="deleteRecordOrg('${o.id}')" style="width:28px;height:28px;border-radius:7px;border:1.5px solid var(--border);background:white;color:#ef4444;font-size:14px;cursor:pointer">×</button>
+    </div>`).join('') : '<div style="font-size:12px;color:var(--ink3)">아직 등록된 기관이 없어요. 아래에서 추가하세요.</div>';
+}
+
+async function uploadOrgLogo(input) {
+  const file = input.files[0];
+  if (!file) return;
+  showUploadToast('로고 업로드 중... ⏳');
+  const ext = file.name.split('.').pop();
+  const path = `orgs/${CID()}/${Date.now()}.${ext}`;
+  const { error } = await sb.storage.from('messenger').upload(path, file, { cacheControl: '3600', upsert: true });
+  if (error) { showUploadToast('업로드 실패 😥'); return; }
+  const { data: urlData } = sb.storage.from('messenger').getPublicUrl(path);
+  const url = urlData.publicUrl + '?t=' + Date.now();
+  document.getElementById('org-logo-url').value = url;
+  const pv = document.getElementById('org-logo-preview');
+  if (pv) pv.innerHTML = `<img src="${url}" style="width:44px;height:44px;object-fit:contain"/>`;
+  showUploadToast('로고 준비됨 ✅');
+}
+
+async function addRecordOrg(commId) {
+  const name = document.getElementById('org-name-input').value.trim();
+  const logo = document.getElementById('org-logo-url').value;
+  if (!name) { showUploadToast('기관 이름을 입력하세요'); return; }
+  const { error } = await sb.from('record_orgs').insert({ community_id: commId, name, logo_url: logo || null });
+  if (error) { showUploadToast('추가 실패: ' + error.message); return; }
+  showUploadToast('✅ 기관이 추가됐어요');
+  document.getElementById('org-name-input').value = '';
+  document.getElementById('org-logo-url').value = '';
+  const pv = document.getElementById('org-logo-preview'); if (pv) pv.innerHTML = '🏷️';
+  renderRecordOrgsAdmin();
+}
+
+async function deleteRecordOrg(id) {
+  if (!confirm('이 기관을 삭제할까요?')) return;
+  await sb.from('record_orgs').delete().eq('id', id);
+  showUploadToast('삭제됨');
+  renderRecordOrgsAdmin();
 }
 
 function selectCommSettingColor(color) {
