@@ -7136,6 +7136,9 @@ const SCHOOL_TABS = [
   { id:'tuition',    icon:'💰', label:'학비',     ready:true, admin:true },
   { id:'newsletter', icon:'✉️', label:'가정통신문', ready:true, admin:true },
   { id:'cert',       icon:'📄', label:'증명서',    ready:true, admin:true },
+  { id:'record',     icon:'🗂', label:'생활기록부', ready:true },
+  { id:'reading',    icon:'📖', label:'트리플스쿨', ready:true },
+  { id:'mock',       icon:'🧠', label:'모의고사',   ready:true },
 ];
 let schoolSubMode = 'student';
 let schoolStudents = [];
@@ -7222,7 +7225,7 @@ function renderSchoolMain() {
   const sub = document.getElementById('school-header-sub');
   if (sub) sub.textContent = tab ? tab.label : '학교 행정을 한 곳에서';
   document.getElementById('school-header-actions').innerHTML = '';
-  if (schoolSubMode === 'student')    return renderStudent360();
+  if (['student','record','reading','mock'].includes(schoolSubMode)) return renderStudent360();
   if (schoolSubMode === 'attendance') return renderAttendanceHub();
   if (schoolSubMode === 'timetable')  return renderTimetableHub();
   if (schoolSubMode === 'tuition')    return renderTuitionHub();
@@ -8323,7 +8326,31 @@ async function renderStudent360() {
     <div id="s360-detail" style="flex:1;min-width:0"><div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px">불러오는 중...</div></div>
   </div>`;
   renderS360List();
-  await renderS360Detail();
+  renderS360Right();
+}
+
+// 우측 패널: 현재 학사 탭(student/record/reading/mock)에 맞게 렌더 (학생 목록은 공유)
+async function renderS360Right() {
+  const detail = document.getElementById('s360-detail'); if (!detail) return;
+  const kind = schoolSubMode;
+  if (kind === 'student') return renderS360Detail();
+  const s = schoolStudents.find(x=>x.id===s360Id);
+  if (!s) { detail.innerHTML = '<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px">학생을 선택하세요</div>'; return; }
+  detail.innerHTML = '<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px">불러오는 중...</div>';
+  tcsCurrentStudent = s;
+  const { data } = await sb.from('tcs_records').select('section,data').eq('community_id',CID()).eq('student_id',s.id);
+  tcsRecords = {}; (data||[]).forEach(r => { tcsRecords[r.section] = r.data || {}; });
+  detail.innerHTML = '<div id="s360-tcs"></div>';
+  tcsMainId = 's360-tcs';
+  if (kind === 'record') {
+    renderTcsSectionList();
+  } else if (kind === 'reading') {
+    renderTcsReadingUnified();
+  } else if (kind === 'mock') {
+    tcsMockTarget = 's360-tcs'; tcsMockUnified = true;
+    tcsMockState = { files: [], answerFiles: [], result: null, analyzing: false };
+    renderMockExamEditor();
+  }
 }
 
 function renderS360List() {
@@ -8451,22 +8478,14 @@ async function renderS360Detail() {
     ${s360LogCard('health', d.health)}
 
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin-bottom:14px">
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
-        <div style="font-size:14px;font-weight:700;color:var(--ink)">📋 생활기록부 (종합기록부)</div>
-        <div id="s360-tcs-nav" style="display:inline-flex;gap:3px;background:var(--s2);border:1px solid var(--border);border-radius:9px;padding:3px"></div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <div style="font-size:14px;font-weight:700;color:var(--ink)">🗂 생활기록부 (종합기록부)</div>
+        <span style="font-size:11.5px;color:var(--ink3)">성적·발달·진로 등 공식 기록부</span>
         <div style="flex:1"></div>
+        <button onclick="setSchoolSubMode('record')" style="height:32px;padding:0 14px;border:1.5px solid var(--accent);background:white;color:var(--accent);border-radius:9px;cursor:pointer;font:700 12px var(--font)">✏️ 편집 →</button>
         <button onclick="openTcsForStudent('${s.id}')" style="height:32px;padding:0 14px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 12px var(--font)">📄 미리보기 / 출력</button>
       </div>
-      <div id="s360-tcs"></div>
     </div>`;
-
-  // 생활기록부(TCS)를 같은 페이지에 임베드 — 바로 편집/모의고사/Triple School
-  tcsCurrentStudent = s;
-  tcsRecords = {};
-  (d.tcs||[]).forEach(r => { tcsRecords[r.section] = r.data || {}; });
-  tcsMainId = 's360-tcs';
-  renderS360TcsNav();
-  s360TcsTab(s360TcsMode);
 }
 
 function renderS360TcsNav() {
@@ -8490,7 +8509,7 @@ function s360TcsTab(which) {
   }
 }
 
-function selectS360(id) { s360Id = id; s360TcsMode = 'record'; renderS360List(); renderS360Detail(); }
+function selectS360(id) { s360Id = id; renderS360List(); renderS360Right(); }
 function setS360Filter(v) { s360Filter = v; renderStudent360(); }
 function setS360Group(v) { s360Group = v; renderStudent360(); }
 
