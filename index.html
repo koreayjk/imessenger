@@ -5112,6 +5112,21 @@ async function saveTcsSection(sectionId) {
 }
 
 // ── TCS 미리보기 ──
+// 종합기록부 출력 시 포함할 섹션 선택 (null = 전체 포함)
+let tcsInclude = null;
+const TCS_INCLUDE_SECTIONS = [
+  ['personal','인적사항'],['school','학적사항'],['attendance','출결'],['academic','교과학습'],
+  ['mock','모의고사'],['reading_ts','신앙필독서'],['faith','신앙·인성'],['activities','창의체험'],
+  ['service','봉사'],['awards','수상'],['reading','독서'],['career','진로'],['comment','담임의견'],
+];
+function tcsInc(key) { return !tcsInclude || tcsInclude[key] !== false; }
+function toggleTcsSection(key, checked) {
+  if (!tcsInclude) tcsInclude = {};
+  tcsInclude[key] = checked;
+  const box = document.getElementById('tcs-preview-content');
+  if (box) box.innerHTML = buildTcsPreviewHtml('ko');
+}
+
 async function showTcsPreview() {
   await loadRecordOrgs();
   const orgSelect = tcsOrgs.length ? `
@@ -5129,6 +5144,10 @@ async function showTcsPreview() {
           <button onclick="printTcsPdf()" style="height:34px;padding:0 16px;border-radius:8px;border:none;background:#1d3a5f;color:white;font:600 13px sans-serif;cursor:pointer">📄 PDF 저장</button>
           <button onclick="this.closest('[style*=fixed]').remove()" style="height:34px;padding:0 12px;border-radius:8px;border:1.5px solid #e5e7eb;background:white;color:#6b7280;font:500 13px sans-serif;cursor:pointer">✕ 닫기</button>
         </div>
+      </div>
+      <div style="padding:10px 24px;border-bottom:1px solid #eef1f5;display:flex;flex-wrap:wrap;gap:9px 14px;align-items:center;flex-shrink:0">
+        <span style="font-size:12px;font-weight:700;color:#1d3a5f">포함 항목</span>
+        ${TCS_INCLUDE_SECTIONS.map(([k,label]) => `<label style="font-size:12px;color:#374151;display:inline-flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" ${tcsInc(k)?'checked':''} onchange="toggleTcsSection('${k}',this.checked)"/> ${label}</label>`).join('')}
       </div>
       <div style="overflow-y:auto;flex:1;padding:32px 40px" id="tcs-preview-content">
         ${buildTcsPreviewHtml('ko')}
@@ -5180,6 +5199,7 @@ function buildTcsPreviewHtml(lang) {
         ${school.school_name ? `<div style="font-size:13px;font-weight:600;color:#1d3a5f;margin-top:4px">${school.school_name}</div>` : ''}
       </div>
 
+      ${tcsInc('personal') ? `
       ${sectionTitle('👤','인적사항')}
       <table style="width:100%;border-collapse:collapse;margin-bottom:4px">
         ${row('성명 (한글)', personal.name_ko || s.name)}
@@ -5190,8 +5210,9 @@ function buildTcsPreviewHtml(lang) {
         ${row('보호자', personal.guardian)}
         ${row('연락처', personal.contact)}
         ${row('주소', personal.address)}
-      </table>
+      </table>` : ''}
 
+      ${tcsInc('school') ? `
       ${sectionTitle('🏫','학적사항')}
       <table style="width:100%;border-collapse:collapse;margin-bottom:4px">
         ${row('학교명', school.school_name)}
@@ -5199,10 +5220,11 @@ function buildTcsPreviewHtml(lang) {
         ${row('입학일', school.enroll_date)}
         ${row('졸업(예정)일', school.grad_date)}
         ${row('재학 과정', school.course)}
-      </table>
+      </table>` : ''}
 
-      ${sectionTitle('📅','출결사항')}
+      ${tcsInc('attendance') ? sectionTitle('📅','출결사항') : ''}
       ${(() => {
+        if (!tcsInc('attendance')) return '';
         const att = d.attendance || {};
         const grades = [['K (유치원)','k'],['G1 (1학년)','g1'],['G2 (2학년)','g2'],['G3 (3학년)','g3'],['G4 (4학년)','g4'],['G5 (5학년)','g5'],['G6 (6학년)','g6'],['G7 (중1)','g7'],['G8 (중2)','g8'],['G9 (중3)','g9'],['G10 (고1)','g10'],['G11 (고2)','g11'],['G12 (고3)','g12']];
         const rows = grades.filter(([,k]) => att[k]).map(([label,k]) =>
@@ -5211,8 +5233,9 @@ function buildTcsPreviewHtml(lang) {
         return rows ? `<table style="width:100%;border-collapse:collapse;margin-bottom:4px">${rows}</table>` : '<p style="font-size:12px;color:#9ca3af;margin-bottom:8px">미기재</p>';
       })()}
 
-      ${sectionTitle('📚','교과학습 발달상황')}
+      ${tcsInc('academic') ? sectionTitle('📚','교과학습 발달상황') : ''}
       ${(() => {
+        if (!tcsInc('academic')) return '';
         const ac = d.academic || {};
         const grades = [['K (유치원)','k_grades'],['G1 (1학년)','g1_grades'],['G2 (2학년)','g2_grades'],['G3 (3학년)','g3_grades'],['G4 (4학년)','g4_grades'],['G5 (5학년)','g5_grades'],['G6 (6학년)','g6_grades'],['G7 (중1)','g7_grades'],['G8 (중2)','g8_grades'],['G9 (중3)','g9_grades'],['G10 (고1)','g10_grades'],['G11 (고2)','g11_grades'],['G12 (고3)','g12_grades']];
         const rows = grades.filter(([,k]) => ac[k]).map(([label,k]) =>
@@ -5223,6 +5246,7 @@ function buildTcsPreviewHtml(lang) {
       })()}
 
       ${(() => {
+        if (!tcsInc('mock')) return '';
         const items = (d.mockexam && d.mockexam.items) || [];
         if (!items.length) return '';
         const cards = items.map(it => `
@@ -5236,6 +5260,7 @@ function buildTcsPreviewHtml(lang) {
       })()}
 
       ${(() => {
+        if (!tcsInc('reading_ts')) return '';
         const rl = d._reading_included || [];
         if (!rl.length) return '';
         const rows = rl.map(it => `
@@ -5246,6 +5271,7 @@ function buildTcsPreviewHtml(lang) {
         return `${sectionTitle('📖','신앙 필독서 (Triple School)')}${rows}`;
       })()}
 
+      ${tcsInc('faith') ? `
       ${sectionTitle('✝️','신앙 및 인성')}
       <table style="width:100%;border-collapse:collapse;margin-bottom:8px">
         ${row('세례 여부 / 날짜', faith.baptism)}
@@ -5253,20 +5279,25 @@ function buildTcsPreviewHtml(lang) {
         ${row('성경 암송', faith.scripture)}
         ${row('큐티 / 경건 생활', faith.devotion)}
       </table>
-      ${faith.faith_note ? `<div style="background:#f0f6ff;border:1px solid #b8cfe0;border-radius:8px;padding:12px 14px;font-size:13px;line-height:1.8;margin-bottom:4px;white-space:pre-wrap">${faith.faith_note}</div>` : ''}
+      ${faith.faith_note ? `<div style="background:#f0f6ff;border:1px solid #b8cfe0;border-radius:8px;padding:12px 14px;font-size:13px;line-height:1.8;margin-bottom:4px;white-space:pre-wrap">${faith.faith_note}</div>` : ''}` : ''}
 
+      ${tcsInc('activities') ? `
       ${sectionTitle('🏃','창의적 체험활동')}
-      ${listSection('activities','활동')}
+      ${listSection('activities','활동')}` : ''}
 
+      ${tcsInc('service') ? `
       ${sectionTitle('🤝','봉사활동')}
-      ${listSection('service','봉사')}
+      ${listSection('service','봉사')}` : ''}
 
+      ${tcsInc('awards') ? `
       ${sectionTitle('🏆','수상 및 자격증')}
-      ${listSection('awards','수상')}
+      ${listSection('awards','수상')}` : ''}
 
+      ${tcsInc('reading') ? `
       ${sectionTitle('📖','독서활동')}
-      ${listSection('reading','도서')}
+      ${listSection('reading','도서')}` : ''}
 
+      ${tcsInc('career') ? `
       ${sectionTitle('🎯','진로 및 진학')}
       <table style="width:100%;border-collapse:collapse;margin-bottom:4px">
         ${row('진로 희망', career.career_goal)}
@@ -5276,10 +5307,11 @@ function buildTcsPreviewHtml(lang) {
         ${row('AP 과목 및 점수', career.ap)}
         ${row('TOEFL / IELTS', career.toefl)}
         ${row('최종 진학 결과', career.final_college)}
-      </table>
+      </table>` : ''}
 
+      ${tcsInc('comment') ? `
       ${sectionTitle('✍️','담임교사 종합의견')}
-      ${comment.comment_ko ? `<div style="background:#f8fafc;border:1px solid #d1d5db;border-radius:8px;padding:14px 16px;font-size:13px;line-height:1.9;margin-bottom:12px;white-space:pre-wrap;min-height:120px">${comment.comment_ko}</div>` : '<div style="background:#f8fafc;border:1px solid #d1d5db;border-radius:8px;padding:14px 16px;font-size:12px;color:#9ca3af;min-height:80px">미기재</div>'}
+      ${comment.comment_ko ? `<div style="background:#f8fafc;border:1px solid #d1d5db;border-radius:8px;padding:14px 16px;font-size:13px;line-height:1.9;margin-bottom:12px;white-space:pre-wrap;min-height:120px">${comment.comment_ko}</div>` : '<div style="background:#f8fafc;border:1px solid #d1d5db;border-radius:8px;padding:14px 16px;font-size:12px;color:#9ca3af;min-height:80px">미기재</div>'}` : ''}
 
       <!-- 서명란 -->
       <div style="margin-top:24px;display:grid;grid-template-columns:1fr 1fr;gap:16px">
@@ -7071,16 +7103,16 @@ async function deleteEvent() {
 //  학사관리 (학교 행정 허브) — 출석부 / 시간표 / 학비 / 가정통신문
 // ════════════════════════════════════════════════════════════════════
 const SCHOOL_TABS = [
+  { id:'student',    icon:'👤', label:'학생',     ready:true  },
   { id:'attendance', icon:'📋', label:'출석부',   ready:true  },
   { id:'timetable',  icon:'🗓', label:'시간표',   ready:true  },
   { id:'tuition',    icon:'💰', label:'학비',     ready:true  },
   { id:'newsletter', icon:'✉️', label:'가정통신문', ready:true  },
   { id:'cert',       icon:'📄', label:'증명서',    ready:true  },
-  { id:'counseling', icon:'💬', label:'상담기록',   ready:true  },
-  { id:'health',     icon:'🏥', label:'보건',      ready:true  },
 ];
-let schoolSubMode = 'attendance';
+let schoolSubMode = 'student';
 let schoolStudents = [];
+let schoolTeachers = [];
 
 // ── 출결 상태 정의 ──
 const ATT_STATUSES = [
@@ -7139,6 +7171,12 @@ async function initSchoolPage() {
     .or('community_role.eq.student,role.eq.학생')
     .order('name');
   schoolStudents = students || [];
+  // 교사·간사·관리자 목록 (담당교사 배정용)
+  const { data: teachers } = await sb.from('members').select('id,name,role,community_role')
+    .eq('community_id', CID())
+    .or('community_role.eq.teacher,community_role.eq.community_admin,community_role.eq.super_admin,role.eq.교사,role.eq.간사')
+    .order('name');
+  schoolTeachers = teachers || [];
   renderSchoolMain();
 }
 
@@ -7154,13 +7192,12 @@ function renderSchoolMain() {
   const sub = document.getElementById('school-header-sub');
   if (sub) sub.textContent = tab ? tab.label : '학교 행정을 한 곳에서';
   document.getElementById('school-header-actions').innerHTML = '';
+  if (schoolSubMode === 'student')    return renderStudent360();
   if (schoolSubMode === 'attendance') return renderAttendanceHub();
   if (schoolSubMode === 'timetable')  return renderTimetableHub();
   if (schoolSubMode === 'tuition')    return renderTuitionHub();
   if (schoolSubMode === 'newsletter') return renderNewsletterHub();
   if (schoolSubMode === 'cert')       return renderCertHub();
-  if (schoolSubMode === 'counseling') return renderLogHub('counseling');
-  if (schoolSubMode === 'health')     return renderLogHub('health');
   return renderSchoolComingSoon(tab);
 }
 
@@ -8211,6 +8248,237 @@ async function deleteLog(id) {
   if (error) { showUploadToast('삭제 실패: ' + error.message); return; }
   logEntries = logEntries.filter(e => e.id !== id);
   renderLog();
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  학사 — 👤 학생 통합 뷰 (학생 1명 = 한 페이지)
+// ════════════════════════════════════════════════════════════════════
+let s360Id = '';
+let s360Filter = 'all';     // 'all' | 'mine'
+let s360Group = 'all';
+
+function s360TeacherName(id) { const t = schoolTeachers.find(x => x.id === id); return t ? t.name : ''; }
+function s360GroupName(gid) { const g = tcsGroups.find(x => x.id === gid); return g ? g.name : ''; }
+
+function s360List() {
+  let list = schoolStudents;
+  if (s360Filter === 'mine') list = list.filter(s => s.homeroom_teacher_id === ME.id);
+  if (s360Group !== 'all') list = s360Group === 'none' ? list.filter(s => !s.group_id) : list.filter(s => s.group_id === s360Group);
+  return list;
+}
+
+async function loadStudent360(id) {
+  const month = attMonth || attTodayStr().slice(0,7);
+  const [y,mm] = month.split('-').map(Number);
+  const ny = mm===12?y+1:y, nm = mm===12?1:mm+1;
+  const start = `${month}-01`, end = `${ny}-${String(nm).padStart(2,'0')}-01`;
+  const [a,b,c,h] = await Promise.all([
+    sb.from('attendance_daily').select('status,date').eq('community_id',CID()).eq('student_id',id).gte('date',start).lt('date',end),
+    sb.from('tuition_bills').select('*').eq('community_id',CID()).eq('student_id',id).order('created_at',{ascending:false}),
+    sb.from('counseling_logs').select('*').eq('community_id',CID()).eq('student_id',id).order('date',{ascending:false}).order('created_at',{ascending:false}),
+    sb.from('health_logs').select('*').eq('community_id',CID()).eq('student_id',id).order('date',{ascending:false}).order('created_at',{ascending:false}),
+  ]);
+  return { att:a.data||[], bills:b.data||[], counseling:c.data||[], health:h.data||[], month };
+}
+
+async function renderStudent360() {
+  const main = document.getElementById('school-main');
+  if (!schoolStudents.length) { main.innerHTML = '<div style="padding:50px;text-align:center;color:var(--ink3);font-size:13px">등록된 학생이 없어요. 관리자에서 학생을 먼저 승인해주세요.</div>'; return; }
+  const list = s360List();
+  if (!s360Id || !schoolStudents.find(s=>s.id===s360Id)) s360Id = (list[0]||schoolStudents[0]).id;
+  if (list.length && !list.find(s=>s.id===s360Id)) s360Id = list[0].id;
+  main.innerHTML = `<div style="display:flex;gap:18px;align-items:flex-start">
+    <div id="s360-list" style="width:228px;flex-shrink:0;position:sticky;top:0"></div>
+    <div id="s360-detail" style="flex:1;min-width:0"><div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px">불러오는 중...</div></div>
+  </div>`;
+  renderS360List();
+  await renderS360Detail();
+}
+
+function renderS360List() {
+  const box = document.getElementById('s360-list'); if (!box) return;
+  const list = s360List();
+  const fBtn = (v,label) => `<button onclick="setS360Filter('${v}')" style="flex:1;height:30px;border:none;border-radius:7px;font:600 12px var(--font);cursor:pointer;background:${s360Filter===v?'#1d3a5f':'transparent'};color:${s360Filter===v?'#fff':'var(--ink2)'}">${label}</button>`;
+  const groupOpts = `<option value="all">전체 반</option>` +
+    tcsGroups.map(g=>`<option value="${g.id}" ${s360Group===g.id?'selected':''}>${g.name}</option>`).join('') +
+    `<option value="none" ${s360Group==='none'?'selected':''}>미배정</option>`;
+  const rows = list.map(s => {
+    const on = s.id===s360Id;
+    const tn = s360TeacherName(s.homeroom_teacher_id);
+    return `<div onclick="selectS360('${s.id}')" style="display:flex;align-items:center;gap:9px;padding:9px 10px;border-radius:10px;cursor:pointer;margin-bottom:2px;background:${on?'var(--asoft)':'transparent'}"
+      onmouseover="if(!${on})this.style.background='var(--s3)'" onmouseout="if(!${on})this.style.background='transparent'">
+      <div style="width:28px;height:28px;border-radius:8px;background:${s.color||'#1d3a5f'};display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700;flex-shrink:0">${s.initials||s.name?.[0]||'?'}</div>
+      <div style="min-width:0"><div style="font-size:13px;font-weight:${on?'700':'500'};color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${s.name}</div>
+        <div style="font-size:10.5px;color:var(--ink3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${s.grade||'학년 미정'}${tn?` · ${tn}`:''}</div></div>
+    </div>`;
+  }).join('');
+  box.innerHTML = `
+    <div style="display:flex;gap:3px;margin-bottom:8px;background:var(--s2);border:1px solid var(--border);border-radius:9px;padding:3px">${fBtn('all','전체')}${fBtn('mine','내 담당')}</div>
+    <select onchange="setS360Group(this.value)" style="width:100%;height:32px;padding:0 8px;border:1px solid var(--border);border-radius:8px;font:600 12px var(--font);background:var(--surface);color:var(--ink);margin-bottom:8px">${groupOpts}</select>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:6px;max-height:calc(100vh - 220px);overflow-y:auto">
+      ${list.length ? rows : '<div style="padding:24px 8px;text-align:center;color:var(--ink3);font-size:12px">해당 조건의 학생이 없어요</div>'}
+    </div>`;
+}
+
+function s360Stat(label, value, danger) {
+  return `<div style="flex:1;min-width:96px;background:${danger?'#fdecea':'var(--s2)'};border:1px solid ${danger?'#f3c0bb':'var(--border)'};border-radius:10px;padding:9px 12px">
+    <div style="font-size:10.5px;color:${danger?'#c0392b':'var(--ink3)'}">${label}</div>
+    <div style="font-size:16px;font-weight:700;color:${danger?'#c0392b':'var(--ink)'}">${value}</div></div>`;
+}
+
+function s360LogCard(kind, entries) {
+  const spec = LOG_SPECS[kind];
+  const catOpts = spec.cats.map(c=>`<option value="${c}">${c}</option>`).join('');
+  const inp = 'height:34px;padding:0 9px;border:1px solid var(--border);border-radius:8px;font:600 12px var(--font);color:var(--ink);background:var(--surface)';
+  const items = entries.length ? entries.map(e=>{
+    const color = spec.catColor[e.category]||'#7f8c8d';
+    return `<div style="border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-top:8px">
+      <div style="display:flex;align-items:center;gap:7px;margin-bottom:4px;flex-wrap:wrap">
+        <span style="font-size:10.5px;font-weight:700;color:#fff;background:${color};padding:2px 8px;border-radius:6px">${escHtml(e.category||'')}</span>
+        ${e.title?`<span style="font-size:13px;font-weight:700;color:var(--ink)">${escHtml(e.title)}</span>`:''}
+        <span style="font-size:10.5px;color:var(--ink3)">${e.date||''}${e.author_name?` · ${escHtml(e.author_name)}`:''}</span>
+        <div style="flex:1"></div>
+        <button onclick="deleteStudentLog('${kind}','${e.id}')" title="삭제" style="border:none;background:transparent;cursor:pointer;color:var(--ink3);font-size:13px">✕</button>
+      </div>
+      ${e.content?`<div style="font-size:12.5px;color:var(--ink2);line-height:1.65;white-space:pre-wrap">${escHtml(e.content)}</div>`:''}
+    </div>`;
+  }).join('') : '<div style="font-size:12px;color:var(--ink3);padding:8px 0">아직 기록이 없어요.</div>';
+  return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin-bottom:14px">
+    <div style="font-size:14px;font-weight:700;color:var(--ink);margin-bottom:10px">${spec.icon} ${spec.title}</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
+      <select id="s360-${kind}-cat" style="${inp}">${catOpts}</select>
+      <input id="s360-${kind}-date" type="date" value="${attTodayStr()}" style="${inp}"/>
+      <input id="s360-${kind}-title" placeholder="${spec.titlePh}" style="${inp};flex:1;min-width:140px"/>
+    </div>
+    <textarea id="s360-${kind}-content" placeholder="${spec.bodyPh}" style="width:100%;min-height:62px;padding:9px;border:1px solid var(--border);border-radius:8px;font:400 13px var(--font);color:var(--ink);line-height:1.6;resize:vertical"></textarea>
+    <div style="display:flex;justify-content:flex-end;margin-top:7px"><button onclick="addStudentLog('${kind}')" style="height:32px;padding:0 14px;border:none;background:#1d3a5f;color:#fff;border-radius:8px;cursor:pointer;font:700 12px var(--font)">＋ 기록 추가</button></div>
+    ${items}
+  </div>`;
+}
+
+async function renderS360Detail() {
+  const detail = document.getElementById('s360-detail'); if (!detail) return;
+  const s = schoolStudents.find(x=>x.id===s360Id);
+  if (!s) { detail.innerHTML = '<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px">학생을 선택하세요</div>'; return; }
+  detail.innerHTML = '<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px">불러오는 중...</div>';
+  const d = await loadStudent360(s360Id);
+
+  const c = {present:0,late:0,early:0,absent:0,sick:0,excused:0};
+  d.att.forEach(r=>{ if(c[r.status]!==undefined)c[r.status]++; });
+  const total = d.att.length;
+  const rate = total ? Math.round((c.present+c.late+c.early)/total*100) : 0;
+  const unpaid = d.bills.filter(b=>!b.paid);
+  const unpaidSum = unpaid.reduce((a,b)=>a+(Number(b.amount)||0),0);
+  const monthLabel = (d.month||'').slice(5,7) + '월';
+
+  const tOpts = `<option value="">담당교사 미지정</option>` +
+    schoolTeachers.map(t=>`<option value="${t.id}" ${s.homeroom_teacher_id===t.id?'selected':''}>${t.name}</option>`).join('');
+
+  const attBadges = ATT_STATUSES.map(st=>`<span style="font-size:12px;color:${st.color};font-weight:600">${st.label} ${c[st.key]}</span>`).join('<span style="color:var(--border)">|</span>');
+
+  const billRows = d.bills.slice(0,5).map(b=>`<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--border)">
+      <span style="font-size:12.5px;color:var(--ink2);flex:1">${escHtml(b.title||'')}</span>
+      <span style="font-size:12.5px;font-weight:600;color:var(--ink)">${tuiWon(b.amount)}</span>
+      <span style="font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:6px;background:${b.paid?'#e8f5ee':'#fdecea'};color:${b.paid?'#2a7a5a':'#c0392b'}">${b.paid?'완료':'미납'}</span>
+    </div>`).join('') || '<div style="font-size:12px;color:var(--ink3);padding:8px 0">청구 내역이 없어요.</div>';
+
+  detail.innerHTML = `
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px 20px;margin-bottom:14px">
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+        <div style="width:48px;height:48px;border-radius:13px;background:${s.color||'#1d3a5f'};display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px;font-weight:700;flex-shrink:0">${s.initials||s.name?.[0]||'?'}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:19px;font-weight:800;color:var(--ink)">${s.name}</div>
+          <div style="font-size:12.5px;color:var(--ink3)">${s.grade||'학년 미정'}${s360GroupName(s.group_id)?` · ${s360GroupName(s.group_id)}`:''}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:11.5px;font-weight:600;color:var(--ink2)">담당교사</span>
+          <select onchange="assignHomeroom('${s.id}',this.value)" style="height:34px;padding:0 10px;border:1px solid var(--border);border-radius:9px;font:600 13px var(--font);background:var(--surface);color:var(--ink)">${tOpts}</select>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap">
+        ${s360Stat(`${monthLabel} 출석률`, total?`${rate}%`:'기록 없음')}
+        ${s360Stat(`${monthLabel} 결석/지각`, `${c.absent} / ${c.late}`)}
+        ${s360Stat('미납액', tuiWon(unpaidSum), unpaidSum>0)}
+      </div>
+    </div>
+
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin-bottom:14px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><div style="font-size:14px;font-weight:700;color:var(--ink)">📋 출결 (${monthLabel})</div><div style="flex:1"></div>
+        <button onclick="setSchoolSubMode('attendance')" style="height:28px;padding:0 11px;border:1px solid var(--border);background:var(--surface);border-radius:8px;cursor:pointer;font:600 11px var(--font);color:var(--ink2)">출석부 열기 →</button></div>
+      <div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap;padding:10px 12px;background:var(--s2);border-radius:9px">${total?attBadges:'<span style="font-size:12px;color:var(--ink3)">이번 달 출석 기록이 없어요.</span>'}</div>
+    </div>
+
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin-bottom:14px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><div style="font-size:14px;font-weight:700;color:var(--ink)">💰 학비</div>
+        ${unpaidSum>0?`<span style="font-size:11px;font-weight:700;color:#c0392b;background:#fdecea;padding:2px 8px;border-radius:6px">미납 ${unpaid.length}건 · ${tuiWon(unpaidSum)}</span>`:'<span style="font-size:11px;font-weight:700;color:#2a7a5a;background:#e8f5ee;padding:2px 8px;border-radius:6px">미납 없음</span>'}
+        <div style="flex:1"></div>
+        <button onclick="setSchoolSubMode('tuition')" style="height:28px;padding:0 11px;border:1px solid var(--border);background:var(--surface);border-radius:8px;cursor:pointer;font:600 11px var(--font);color:var(--ink2)">학비 열기 →</button></div>
+      ${billRows}
+    </div>
+
+    ${s360LogCard('counseling', d.counseling)}
+    ${s360LogCard('health', d.health)}
+
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin-bottom:14px">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <div style="font-size:14px;font-weight:700;color:var(--ink)">📄 학생 종합기록부</div>
+        <span style="font-size:11.5px;color:var(--ink3)">출력 시 포함할 항목을 선택할 수 있어요</span>
+        <div style="flex:1"></div>
+        <button onclick="openTcsForStudent('${s.id}')" style="height:34px;padding:0 16px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 12px var(--font)">미리보기 / 출력</button>
+      </div>
+    </div>`;
+}
+
+function selectS360(id) { s360Id = id; renderS360List(); renderS360Detail(); }
+function setS360Filter(v) { s360Filter = v; renderStudent360(); }
+function setS360Group(v) { s360Group = v; renderStudent360(); }
+
+async function assignHomeroom(studentId, teacherId) {
+  const { error } = await sb.from('members').update({ homeroom_teacher_id: teacherId || null }).eq('id', studentId);
+  if (error) {
+    const m = (error.message||'') + '';
+    if (m.includes('homeroom_teacher_id') || m.includes('column'))
+      showUploadToast('담당교사 컬럼이 없어요. 학사_담당교사_DB설치.sql 을 먼저 실행해주세요');
+    else showUploadToast('배정 실패: ' + error.message);
+    return;
+  }
+  const s = schoolStudents.find(x=>x.id===studentId); if (s) s.homeroom_teacher_id = teacherId || null;
+  showUploadToast(teacherId ? `✅ 담당교사: ${s360TeacherName(teacherId)}` : '담당교사 해제됨');
+  renderS360List();
+}
+
+async function addStudentLog(kind) {
+  const spec = LOG_SPECS[kind];
+  const category = document.getElementById(`s360-${kind}-cat`).value;
+  const date = document.getElementById(`s360-${kind}-date`).value || attTodayStr();
+  const title = document.getElementById(`s360-${kind}-title`).value.trim();
+  const content = document.getElementById(`s360-${kind}-content`).value.trim();
+  if (!title && !content) { showUploadToast('제목이나 내용을 입력하세요'); return; }
+  const { error } = await sb.from(spec.table).insert({
+    community_id: CID(), student_id: s360Id, date, category, title, content,
+    author_name: ME.name, created_by: ME.id,
+  });
+  if (error) { if (schoolTableMissing(error)) return schoolSetupNeeded(error, spec.file); showUploadToast('저장 실패: ' + error.message); return; }
+  showUploadToast('✅ 기록이 추가됐어요');
+  renderS360Detail();
+}
+
+async function deleteStudentLog(kind, id) {
+  const spec = LOG_SPECS[kind];
+  if (!confirm('이 기록을 삭제할까요?')) return;
+  const { error } = await sb.from(spec.table).delete().eq('id', id);
+  if (error) { showUploadToast('삭제 실패: ' + error.message); return; }
+  renderS360Detail();
+}
+
+async function openTcsForStudent(id) {
+  const s = schoolStudents.find(x=>x.id===id); if (!s) return;
+  tcsCurrentStudent = s;
+  tcsInclude = null; // 포함 선택 초기화(전체 포함)
+  const { data } = await sb.from('tcs_records').select('section,data').eq('student_id',id).eq('community_id',CID());
+  tcsRecords = {};
+  (data||[]).forEach(r => { tcsRecords[r.section] = r.data || {}; });
+  showTcsPreview();
 }
 
 // ── 세션 복원은 위 window.addEventListener('load') 에서 처리 ──
