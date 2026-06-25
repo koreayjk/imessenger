@@ -1336,8 +1336,8 @@ function enterApp() {
     document.getElementById('sb-admin').style.display = 'flex';
     if (mnAdmin) mnAdmin.style.display = 'flex';
   }
-  // TCS 버튼: 모두 표시 (교사=기록부/모의고사/Triple School, 학생·멤버=개인정보/Triple School)
-  document.getElementById('sb-tcs').style.display = 'flex';
+  // TCS 버튼: 교사는 학사(👤학생)로 통합되어 숨김 / 학생·멤버는 개인정보·Triple School 입구로 유지
+  document.getElementById('sb-tcs').style.display = isTeacher() ? 'none' : 'flex';
   // 학사관리 버튼: 교사·간사·관리자만
   const sbSchool = document.getElementById('sb-school');
   if (sbSchool) sbSchool.style.display = isTeacher() ? 'flex' : 'none';
@@ -3361,6 +3361,8 @@ let tcsRecords = {};
 let tcsStudents = [];
 let tcsCurrentSection = 'personal';
 let tcsSubMode = 'record';   // 'record' | 'mock' | 'reading' — TCS 안의 서브탭
+let tcsFromSchool = false;   // 학사 👤학생에서 진입했는지 (학생 패널 숨기고 ← 학생 버튼 표시)
+let tcsPreselectId = null;   // 학사에서 넘겨준 학생 id
 let tcsMockUnified = false;  // true면 모의고사를 TCS 서브탭으로(뒤로가기 버튼 없음)
 let tcsOrgs = [];            // 기록부 기관 프리셋 (공동체별)
 let tcsSelectedOrgId = null; // 현재 선택된 기관
@@ -3379,6 +3381,8 @@ async function initTcsPage() {
   const sn = document.getElementById('subnav-tcs'); if (sn) sn.innerHTML = tcsSubnavHtml('tcs');
   const panel = document.getElementById('tcs-student-panel');
   const main = document.getElementById('tcs-main');
+  // 학사(👤학생)에서 진입하면 학생은 거기서 고르므로 중복 패널 숨김
+  panel.style.display = tcsFromSchool ? 'none' : 'block';
   panel.innerHTML = '<div style="text-align:center;padding:20px;color:var(--ink3);font-size:12px">불러오는 중...</div>';
   main.innerHTML = '';
 
@@ -3392,7 +3396,10 @@ async function initTcsPage() {
   await loadStudentGroups();
 
   renderTcsStudentPanel();
-  if (tcsStudents.length > 0) {
+  const preselect = tcsPreselectId ? tcsStudents.find(s => s.id === tcsPreselectId) : null;
+  if (preselect) {
+    selectTcsStudent(preselect);
+  } else if (tcsStudents.length > 0) {
     selectTcsStudent(tcsStudents[0]);
   } else {
     main.innerHTML = `<div style="text-align:center;padding:60px 20px">
@@ -4646,22 +4653,23 @@ function updateTcsHeader() {
   const sub = document.getElementById('tcs-header-sub');
   const actions = document.getElementById('tcs-header-actions');
   const name = tcsCurrentStudent?.name || '';
+  const back = tcsFromSchool ? `<button onclick="backToSchoolFromTcs()" style="height:34px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:600 12px var(--font);cursor:pointer">← 학생</button>` : '';
   if (!tcsCurrentStudent) {
     if (sub) sub.textContent = '학생을 선택하세요';
-    if (actions) actions.innerHTML = '';
+    if (actions) actions.innerHTML = back;
     return;
   }
   if (tcsSubMode === 'record') {
     if (sub) sub.textContent = `${name} 학생의 기록부`;
-    if (actions) actions.innerHTML = `
+    if (actions) actions.innerHTML = back + `
       <button onclick="showTcsPreview()" style="height:34px;padding:0 14px;border-radius:9px;border:1.5px solid var(--accent);background:white;color:var(--accent);font:600 12px var(--font);cursor:pointer">👁️ 미리보기</button>
       <button onclick="printTcsPdf()" style="height:34px;padding:0 14px;border-radius:9px;border:none;background:linear-gradient(135deg,#1d3a5f,#2a5298);color:white;font:600 12px var(--font);cursor:pointer">📄 PDF 출력</button>`;
   } else if (tcsSubMode === 'mock') {
     if (sub) sub.textContent = `${name} 학생 · 모의고사 분석`;
-    if (actions) actions.innerHTML = '';
+    if (actions) actions.innerHTML = back;
   } else {
     if (sub) sub.textContent = `${name} 학생 · Triple School`;
-    if (actions) actions.innerHTML = '';
+    if (actions) actions.innerHTML = back;
   }
 }
 
@@ -8422,9 +8430,10 @@ async function renderS360Detail() {
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin-bottom:14px">
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <div style="font-size:14px;font-weight:700;color:var(--ink)">📄 학생 종합기록부</div>
-        <span style="font-size:11.5px;color:var(--ink3)">출력 시 포함할 항목을 선택할 수 있어요</span>
+        <span style="font-size:11.5px;color:var(--ink3)">성적·발달·진로 등 공식 기록부 (출력 시 항목 선택 가능)</span>
         <div style="flex:1"></div>
-        <button onclick="openTcsForStudent('${s.id}')" style="height:34px;padding:0 16px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 12px var(--font)">미리보기 / 출력</button>
+        <button onclick="openTcsEditor('${s.id}')" style="height:34px;padding:0 16px;border:1.5px solid var(--accent);background:white;color:var(--accent);border-radius:9px;cursor:pointer;font:700 12px var(--font)">✏️ 기록부 편집</button>
+        <button onclick="openTcsForStudent('${s.id}')" style="height:34px;padding:0 16px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 12px var(--font)">📄 미리보기 / 출력</button>
       </div>
     </div>`;
 }
@@ -8469,6 +8478,22 @@ async function deleteStudentLog(kind, id) {
   const { error } = await sb.from(spec.table).delete().eq('id', id);
   if (error) { showUploadToast('삭제 실패: ' + error.message); return; }
   renderS360Detail();
+}
+
+// 학사 👤학생 → 종합기록부 '편집' (TCS 편집 화면을 이 학생으로 열고, 중복 학생패널 숨김)
+function openTcsEditor(id) {
+  tcsFromSchool = true;
+  tcsPreselectId = id;
+  setMode('tcs');
+}
+// TCS 편집 → 학사 학생 페이지로 복귀
+function backToSchoolFromTcs() {
+  if (tcsCurrentStudent) s360Id = tcsCurrentStudent.id;
+  tcsFromSchool = false;
+  tcsPreselectId = null;
+  const panel = document.getElementById('tcs-student-panel');
+  if (panel) panel.style.display = 'block';
+  setMode('school');
 }
 
 async function openTcsForStudent(id) {
