@@ -2530,6 +2530,35 @@ async function renderHome() {
     .order('created_at', {ascending: false}).limit(1);
   const schedImg = schedImgs?.[0] || null;
 
+  // 가정통신문 로드 (전체 대상 + 내 반 대상). 테이블 미설치 시 조용히 비움
+  let nlHome = [];
+  {
+    const childGid = ME.group_id || '00000000-0000-0000-0000-000000000000';
+    const { data: nlData } = await sb.from('newsletters')
+      .select('id,title,body,sent_date,group_id,author_name')
+      .eq('community_id', CID())
+      .or(`group_id.is.null,group_id.eq.${childGid}`)
+      .order('sent_date', { ascending:false }).limit(3);
+    nlHome = nlData || [];
+  }
+  const nlHomeHtml = nlHome.length ? `
+    <div style="background:var(--surface);border-radius:18px;padding:16px 20px;margin-bottom:20px;box-shadow:0 1px 4px rgba(29,58,95,.07)">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+        <div style="font-size:14px;font-weight:700">✉️ 가정통신문</div>
+        <span style="font-size:11px;color:var(--ink3)">학교에서 가정으로 보내는 안내</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        ${nlHome.map(n => `
+          <div style="border:1px solid var(--border);border-radius:12px;padding:12px 14px;background:var(--bg)">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
+              <span style="font-size:14px;font-weight:700;color:var(--ink)">${escHtml(n.title||'')}</span>
+              <span style="font-size:11px;color:var(--ink3)">${n.sent_date||''}${n.author_name?` · ${escHtml(n.author_name)}`:''}</span>
+            </div>
+            ${n.body ? `<div style="font-size:13px;color:var(--ink2);line-height:1.7;white-space:pre-wrap;max-height:140px;overflow:auto">${escHtml(n.body)}</div>` : ''}
+          </div>`).join('')}
+      </div>
+    </div>` : '';
+
   // IMUSA 팀 점수 로드 (실시간은 별도 위젯으로 렌더 후 구독)
   let imusaHtml = `<div id="imusa-score-widget" style="background:var(--surface);border-radius:18px;padding:18px 20px;box-shadow:0 1px 4px rgba(29,58,95,.07)">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
@@ -2600,6 +2629,8 @@ async function renderHome() {
       <!-- IMUSA 팀 점수 -->
       ${imusaHtml}
     </div>
+
+    ${nlHomeHtml}
 
     <!-- 주간 일정표 -->
     <div style="background:var(--surface);border-radius:18px;overflow:hidden;box-shadow:0 1px 4px rgba(29,58,95,.07)">
@@ -7039,7 +7070,7 @@ const SCHOOL_TABS = [
   { id:'attendance', icon:'📋', label:'출석부',   ready:true  },
   { id:'timetable',  icon:'🗓', label:'시간표',   ready:true  },
   { id:'tuition',    icon:'💰', label:'학비',     ready:true  },
-  { id:'newsletter', icon:'✉️', label:'가정통신문', ready:false },
+  { id:'newsletter', icon:'✉️', label:'가정통신문', ready:true  },
 ];
 let schoolSubMode = 'attendance';
 let schoolStudents = [];
@@ -7119,6 +7150,7 @@ function renderSchoolMain() {
   if (schoolSubMode === 'attendance') return renderAttendanceHub();
   if (schoolSubMode === 'timetable')  return renderTimetableHub();
   if (schoolSubMode === 'tuition')    return renderTuitionHub();
+  if (schoolSubMode === 'newsletter') return renderNewsletterHub();
   return renderSchoolComingSoon(tab);
 }
 
@@ -7620,6 +7652,146 @@ async function deleteTuitionBill(id) {
   if (error) { showUploadToast('삭제 실패: ' + error.message); return; }
   tuiBills = tuiBills.filter(b => b.id !== id);
   renderTuition();
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  학사 — 가정통신문
+// ════════════════════════════════════════════════════════════════════
+let nlList = [];
+let nlGroupFilter = 'all';
+let nlForm = null;          // null | {id?, title, body, group_id, sent_date}
+
+function nlGroupName(gid) {
+  if (!gid) return '전체';
+  const g = tcsGroups.find(x => x.id === gid);
+  return g ? g.name : '반';
+}
+
+async function loadNewsletters() {
+  const { data, error } = await sb.from('newsletters').select('*')
+    .eq('community_id', CID()).order('sent_date', { ascending:false }).order('created_at', { ascending:false });
+  if (error) throw error;
+  nlList = data || [];
+}
+
+async function renderNewsletterHub() {
+  const main = document.getElementById('school-main');
+  main.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink3);font-size:13px">불러오는 중...</div>';
+  try { await loadNewsletters(); }
+  catch(e) {
+    if (schoolTableMissing(e)) return schoolSetupNeeded(e, '학사_가정통신문_DB설치.sql');
+    main.innerHTML = `<div style="color:#b91c1c;padding:30px;text-align:center;font-size:13px">불러오기 실패: ${e.message||e}</div>`;
+    return;
+  }
+  renderNewsletterList();
+}
+
+function renderNewsletterList() {
+  const main = document.getElementById('school-main');
+  if (nlForm) return renderNewsletterForm();
+  const list = nlGroupFilter === 'all' ? nlList
+    : nlList.filter(n => nlGroupFilter === 'none' ? !n.group_id : n.group_id === nlGroupFilter);
+
+  const groupOpts = `<option value="all">전체 보기</option><option value="none" ${nlGroupFilter==='none'?'selected':''}>전체 대상만</option>` +
+    tcsGroups.map(g => `<option value="${g.id}" ${nlGroupFilter===g.id?'selected':''}>${g.name}</option>`).join('');
+
+  const cards = list.map(n => `
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
+        <span style="font-size:11px;font-weight:700;color:#1d3a5f;background:var(--asoft);padding:2px 8px;border-radius:6px">${nlGroupName(n.group_id)}</span>
+        <span style="font-size:11px;color:var(--ink3)">${n.sent_date||''}${n.author_name?` · ${n.author_name}`:''}</span>
+        <div style="flex:1"></div>
+        <button onclick="editNewsletter('${n.id}')" style="border:1px solid var(--border);background:var(--surface);border-radius:7px;height:28px;padding:0 10px;cursor:pointer;font:600 11px var(--font);color:var(--ink2)">수정</button>
+        <button onclick="printNewsletter('${n.id}')" style="border:1px solid var(--border);background:var(--surface);border-radius:7px;height:28px;padding:0 10px;cursor:pointer;font:600 11px var(--font);color:var(--ink2)">인쇄</button>
+        <button onclick="deleteNewsletter('${n.id}')" style="border:none;background:transparent;cursor:pointer;color:var(--ink3);font-size:14px">✕</button>
+      </div>
+      <div style="font-size:15px;font-weight:700;color:var(--ink);margin-bottom:6px">${escHtml(n.title||'')}</div>
+      <div style="font-size:13px;color:var(--ink2);line-height:1.7;white-space:pre-wrap">${escHtml(n.body||'')}</div>
+    </div>`).join('');
+
+  main.innerHTML = `<div style="max-width:760px;margin:0 auto">
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px">
+      <select onchange="setNlGroup(this.value)" style="height:34px;padding:0 10px;border:1px solid var(--border);border-radius:9px;font:600 13px var(--font);background:var(--surface);color:var(--ink)">${groupOpts}</select>
+      <div style="flex:1"></div>
+      <button onclick="newNewsletter()" style="height:34px;padding:0 16px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 13px var(--font)">＋ 새 가정통신문</button>
+    </div>
+    <div style="font-size:12px;color:var(--ink3);margin-bottom:14px">학부모·학생에게 보내는 안내문입니다. 작성하면 가족이 <b>홈 화면</b>에서 바로 볼 수 있어요. (대상 반을 지정하면 해당 반에게만 표시)</div>
+    ${list.length ? cards : '<div style="padding:50px;text-align:center;color:var(--ink3);font-size:13px;background:var(--surface);border:1px solid var(--border);border-radius:12px">아직 가정통신문이 없어요. 새로 작성해보세요.</div>'}
+  </div>`;
+}
+
+function renderNewsletterForm() {
+  const main = document.getElementById('school-main');
+  const f = nlForm;
+  const groupOpts = `<option value="">전체 (모든 가족)</option>` +
+    tcsGroups.map(g => `<option value="${g.id}" ${f.group_id===g.id?'selected':''}>${g.name}</option>`).join('');
+  main.innerHTML = `<div style="max-width:680px;margin:0 auto">
+    <div style="font-size:16px;font-weight:700;color:var(--ink);margin-bottom:16px">${f.id?'가정통신문 수정':'새 가정통신문'}</div>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px">
+      <label style="font-size:12px;font-weight:600;color:var(--ink2)">제목</label>
+      <input id="nl-title" value="${escAttr(f.title||'')}" placeholder="예: 3월 학사일정 및 준비물 안내" style="width:100%;height:38px;margin:6px 0 14px;padding:0 12px;border:1px solid var(--border);border-radius:9px;font:600 14px var(--font);color:var(--ink)"/>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+        <div style="flex:1;min-width:160px"><label style="font-size:12px;font-weight:600;color:var(--ink2)">대상</label>
+          <select id="nl-group" style="width:100%;height:38px;margin-top:6px;padding:0 10px;border:1px solid var(--border);border-radius:9px;font:600 13px var(--font);background:var(--surface);color:var(--ink)">${groupOpts}</select></div>
+        <div style="flex:1;min-width:160px"><label style="font-size:12px;font-weight:600;color:var(--ink2)">발송일</label>
+          <input id="nl-date" type="date" value="${f.sent_date||attTodayStr()}" style="width:100%;height:38px;margin-top:6px;padding:0 10px;border:1px solid var(--border);border-radius:9px;font:600 13px var(--font);color:var(--ink)"/></div>
+      </div>
+      <label style="font-size:12px;font-weight:600;color:var(--ink2)">내용</label>
+      <textarea id="nl-body" placeholder="가정에 안내할 내용을 입력하세요" style="width:100%;min-height:200px;margin:6px 0 16px;padding:12px;border:1px solid var(--border);border-radius:9px;font:400 14px var(--font);color:var(--ink);line-height:1.7;resize:vertical">${escHtml(f.body||'')}</textarea>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button onclick="cancelNewsletter()" style="height:38px;padding:0 18px;border:1px solid var(--border);background:var(--surface);border-radius:9px;cursor:pointer;font:600 13px var(--font);color:var(--ink2)">취소</button>
+        <button onclick="saveNewsletter()" style="height:38px;padding:0 22px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 13px var(--font)">저장</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function setNlGroup(v) { nlGroupFilter = v; renderNewsletterList(); }
+function newNewsletter() { nlForm = { title:'', body:'', group_id:'', sent_date:attTodayStr() }; renderNewsletterForm(); }
+function editNewsletter(id) { const n = nlList.find(x=>x.id===id); if (!n) return; nlForm = { id:n.id, title:n.title||'', body:n.body||'', group_id:n.group_id||'', sent_date:n.sent_date||attTodayStr() }; renderNewsletterForm(); }
+function cancelNewsletter() { nlForm = null; renderNewsletterList(); }
+
+async function saveNewsletter() {
+  const title = document.getElementById('nl-title').value.trim();
+  const body  = document.getElementById('nl-body').value;
+  const group_id = document.getElementById('nl-group').value || null;
+  const sent_date = document.getElementById('nl-date').value || attTodayStr();
+  if (!title) { showUploadToast('제목을 입력하세요'); return; }
+  const row = { community_id: CID(), group_id, title, body, sent_date, updated_at: new Date().toISOString() };
+  let error;
+  if (nlForm.id) {
+    ({ error } = await sb.from('newsletters').update(row).eq('id', nlForm.id));
+  } else {
+    row.created_by = ME.id; row.author_name = ME.name;
+    ({ error } = await sb.from('newsletters').insert(row));
+  }
+  if (error) { if (schoolTableMissing(error)) return schoolSetupNeeded(error, '학사_가정통신문_DB설치.sql'); showUploadToast('저장 실패: ' + error.message); return; }
+  showUploadToast('✅ 가정통신문 저장 완료');
+  nlForm = null;
+  await renderNewsletterHub();
+}
+
+async function deleteNewsletter(id) {
+  if (!confirm('이 가정통신문을 삭제할까요?')) return;
+  const { error } = await sb.from('newsletters').delete().eq('id', id);
+  if (error) { showUploadToast('삭제 실패: ' + error.message); return; }
+  nlList = nlList.filter(n => n.id !== id);
+  renderNewsletterList();
+}
+
+function printNewsletter(id) {
+  const n = nlList.find(x => x.id === id); if (!n) return;
+  const win = window.open('', '_blank');
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${escHtml(n.title||'가정통신문')}</title>
+    <style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Malgun Gothic',sans-serif;padding:24mm 20mm;color:#111;line-height:1.8}
+    h1{font-size:13pt;color:#666;text-align:center;margin-bottom:4px}h2{font-size:20pt;text-align:center;margin-bottom:6px}
+    .meta{text-align:center;color:#888;font-size:10pt;margin-bottom:24px;border-bottom:2px solid #1d3a5f;padding-bottom:14px}
+    .body{font-size:12pt;white-space:pre-wrap}@page{size:A4;margin:18mm}</style></head>
+    <body><h1>가 정 통 신 문</h1><h2>${escHtml(n.title||'')}</h2>
+    <div class="meta">대상: ${escHtml(nlGroupName(n.group_id))} · ${n.sent_date||''}${n.author_name?` · ${escHtml(n.author_name)}`:''}</div>
+    <div class="body">${escHtml(n.body||'')}</div></body></html>`);
+  win.document.close();
+  setTimeout(() => win.print(), 500);
 }
 
 // ── 세션 복원은 위 window.addEventListener('load') 에서 처리 ──
