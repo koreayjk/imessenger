@@ -7393,6 +7393,9 @@ const TT_DAYS = [[1,'월'],[2,'화'],[3,'수'],[4,'목'],[5,'금']];
 let ttGroup = '';        // '' = 공통(전체), else group_id
 let ttPeriods = 7;       // 표시 교시 수
 let ttMap = {};          // 'day-period' -> {subject,teacher,room}
+let ttView = 'edit';     // 'edit'(반별 편집) | 'teacher'(교사별 보기)
+let ttTeacher = '';      // 교사별 보기에서 선택된 교사명
+let ttAllRows = [];      // 교사별 보기용: 공동체 전체 시간표 행
 
 function schoolTableMissing(e) {
   const m = ((e && (e.message||e.code))||'') + '';
@@ -7420,16 +7423,101 @@ async function loadTimetable() {
   if (maxP > ttPeriods) ttPeriods = Math.min(10, maxP);
 }
 
+async function loadTimetableAll() {
+  const { data, error } = await sb.from('timetables').select('*').eq('community_id', CID());
+  if (error) throw error;
+  ttAllRows = data || [];
+  const maxP = Math.max(0, ...ttAllRows.map(r => r.period));
+  if (maxP > ttPeriods) ttPeriods = Math.min(10, maxP);
+}
+
+function ttViewToggleHtml() {
+  const t = (v,label) => `<button onclick="setTtView('${v}')" style="height:34px;padding:0 13px;border:none;border-radius:8px;font:600 12px var(--font);cursor:pointer;background:${ttView===v?'#1d3a5f':'transparent'};color:${ttView===v?'#fff':'var(--ink2)'}">${label}</button>`;
+  return `<div style="display:inline-flex;gap:2px;background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:3px">${t('edit','반별 편집')}${t('teacher','교사별 보기')}</div>`;
+}
+
 async function renderTimetableHub() {
   const main = document.getElementById('school-main');
   main.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink3);font-size:13px">불러오는 중...</div>';
-  try { await loadTimetable(); }
+  try { if (ttView === 'teacher') await loadTimetableAll(); else await loadTimetable(); }
   catch(e) {
     if (schoolTableMissing(e)) return schoolSetupNeeded(e, '학사_시간표_DB설치.sql');
     main.innerHTML = `<div style="color:#b91c1c;padding:30px;text-align:center;font-size:13px">불러오기 실패: ${e.message||e}</div>`;
     return;
   }
-  renderTimetableGrid();
+  if (ttView === 'teacher') renderTimetableTeacher(); else renderTimetableGrid();
+}
+
+function setTtView(v) { ttView = v; renderTimetableHub(); }
+function changeTtTeacher(v) { ttTeacher = v; renderTimetableTeacher(); }
+
+function renderTimetableTeacher() {
+  const main = document.getElementById('school-main');
+  const teachers = [...new Set(ttAllRows.map(r => (r.teacher||'').trim()).filter(Boolean))].sort();
+  if (!ttTeacher || !teachers.includes(ttTeacher)) ttTeacher = teachers[0] || '';
+  const gName = gid => gid ? ((tcsGroups.find(g => g.id === gid)||{}).name || '반') : '공통';
+  const teacherOpts = teachers.length ? teachers.map(t => `<option value="${escAttr(t)}" ${t===ttTeacher?'selected':''}>${escHtml(t)}</option>`).join('')
+    : '<option value="">교사 정보 없음</option>';
+
+  let head = `<th style="width:46px;padding:8px 4px;font-size:11px;color:var(--ink3);background:var(--s2);border:1px solid var(--border)">교시</th>`;
+  TT_DAYS.forEach(([,label]) => head += `<th style="padding:8px;font-size:12px;font-weight:700;color:var(--ink);background:var(--s2);border:1px solid var(--border)">${label}</th>`);
+  let body = '';
+  for (let p=1; p<=ttPeriods; p++) {
+    body += `<tr><td style="text-align:center;font-weight:700;font-size:12px;color:var(--ink2);background:var(--s2);border:1px solid var(--border)">${p}</td>`;
+    TT_DAYS.forEach(([d]) => {
+      const cell = ttAllRows.find(r => r.day===d && r.period===p && (r.teacher||'').trim()===ttTeacher);
+      body += `<td style="padding:6px;border:1px solid var(--border);vertical-align:top;background:var(--surface);height:52px">${cell ? `
+        <div style="font:700 12.5px var(--font);color:var(--ink);text-align:center">${escHtml(cell.subject||'')}</div>
+        <div style="font:500 10.5px var(--font);color:var(--ink3);text-align:center;margin-top:2px">${escHtml(gName(cell.group_id))}${cell.room?` · ${escHtml(cell.room)}`:''}</div>` : ''}</td>`;
+    });
+    body += `</tr>`;
+  }
+
+  main.innerHTML = `<div style="max-width:1000px;margin:0 auto">
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
+      ${ttViewToggleHtml()}
+      <select onchange="changeTtTeacher(this.value)" style="height:34px;padding:0 10px;border:1px solid var(--border);border-radius:9px;font:600 13px var(--font);background:var(--surface);color:var(--ink)">${teacherOpts}</select>
+      <div style="flex:1"></div>
+      <button onclick="printTimetable('teacher')" ${ttTeacher?'':'disabled'} style="height:34px;padding:0 16px;border:1px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:9px;cursor:pointer;font:600 12px var(--font)">🖨 인쇄</button>
+    </div>
+    <div style="font-size:12px;color:var(--ink3);margin-bottom:10px">선택한 교사의 주간 수업을 <b>모든 반</b>에서 모아 보여줍니다. (칸: 과목 · 반 · 교실)</div>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px;overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;table-layout:fixed;min-width:640px">
+        <thead><tr>${head}</tr></thead><tbody>${body}</tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
+function printTimetable(kind) {
+  const z = n => String(n).padStart(2,'0');
+  const gName = gid => gid ? ((tcsGroups.find(g => g.id === gid)||{}).name || '반') : '공통';
+  let title, cellAt;
+  if (kind === 'teacher') {
+    title = `${ttTeacher} 교사 시간표`;
+    cellAt = (d,p) => { const c = ttAllRows.find(r => r.day===d && r.period===p && (r.teacher||'').trim()===ttTeacher); return c ? `<b>${escHtml(c.subject||'')}</b><br><span class="sub">${escHtml(gName(c.group_id))}${c.room?` · ${escHtml(c.room)}`:''}</span>` : ''; };
+  } else {
+    title = `${ttGroup ? gName(ttGroup) : '공통'} 시간표`;
+    cellAt = (d,p) => { const c = ttMap[`${d}-${p}`]; return c && (c.subject||c.teacher||c.room) ? `<b>${escHtml(c.subject||'')}</b><br><span class="sub">${escHtml(c.teacher||'')}${c.room?` · ${escHtml(c.room)}`:''}</span>` : ''; };
+  }
+  let rows = '';
+  for (let p=1; p<=ttPeriods; p++) {
+    rows += `<tr><th>${p}</th>` + TT_DAYS.map(([d]) => `<td>${cellAt(d,p)}</td>`).join('') + `</tr>`;
+  }
+  const win = window.open('', '_blank');
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${escHtml(title)}</title>
+  <style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Malgun Gothic',sans-serif;padding:18mm;color:#111}
+  h1{font-size:18pt;text-align:center;color:#1d3a5f;margin-bottom:16px}
+  table{width:100%;border-collapse:collapse;table-layout:fixed}
+  th,td{border:1px solid #999;padding:8px;text-align:center;font-size:11pt}
+  thead th,tbody th{background:#eef2f8;color:#1d3a5f;font-weight:700}
+  td{height:64px;vertical-align:middle}.sub{font-size:9pt;color:#666}
+  @page{size:A4 landscape;margin:14mm}</style></head><body>
+  <h1>${escHtml(title)}</h1>
+  <table><thead><tr><th style="width:44px">교시</th>${TT_DAYS.map(([,l])=>`<th>${l}</th>`).join('')}</tr></thead>
+  <tbody>${rows}</tbody></table></body></html>`);
+  win.document.close();
+  setTimeout(() => win.print(), 400);
 }
 
 function renderTimetableGrid() {
@@ -7462,9 +7550,11 @@ function renderTimetableGrid() {
 
   main.innerHTML = `<div style="max-width:1000px;margin:0 auto">
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
-      <select onchange="changeTtGroup(this.value)" style="${inputStyle};height:34px;max-width:220px">${groupOpts}</select>
+      ${ttViewToggleHtml()}
+      <select onchange="changeTtGroup(this.value)" style="${inputStyle};height:34px;max-width:200px">${groupOpts}</select>
       <select onchange="changeTtPeriods(this.value)" style="${inputStyle};height:34px;width:auto">${periodOpts}</select>
       <div style="flex:1"></div>
+      <button onclick="printTimetable('edit')" style="height:34px;padding:0 14px;border:1px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:9px;cursor:pointer;font:600 12px var(--font)">🖨 인쇄</button>
       <button onclick="saveTimetable()" style="height:34px;padding:0 18px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 13px var(--font)">저장</button>
     </div>
     <div style="font-size:12px;color:var(--ink3);margin-bottom:10px">반을 골라 주간 시간표를 입력하세요. <b>공통(전체)</b>은 모든 반에 공통인 시간표입니다. 칸마다 과목·교사·교실을 적고 <b>저장</b>하세요.</div>
