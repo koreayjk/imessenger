@@ -6503,6 +6503,10 @@ function showUploadToast(msg) {
 // window.onload
 window.addEventListener('load', async () => {
 
+  // 공개 가정통신문 보기 링크 (#nl=<id>) — 로그인 불필요
+  const nlMatch = (location.hash || '').match(/#nl=([0-9a-fA-F-]{36})/);
+  if (nlMatch) { renderPublicNewsletter(nlMatch[1]); return; }
+
   // 기존 세션 복원
   try {
     const { data: { session } } = await sb.auth.getSession();
@@ -7797,6 +7801,11 @@ function renderNewsletterList() {
         <span style="font-size:11px;font-weight:700;color:#1d3a5f;background:var(--asoft);padding:2px 8px;border-radius:6px">${nlGroupName(n.group_id)}</span>
         <span style="font-size:11px;color:var(--ink3)">${n.sent_date||''}${n.author_name?` · ${n.author_name}`:''}</span>
         <div style="flex:1"></div>
+        ${n.is_public
+          ? `<span style="font-size:10px;font-weight:700;color:#2a7a5a;background:#e8f5ee;padding:4px 8px;border-radius:6px">🔗 공유중</span>
+             <button onclick="copyNewsletterLink('${n.id}')" style="border:1px solid var(--border);background:var(--surface);border-radius:7px;height:28px;padding:0 10px;cursor:pointer;font:600 11px var(--font);color:var(--ink2)">링크복사</button>
+             <button onclick="unshareNewsletter('${n.id}')" style="border:1px solid var(--border);background:var(--surface);border-radius:7px;height:28px;padding:0 10px;cursor:pointer;font:600 11px var(--font);color:var(--ink3)">공유해제</button>`
+          : `<button onclick="shareNewsletter('${n.id}')" style="border:1px solid var(--border);background:var(--surface);border-radius:7px;height:28px;padding:0 10px;cursor:pointer;font:600 11px var(--font);color:var(--ink2)">🔗 공유</button>`}
         <button onclick="editNewsletter('${n.id}')" style="border:1px solid var(--border);background:var(--surface);border-radius:7px;height:28px;padding:0 10px;cursor:pointer;font:600 11px var(--font);color:var(--ink2)">수정</button>
         <button onclick="printNewsletter('${n.id}')" style="border:1px solid var(--border);background:var(--surface);border-radius:7px;height:28px;padding:0 10px;cursor:pointer;font:600 11px var(--font);color:var(--ink2)">인쇄</button>
         <button onclick="deleteNewsletter('${n.id}')" style="border:none;background:transparent;cursor:pointer;color:var(--ink3);font-size:14px">✕</button>
@@ -7888,6 +7897,64 @@ function printNewsletter(id) {
     <div class="body">${escHtml(n.body||'')}</div></body></html>`);
   win.document.close();
   setTimeout(() => win.print(), 500);
+}
+
+// ── 가정통신문 공개 공유 링크 (#nl=<id>, 로그인 불필요) ──
+function nlShareLink(id) { return location.origin + location.pathname + '#nl=' + id; }
+
+async function shareNewsletter(id) {
+  const { error } = await sb.from('newsletters').update({ is_public:true, updated_at:new Date().toISOString() }).eq('id', id);
+  if (error) {
+    if (/column .*is_public.* does not exist|is_public/.test(error.message||'')) { showUploadToast('공유 기능 DB가 필요해요 → 학사_가정통신문_공유_DB설치.sql 실행'); return; }
+    showUploadToast('공유 설정 실패: ' + error.message); return;
+  }
+  const n = nlList.find(x => x.id === id); if (n) n.is_public = true;
+  await copyNewsletterLink(id, true);
+  renderNewsletterList();
+}
+async function unshareNewsletter(id) {
+  if (!confirm('공유를 해제하면 기존 링크로 더 이상 열람할 수 없어요. 해제할까요?')) return;
+  const { error } = await sb.from('newsletters').update({ is_public:false, updated_at:new Date().toISOString() }).eq('id', id);
+  if (error) { showUploadToast('해제 실패: ' + error.message); return; }
+  const n = nlList.find(x => x.id === id); if (n) n.is_public = false;
+  showUploadToast('🔒 공유를 해제했어요');
+  renderNewsletterList();
+}
+async function copyNewsletterLink(id, quiet) {
+  const link = nlShareLink(id);
+  try { await navigator.clipboard.writeText(link); showUploadToast('🔗 공유 링크를 복사했어요'); }
+  catch(e) { window.prompt('아래 링크를 복사해 학부모에게 보내세요:', link); }
+}
+
+async function renderPublicNewsletter(id) {
+  const auth = document.getElementById('auth-screen'); if (auth) auth.style.display = 'none';
+  const app = document.getElementById('app'); if (app) app.style.display = 'none';
+  let box = document.getElementById('public-nl');
+  if (!box) { box = document.createElement('div'); box.id = 'public-nl'; document.body.appendChild(box); }
+  box.style.cssText = 'position:fixed;inset:0;overflow:auto;background:var(--bg);z-index:9999;padding:24px;font-family:var(--font)';
+  box.innerHTML = '<div style="text-align:center;padding:60px;color:var(--ink3)">불러오는 중...</div>';
+  const { data } = await sb.from('newsletters').select('title,body,sent_date,author_name,is_public').eq('id', id).maybeSingle();
+  if (!data || !data.is_public) {
+    box.innerHTML = `<div style="max-width:520px;margin:80px auto;text-align:center">
+      <div style="font-size:42px;margin-bottom:14px">🔒</div>
+      <div style="font-size:16px;font-weight:700;color:var(--ink);margin-bottom:8px">열람할 수 없는 링크예요</div>
+      <div style="font-size:13px;color:var(--ink3);line-height:1.8">링크가 만료되었거나 공유가 해제되었어요.<br>학교에 문의해 주세요.</div></div>`;
+    return;
+  }
+  box.innerHTML = `<div style="max-width:680px;margin:0 auto">
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px 30px;box-shadow:0 4px 20px rgba(29,58,95,.08)">
+      <div style="text-align:center;border-bottom:2px solid #1d3a5f;padding-bottom:14px;margin-bottom:18px">
+        <div style="font-size:12px;font-weight:600;color:var(--ink3);letter-spacing:2px">가 정 통 신 문</div>
+        <div style="font-size:20px;font-weight:800;color:var(--ink);margin-top:8px">${escHtml(data.title||'')}</div>
+        <div style="font-size:12px;color:var(--ink3);margin-top:6px">${data.sent_date||''}${data.author_name?` · ${escHtml(data.author_name)}`:''}</div>
+      </div>
+      <div style="font-size:14px;color:var(--ink);line-height:1.9;white-space:pre-wrap">${escHtml(data.body||'')}</div>
+      <div style="display:flex;justify-content:center;gap:8px;margin-top:24px;padding-top:18px;border-top:1px solid var(--border)">
+        <button onclick="window.print()" style="height:38px;padding:0 20px;border:1px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:9px;cursor:pointer;font:600 13px var(--font)">🖨 인쇄</button>
+      </div>
+    </div>
+    <div style="text-align:center;font-size:11px;color:var(--ink3);margin-top:16px">TCS Total Care System</div>
+  </div>`;
 }
 
 // ════════════════════════════════════════════════════════════════════
