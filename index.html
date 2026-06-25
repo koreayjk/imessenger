@@ -7037,7 +7037,7 @@ async function deleteEvent() {
 // ════════════════════════════════════════════════════════════════════
 const SCHOOL_TABS = [
   { id:'attendance', icon:'📋', label:'출석부',   ready:true  },
-  { id:'timetable',  icon:'🗓', label:'시간표',   ready:false },
+  { id:'timetable',  icon:'🗓', label:'시간표',   ready:true  },
   { id:'tuition',    icon:'💰', label:'학비',     ready:false },
   { id:'newsletter', icon:'✉️', label:'가정통신문', ready:false },
 ];
@@ -7117,6 +7117,7 @@ function renderSchoolMain() {
   if (sub) sub.textContent = tab ? tab.label : '학교 행정을 한 곳에서';
   document.getElementById('school-header-actions').innerHTML = '';
   if (schoolSubMode === 'attendance') return renderAttendanceHub();
+  if (schoolSubMode === 'timetable')  return renderTimetableHub();
   return renderSchoolComingSoon(tab);
 }
 
@@ -7344,6 +7345,119 @@ async function pushAllAttToTcs() {
   let ok = 0;
   for (const s of list) { if (await pushAttToTcs(s.id, true)) ok++; }
   showUploadToast(`✅ ${ok}명 TCS 출결 반영 완료`);
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  학사 — 시간표 관리
+// ════════════════════════════════════════════════════════════════════
+const TT_DAYS = [[1,'월'],[2,'화'],[3,'수'],[4,'목'],[5,'금']];
+let ttGroup = '';        // '' = 공통(전체), else group_id
+let ttPeriods = 7;       // 표시 교시 수
+let ttMap = {};          // 'day-period' -> {subject,teacher,room}
+
+function schoolTableMissing(e) {
+  const m = ((e && (e.message||e.code))||'') + '';
+  return m.includes('does not exist') || m.includes('42P01') || m.includes('schema cache') ||
+         (m.includes('relation') && m.includes('exist'));
+}
+function schoolSetupNeeded(err, file) {
+  document.getElementById('school-main').innerHTML = `<div style="max-width:560px;margin:40px auto;text-align:center">
+    <div style="font-size:40px;margin-bottom:12px">🗄️</div>
+    <div style="font-size:16px;font-weight:700;margin-bottom:8px">데이터베이스 설정이 필요해요</div>
+    <div style="font-size:13px;color:var(--ink3);line-height:1.8">이 기능을 쓰려면 Supabase에서 테이블을 한 번 만들어야 합니다.<br>제공해드린 <b>${file}</b> 내용을 Supabase → SQL Editor에 붙여넣고 실행해주세요.</div>
+    <div style="font-size:11px;color:#b91c1c;margin-top:14px">${err?.message || ''}</div>
+  </div>`;
+}
+
+async function loadTimetable() {
+  let q = sb.from('timetables').select('*').eq('community_id', CID());
+  q = ttGroup ? q.eq('group_id', ttGroup) : q.is('group_id', null);
+  const { data, error } = await q;
+  if (error) throw error;
+  ttMap = {};
+  (data||[]).forEach(r => { ttMap[`${r.day}-${r.period}`] = { subject:r.subject||'', teacher:r.teacher||'', room:r.room||'' }; });
+  // 저장된 최대 교시에 맞춰 표 크기 자동 확장
+  const maxP = Math.max(0, ...(data||[]).map(r => r.period));
+  if (maxP > ttPeriods) ttPeriods = Math.min(10, maxP);
+}
+
+async function renderTimetableHub() {
+  const main = document.getElementById('school-main');
+  main.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink3);font-size:13px">불러오는 중...</div>';
+  try { await loadTimetable(); }
+  catch(e) {
+    if (schoolTableMissing(e)) return schoolSetupNeeded(e, '학사_시간표_DB설치.sql');
+    main.innerHTML = `<div style="color:#b91c1c;padding:30px;text-align:center;font-size:13px">불러오기 실패: ${e.message||e}</div>`;
+    return;
+  }
+  renderTimetableGrid();
+}
+
+function renderTimetableGrid() {
+  const main = document.getElementById('school-main');
+  const groupOpts = `<option value="" ${ttGroup===''?'selected':''}>공통(전체) 시간표</option>` +
+    tcsGroups.map(g => `<option value="${g.id}" ${ttGroup===g.id?'selected':''}>${g.name}</option>`).join('');
+  const periodOpts = [4,5,6,7,8,9,10].map(n => `<option value="${n}" ${ttPeriods===n?'selected':''}>${n}교시</option>`).join('');
+
+  const inputStyle = 'width:100%;border:1px solid var(--border);border-radius:6px;padding:5px 6px;font:600 12px var(--font);color:var(--ink);background:var(--surface)';
+  const subStyle = 'width:100%;border:none;border-bottom:1px solid transparent;padding:4px 2px;font:700 12.5px var(--font);color:var(--ink);background:transparent;text-align:center';
+  const miniStyle = 'width:100%;border:none;padding:2px;font:500 10.5px var(--font);color:var(--ink3);background:transparent;text-align:center';
+
+  let head = `<th style="width:46px;padding:8px 4px;font-size:11px;color:var(--ink3);background:var(--s2);border:1px solid var(--border)">교시</th>`;
+  TT_DAYS.forEach(([,label]) => head += `<th style="padding:8px;font-size:12px;font-weight:700;color:var(--ink);background:var(--s2);border:1px solid var(--border)">${label}</th>`);
+
+  let body = '';
+  for (let p=1; p<=ttPeriods; p++) {
+    body += `<tr><td style="text-align:center;font-weight:700;font-size:12px;color:var(--ink2);background:var(--s2);border:1px solid var(--border)">${p}</td>`;
+    TT_DAYS.forEach(([d]) => {
+      const c = ttMap[`${d}-${p}`] || {subject:'',teacher:'',room:''};
+      body += `<td style="padding:4px;border:1px solid var(--border);vertical-align:top;background:var(--surface)">
+        <input id="tt-${d}-${p}-s" value="${escAttr(c.subject)}" placeholder="과목" style="${subStyle}"/>
+        <div style="display:flex;gap:2px;margin-top:2px">
+          <input id="tt-${d}-${p}-t" value="${escAttr(c.teacher)}" placeholder="교사" style="${miniStyle}"/>
+          <input id="tt-${d}-${p}-r" value="${escAttr(c.room)}" placeholder="교실" style="${miniStyle}"/>
+        </div></td>`;
+    });
+    body += `</tr>`;
+  }
+
+  main.innerHTML = `<div style="max-width:1000px;margin:0 auto">
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
+      <select onchange="changeTtGroup(this.value)" style="${inputStyle};height:34px;max-width:220px">${groupOpts}</select>
+      <select onchange="changeTtPeriods(this.value)" style="${inputStyle};height:34px;width:auto">${periodOpts}</select>
+      <div style="flex:1"></div>
+      <button onclick="saveTimetable()" style="height:34px;padding:0 18px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 13px var(--font)">저장</button>
+    </div>
+    <div style="font-size:12px;color:var(--ink3);margin-bottom:10px">반을 골라 주간 시간표를 입력하세요. <b>공통(전체)</b>은 모든 반에 공통인 시간표입니다. 칸마다 과목·교사·교실을 적고 <b>저장</b>하세요.</div>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px;overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;table-layout:fixed;min-width:640px">
+        <thead><tr>${head}</tr></thead><tbody>${body}</tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
+function changeTtGroup(v) { ttGroup = v; renderTimetableHub(); }
+function changeTtPeriods(v) { ttPeriods = parseInt(v) || 7; renderTimetableGrid(); }
+
+async function saveTimetable() {
+  const val = id => (document.getElementById(id)?.value || '').trim();
+  const rows = [];
+  for (let p=1; p<=ttPeriods; p++) for (const [d] of TT_DAYS) {
+    const s = val(`tt-${d}-${p}-s`), t = val(`tt-${d}-${p}-t`), r = val(`tt-${d}-${p}-r`);
+    if (s || t || r) rows.push({ community_id:CID(), group_id: ttGroup||null, day:d, period:p, subject:s, teacher:t, room:r, updated_at:new Date().toISOString() });
+  }
+  // 이 반의 기존 시간표를 지우고 새로 입력 (delete-then-insert: null group 충돌 회피)
+  let dq = sb.from('timetables').delete().eq('community_id', CID());
+  dq = ttGroup ? dq.eq('group_id', ttGroup) : dq.is('group_id', null);
+  const { error: delErr } = await dq;
+  if (delErr) { if (schoolTableMissing(delErr)) return schoolSetupNeeded(delErr, '학사_시간표_DB설치.sql'); showUploadToast('저장 실패: ' + delErr.message); return; }
+  if (rows.length) {
+    const { error } = await sb.from('timetables').insert(rows);
+    if (error) { showUploadToast('저장 실패: ' + error.message); return; }
+  }
+  showUploadToast('✅ 시간표 저장 완료');
+  await loadTimetable();
 }
 
 // ── 세션 복원은 위 window.addEventListener('load') 에서 처리 ──
