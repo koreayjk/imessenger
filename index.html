@@ -7807,7 +7807,7 @@ function renderNewsletterList() {
              <button onclick="unshareNewsletter('${n.id}')" style="border:1px solid var(--border);background:var(--surface);border-radius:7px;height:28px;padding:0 10px;cursor:pointer;font:600 11px var(--font);color:var(--ink3)">공유해제</button>`
           : `<button onclick="shareNewsletter('${n.id}')" style="border:1px solid var(--border);background:var(--surface);border-radius:7px;height:28px;padding:0 10px;cursor:pointer;font:600 11px var(--font);color:var(--ink2)">🔗 공유</button>`}
         <button onclick="editNewsletter('${n.id}')" style="border:1px solid var(--border);background:var(--surface);border-radius:7px;height:28px;padding:0 10px;cursor:pointer;font:600 11px var(--font);color:var(--ink2)">수정</button>
-        <button onclick="printNewsletter('${n.id}')" style="border:1px solid var(--border);background:var(--surface);border-radius:7px;height:28px;padding:0 10px;cursor:pointer;font:600 11px var(--font);color:var(--ink2)">인쇄</button>
+        <button onclick="printNewsletter('${n.id}')" title="인쇄 또는 PDF로 저장" style="border:1px solid var(--border);background:var(--surface);border-radius:7px;height:28px;padding:0 10px;cursor:pointer;font:600 11px var(--font);color:var(--ink2)">📄 PDF/인쇄</button>
         <button onclick="deleteNewsletter('${n.id}')" style="border:none;background:transparent;cursor:pointer;color:var(--ink3);font-size:14px">✕</button>
       </div>
       <div style="font-size:15px;font-weight:700;color:var(--ink);margin-bottom:6px">${escHtml(n.title||'')}</div>
