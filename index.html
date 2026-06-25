@@ -7072,6 +7072,8 @@ const SCHOOL_TABS = [
   { id:'tuition',    icon:'💰', label:'학비',     ready:true  },
   { id:'newsletter', icon:'✉️', label:'가정통신문', ready:true  },
   { id:'cert',       icon:'📄', label:'증명서',    ready:true  },
+  { id:'counseling', icon:'💬', label:'상담기록',   ready:true  },
+  { id:'health',     icon:'🏥', label:'보건',      ready:true  },
 ];
 let schoolSubMode = 'attendance';
 let schoolStudents = [];
@@ -7153,6 +7155,8 @@ function renderSchoolMain() {
   if (schoolSubMode === 'tuition')    return renderTuitionHub();
   if (schoolSubMode === 'newsletter') return renderNewsletterHub();
   if (schoolSubMode === 'cert')       return renderCertHub();
+  if (schoolSubMode === 'counseling') return renderLogHub('counseling');
+  if (schoolSubMode === 'health')     return renderLogHub('health');
   return renderSchoolComingSoon(tab);
 }
 
@@ -7934,6 +7938,122 @@ function printCertificate() {
   </body></html>`);
   win.document.close();
   setTimeout(() => win.print(), 500);
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  학사 — 상담·생활지도 / 보건·건강 (학생별 기록 로그, 공용 엔진)
+// ════════════════════════════════════════════════════════════════════
+const LOG_SPECS = {
+  counseling: { table:'counseling_logs', file:'학사_상담_DB설치.sql', icon:'💬', title:'상담·생활지도 기록',
+    desc:'학생별 상담·생활지도 내용을 날짜별로 기록합니다.',
+    cats:['상담','생활지도','칭찬','주의','기타'],
+    catColor:{ '상담':'#2a5298','생활지도':'#b8860b','칭찬':'#2a7a5a','주의':'#c0392b','기타':'#7f8c8d' },
+    titlePh:'제목 (예: 진로 상담)', bodyPh:'상담/지도 내용을 입력하세요' },
+  health: { table:'health_logs', file:'학사_보건_DB설치.sql', icon:'🏥', title:'보건·건강 기록',
+    desc:'보건실 방문·투약·병결 등 건강 관련 기록을 남깁니다.',
+    cats:['보건실 방문','투약','병결','예방접종','기타'],
+    catColor:{ '보건실 방문':'#2a5298','투약':'#8e44ad','병결':'#c0392b','예방접종':'#2a7a5a','기타':'#7f8c8d' },
+    titlePh:'증상/제목 (예: 두통, 복통)', bodyPh:'조치 내용·특이사항을 입력하세요' },
+};
+let logSpecKey = 'counseling';
+let logStudentId = '';
+let logEntries = [];
+
+async function renderLogHub(key) {
+  logSpecKey = key;
+  const spec = LOG_SPECS[key];
+  const main = document.getElementById('school-main');
+  if (!schoolStudents.length) { main.innerHTML = '<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px">등록된 학생이 없어요.</div>'; return; }
+  if (!logStudentId || !schoolStudents.find(s => s.id === logStudentId)) logStudentId = schoolStudents[0].id;
+  main.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink3);font-size:13px">불러오는 중...</div>';
+  try { await loadLogs(); }
+  catch(e) {
+    if (schoolTableMissing(e)) return schoolSetupNeeded(e, spec.file);
+    main.innerHTML = `<div style="color:#b91c1c;padding:30px;text-align:center;font-size:13px">불러오기 실패: ${e.message||e}</div>`;
+    return;
+  }
+  renderLog();
+}
+
+async function loadLogs() {
+  const spec = LOG_SPECS[logSpecKey];
+  const { data, error } = await sb.from(spec.table).select('*')
+    .eq('community_id', CID()).eq('student_id', logStudentId)
+    .order('date', { ascending:false }).order('created_at', { ascending:false });
+  if (error) throw error;
+  logEntries = data || [];
+}
+
+function renderLog() {
+  const spec = LOG_SPECS[logSpecKey];
+  const main = document.getElementById('school-main');
+  const studentOpts = schoolStudents.map(x => `<option value="${x.id}" ${x.id===logStudentId?'selected':''}>${x.name}${x.grade?` (${x.grade})`:''}</option>`).join('');
+  const catOpts = spec.cats.map(c => `<option value="${c}">${c}</option>`).join('');
+  const inp = 'height:36px;padding:0 10px;border:1px solid var(--border);border-radius:9px;font:600 13px var(--font);color:var(--ink);background:var(--surface)';
+
+  const entries = logEntries.map(e => {
+    const color = spec.catColor[e.category] || '#7f8c8d';
+    return `<div style="border:1px solid var(--border);border-radius:12px;padding:13px 15px;margin-bottom:10px;background:var(--surface)">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;flex-wrap:wrap">
+        <span style="font-size:11px;font-weight:700;color:#fff;background:${color};padding:2px 9px;border-radius:6px">${escHtml(e.category||'')}</span>
+        ${e.title?`<span style="font-size:14px;font-weight:700;color:var(--ink)">${escHtml(e.title)}</span>`:''}
+        <span style="font-size:11px;color:var(--ink3)">${e.date||''}${e.author_name?` · ${escHtml(e.author_name)}`:''}</span>
+        <div style="flex:1"></div>
+        <button onclick="deleteLog('${e.id}')" title="삭제" style="border:none;background:transparent;cursor:pointer;color:var(--ink3);font-size:14px">✕</button>
+      </div>
+      ${e.content?`<div style="font-size:13px;color:var(--ink2);line-height:1.7;white-space:pre-wrap">${escHtml(e.content)}</div>`:''}
+    </div>`;
+  }).join('');
+
+  main.innerHTML = `<div style="max-width:720px;margin:0 auto">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+      <label style="font-size:12px;font-weight:600;color:var(--ink2)">학생</label>
+      <select onchange="changeLogStudent(this.value)" style="${inp};min-width:160px">${studentOpts}</select>
+      <span style="font-size:12px;color:var(--ink3)">${spec.desc}</span>
+    </div>
+    <!-- 입력 -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:16px">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+        <select id="log-cat" style="${inp}">${catOpts}</select>
+        <input id="log-date" type="date" value="${attTodayStr()}" style="${inp}"/>
+        <input id="log-title" placeholder="${spec.titlePh}" style="${inp};flex:1;min-width:160px"/>
+      </div>
+      <textarea id="log-content" placeholder="${spec.bodyPh}" style="width:100%;min-height:80px;padding:11px;border:1px solid var(--border);border-radius:9px;font:400 14px var(--font);color:var(--ink);line-height:1.7;resize:vertical"></textarea>
+      <div style="display:flex;justify-content:flex-end;margin-top:8px">
+        <button onclick="addLog()" style="height:36px;padding:0 18px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 13px var(--font)">＋ 기록 추가</button>
+      </div>
+    </div>
+    <!-- 목록 -->
+    ${logEntries.length ? entries : '<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px;background:var(--surface);border:1px solid var(--border);border-radius:12px">아직 기록이 없어요.</div>'}
+  </div>`;
+}
+
+function changeLogStudent(id) { logStudentId = id; renderLogHub(logSpecKey); }
+
+async function addLog() {
+  const spec = LOG_SPECS[logSpecKey];
+  const category = document.getElementById('log-cat').value;
+  const date = document.getElementById('log-date').value || attTodayStr();
+  const title = document.getElementById('log-title').value.trim();
+  const content = document.getElementById('log-content').value.trim();
+  if (!title && !content) { showUploadToast('제목이나 내용을 입력하세요'); return; }
+  const { error } = await sb.from(spec.table).insert({
+    community_id: CID(), student_id: logStudentId, date, category, title, content,
+    author_name: ME.name, created_by: ME.id,
+  });
+  if (error) { if (schoolTableMissing(error)) return schoolSetupNeeded(error, spec.file); showUploadToast('저장 실패: ' + error.message); return; }
+  showUploadToast('✅ 기록이 추가됐어요');
+  await loadLogs();
+  renderLog();
+}
+
+async function deleteLog(id) {
+  const spec = LOG_SPECS[logSpecKey];
+  if (!confirm('이 기록을 삭제할까요?')) return;
+  const { error } = await sb.from(spec.table).delete().eq('id', id);
+  if (error) { showUploadToast('삭제 실패: ' + error.message); return; }
+  logEntries = logEntries.filter(e => e.id !== id);
+  renderLog();
 }
 
 // ── 세션 복원은 위 window.addEventListener('load') 에서 처리 ──
