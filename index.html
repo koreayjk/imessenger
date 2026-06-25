@@ -553,13 +553,17 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
         <div style="margin-bottom:14px">
           <div style="font-size:12px;color:var(--ink3);margin-bottom:6px;font-weight:500">역할</div>
           <div style="display:flex;gap:8px">
-            <label style="flex:1;display:flex;align-items:center;gap:8px;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;cursor:pointer;font-size:13px;transition:all .15s" id="role-teacher-label">
+            <label style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:10px 8px;border:1.5px solid var(--border);border-radius:10px;cursor:pointer;font-size:13px;transition:all .15s" id="role-teacher-label">
               <input type="radio" name="su-role" value="teacher" id="role-teacher" style="width:auto"/> 👩‍🏫 교사
             </label>
-            <label style="flex:1;display:flex;align-items:center;gap:8px;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;cursor:pointer;font-size:13px;transition:all .15s" id="role-student-label">
+            <label style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:10px 8px;border:1.5px solid var(--border);border-radius:10px;cursor:pointer;font-size:13px;transition:all .15s" id="role-staff-label">
+              <input type="radio" name="su-role" value="staff" id="role-staff" style="width:auto"/> 🧑‍💼 간사
+            </label>
+            <label style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:10px 8px;border:1.5px solid var(--border);border-radius:10px;cursor:pointer;font-size:13px;transition:all .15s" id="role-student-label">
               <input type="radio" name="su-role" value="student" id="role-student" style="width:auto" checked/> 🎓 학생
             </label>
           </div>
+          <div style="font-size:11px;color:var(--ink3);margin-top:6px">※ 관리자·행정담당자 권한은 가입 후 관리자가 지정합니다.</div>
         </div>
         <button class="auth-btn" onclick="doSignUp()" id="su-btn">가입하기</button>
         <div class="auth-msg" id="su-msg"></div>
@@ -1202,10 +1206,21 @@ function isCommunityAdmin() {
   return ME && (ME.community_role === 'super_admin' || ME.community_role === 'community_admin');
 }
 function isTeacher() {
-  return ME && (ME.community_role === 'super_admin' || ME.community_role === 'community_admin' || ME.community_role === 'teacher');
+  return ME && ['super_admin','community_admin','teacher','admin_officer'].includes(ME.community_role);
 }
 function isStudent() {
   return ME && ME.community_role === 'student';
+}
+function isAdminOfficer() {
+  return ME && ME.community_role === 'admin_officer';
+}
+// 학사 허브(👤학생·출석부·시간표·생활기록부) 접근 — 학생 제외 전 구성원
+function canAccessSchool() {
+  return ME && ['super_admin','community_admin','admin_officer','teacher','staff'].includes(ME.community_role);
+}
+// 학비·가정통신문·증명서 — 행정담당자 + 관리자/총관리자만
+function canSeeAdminModules() {
+  return ME && ['super_admin','community_admin','admin_officer'].includes(ME.community_role);
 }
 
 // ── 로그인 ──
@@ -1340,7 +1355,7 @@ function enterApp() {
   document.getElementById('sb-tcs').style.display = isTeacher() ? 'none' : 'flex';
   // 학사관리 버튼: 교사·간사·관리자만
   const sbSchool = document.getElementById('sb-school');
-  if (sbSchool) sbSchool.style.display = isTeacher() ? 'flex' : 'none';
+  if (sbSchool) sbSchool.style.display = canAccessSchool() ? 'flex' : 'none';
   // 단독 Triple School 버튼은 숨김 — TCS 하위 탭으로 접근
   const sbReading = document.getElementById('sb-reading');
   if (sbReading) sbReading.style.display = 'none';
@@ -1568,7 +1583,7 @@ function setMode(m) {
   document.getElementById('home-view').style.display = m==='home' ? 'flex' : 'none';
   document.getElementById('calendar-view').style.display = m==='calendar' ? 'flex' : 'none';
   document.getElementById('admin-view').style.display = m==='admin' ? 'flex' : 'none';
-  document.getElementById('school-view').style.display = (isTeacher() && m==='school') ? 'flex' : 'none';
+  document.getElementById('school-view').style.display = (canAccessSchool() && m==='school') ? 'flex' : 'none';
   const teacherTcsArea = isTeacher() && (m==='tcs' || m==='mock' || m==='reading');
   document.getElementById('tcs-view').style.display = teacherTcsArea ? 'flex' : 'none';
   document.getElementById('mock-view').style.display = 'none';
@@ -1596,7 +1611,7 @@ function setMode(m) {
   if (m==='tcs') { if(isTeacher()){ tcsSubMode='record'; initTcsPage(); } else setMode('profile'); return; }
   if (m==='mock') { if(isTeacher()){ tcsSubMode='mock'; initTcsPage(); } else setMode('home'); return; }
   if (m==='reading') { if(isTeacher()){ tcsSubMode='reading'; initTcsPage(); } else initReadingPage(); return; }
-  if (m==='school') { if(isTeacher()){ initSchoolPage(); } else setMode('home'); return; }
+  if (m==='school') { if(canAccessSchool()){ initSchoolPage(); } else setMode('home'); return; }
   if (m==='profile') { renderProfilePage(); }
   sessionStorage.setItem('last_mode', m);
   document.getElementById('panel-title').textContent = {chat:'채팅',prayer:'기도제목',home:'홈',calendar:'일정',admin:'관리자',tcs:'TCS',mock:'모의고사 분석',reading:'Triple School',school:'학사관리',profile:'내 프로필'}[m] || m;
@@ -3361,8 +3376,10 @@ let tcsRecords = {};
 let tcsStudents = [];
 let tcsCurrentSection = 'personal';
 let tcsSubMode = 'record';   // 'record' | 'mock' | 'reading' — TCS 안의 서브탭
-let tcsFromSchool = false;   // 학사 👤학생에서 진입했는지 (학생 패널 숨기고 ← 학생 버튼 표시)
-let tcsPreselectId = null;   // 학사에서 넘겨준 학생 id
+let tcsFromSchool = false;   // (구) 학사에서 점프 진입 — 현재는 임베드로 대체
+let tcsPreselectId = null;
+let tcsMainId = 'tcs-main';  // TCS 편집기 렌더 대상. 학사 학생페이지 임베드 시 's360-tcs'로 변경
+let s360TcsMode = 'record';  // 임베드된 기록부 내부 탭: 'record'|'mock'|'reading'
 let tcsMockUnified = false;  // true면 모의고사를 TCS 서브탭으로(뒤로가기 버튼 없음)
 let tcsOrgs = [];            // 기록부 기관 프리셋 (공동체별)
 let tcsSelectedOrgId = null; // 현재 선택된 기관
@@ -3380,7 +3397,7 @@ async function loadStudentGroups() {
 async function initTcsPage() {
   const sn = document.getElementById('subnav-tcs'); if (sn) sn.innerHTML = tcsSubnavHtml('tcs');
   const panel = document.getElementById('tcs-student-panel');
-  const main = document.getElementById('tcs-main');
+  const main = document.getElementById(tcsMainId);
   // 학사(👤학생)에서 진입하면 학생은 거기서 고르므로 중복 패널 숨김
   panel.style.display = tcsFromSchool ? 'none' : 'block';
   panel.innerHTML = '<div style="text-align:center;padding:20px;color:var(--ink3);font-size:12px">불러오는 중...</div>';
@@ -3446,7 +3463,7 @@ function renderTcsStudentPanel() {
 // ── 학생 그룹 관리 ──
 function openGroupManager() { renderGroupManager(); }
 function renderGroupManager() {
-  const main = document.getElementById('tcs-main');
+  const main = document.getElementById(tcsMainId);
   if (!main) return;
   const groupOpts = (sel) => `<option value="" ${!sel ? 'selected' : ''}>그룹 없음</option>` + tcsGroups.map(g => `<option value="${g.id}" ${sel === g.id ? 'selected' : ''}>${g.name}</option>`).join('');
   main.innerHTML = `<div style="max-width:640px">
@@ -3574,7 +3591,7 @@ async function setTcsStudentGrade(grade) {
 }
 
 function renderTcsSectionList() {
-  const main = document.getElementById('tcs-main');
+  const main = document.getElementById(tcsMainId);
 
   // 학생 학년에서 숫자 추출 (K-12)
   const gradeStr = (tcsCurrentStudent.grade || '').trim();
@@ -3683,7 +3700,7 @@ function openTcsSection(sectionId) {
   if (TCS_LIST_SPECS[sectionId]) { openListEditor(sectionId); return; }
   const sec = TCS_SECTIONS.find(s => s.id === sectionId);
   const data = tcsRecords[sectionId] || {};
-  const main = document.getElementById('tcs-main');
+  const main = document.getElementById(tcsMainId);
 
   const fields = getTcsSectionFields(sectionId);
   main.innerHTML = `
@@ -3877,7 +3894,7 @@ function openAcademicEditor() {
 }
 
 function renderAcademicEditor() {
-  const main = document.getElementById('tcs-main');
+  const main = document.getElementById(tcsMainId);
   const active = tcsAcademicDraft.active;
   const activeLabel = (TCS_ACADEMIC_GRADES.find(([k]) => k === active) || [,,active])[2];
 
@@ -4057,7 +4074,7 @@ function openAttendanceEditor() {
 }
 
 function renderAttendanceEditor() {
-  const main = document.getElementById('tcs-main');
+  const main = document.getElementById(tcsMainId);
   const active = tcsAttendanceDraft.active;
   const activeLabel = (TCS_ATTENDANCE_GRADES.find(([k]) => k === active) || [,,active])[2];
 
@@ -4169,7 +4186,7 @@ function openListEditor(sectionId) {
 }
 
 function renderListEditor() {
-  const main = document.getElementById('tcs-main');
+  const main = document.getElementById(tcsMainId);
   const sectionId = tcsListDraft.section;
   const spec = TCS_LIST_SPECS[sectionId];
   const sec = TCS_SECTIONS.find(s => s.id === sectionId);
@@ -4675,7 +4692,7 @@ function updateTcsHeader() {
 
 // TCS 메인 영역을 서브모드에 맞게 렌더
 function renderTcsMain() {
-  const main = document.getElementById('tcs-main');
+  const main = document.getElementById(tcsMainId);
   if (!main) return;
   updateTcsHeader();
   if (!tcsCurrentStudent) {
@@ -4961,7 +4978,7 @@ async function renderReadingAdmin() {
 
 // ── 교사 TCS 안의 Triple School 서브탭: 선택 학생 독서현황 + 책관리 + 전체 합산 TOP10 ──
 async function renderTcsReadingUnified() {
-  const main = document.getElementById('tcs-main');
+  const main = document.getElementById(tcsMainId);
   if (!main || !tcsCurrentStudent) return;
   main.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink3)">불러오는 중...</div>';
 
@@ -5830,6 +5847,7 @@ async function viewCommunityMembers(communityId, communityName) {
               <option value="student" ${m.community_role==='student'?'selected':''}>학생</option>
               <option value="staff" ${m.community_role==='staff'?'selected':''}>간사</option>
               <option value="teacher" ${m.community_role==='teacher'?'selected':''}>교사</option>
+              <option value="admin_officer" ${m.community_role==='admin_officer'?'selected':''}>행정담당자</option>
               <option value="community_admin" ${m.community_role==='community_admin'?'selected':''}>관리자</option>
               <option value="super_admin" ${m.community_role==='super_admin'?'selected':''}>총관리자</option>
             </select>
@@ -5853,7 +5871,7 @@ async function rejectInCommunity(id, cid, cname) {
 }
 
 async function changeMemberCommunityRole(memberId, role) {
-  const koMap = { super_admin:'총관리자', community_admin:'관리자', teacher:'교사', staff:'간사', student:'학생' };
+  const koMap = { super_admin:'총관리자', community_admin:'관리자', admin_officer:'행정담당자', teacher:'교사', staff:'간사', student:'학생' };
   const { error } = await sb.from('members').update({ community_role: role, role: koMap[role] || role }).eq('id', memberId);
   if (error) showUploadToast('변경 실패');
   else showUploadToast('✅ 역할이 변경됐어요');
@@ -5939,6 +5957,7 @@ async function renderAdminMembers() {
             <option value="student"          ${m.community_role==='student'?'selected':''}>학생</option>
             <option value="staff"            ${m.community_role==='staff'?'selected':''}>간사</option>
             <option value="teacher"          ${m.community_role==='teacher'?'selected':''}>교사</option>
+            <option value="admin_officer"    ${m.community_role==='admin_officer'?'selected':''}>행정담당자</option>
             <option value="community_admin"  ${m.community_role==='community_admin'?'selected':''}>관리자</option>
             ${isSuperAdmin()?`<option value="super_admin" ${m.community_role==='super_admin'?'selected':''}>총관리자</option>`:''}
           </select>
@@ -7114,9 +7133,9 @@ const SCHOOL_TABS = [
   { id:'student',    icon:'👤', label:'학생',     ready:true  },
   { id:'attendance', icon:'📋', label:'출석부',   ready:true  },
   { id:'timetable',  icon:'🗓', label:'시간표',   ready:true  },
-  { id:'tuition',    icon:'💰', label:'학비',     ready:true  },
-  { id:'newsletter', icon:'✉️', label:'가정통신문', ready:true  },
-  { id:'cert',       icon:'📄', label:'증명서',    ready:true  },
+  { id:'tuition',    icon:'💰', label:'학비',     ready:true, admin:true },
+  { id:'newsletter', icon:'✉️', label:'가정통신문', ready:true, admin:true },
+  { id:'cert',       icon:'📄', label:'증명서',    ready:true, admin:true },
 ];
 let schoolSubMode = 'student';
 let schoolStudents = [];
@@ -7158,7 +7177,7 @@ function attIsMissingTable(e) {
 }
 
 function schoolSubnavHtml() {
-  const tabs = SCHOOL_TABS.map(t => {
+  const tabs = SCHOOL_TABS.filter(t => !t.admin || canSeeAdminModules()).map(t => {
     const on = schoolSubMode === t.id;
     return `<button onclick="setSchoolSubMode('${t.id}')" title="${t.label}"
       style="height:30px;padding:0 12px;border:none;border-radius:8px;font:600 12px var(--font);cursor:pointer;
@@ -7196,6 +7215,9 @@ function setSchoolSubMode(m) {
 }
 
 function renderSchoolMain() {
+  // 권한 없는 사용자가 행정 탭(학비·통신문·증명서)에 있으면 학생 탭으로
+  const cur = SCHOOL_TABS.find(t => t.id === schoolSubMode);
+  if (cur && cur.admin && !canSeeAdminModules()) { schoolSubMode = 'student'; }
   const tab = SCHOOL_TABS.find(t => t.id === schoolSubMode);
   const sub = document.getElementById('school-header-sub');
   if (sub) sub.textContent = tab ? tab.label : '학교 행정을 한 곳에서';
@@ -8280,13 +8302,14 @@ async function loadStudent360(id) {
   const [y,mm] = month.split('-').map(Number);
   const ny = mm===12?y+1:y, nm = mm===12?1:mm+1;
   const start = `${month}-01`, end = `${ny}-${String(nm).padStart(2,'0')}-01`;
-  const [a,b,c,h] = await Promise.all([
+  const [a,b,c,h,t] = await Promise.all([
     sb.from('attendance_daily').select('status,date').eq('community_id',CID()).eq('student_id',id).gte('date',start).lt('date',end),
     sb.from('tuition_bills').select('*').eq('community_id',CID()).eq('student_id',id).order('created_at',{ascending:false}),
     sb.from('counseling_logs').select('*').eq('community_id',CID()).eq('student_id',id).order('date',{ascending:false}).order('created_at',{ascending:false}),
     sb.from('health_logs').select('*').eq('community_id',CID()).eq('student_id',id).order('date',{ascending:false}).order('created_at',{ascending:false}),
+    sb.from('tcs_records').select('section,data').eq('community_id',CID()).eq('student_id',id),
   ]);
-  return { att:a.data||[], bills:b.data||[], counseling:c.data||[], health:h.data||[], month };
+  return { att:a.data||[], bills:b.data||[], counseling:c.data||[], health:h.data||[], tcs:t.data||[], month };
 }
 
 async function renderStudent360() {
@@ -8428,17 +8451,46 @@ async function renderS360Detail() {
     ${s360LogCard('health', d.health)}
 
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin-bottom:14px">
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        <div style="font-size:14px;font-weight:700;color:var(--ink)">📄 학생 종합기록부</div>
-        <span style="font-size:11.5px;color:var(--ink3)">성적·발달·진로 등 공식 기록부 (출력 시 항목 선택 가능)</span>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+        <div style="font-size:14px;font-weight:700;color:var(--ink)">📋 생활기록부 (종합기록부)</div>
+        <div id="s360-tcs-nav" style="display:inline-flex;gap:3px;background:var(--s2);border:1px solid var(--border);border-radius:9px;padding:3px"></div>
         <div style="flex:1"></div>
-        <button onclick="openTcsEditor('${s.id}')" style="height:34px;padding:0 16px;border:1.5px solid var(--accent);background:white;color:var(--accent);border-radius:9px;cursor:pointer;font:700 12px var(--font)">✏️ 기록부 편집</button>
-        <button onclick="openTcsForStudent('${s.id}')" style="height:34px;padding:0 16px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 12px var(--font)">📄 미리보기 / 출력</button>
+        <button onclick="openTcsForStudent('${s.id}')" style="height:32px;padding:0 14px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 12px var(--font)">📄 미리보기 / 출력</button>
       </div>
+      <div id="s360-tcs"></div>
     </div>`;
+
+  // 생활기록부(TCS)를 같은 페이지에 임베드 — 바로 편집/모의고사/Triple School
+  tcsCurrentStudent = s;
+  tcsRecords = {};
+  (d.tcs||[]).forEach(r => { tcsRecords[r.section] = r.data || {}; });
+  tcsMainId = 's360-tcs';
+  renderS360TcsNav();
+  s360TcsTab(s360TcsMode);
 }
 
-function selectS360(id) { s360Id = id; renderS360List(); renderS360Detail(); }
+function renderS360TcsNav() {
+  const nav = document.getElementById('s360-tcs-nav'); if (!nav) return;
+  const t = (m,label) => `<button onclick="s360TcsTab('${m}')" style="height:28px;padding:0 11px;border:none;border-radius:7px;font:600 11.5px var(--font);cursor:pointer;background:${s360TcsMode===m?'#1d3a5f':'transparent'};color:${s360TcsMode===m?'#fff':'var(--ink2)'}">${label}</button>`;
+  nav.innerHTML = t('record','생활기록부') + t('mock','🧠 모의고사') + t('reading','📖 Triple School');
+}
+
+function s360TcsTab(which) {
+  s360TcsMode = which;
+  tcsMainId = 's360-tcs';
+  renderS360TcsNav();
+  if (which === 'mock') {
+    tcsMockTarget = 's360-tcs'; tcsMockUnified = true;
+    tcsMockState = { files: [], answerFiles: [], result: null, analyzing: false };
+    renderMockExamEditor();
+  } else if (which === 'reading') {
+    renderTcsReadingUnified();
+  } else {
+    renderTcsSectionList();
+  }
+}
+
+function selectS360(id) { s360Id = id; s360TcsMode = 'record'; renderS360List(); renderS360Detail(); }
 function setS360Filter(v) { s360Filter = v; renderStudent360(); }
 function setS360Group(v) { s360Group = v; renderStudent360(); }
 
