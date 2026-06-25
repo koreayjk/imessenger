@@ -7183,10 +7183,10 @@ function schoolSubnavHtml() {
   const tabs = SCHOOL_TABS.filter(t => !t.admin || canSeeAdminModules()).map(t => {
     const on = schoolSubMode === t.id;
     return `<button onclick="setSchoolSubMode('${t.id}')" title="${t.label}"
-      style="height:30px;padding:0 12px;border:none;border-radius:8px;font:600 12px var(--font);cursor:pointer;
+      style="height:30px;padding:0 11px;border:none;border-radius:8px;font:600 12px var(--font);cursor:pointer;white-space:nowrap;
       background:${on?'#1d3a5f':'transparent'};color:${on?'#fff':'var(--ink2)'}">${t.icon} ${t.label}</button>`;
   }).join('');
-  return `<div style="display:inline-flex;gap:2px;background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:3px">${tabs}</div>`;
+  return `<div style="display:inline-flex;gap:2px;background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:3px;white-space:nowrap">${tabs}</div>`;
 }
 
 async function initSchoolPage() {
