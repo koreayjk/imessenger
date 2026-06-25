@@ -7071,6 +7071,7 @@ const SCHOOL_TABS = [
   { id:'timetable',  icon:'🗓', label:'시간표',   ready:true  },
   { id:'tuition',    icon:'💰', label:'학비',     ready:true  },
   { id:'newsletter', icon:'✉️', label:'가정통신문', ready:true  },
+  { id:'cert',       icon:'📄', label:'증명서',    ready:true  },
 ];
 let schoolSubMode = 'attendance';
 let schoolStudents = [];
@@ -7151,6 +7152,7 @@ function renderSchoolMain() {
   if (schoolSubMode === 'timetable')  return renderTimetableHub();
   if (schoolSubMode === 'tuition')    return renderTuitionHub();
   if (schoolSubMode === 'newsletter') return renderNewsletterHub();
+  if (schoolSubMode === 'cert')       return renderCertHub();
   return renderSchoolComingSoon(tab);
 }
 
@@ -7790,6 +7792,146 @@ function printNewsletter(id) {
     <body><h1>가 정 통 신 문</h1><h2>${escHtml(n.title||'')}</h2>
     <div class="meta">대상: ${escHtml(nlGroupName(n.group_id))} · ${n.sent_date||''}${n.author_name?` · ${escHtml(n.author_name)}`:''}</div>
     <div class="body">${escHtml(n.body||'')}</div></body></html>`);
+  win.document.close();
+  setTimeout(() => win.print(), 500);
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  학사 — 증명서 발급 (새 DB 불필요: 학생·기록·기관 데이터 재사용)
+// ════════════════════════════════════════════════════════════════════
+const CERT_TYPES = {
+  enroll: { label:'재학증명서', stmt:'위 학생은 본교에 재학 중임을 증명합니다.' },
+  grad:   { label:'졸업증명서', stmt:'위 학생은 본교 소정의 전 과정을 이수하고 졸업하였음을 증명합니다.' },
+  custom: { label:'직접입력',   stmt:'' },
+};
+let certStudentId = '';
+let certPrefill = { name:'', birth:'', school:'' };
+
+async function renderCertHub() {
+  if (!tcsOrgs.length) { try { await loadRecordOrgs(); } catch(e){} }
+  if (!certStudentId && schoolStudents.length) { certStudentId = schoolStudents[0].id; await certLoadStudent(certStudentId); }
+  renderCert();
+}
+
+async function certLoadStudent(id) {
+  certStudentId = id;
+  const s = schoolStudents.find(x => x.id === id);
+  certPrefill = { name: s ? s.name : '', birth:'', school:'' };
+  const { data } = await sb.from('tcs_records').select('section,data')
+    .eq('student_id', id).in('section', ['personal','school']);
+  (data||[]).forEach(r => {
+    if (r.section === 'personal') { certPrefill.birth = r.data?.birth || ''; if (r.data?.name_ko) certPrefill.name = r.data.name_ko; }
+    if (r.section === 'school')   { certPrefill.school = r.data?.school_name || ''; }
+  });
+}
+
+function certNo() {
+  const y = attTodayStr().slice(0,4);
+  const seq = String(Math.floor(Math.random()*9000)+1000);
+  return `${y}-${seq}`;
+}
+
+function renderCert() {
+  const main = document.getElementById('school-main');
+  const s = schoolStudents.find(x => x.id === certStudentId);
+  const studentOpts = schoolStudents.map(x => `<option value="${x.id}" ${x.id===certStudentId?'selected':''}>${x.name}${x.grade?` (${x.grade})`:''}</option>`).join('');
+  const typeOpts = Object.entries(CERT_TYPES).map(([k,v]) => `<option value="${k}">${v.label}</option>`).join('');
+  const orgOpts = tcsOrgs.length ? tcsOrgs.map(o => `<option value="${o.id}" ${o.id===tcsSelectedOrgId?'selected':''}>${o.name}</option>`).join('')
+    : '<option value="">기관 미등록</option>';
+  const inp = 'height:38px;padding:0 12px;border:1px solid var(--border);border-radius:9px;font:600 13px var(--font);color:var(--ink);background:var(--surface)';
+  const lbl = 'font-size:12px;font-weight:600;color:var(--ink2);display:block;margin-bottom:6px';
+
+  main.innerHTML = `<div style="max-width:680px;margin:0 auto">
+    ${schoolStudents.length ? '' : '<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px">등록된 학생이 없어요.</div>'}
+    ${schoolStudents.length ? `
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+        <div><label style="${lbl}">학생</label><select id="cert-student" onchange="certChangeStudent(this.value)" style="${inp};width:100%">${studentOpts}</select></div>
+        <div><label style="${lbl}">증명서 종류</label><select id="cert-type" onchange="certOnType(this.value)" style="${inp};width:100%">${typeOpts}</select></div>
+        <div><label style="${lbl}">성명</label><input id="cert-name" value="${escAttr(certPrefill.name||(s?s.name:''))}" style="${inp};width:100%"/></div>
+        <div><label style="${lbl}">생년월일</label><input id="cert-birth" value="${escAttr(certPrefill.birth||(s?s.birth_date||'':''))}" placeholder="예: 2010-03-15" style="${inp};width:100%"/></div>
+        <div><label style="${lbl}">학년</label><input id="cert-grade" value="${escAttr(s?s.grade||'':'')}" style="${inp};width:100%"/></div>
+        <div><label style="${lbl}">학교명</label><input id="cert-school" value="${escAttr(certPrefill.school||'')}" style="${inp};width:100%"/></div>
+      </div>
+      <div id="cert-custom-wrap" style="display:none;margin-bottom:14px">
+        <label style="${lbl}">증명 내용 (직접입력)</label>
+        <textarea id="cert-custom" placeholder="증명할 내용을 입력하세요" style="width:100%;min-height:80px;padding:12px;border:1px solid var(--border);border-radius:9px;font:400 14px var(--font);color:var(--ink);line-height:1.7;resize:vertical"></textarea>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+        <div><label style="${lbl}">발급 사유</label><input id="cert-reason" value="제출용" style="${inp};width:100%"/></div>
+        <div><label style="${lbl}">발급일자</label><input id="cert-date" type="date" value="${attTodayStr()}" style="${inp};width:100%"/></div>
+        <div><label style="${lbl}">발급번호</label><input id="cert-no" value="${certNo()}" style="${inp};width:100%"/></div>
+        <div><label style="${lbl}">발급 기관</label><select id="cert-org" style="${inp};width:100%">${orgOpts}</select></div>
+        <div style="grid-column:1/3"><label style="${lbl}">대표자 명의 (직인 표기)</label><input id="cert-rep" value="${escAttr((tcsOrgs.find(o=>o.id===tcsSelectedOrgId)?.name)||'')} 장" placeholder="예: ○○학교장 / 대표 홍길동" style="${inp};width:100%"/></div>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:8px">
+        <button onclick="printCertificate()" style="height:40px;padding:0 22px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 13px var(--font)">📄 미리보기 & 인쇄</button>
+      </div>
+      <div style="font-size:12px;color:var(--ink3);margin-top:12px;line-height:1.7">학생을 고르면 인적·학적 정보가 자동으로 채워집니다(필요시 수정 가능). <b>발급 기관</b>은 관리자 → 공동체 설정의 ‘기록부 기관’에서 로고와 함께 등록할 수 있어요.</div>
+    </div>` : ''}
+  </div>`;
+}
+
+function certChangeStudent(id) { certLoadStudent(id).then(renderCert); }
+function certOnType(v) {
+  document.getElementById('cert-custom-wrap').style.display = v === 'custom' ? 'block' : 'none';
+}
+
+function printCertificate() {
+  const type = document.getElementById('cert-type').value;
+  const name = document.getElementById('cert-name').value.trim();
+  const birth = document.getElementById('cert-birth').value.trim();
+  const grade = document.getElementById('cert-grade').value.trim();
+  const school = document.getElementById('cert-school').value.trim();
+  const reason = document.getElementById('cert-reason').value.trim();
+  const date = document.getElementById('cert-date').value || attTodayStr();
+  const no = document.getElementById('cert-no').value.trim();
+  const orgId = document.getElementById('cert-org').value;
+  const rep = document.getElementById('cert-rep').value.trim();
+  const org = tcsOrgs.find(o => o.id === orgId);
+  if (!name) { showUploadToast('성명을 입력하세요'); return; }
+  const t = CERT_TYPES[type] || CERT_TYPES.enroll;
+  const stmt = type === 'custom' ? (document.getElementById('cert-custom').value.trim() || '위 사실을 증명합니다.') : t.stmt;
+  const dro = (label, value) => value ? `<tr><th>${label}</th><td>${escHtml(value)}</td></tr>` : '';
+  const dateKo = (() => { const p = date.split('-'); return p.length===3 ? `${p[0]}년 ${parseInt(p[1])}월 ${parseInt(p[2])}일` : date; })();
+
+  const win = window.open('', '_blank');
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${escHtml(t.label)} — ${escHtml(name)}</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Batang','Malgun Gothic',serif;color:#111;padding:30mm 26mm}
+    .doc-no{font-size:10pt;color:#444;margin-bottom:30px}
+    h1{font-size:30pt;font-weight:800;text-align:center;letter-spacing:14px;margin:10px 0 40px;border-bottom:3px solid #1d3a5f;padding-bottom:18px}
+    table.info{width:100%;border-collapse:collapse;margin:0 auto 36px}
+    table.info th{width:130px;background:#eef2f8;border:1px solid #c9d6e6;padding:11px 14px;font-size:12pt;text-align:center;color:#1d3a5f}
+    table.info td{border:1px solid #c9d6e6;padding:11px 16px;font-size:12pt}
+    .stmt{font-size:14pt;line-height:2.2;text-align:center;margin:44px 0}
+    .reason{font-size:11pt;color:#333;text-align:center;margin-bottom:48px}
+    .date{font-size:13pt;text-align:center;margin:40px 0 30px;letter-spacing:2px}
+    .org{text-align:center;margin-top:20px}
+    .org img{height:54px;max-width:200px;object-fit:contain;display:block;margin:0 auto 10px}
+    .org .name{font-size:17pt;font-weight:800;color:#1d3a5f;letter-spacing:6px}
+    .org .rep{font-size:13pt;margin-top:14px;letter-spacing:2px}
+    .seal{display:inline-block;margin-left:10px;color:#c0392b;border:2px solid #c0392b;border-radius:50%;width:30px;height:30px;line-height:26px;font-size:10pt;font-weight:700;vertical-align:middle}
+    @page{size:A4;margin:0}
+  </style></head><body>
+    <div class="doc-no">제 ${escHtml(no||'____')} 호</div>
+    <h1>${escHtml(t.label)}</h1>
+    <table class="info">
+      ${dro('성 명', name)}
+      ${dro('생년월일', birth)}
+      ${dro('학 년', grade)}
+      ${dro('학 교', school)}
+    </table>
+    <div class="stmt">${escHtml(stmt)}</div>
+    ${reason ? `<div class="reason">— 발급 사유: ${escHtml(reason)} —</div>` : ''}
+    <div class="date">${escHtml(dateKo)}</div>
+    <div class="org">
+      ${org && org.logo_url ? `<img src="${org.logo_url}"/>` : ''}
+      <div class="name">${escHtml(org ? org.name : school || '')}</div>
+      ${rep ? `<div class="rep">${escHtml(rep)} <span class="seal">印</span></div>` : ''}
+    </div>
+  </body></html>`);
   win.document.close();
   setTimeout(() => win.print(), 500);
 }
