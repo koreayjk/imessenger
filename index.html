@@ -617,6 +617,10 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
       <span>TCS</span>
     </div>
+    <div class="sb-btn" id="sb-school" onclick="setMode('school')" title="학사" style="display:none">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10L12 5 2 10l10 5 10-5z"/><path d="M6 12v5c3 2 9 2 12 0v-5"/><path d="M22 10v6"/></svg>
+      <span>학사</span>
+    </div>
     <div class="sb-btn" id="sb-reading" onclick="setMode('reading')" title="Triple School" style="display:none">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>
       <span>Triple School</span>
@@ -868,6 +872,22 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
         <!-- 메인 영역 -->
         <div id="tcs-main" style="flex:1;overflow-y:auto;padding:24px 28px"></div>
       </div>
+    </div>
+
+    <!-- 학사관리 뷰 (출석부·시간표·학비·가정통신문) -->
+    <div id="school-view" style="display:none;flex-direction:column;height:100%;background:var(--bg)">
+      <div style="height:56px;padding:0 24px;display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#1d3a5f,#2a5298);display:flex;align-items:center;justify-content:center;font-size:16px">🏫</div>
+          <div>
+            <div style="font-size:15px;font-weight:700;color:var(--ink)">학사관리</div>
+            <div style="font-size:11px;color:var(--ink3)" id="school-header-sub">학교 행정을 한 곳에서</div>
+          </div>
+        </div>
+        <div id="subnav-school" class="subnav-center"></div>
+        <div style="display:flex;gap:8px" id="school-header-actions"></div>
+      </div>
+      <div id="school-main" style="flex:1;overflow-y:auto;padding:24px 28px"></div>
     </div>
 
     <!-- 모의고사 분석 뷰 (독립 탭) -->
@@ -1318,6 +1338,9 @@ function enterApp() {
   }
   // TCS 버튼: 모두 표시 (교사=기록부/모의고사/Triple School, 학생·멤버=개인정보/Triple School)
   document.getElementById('sb-tcs').style.display = 'flex';
+  // 학사관리 버튼: 교사·간사·관리자만
+  const sbSchool = document.getElementById('sb-school');
+  if (sbSchool) sbSchool.style.display = isTeacher() ? 'flex' : 'none';
   // 단독 Triple School 버튼은 숨김 — TCS 하위 탭으로 접근
   const sbReading = document.getElementById('sb-reading');
   if (sbReading) sbReading.style.display = 'none';
@@ -1531,7 +1554,7 @@ async function init() {
 // ── 사이드바 모드 전환 ──
 function setMode(m) {
   mode = m;
-  ['chat','prayer','home','calendar','admin'].forEach(x => {
+  ['chat','prayer','home','calendar','admin','school'].forEach(x => {
     const el = document.getElementById('sb-'+x);
     if (!el) return;
     el.classList.toggle('active', x===m);
@@ -1545,6 +1568,7 @@ function setMode(m) {
   document.getElementById('home-view').style.display = m==='home' ? 'flex' : 'none';
   document.getElementById('calendar-view').style.display = m==='calendar' ? 'flex' : 'none';
   document.getElementById('admin-view').style.display = m==='admin' ? 'flex' : 'none';
+  document.getElementById('school-view').style.display = (isTeacher() && m==='school') ? 'flex' : 'none';
   const teacherTcsArea = isTeacher() && (m==='tcs' || m==='mock' || m==='reading');
   document.getElementById('tcs-view').style.display = teacherTcsArea ? 'flex' : 'none';
   document.getElementById('mock-view').style.display = 'none';
@@ -1558,7 +1582,7 @@ function setMode(m) {
   }
 
   const panel = document.getElementById('panel');
-  if (m === 'home' || m === 'calendar' || m === 'admin' || m === 'tcs' || m === 'mock' || m === 'reading' || m === 'profile') {
+  if (m === 'home' || m === 'calendar' || m === 'admin' || m === 'tcs' || m === 'mock' || m === 'reading' || m === 'profile' || m === 'school') {
     panel.style.display = 'none';
   } else {
     panel.style.display = 'flex';
@@ -1572,9 +1596,10 @@ function setMode(m) {
   if (m==='tcs') { if(isTeacher()){ tcsSubMode='record'; initTcsPage(); } else setMode('profile'); return; }
   if (m==='mock') { if(isTeacher()){ tcsSubMode='mock'; initTcsPage(); } else setMode('home'); return; }
   if (m==='reading') { if(isTeacher()){ tcsSubMode='reading'; initTcsPage(); } else initReadingPage(); return; }
+  if (m==='school') { if(isTeacher()){ initSchoolPage(); } else setMode('home'); return; }
   if (m==='profile') { renderProfilePage(); }
   sessionStorage.setItem('last_mode', m);
-  document.getElementById('panel-title').textContent = {chat:'채팅',prayer:'기도제목',home:'홈',calendar:'일정',admin:'관리자',tcs:'TCS',mock:'모의고사 분석',reading:'Triple School',profile:'내 프로필'}[m] || m;
+  document.getElementById('panel-title').textContent = {chat:'채팅',prayer:'기도제목',home:'홈',calendar:'일정',admin:'관리자',tcs:'TCS',mock:'모의고사 분석',reading:'Triple School',school:'학사관리',profile:'내 프로필'}[m] || m;
 }
 
 // ── 채널 패널 렌더 ──
@@ -7005,6 +7030,320 @@ async function deleteEvent() {
   closeEventModal();
   await loadCalendar();
   if (calSelectedDate) showDayEvents(calSelectedDate);
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  학사관리 (학교 행정 허브) — 출석부 / 시간표 / 학비 / 가정통신문
+// ════════════════════════════════════════════════════════════════════
+const SCHOOL_TABS = [
+  { id:'attendance', icon:'📋', label:'출석부',   ready:true  },
+  { id:'timetable',  icon:'🗓', label:'시간표',   ready:false },
+  { id:'tuition',    icon:'💰', label:'학비',     ready:false },
+  { id:'newsletter', icon:'✉️', label:'가정통신문', ready:false },
+];
+let schoolSubMode = 'attendance';
+let schoolStudents = [];
+
+// ── 출결 상태 정의 ──
+const ATT_STATUSES = [
+  { key:'present', label:'출석', color:'#2a7a5a', bg:'#e8f5ee' },
+  { key:'late',    label:'지각', color:'#b8860b', bg:'#fdf6e3' },
+  { key:'early',   label:'조퇴', color:'#2a5298', bg:'#eaf1fb' },
+  { key:'absent',  label:'결석', color:'#c0392b', bg:'#fdecea' },
+  { key:'sick',    label:'병결', color:'#8e44ad', bg:'#f5eefa' },
+  { key:'excused', label:'공결', color:'#7f8c8d', bg:'#eef1f2' },
+];
+let attDate = null;          // 'YYYY-MM-DD'
+let attMonth = null;         // 'YYYY-MM'
+let attMap = {};             // studentId -> status (선택 날짜)
+let attMonthRows = [];       // 통계용 (선택 기간의 모든 행)
+let attGroupFilter = 'all';
+let attView = 'daily';       // 'daily' | 'monthly'
+let attPeriod = 'month';     // 통계 기간: 'month' | 'year'
+
+function attTodayStr() {
+  const d = new Date(); const z = n => String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}`;
+}
+function attGradeKey(gradeStr) {
+  const g = (gradeStr||'').trim();
+  if (!g) return null;
+  if (g.toUpperCase()==='K') return 'k';
+  const m = g.match(/(\d+)/); if (!m) return null;
+  const n = parseInt(m[1]); if (n<1||n>12) return null;
+  return 'g'+n;
+}
+function attIsMissingTable(e) {
+  const m = ((e && (e.message||e.code))||'') + '';
+  return m.includes('does not exist') || m.includes('42P01') ||
+         (m.includes('relation') && m.includes('attendance')) || m.includes('schema cache');
+}
+
+function schoolSubnavHtml() {
+  const tabs = SCHOOL_TABS.map(t => {
+    const on = schoolSubMode === t.id;
+    return `<button onclick="setSchoolSubMode('${t.id}')" title="${t.label}"
+      style="height:30px;padding:0 12px;border:none;border-radius:8px;font:600 12px var(--font);cursor:pointer;
+      background:${on?'#1d3a5f':'transparent'};color:${on?'#fff':'var(--ink2)'}">${t.icon} ${t.label}</button>`;
+  }).join('');
+  return `<div style="display:inline-flex;gap:2px;background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:3px">${tabs}</div>`;
+}
+
+async function initSchoolPage() {
+  const sn = document.getElementById('subnav-school');
+  if (sn) sn.innerHTML = schoolSubnavHtml();
+  if (!attDate) { attDate = attTodayStr(); attMonth = attDate.slice(0,7); }
+  document.getElementById('school-main').innerHTML =
+    '<div style="text-align:center;padding:40px;color:var(--ink3);font-size:13px">불러오는 중...</div>';
+  await loadStudentGroups();
+  const { data: students } = await sb.from('members').select('*')
+    .eq('community_id', CID())
+    .or('community_role.eq.student,role.eq.학생')
+    .order('name');
+  schoolStudents = students || [];
+  renderSchoolMain();
+}
+
+function setSchoolSubMode(m) {
+  schoolSubMode = m;
+  const sn = document.getElementById('subnav-school');
+  if (sn) sn.innerHTML = schoolSubnavHtml();
+  renderSchoolMain();
+}
+
+function renderSchoolMain() {
+  const tab = SCHOOL_TABS.find(t => t.id === schoolSubMode);
+  const sub = document.getElementById('school-header-sub');
+  if (sub) sub.textContent = tab ? tab.label : '학교 행정을 한 곳에서';
+  document.getElementById('school-header-actions').innerHTML = '';
+  if (schoolSubMode === 'attendance') return renderAttendanceHub();
+  return renderSchoolComingSoon(tab);
+}
+
+function renderSchoolComingSoon(tab) {
+  document.getElementById('school-main').innerHTML = `<div style="max-width:520px;margin:64px auto;text-align:center">
+    <div style="font-size:48px;margin-bottom:14px">${tab?tab.icon:'🛠'}</div>
+    <div style="font-size:17px;font-weight:700;color:var(--ink);margin-bottom:8px">${tab?tab.label:''} 기능 준비 중</div>
+    <div style="font-size:13px;color:var(--ink3);line-height:1.8">이 모듈은 곧 추가됩니다.<br>지금은 <b>출석부</b>를 먼저 사용할 수 있어요.</div>
+  </div>`;
+}
+
+// ── 출석부 ──
+function attFilter(list) {
+  if (attGroupFilter === 'all')  return list;
+  if (attGroupFilter === 'none') return list.filter(s => !s.group_id);
+  return list.filter(s => s.group_id === attGroupFilter);
+}
+function attGroupSelectHtml(onchange) {
+  const opts = `<option value="all" ${attGroupFilter==='all'?'selected':''}>전체 반</option>` +
+    tcsGroups.map(g => `<option value="${g.id}" ${attGroupFilter===g.id?'selected':''}>${g.name}</option>`).join('') +
+    `<option value="none" ${attGroupFilter==='none'?'selected':''}>미배정</option>`;
+  return `<select onchange="${onchange}(this.value)" style="height:34px;padding:0 10px;border:1px solid var(--border);border-radius:9px;font:600 13px var(--font);color:var(--ink);background:var(--surface)">${opts}</select>`;
+}
+
+async function renderAttendanceHub() {
+  const main = document.getElementById('school-main');
+  main.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink3);font-size:13px">불러오는 중...</div>';
+  try {
+    if (attView === 'daily') await loadAttDay();
+    else await loadAttStats();
+  } catch(e) {
+    if (attIsMissingTable(e)) return renderAttSetupNeeded(e);
+    main.innerHTML = `<div style="color:#b91c1c;padding:30px;text-align:center;font-size:13px">불러오기 실패: ${e.message||e}</div>`;
+    return;
+  }
+  if (attView === 'daily') renderAttDaily(); else renderAttMonthly();
+}
+
+function renderAttSetupNeeded(err) {
+  document.getElementById('school-main').innerHTML = `<div style="max-width:560px;margin:40px auto;text-align:center">
+    <div style="font-size:40px;margin-bottom:12px">🗄️</div>
+    <div style="font-size:16px;font-weight:700;margin-bottom:8px">데이터베이스 설정이 필요해요</div>
+    <div style="font-size:13px;color:var(--ink3);line-height:1.8">전자출석부를 쓰려면 Supabase에서 테이블을 한 번 만들어야 합니다.<br>제공해드린 <b>학사_출석부_DB설치.sql</b> 내용을 Supabase → SQL Editor에 붙여넣고 실행해주세요.</div>
+    <div style="font-size:11px;color:#b91c1c;margin-top:14px">${err?.message || ''}</div>
+  </div>`;
+}
+
+async function loadAttDay() {
+  const { data, error } = await sb.from('attendance_daily')
+    .select('student_id,status').eq('community_id', CID()).eq('date', attDate);
+  if (error) throw error;
+  attMap = {};
+  (data||[]).forEach(r => { attMap[r.student_id] = r.status; });
+}
+
+function attViewToggleHtml() {
+  const t = (v,label) => `<button onclick="setAttView('${v}')" style="height:30px;padding:0 13px;border:none;border-radius:8px;font:600 12px var(--font);cursor:pointer;background:${attView===v?'#1d3a5f':'transparent'};color:${attView===v?'#fff':'var(--ink2)'}">${label}</button>`;
+  return `<div style="display:inline-flex;gap:2px;background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:3px">${t('daily','일별 출석')}${t('monthly','월간 통계')}</div>`;
+}
+
+function renderAttDaily() {
+  const main = document.getElementById('school-main');
+  const roster = attFilter(schoolStudents);
+  roster.forEach(s => { if (!(s.id in attMap)) attMap[s.id] = 'present'; });
+  const counts = {present:0,late:0,early:0,absent:0,sick:0,excused:0};
+  roster.forEach(s => { const st = attMap[s.id]||'present'; if (counts[st]!==undefined) counts[st]++; });
+
+  const summary = ATT_STATUSES.map(s =>
+    `<span style="font-size:12px;color:${s.color};font-weight:700">${s.label} ${counts[s.key]}</span>`
+  ).join('<span style="color:var(--border)">|</span>');
+
+  const rows = roster.map(s => {
+    const cur = attMap[s.id] || 'present';
+    const btns = ATT_STATUSES.map(st => {
+      const on = cur===st.key;
+      return `<button onclick="setAttStatus('${s.id}','${st.key}')"
+        style="height:30px;min-width:44px;padding:0 8px;border-radius:8px;cursor:pointer;font:600 12px var(--font);
+        border:1.5px solid ${on?st.color:'var(--border)'};background:${on?st.bg:'var(--surface)'};color:${on?st.color:'var(--ink3)'}">${st.label}</button>`;
+    }).join('');
+    return `<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:1px solid var(--border)">
+      <div style="width:30px;height:30px;border-radius:8px;background:${s.color||'#1d3a5f'};display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:700;flex-shrink:0">${s.initials||s.name?.[0]||'?'}</div>
+      <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${s.name}</div>
+        <div style="font-size:11px;color:var(--ink3)">${s.grade||'학년 미정'}</div></div>
+      <div style="display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end">${btns}</div>
+    </div>`;
+  }).join('');
+
+  main.innerHTML = `<div style="max-width:880px;margin:0 auto">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+      ${attViewToggleHtml()}
+      <button onclick="shiftAttDate(-1)" title="이전 날" style="height:34px;width:34px;border:1px solid var(--border);background:var(--surface);border-radius:9px;cursor:pointer;font-size:16px;color:var(--ink2)">‹</button>
+      <input type="date" value="${attDate}" onchange="changeAttDate(this.value)" style="height:34px;padding:0 10px;border:1px solid var(--border);border-radius:9px;font:600 13px var(--font);color:var(--ink)"/>
+      <button onclick="shiftAttDate(1)" title="다음 날" style="height:34px;width:34px;border:1px solid var(--border);background:var(--surface);border-radius:9px;cursor:pointer;font-size:16px;color:var(--ink2)">›</button>
+      ${attGroupSelectHtml('changeAttGroup')}
+      <div style="flex:1"></div>
+      <button onclick="setAllAttStatus('present')" style="height:34px;padding:0 14px;border:1px solid var(--border);background:var(--surface);border-radius:9px;cursor:pointer;font:600 12px var(--font);color:var(--ink2)">전체 출석</button>
+      <button onclick="saveAttendance()" style="height:34px;padding:0 18px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 13px var(--font)">저장</button>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:11px 14px;background:var(--s2);border:1px solid var(--border);border-radius:10px;margin-bottom:10px">${summary}<span style="flex:1"></span><span style="font-size:11px;color:var(--ink3)">총 ${roster.length}명 · 처음엔 모두 ‘출석’입니다. 예외만 바꾸고 저장하세요.</span></div>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden">
+      ${roster.length ? rows : '<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px">해당 반에 학생이 없어요.</div>'}
+    </div>
+  </div>`;
+}
+
+function setAttStatus(id, st) { attMap[id] = st; renderAttDaily(); }
+function setAllAttStatus(st) { attFilter(schoolStudents).forEach(s => attMap[s.id] = st); renderAttDaily(); }
+function changeAttGroup(v) { attGroupFilter = v; if (attView==='daily') renderAttDaily(); else renderAttMonthly(); }
+function setAttView(v) { attView = v; renderAttendanceHub(); }
+function changeAttDate(v) { if (!v) return; attDate = v; attMonth = v.slice(0,7); renderAttendanceHub(); }
+function shiftAttDate(delta) {
+  const d = new Date(attDate + 'T00:00:00'); d.setDate(d.getDate()+delta);
+  const z = n => String(n).padStart(2,'0');
+  attDate = `${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}`;
+  attMonth = attDate.slice(0,7);
+  renderAttendanceHub();
+}
+
+async function saveAttendance() {
+  const roster = attFilter(schoolStudents);
+  if (!roster.length) { showUploadToast('저장할 학생이 없어요'); return; }
+  const rows = roster.map(s => ({
+    community_id: CID(), student_id: s.id, date: attDate,
+    status: attMap[s.id] || 'present', recorded_by: ME.id,
+    updated_at: new Date().toISOString(),
+  }));
+  const { error } = await sb.from('attendance_daily').upsert(rows, { onConflict: 'student_id,date' });
+  if (error) { if (attIsMissingTable(error)) return renderAttSetupNeeded(error); showUploadToast('저장 실패: ' + error.message); return; }
+  showUploadToast(`✅ ${attDate} 출석 저장 완료 (${rows.length}명)`);
+}
+
+// ── 월간 통계 ──
+async function loadAttStats() {
+  const [y, mm] = attMonth.split('-').map(Number);
+  let start, end;
+  if (attPeriod === 'year') { start = `${y}-01-01`; end = `${y+1}-01-01`; }
+  else {
+    const ny = mm===12?y+1:y, nm = mm===12?1:mm+1;
+    start = `${attMonth}-01`; end = `${ny}-${String(nm).padStart(2,'0')}-01`;
+  }
+  const { data, error } = await sb.from('attendance_daily')
+    .select('student_id,status,date').eq('community_id', CID())
+    .gte('date', start).lt('date', end);
+  if (error) throw error;
+  attMonthRows = data || [];
+}
+function attStat(studentId) {
+  const c = { total:0, present:0, late:0, early:0, absent:0, sick:0, excused:0 };
+  attMonthRows.forEach(r => { if (r.student_id===studentId) { c.total++; if (c[r.status]!==undefined) c[r.status]++; } });
+  c.rate = c.total ? Math.round((c.present + c.late + c.early) / c.total * 100) : 0;
+  return c;
+}
+
+function renderAttMonthly() {
+  const main = document.getElementById('school-main');
+  const list = attFilter(schoolStudents);
+  const periodBtn = (v,label) => `<button onclick="setAttPeriod('${v}')" style="height:30px;padding:0 13px;border:none;border-radius:8px;font:600 12px var(--font);cursor:pointer;background:${attPeriod===v?'#1d3a5f':'transparent'};color:${attPeriod===v?'#fff':'var(--ink2)'}">${label}</button>`;
+  const periodLabel = attPeriod==='year' ? `${attMonth.slice(0,4)}년 전체` : `${attMonth.slice(5,7)}월`;
+
+  const rowsHtml = list.map(s => {
+    const st = attStat(s.id);
+    const td = (v,extra='') => `<td style="padding:8px 6px;text-align:center;font-size:12px;${extra}">${v}</td>`;
+    return `<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:8px 10px;font-size:13px;font-weight:600;color:var(--ink);white-space:nowrap">${s.name}</td>
+      ${td(s.grade||'-','color:var(--ink3)')}
+      ${td(st.total,'font-weight:700')}
+      ${td(st.present)} ${td(st.late)} ${td(st.early)}
+      ${td(st.absent, st.absent?'color:#c0392b;font-weight:600':'')}
+      ${td(st.sick)} ${td(st.excused)}
+      ${td(st.total?st.rate+'%':'-','font-weight:700;color:'+(st.rate>=90?'#2a7a5a':st.rate>=70?'#b8860b':'#c0392b'))}
+      <td style="padding:6px 8px;text-align:center"><button onclick="pushAttToTcs('${s.id}')" ${st.total?'':'disabled'}
+        style="height:28px;padding:0 12px;border:1px solid ${st.total?'#1d3a5f':'var(--border)'};background:${st.total?'var(--surface)':'var(--s2)'};color:${st.total?'#1d3a5f':'var(--ink3)'};border-radius:8px;cursor:${st.total?'pointer':'default'};font:600 11px var(--font)">TCS 반영</button></td>
+    </tr>`;
+  }).join('');
+
+  const headCells = ['이름','학년','수업일수','출석','지각','조퇴','결석','병결','공결','출석률','']
+    .map(h => `<th style="padding:9px 6px;font-size:11px;color:var(--ink3);font-weight:700;text-align:center;white-space:nowrap">${h}</th>`).join('');
+
+  main.innerHTML = `<div style="max-width:920px;margin:0 auto">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+      ${attViewToggleHtml()}
+      <div style="display:inline-flex;gap:2px;background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:3px">${periodBtn('month','이번 달')}${periodBtn('year','올해')}</div>
+      <input type="month" value="${attMonth}" onchange="changeAttMonth(this.value)" style="height:34px;padding:0 10px;border:1px solid var(--border);border-radius:9px;font:600 13px var(--font);color:var(--ink)"/>
+      ${attGroupSelectHtml('changeAttGroup')}
+      <div style="flex:1"></div>
+      <button onclick="pushAllAttToTcs()" style="height:34px;padding:0 16px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 12px var(--font)">전체 TCS 반영</button>
+    </div>
+    <div style="font-size:12px;color:var(--ink3);margin-bottom:10px">기간: <b style="color:var(--ink2)">${periodLabel}</b> · ‘TCS 반영’은 학생 종합기록부 출결(해당 학년)에 이 기간 통계를 기록합니다.</div>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;min-width:760px">
+        <thead><tr style="border-bottom:1.5px solid var(--border);background:var(--s2)">${headCells}</tr></thead>
+        <tbody>${list.length ? rowsHtml : `<tr><td colspan="11" style="padding:40px;text-align:center;color:var(--ink3);font-size:13px">학생이 없어요.</td></tr>`}</tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
+function setAttPeriod(v) { attPeriod = v; renderAttendanceHub(); }
+function changeAttMonth(v) { if (!v) return; attMonth = v; renderAttendanceHub(); }
+
+async function pushAttToTcs(studentId, silent) {
+  const s = schoolStudents.find(x => x.id === studentId);
+  if (!s) return false;
+  const key = attGradeKey(s.grade);
+  if (!key) { if (!silent) showUploadToast(`${s.name}: 학년 정보가 없어 반영할 수 없어요`); return false; }
+  const st = attStat(studentId);
+  if (!st.total) { if (!silent) showUploadToast(`${s.name}: 반영할 출석 기록이 없어요`); return false; }
+  const { data: existing } = await sb.from('tcs_records').select('data')
+    .eq('student_id', studentId).eq('section', 'attendance').maybeSingle();
+  const data = (existing && existing.data) ? { ...existing.data } : {};
+  data[key] = serializeAttendance({ '수업일수':String(st.total), '결석':String(st.absent), '지각':String(st.late), '조퇴':String(st.early) });
+  const { error } = await sb.from('tcs_records').upsert({
+    student_id: studentId, community_id: CID(), section: 'attendance', data,
+    updated_at: new Date().toISOString(), updated_by: ME.id,
+  }, { onConflict: 'student_id,section' });
+  if (error) { if (!silent) showUploadToast('반영 실패: ' + error.message); return false; }
+  if (!silent) showUploadToast(`✅ ${s.name} 출결을 TCS(${key.toUpperCase()})에 반영했어요`);
+  return true;
+}
+
+async function pushAllAttToTcs() {
+  const list = attFilter(schoolStudents).filter(s => attStat(s.id).total && attGradeKey(s.grade));
+  if (!list.length) { showUploadToast('반영할 대상이 없어요 (학년·출석 기록 확인)'); return; }
+  if (!confirm(`${list.length}명의 출결을 종합기록부에 반영할까요?`)) return;
+  let ok = 0;
+  for (const s of list) { if (await pushAttToTcs(s.id, true)) ok++; }
+  showUploadToast(`✅ ${ok}명 TCS 출결 반영 완료`);
 }
 
 // ── 세션 복원은 위 window.addEventListener('load') 에서 처리 ──
