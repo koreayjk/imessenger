@@ -2036,12 +2036,15 @@ function msgHtml(m, prev, readMap={}) {
   // 액션 버튼 — 메시지 오른쪽 옆에 플로팅, 호버시만 표시
   const actionBtns = `
     <div class="msg-actions" style="
-      position:absolute;right:${isMine?'58px':'auto'};left:${isMine?'auto':'58px'};top:50%;transform:translateY(-50%);
+      position:absolute;right:${isMine?'52px':'auto'};left:${isMine?'auto':'52px'};top:-2px;transform:translateY(-100%);
       background:var(--surface);border:1px solid var(--border);border-radius:12px;
       padding:3px;gap:2px;box-shadow:0 2px 10px rgba(0,0,0,.1);align-items:center">
       <div onclick="showReactionPicker('${m.id}',this)" title="리액션"
         style="width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:15px"
         onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background=''">😊</div>
+      ${m.kind !== 'file' ? `<div onclick="copyMsgText('${m.id}')" title="전체 복사"
+        style="width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:13px"
+        onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background=''">📋</div>` : ''}
       <div onclick="startReply('${m.id}','${escAttr(m.text)}','${escAttr(sender.name)}')" title="답장"
         style="width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px"
         onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background=''">↩️</div>
@@ -2146,6 +2149,23 @@ function escAttr(s) {
   return String(s||'').replace(/'/g,"\\'").replace(/\n/g,' ').slice(0,100);
 }
 
+
+function copyMsgText(id) {
+  const el = document.querySelector(`[data-id="${id}"] .bubble`);
+  if (!el) return;
+  const txt = (el.innerText || '').trim();
+  if (!txt) { showUploadToast('복사할 텍스트가 없어요'); return; }
+  const done = () => showUploadToast('📋 복사됐어요');
+  const fallback = () => {
+    const ta = document.createElement('textarea');
+    ta.value = txt; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); done(); } catch { showUploadToast('복사 실패 😥'); }
+    ta.remove();
+  };
+  if (navigator.clipboard?.writeText) navigator.clipboard.writeText(txt).then(done).catch(fallback);
+  else fallback();
+}
 
 function groupReactions(reactions) {
   const map = {};
@@ -2276,15 +2296,17 @@ async function sendMsg() {
       }
     }
     if (metas.length === 1) {
-      await sb.from('messages').insert({
+      const { data: insF } = await sb.from('messages').insert({
         channel_id: currentChannel.id, sender_id: ME.id, sender_name: ME.name,
         text: JSON.stringify({ type: 'file', ...metas[0] }), kind: 'file',
-      });
+      }).select().single();
+      if (insF) appendMessage({ ...insF, reactions: [] }, {});
     } else if (metas.length > 1) {
-      await sb.from('messages').insert({
+      const { data: insF } = await sb.from('messages').insert({
         channel_id: currentChannel.id, sender_id: ME.id, sender_name: ME.name,
         text: JSON.stringify({ type: 'files', items: metas }), kind: 'file',
-      });
+      }).select().single();
+      if (insF) appendMessage({ ...insF, reactions: [] }, {});
     }
     showUploadToast('업로드 완료! ✅');
   }
@@ -2305,7 +2327,8 @@ async function sendMsg() {
       msgData.reply_to_name = replyingTo.name;
       cancelReply();
     }
-    await sb.from('messages').insert(msgData);
+    const { data: ins } = await sb.from('messages').insert(msgData).select().single();
+    if (ins) appendMessage({ ...ins, reactions: [] }, {});  // 내 화면에 즉시 표시 (realtime 중복은 id로 무시)
   } else {
     inp.value = '';
     inp.style.height = 'auto';
