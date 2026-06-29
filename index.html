@@ -1214,6 +1214,10 @@ function isStudent() {
 function isAdminOfficer() {
   return ME && ME.community_role === 'admin_officer';
 }
+// 특정 멤버가 학생인지 (members 맵의 객체 기준)
+function isStudentMember(m) {
+  return !!m && (m.community_role === 'student' || m.role === '학생');
+}
 // 학사 허브(👤학생·출석부·시간표·생활기록부) 접근 — 학생 제외 전 구성원
 function canAccessSchool() {
   return ME && ['super_admin','community_admin','admin_officer','teacher','staff'].includes(ME.community_role);
@@ -2423,6 +2427,11 @@ function toggleRightPanel() {
 async function openDMwith(memberId) {
   const target = members[memberId];
   if (!target) return;
+  // 학생끼리는 1:1 대화 금지 (학생↔교사/관리자는 허용)
+  if (isStudent() && isStudentMember(target)) {
+    showUploadToast('학생끼리는 1:1 대화를 할 수 없어요');
+    return;
+  }
 
   // 이미 있는 DM 채널 찾기
   let dmChannel = channels.find(c =>
@@ -2976,6 +2985,7 @@ async function submitAddChannel() {
     }
     const target = members[selectedDmMemberId];
     if (!target) return;
+    if (isStudent() && isStudentMember(target)) { alert('학생끼리는 1:1 대화를 할 수 없어요'); return; }
     const dmName = `${ME.name} · ${target.name}`;
     const existing = channels.find(c => c.kind === 'dm' && c.name.includes(ME.name) && c.name.includes(target.name));
     if (existing) { closeAddModal(); openChannel(existing.id); return; }
