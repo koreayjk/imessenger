@@ -7229,7 +7229,7 @@ async function initSchoolPage() {
   await loadStudentGroups();
   const { data: students } = await sb.from('members').select('*')
     .eq('community_id', CID())
-    .or('community_role.eq.student,role.eq.학생')
+    .or('community_role.eq.student,role.eq.학생,community_role.eq.staff,role.eq.간사')
     .order('name');
   schoolStudents = students || [];
   // 교사·간사·관리자 목록 (담당교사 배정용)
