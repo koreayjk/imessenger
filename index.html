@@ -617,6 +617,10 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>
       <span>일정</span>
     </div>
+    <div class="sb-btn" id="sb-allowance" onclick="setMode('allowance')" title="용돈기입장">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="13" rx="2.5"/><path d="M3 10h18"/><path d="M16 14h1.5"/></svg>
+      <span>용돈</span>
+    </div>
     <div class="sb-btn" id="sb-tcs" onclick="setMode('tcs')" title="TCS" style="display:none">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
       <span>TCS</span>
@@ -820,6 +824,18 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
           <div style="font-size:13px;font-weight:600;color:var(--ink3);margin-bottom:10px">일정을 선택하세요</div>
         </div>
       </div>
+    </div>
+
+    <!-- 용돈기입장 뷰 -->
+    <div id="allowance-view" style="display:none;flex-direction:column;height:100%;background:var(--bg)">
+      <div style="height:56px;padding:0 24px;display:flex;align-items:center;gap:10px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0">
+        <div style="width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#2a7a5a,#2a5298);display:flex;align-items:center;justify-content:center;font-size:16px">🐷</div>
+        <div>
+          <div style="font-size:15px;font-weight:700;color:var(--ink)">용돈기입장</div>
+          <div style="font-size:11px;color:var(--ink3)">내 용돈을 기록하고 관리해요</div>
+        </div>
+      </div>
+      <div id="allowance-main" style="flex:1;overflow-y:auto;padding:24px 28px"></div>
     </div>
 
     <!-- 관리자 뷰 -->
@@ -1573,7 +1589,7 @@ async function init() {
 // ── 사이드바 모드 전환 ──
 function setMode(m) {
   mode = m;
-  ['chat','prayer','home','calendar','admin','school'].forEach(x => {
+  ['chat','prayer','home','calendar','admin','school','allowance'].forEach(x => {
     const el = document.getElementById('sb-'+x);
     if (!el) return;
     el.classList.toggle('active', x===m);
@@ -1586,6 +1602,7 @@ function setMode(m) {
   document.getElementById('prayer-view').style.display = m==='prayer' ? 'flex' : 'none';
   document.getElementById('home-view').style.display = m==='home' ? 'flex' : 'none';
   document.getElementById('calendar-view').style.display = m==='calendar' ? 'flex' : 'none';
+  document.getElementById('allowance-view').style.display = m==='allowance' ? 'flex' : 'none';
   document.getElementById('admin-view').style.display = m==='admin' ? 'flex' : 'none';
   document.getElementById('school-view').style.display = (canAccessSchool() && m==='school') ? 'flex' : 'none';
   const teacherTcsArea = isTeacher() && (m==='tcs' || m==='mock' || m==='reading');
@@ -1601,7 +1618,7 @@ function setMode(m) {
   }
 
   const panel = document.getElementById('panel');
-  if (m === 'home' || m === 'calendar' || m === 'admin' || m === 'tcs' || m === 'mock' || m === 'reading' || m === 'profile' || m === 'school') {
+  if (m === 'home' || m === 'calendar' || m === 'admin' || m === 'tcs' || m === 'mock' || m === 'reading' || m === 'profile' || m === 'school' || m === 'allowance') {
     panel.style.display = 'none';
   } else {
     panel.style.display = 'flex';
@@ -1616,9 +1633,10 @@ function setMode(m) {
   if (m==='mock') { if(isTeacher()){ tcsSubMode='mock'; initTcsPage(); } else setMode('home'); return; }
   if (m==='reading') { if(isTeacher()){ tcsSubMode='reading'; initTcsPage(); } else initReadingPage(); return; }
   if (m==='school') { if(canAccessSchool()){ initSchoolPage(); } else setMode('home'); return; }
+  if (m==='allowance') { initAllowancePage(); }
   if (m==='profile') { renderProfilePage(); }
   sessionStorage.setItem('last_mode', m);
-  document.getElementById('panel-title').textContent = {chat:'채팅',prayer:'기도제목',home:'홈',calendar:'일정',admin:'관리자',tcs:'TCS',mock:'모의고사 분석',reading:'Triple School',school:'학사관리',profile:'내 프로필'}[m] || m;
+  document.getElementById('panel-title').textContent = {chat:'채팅',prayer:'기도제목',home:'홈',calendar:'일정',admin:'관리자',tcs:'TCS',mock:'모의고사 분석',reading:'Triple School',school:'학사관리',allowance:'용돈기입장',profile:'내 프로필'}[m] || m;
 }
 
 // ── 채널 패널 렌더 ──
@@ -8606,6 +8624,143 @@ async function openTcsForStudent(id) {
   tcsRecords = {};
   (data||[]).forEach(r => { tcsRecords[r.section] = r.data || {}; });
   showTcsPreview();
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  용돈기입장 (학생 본인 용돈 관리)
+// ════════════════════════════════════════════════════════════════════
+const ALLOW_CATS = {
+  income:  ['용돈','세뱃돈','심부름','상금','저축이자','기타'],
+  expense: ['간식/군것질','학용품','도서','교통','취미/여가','선물','저축','헌금','기타'],
+};
+let allowEntries = [];
+let allowType = 'expense';    // 입력 폼 타입: 'income' | 'expense'
+let allowMonth = '';          // 'YYYY-MM' 필터 ('' = 전체)
+
+function allowWon(n) { return (Number(n)||0).toLocaleString('ko-KR') + '원'; }
+
+async function initAllowancePage() {
+  const main = document.getElementById('allowance-main');
+  if (main) main.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink3);font-size:13px">불러오는 중...</div>';
+  try {
+    const { data, error } = await sb.from('allowance_entries').select('*')
+      .eq('member_id', ME.id)
+      .order('date', { ascending:false }).order('created_at', { ascending:false });
+    if (error) throw error;
+    allowEntries = data || [];
+  } catch(e) {
+    if (schoolTableMissing(e)) { renderAllowSetup(e); return; }
+    main.innerHTML = `<div style="color:#b91c1c;padding:30px;text-align:center;font-size:13px">불러오기 실패: ${e.message||e}</div>`;
+    return;
+  }
+  renderAllowance();
+}
+
+function renderAllowSetup(err) {
+  document.getElementById('allowance-main').innerHTML = `<div style="max-width:560px;margin:40px auto;text-align:center">
+    <div style="font-size:40px;margin-bottom:12px">🐷</div>
+    <div style="font-size:16px;font-weight:700;margin-bottom:8px">데이터베이스 설정이 필요해요</div>
+    <div style="font-size:13px;color:var(--ink3);line-height:1.8">용돈기입장을 쓰려면 Supabase에서 테이블을 한 번 만들어야 합니다.<br>제공해드린 <b>용돈기입장_DB설치.sql</b> 을 Supabase → SQL Editor에 붙여넣고 실행해주세요.</div>
+    <div style="font-size:11px;color:#b91c1c;margin-top:14px">${err?.message || ''}</div>
+  </div>`;
+}
+
+function renderAllowance() {
+  const main = document.getElementById('allowance-main'); if (!main) return;
+
+  // 전체 잔액(모든 기록 기준)
+  const totalIn  = allowEntries.filter(e=>e.type==='income').reduce((a,e)=>a+(Number(e.amount)||0),0);
+  const totalOut = allowEntries.filter(e=>e.type==='expense').reduce((a,e)=>a+(Number(e.amount)||0),0);
+  const balance  = totalIn - totalOut;
+
+  // 선택 기간 목록
+  const list = allowMonth ? allowEntries.filter(e => (e.date||'').slice(0,7) === allowMonth) : allowEntries;
+  const periodIn  = list.filter(e=>e.type==='income').reduce((a,e)=>a+(Number(e.amount)||0),0);
+  const periodOut = list.filter(e=>e.type==='expense').reduce((a,e)=>a+(Number(e.amount)||0),0);
+  const periodLabel = allowMonth ? `${allowMonth.slice(5,7)}월` : '전체';
+
+  const inp = 'height:36px;padding:0 10px;border:1px solid var(--border);border-radius:9px;font:600 13px var(--font);color:var(--ink);background:var(--surface)';
+  const catOpts = ALLOW_CATS[allowType].map(c=>`<option value="${c}">${c}</option>`).join('');
+  const typeBtn = (t,label,color) => `<button onclick="setAllowType('${t}')" style="flex:1;height:38px;border:none;border-radius:9px;font:700 13px var(--font);cursor:pointer;background:${allowType===t?color:'var(--s2)'};color:${allowType===t?'#fff':'var(--ink2)'}">${label}</button>`;
+
+  const rows = list.map(e => {
+    const income = e.type === 'income';
+    return `<div style="display:flex;align-items:center;gap:10px;padding:11px 4px;border-bottom:1px solid var(--border)">
+      <div style="width:34px;height:34px;border-radius:9px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:15px;background:${income?'#e8f5ee':'#fdecea'}">${income?'➕':'➖'}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13.5px;font-weight:600;color:var(--ink)">${escHtml(e.category||'기타')}${e.memo?` <span style="font-weight:400;color:var(--ink3)">· ${escHtml(e.memo)}</span>`:''}</div>
+        <div style="font-size:11px;color:var(--ink3)">${e.date||''}</div>
+      </div>
+      <div style="font-size:14px;font-weight:700;color:${income?'#2a7a5a':'#c0392b'};white-space:nowrap">${income?'+':'-'}${allowWon(e.amount)}</div>
+      <button onclick="deleteAllowEntry('${e.id}')" title="삭제" style="border:none;background:transparent;cursor:pointer;color:var(--ink3);font-size:14px;flex-shrink:0">✕</button>
+    </div>`;
+  }).join('');
+
+  main.innerHTML = `<div style="max-width:680px;margin:0 auto">
+    <!-- 잔액 카드 -->
+    <div style="background:linear-gradient(135deg,#2a7a5a,#2a5298);border-radius:18px;padding:20px 24px;margin-bottom:16px;color:#fff">
+      <div style="font-size:12px;opacity:.85">현재 잔액</div>
+      <div style="font-size:30px;font-weight:800;letter-spacing:-.02em;margin-top:2px">${allowWon(balance)}</div>
+      <div style="display:flex;gap:18px;margin-top:12px;font-size:12px">
+        <div>총 수입 <b>${allowWon(totalIn)}</b></div>
+        <div>총 지출 <b>${allowWon(totalOut)}</b></div>
+      </div>
+    </div>
+
+    <!-- 입력 폼 -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px">
+      <div style="display:flex;gap:8px;margin-bottom:10px">${typeBtn('income','수입 ➕','#2a7a5a')}${typeBtn('expense','지출 ➖','#c0392b')}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+        <input id="allow-date" type="date" value="${attTodayStr()}" style="${inp}"/>
+        <select id="allow-cat" style="${inp}">${catOpts}</select>
+        <input id="allow-amount" type="number" min="0" step="100" placeholder="금액(원)" style="${inp};width:120px"/>
+      </div>
+      <div style="display:flex;gap:8px">
+        <input id="allow-memo" placeholder="내용 (예: 편의점 과자)" style="${inp};flex:1"/>
+        <button onclick="addAllowEntry()" style="height:36px;padding:0 18px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 13px var(--font)">＋ 기록</button>
+      </div>
+    </div>
+
+    <!-- 기간 필터 + 요약 -->
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+      <input type="month" value="${allowMonth}" onchange="setAllowMonth(this.value)" style="${inp}"/>
+      ${allowMonth?`<button onclick="setAllowMonth('')" style="${inp};cursor:pointer;color:var(--ink3)">전체 보기</button>`:''}
+      <div style="flex:1"></div>
+      <span style="font-size:12px;color:#2a7a5a;font-weight:600">${periodLabel} 수입 ${allowWon(periodIn)}</span>
+      <span style="color:var(--border)">|</span>
+      <span style="font-size:12px;color:#c0392b;font-weight:600">${periodLabel} 지출 ${allowWon(periodOut)}</span>
+    </div>
+
+    <!-- 목록 -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:4px 14px">
+      ${list.length ? rows : '<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px">아직 기록이 없어요. 위에서 첫 기록을 추가해보세요!</div>'}
+    </div>
+  </div>`;
+}
+
+function setAllowType(t) { allowType = t; renderAllowance(); }
+function setAllowMonth(v) { allowMonth = v || ''; renderAllowance(); }
+
+async function addAllowEntry() {
+  const date = document.getElementById('allow-date').value || attTodayStr();
+  const category = document.getElementById('allow-cat').value;
+  const memo = document.getElementById('allow-memo').value.trim();
+  const amount = parseInt(document.getElementById('allow-amount').value) || 0;
+  if (amount <= 0) { showUploadToast('금액을 입력하세요'); return; }
+  const { error } = await sb.from('allowance_entries').insert({
+    member_id: ME.id, community_id: CID(), date, type: allowType, category, memo, amount,
+  });
+  if (error) { if (schoolTableMissing(error)) return renderAllowSetup(error); showUploadToast('저장 실패: ' + error.message); return; }
+  showUploadToast(allowType === 'income' ? '➕ 수입 기록됨' : '➖ 지출 기록됨');
+  await initAllowancePage();
+}
+
+async function deleteAllowEntry(id) {
+  if (!confirm('이 기록을 삭제할까요?')) return;
+  const { error } = await sb.from('allowance_entries').delete().eq('id', id);
+  if (error) { showUploadToast('삭제 실패: ' + error.message); return; }
+  allowEntries = allowEntries.filter(e => e.id !== id);
+  renderAllowance();
 }
 
 // ── 세션 복원은 위 window.addEventListener('load') 에서 처리 ──
