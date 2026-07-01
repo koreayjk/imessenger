@@ -617,10 +617,6 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>
       <span>일정</span>
     </div>
-    <div class="sb-btn" id="sb-allowance" onclick="setMode('allowance')" title="용돈기입장">
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="13" rx="2.5"/><path d="M3 10h18"/><path d="M16 14h1.5"/></svg>
-      <span>용돈</span>
-    </div>
     <div class="sb-btn" id="sb-tcs" onclick="setMode('tcs')" title="TCS" style="display:none">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
       <span>TCS</span>
@@ -828,12 +824,13 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
 
     <!-- 용돈기입장 뷰 -->
     <div id="allowance-view" style="display:none;flex-direction:column;height:100%;background:var(--bg)">
-      <div style="height:56px;padding:0 24px;display:flex;align-items:center;gap:10px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0">
+      <div style="position:relative;height:56px;padding:0 24px;display:flex;align-items:center;gap:10px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0">
         <div style="width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#2a7a5a,#2a5298);display:flex;align-items:center;justify-content:center;font-size:16px">🐷</div>
         <div>
           <div style="font-size:15px;font-weight:700;color:var(--ink)">용돈기입장</div>
           <div style="font-size:11px;color:var(--ink3)">내 용돈을 기록하고 관리해요</div>
         </div>
+        <div id="subnav-allowance" class="subnav-center"></div>
       </div>
       <div id="allowance-main" style="flex:1;overflow-y:auto;padding:24px 28px"></div>
     </div>
@@ -1613,7 +1610,7 @@ function setMode(m) {
 
   const sbTcsBtn = document.getElementById('sb-tcs');
   if (sbTcsBtn) {
-    const tcsActive = isTeacher() ? (m==='tcs' || m==='mock' || m==='reading') : (m==='profile' || m==='reading');
+    const tcsActive = isTeacher() ? (m==='tcs' || m==='mock' || m==='reading') : (m==='profile' || m==='reading' || m==='allowance');
     sbTcsBtn.classList.toggle('active', tcsActive);
   }
 
@@ -4701,7 +4698,7 @@ function tcsSubnavHtml(active) {
       const on = active === m;
       return `<button onclick="setMode('${m}')" style="height:30px;padding:0 13px;border:none;border-radius:8px;font:600 12px var(--font);cursor:pointer;background:${on ? '#1d3a5f' : 'transparent'};color:${on ? '#fff' : 'var(--ink2)'}">${label}</button>`;
     };
-    tabs = tab('profile', '개인정보') + tab('reading', 'Triple School');
+    tabs = tab('profile', '개인정보') + tab('reading', 'Triple School') + tab('allowance', '용돈');
   }
   return `<div style="display:inline-flex;gap:2px;background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:3px">${tabs}</div>`;
 }
@@ -8640,6 +8637,8 @@ let allowMonth = '';          // 'YYYY-MM' 필터 ('' = 전체)
 function allowWon(n) { return (Number(n)||0).toLocaleString('ko-KR') + '원'; }
 
 async function initAllowancePage() {
+  const sn = document.getElementById('subnav-allowance');
+  if (sn) sn.innerHTML = isTeacher() ? '' : tcsSubnavHtml('allowance');
   const main = document.getElementById('allowance-main');
   if (main) main.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink3);font-size:13px">불러오는 중...</div>';
   try {
