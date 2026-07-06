@@ -8926,6 +8926,73 @@ let writingEntries = [];
 let writingReadReports = [];     // 독후감: Triple School reading_logs
 let reviewCats = [];
 let reviewCatCustom = false;
+let bookResults = [];            // 구글북스 검색 결과
+let bookPick = null;             // 선택한 책 {title,author,cover,desc}
+
+function bookPickCardHtml() {
+  if (!bookPick) return '';
+  return `<div style="display:flex;gap:12px;align-items:flex-start;padding:11px 13px;background:var(--s2);border:1px solid var(--border);border-radius:11px">
+    ${bookPick.cover?`<img src="${escAttr(bookPick.cover)}" style="width:48px;height:68px;object-fit:cover;border-radius:5px;flex-shrink:0;box-shadow:0 1px 4px rgba(0,0,0,.15)"/>`:'<div style="width:48px;height:68px;border-radius:5px;background:var(--border);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">📗</div>'}
+    <div style="flex:1;min-width:0">
+      <div style="font-size:13.5px;font-weight:700;color:var(--ink)">${escHtml(bookPick.title)}</div>
+      ${bookPick.author?`<div style="font-size:11.5px;color:var(--ink3);margin-top:1px">${escHtml(bookPick.author)}</div>`:''}
+      ${bookPick.desc?`<div style="font-size:11px;color:var(--ink3);margin-top:5px;line-height:1.5;max-height:48px;overflow:hidden">${escHtml(bookPick.desc)}</div>`:''}
+    </div>
+    <button onclick="clearBookPick()" title="선택 해제" style="border:none;background:transparent;cursor:pointer;color:var(--ink3);font-size:14px;flex-shrink:0">✕</button>
+  </div>`;
+}
+
+async function searchGoogleBooks() {
+  const q = (document.getElementById('wr-title')?.value || '').trim();
+  const box = document.getElementById('wr-book-results');
+  if (!q) { showUploadToast('먼저 책 제목을 입력하세요'); return; }
+  if (box) box.innerHTML = '<div style="font-size:12px;color:var(--ink3);padding:8px 4px">📚 책을 찾는 중...</div>';
+  try {
+    const url = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=8&printType=books`;
+    const res = await fetch(url);
+    const data = await res.json();
+    bookResults = (data.items || []).map(it => {
+      const v = it.volumeInfo || {};
+      const img = (v.imageLinks && (v.imageLinks.thumbnail || v.imageLinks.smallThumbnail)) || '';
+      return {
+        title: v.title || '',
+        author: (v.authors || []).join(', '),
+        cover: img ? img.replace(/^http:\/\//, 'https://') : '',
+        desc: (v.description || '').trim(),
+        year: (v.publishedDate || '').slice(0,4),
+      };
+    }).filter(b => b.title);
+  } catch(e) {
+    if (box) box.innerHTML = `<div style="font-size:12px;color:#b91c1c;padding:8px 4px">검색 실패: ${e.message||e}. 인터넷 연결을 확인하거나, 제목을 직접 입력해도 돼요.</div>`;
+    return;
+  }
+  if (!box) return;
+  if (!bookResults.length) { box.innerHTML = '<div style="font-size:12px;color:var(--ink3);padding:8px 4px">검색 결과가 없어요. 제목을 바꿔보거나 그대로 직접 입력해도 됩니다.</div>'; return; }
+  box.innerHTML = `<div style="border:1px solid var(--border);border-radius:11px;overflow:hidden;max-height:300px;overflow-y:auto">
+    ${bookResults.map((b,i)=>`
+      <div onclick="pickBook(${i})" style="display:flex;gap:11px;align-items:center;padding:9px 11px;cursor:pointer;border-bottom:1px solid var(--border);background:var(--surface)" onmouseover="this.style.background='var(--s2)'" onmouseout="this.style.background='var(--surface)'">
+        ${b.cover?`<img src="${escAttr(b.cover)}" style="width:36px;height:52px;object-fit:cover;border-radius:4px;flex-shrink:0"/>`:'<div style="width:36px;height:52px;border-radius:4px;background:var(--s2);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">📘</div>'}
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(b.title)}</div>
+          <div style="font-size:11px;color:var(--ink3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(b.author||'저자 미상')}${b.year?` · ${b.year}`:''}</div>
+        </div>
+      </div>`).join('')}
+  </div>
+  <div style="font-size:10.5px;color:var(--ink3);padding:6px 2px">원하는 책을 눌러 선택하세요. 없으면 제목만 그대로 써도 됩니다.</div>`;
+}
+
+function pickBook(i) {
+  const b = bookResults[i]; if (!b) return;
+  bookPick = { title: b.title, author: b.author, cover: b.cover, desc: b.desc };
+  const t = document.getElementById('wr-title'); if (t) t.value = b.title;
+  const box = document.getElementById('wr-book-results'); if (box) box.innerHTML = '';
+  const pc = document.getElementById('wr-book-picked'); if (pc) pc.innerHTML = bookPickCardHtml();
+}
+
+function clearBookPick() {
+  bookPick = null;
+  const pc = document.getElementById('wr-book-picked'); if (pc) pc.innerHTML = '';
+}
 
 async function initWritingPage() {
   const sn = document.getElementById('subnav-writing');
@@ -8937,6 +9004,7 @@ async function initWritingPage() {
     ? 'Triple School 독후감이 자동으로 모여요. 자유 독후감도 쓸 수 있어요.'
     : '선교·봉사·체험 등을 다녀온 뒤 후기를 남겨요.';
   reviewCatCustom = false;
+  bookPick = null; bookResults = [];
   const main = document.getElementById('writing-main');
   main.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink3);font-size:13px">불러오는 중...</div>';
   try {
@@ -8995,16 +9063,39 @@ function renderWriting() {
     </div>`).join('');
 
   if (writingKind === 'book') {
-    const tsCards = writingReadReports.map(r => {
-      const b = r.reading_books || {};
-      return `<div style="border:1px solid var(--border);border-radius:12px;padding:13px 15px;margin-bottom:10px;background:var(--s2)">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;flex-wrap:wrap">
-          <span style="font-size:11px;font-weight:700;color:#2a7a5a;background:#e8f5ee;padding:2px 8px;border-radius:6px">📖 Triple School</span>
-          <span style="font-size:14px;font-weight:700;color:var(--ink)">${escHtml(b.title||'책')}</span>
-          ${b.author?`<span style="font-size:11px;color:var(--ink3)">${escHtml(b.author)}</span>`:''}
-          <span style="font-size:11px;color:var(--ink3)">${r.read_date||''}</span>
+    const coverThumb = (url,emoji) => url
+      ? `<img src="${escAttr(url)}" style="width:44px;height:62px;object-fit:cover;border-radius:5px;flex-shrink:0;box-shadow:0 1px 4px rgba(0,0,0,.15)"/>`
+      : `<div style="width:44px;height:62px;border-radius:5px;background:var(--s2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">${emoji}</div>`;
+    const bookMineCards = writingEntries.map(e => `
+      <div style="border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:10px;background:var(--surface);display:flex;gap:12px;cursor:pointer" onclick="openBookReport('mine','${e.id}')">
+        ${coverThumb(e.cover_url,'📗')}
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;flex-wrap:wrap">
+            <span style="font-size:14px;font-weight:700;color:var(--ink)">${escHtml(e.title||'제목 없음')}</span>
+            ${e.author?`<span style="font-size:11px;color:var(--ink3)">${escHtml(e.author)}</span>`:''}
+          </div>
+          <div style="font-size:11px;color:var(--ink3);margin-bottom:5px">${readPeriod(e)||''}${(e.read_start||e.read_end)?' · ':''}✍️ ${e.date||''}</div>
+          ${e.body?`<div style="font-size:12.5px;color:var(--ink2);line-height:1.6;max-height:44px;overflow:hidden">${escHtml(e.body)}</div>`:''}
         </div>
-        <div style="font-size:13px;color:var(--ink2);line-height:1.7;white-space:pre-wrap">${escHtml(r.report)}</div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0">
+          <button onclick="event.stopPropagation();deleteWriting('${e.id}')" title="삭제" style="border:none;background:transparent;cursor:pointer;color:var(--ink3);font-size:14px">✕</button>
+          <span style="font-size:10px;color:var(--accent);font-weight:700">열기 →</span>
+        </div>
+      </div>`).join('');
+    const tsCards = writingReadReports.map((r,i) => {
+      const b = r.reading_books || {};
+      return `<div style="border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:10px;background:var(--s2);display:flex;gap:12px;cursor:pointer" onclick="openBookReport('ts','${i}')">
+        ${coverThumb('','📖')}
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;flex-wrap:wrap">
+            <span style="font-size:10px;font-weight:700;color:#2a7a5a;background:#e8f5ee;padding:2px 7px;border-radius:6px">📖 Triple School</span>
+            <span style="font-size:14px;font-weight:700;color:var(--ink)">${escHtml(b.title||'책')}</span>
+            ${b.author?`<span style="font-size:11px;color:var(--ink3)">${escHtml(b.author)}</span>`:''}
+          </div>
+          <div style="font-size:11px;color:var(--ink3);margin-bottom:5px">✍️ ${r.read_date||''}</div>
+          <div style="font-size:12.5px;color:var(--ink2);line-height:1.6;max-height:44px;overflow:hidden">${escHtml(r.report)}</div>
+        </div>
+        <span style="font-size:10px;color:var(--accent);font-weight:700;flex-shrink:0;align-self:flex-end">열기 →</span>
       </div>`;
     }).join('');
     const st = bookStats();
@@ -9019,7 +9110,12 @@ function renderWriting() {
       </div>
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px">
         <div style="font-size:13px;font-weight:700;color:var(--ink);margin-bottom:10px">✍️ 독후감 쓰기</div>
-        <input id="wr-title" placeholder="책 제목" style="${inp};width:100%;margin-bottom:8px"/>
+        <div style="display:flex;gap:8px;margin-bottom:6px">
+          <input id="wr-title" placeholder="책 제목 (검색해서 표지·작가·줄거리를 불러올 수 있어요)" onkeydown="if(event.key==='Enter'){event.preventDefault();searchGoogleBooks();}" style="${inp};flex:1"/>
+          <button onclick="searchGoogleBooks()" style="height:36px;padding:0 14px;border:1px solid var(--border);background:var(--s2);color:var(--ink2);border-radius:9px;cursor:pointer;font:700 12px var(--font)">🔍 책 검색</button>
+        </div>
+        <div id="wr-book-results" style="margin-bottom:6px"></div>
+        <div id="wr-book-picked" style="margin-bottom:10px">${bookPickCardHtml()}</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
           <span style="font-size:11px;color:var(--ink3)">읽은 기간</span>
           <input id="wr-rstart" type="date" title="읽기 시작한 날" style="${inp}"/>
@@ -9040,7 +9136,7 @@ function renderWriting() {
           </div>`).join('')}
         <div style="display:flex;justify-content:flex-end;margin-top:4px"><button onclick="addWriting()" style="height:36px;padding:0 18px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 13px var(--font)">＋ 독후감 저장</button></div>
       </div>
-      ${(tsCards||myCards) ? `${tsCards}${myCards}` : '<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px;background:var(--surface);border:1px solid var(--border);border-radius:12px">아직 독후감이 없어요. Triple School에서 책을 읽고 독후감을 쓰거나, 위에서 직접 써보세요!</div>'}
+      ${(tsCards||bookMineCards) ? `${bookMineCards}${tsCards}` : '<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px;background:var(--surface);border:1px solid var(--border);border-radius:12px">아직 독후감이 없어요. Triple School에서 책을 읽고 독후감을 쓰거나, 위에서 직접 써보세요!</div>'}
     </div>`;
   } else {
     const catOpts = reviewCats.map(c=>`<option value="${escAttr(c.name)}">${escHtml(c.name)}</option>`).join('') + `<option value="__custom__">＋ 직접 입력</option>`;
@@ -9081,6 +9177,120 @@ function onReviewCatChange(v) {
   if (el) el.style.display = reviewCatCustom ? 'block' : 'none';
 }
 
+// ── 독후감 상세 보기 + PDF ──────────────────────────────────────────
+function bookReportData(kind, key) {
+  if (kind === 'mine') {
+    const e = writingEntries.find(x => x.id === key); if (!e) return null;
+    return { title:e.title||'제목 없음', author:e.author||'', cover:e.cover_url||'', desc:e.book_desc||'',
+             readStart:e.read_start||'', readEnd:e.read_end||'', date:e.date||'', body:e.body||'', source:'' };
+  }
+  const r = writingReadReports[Number(key)]; if (!r) return null;
+  const b = r.reading_books || {};
+  return { title:b.title||'책', author:b.author||'', cover:'', desc:'', readStart:'', readEnd:'', date:r.read_date||'', body:r.report||'', source:'Triple School' };
+}
+
+function bookPeriodText(d) {
+  if (d.readStart || d.readEnd) return `읽은 기간 ${d.readStart||'?'} ~ ${d.readEnd||'?'}`;
+  return '';
+}
+
+function openBookReport(kind, key) {
+  const d = bookReportData(kind, key); if (!d) return;
+  const writer = (ME && ME.name) ? ME.name : '';
+  const old = document.getElementById('book-modal'); if (old) old.remove();
+  const cover = d.cover
+    ? `<img src="${escAttr(d.cover)}" style="width:132px;height:190px;object-fit:cover;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.22)"/>`
+    : `<div style="width:132px;height:190px;border-radius:8px;background:var(--s2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:44px">📗</div>`;
+  const period = bookPeriodText(d);
+  const modal = document.createElement('div');
+  modal.id = 'book-modal';
+  modal.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(20,25,35,.55);display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:28px 16px';
+  modal.onclick = (ev) => { if (ev.target === modal) modal.remove(); };
+  modal.innerHTML = `
+    <div style="background:var(--surface);border-radius:18px;max-width:640px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3);overflow:hidden">
+      <div style="display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--border)">
+        <div style="font-size:14px;font-weight:800;color:var(--ink)">📖 독후감</div>
+        <div style="flex:1"></div>
+        <button onclick="printBookReport('${kind}','${key}')" style="height:34px;padding:0 15px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 12.5px var(--font)">📄 PDF로 저장</button>
+        <button onclick="document.getElementById('book-modal').remove()" style="height:34px;width:34px;border:1px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:9px;cursor:pointer;font-size:15px">✕</button>
+      </div>
+      <div style="padding:24px 26px;max-height:calc(100vh - 130px);overflow-y:auto">
+        <div style="display:flex;gap:20px;align-items:flex-start;margin-bottom:20px;flex-wrap:wrap">
+          ${cover}
+          <div style="flex:1;min-width:180px">
+            <div style="font-size:21px;font-weight:800;color:var(--ink);line-height:1.3">${escHtml(d.title)}</div>
+            ${d.author?`<div style="font-size:13px;color:var(--ink2);margin-top:4px">${escHtml(d.author)}</div>`:''}
+            <div style="margin-top:12px;font-size:12px;color:var(--ink3);line-height:1.9">
+              ${writer?`<div>✍️ ${escHtml(writer)}</div>`:''}
+              ${period?`<div>📅 ${escHtml(period)}</div>`:''}
+              ${d.date?`<div>📝 작성일 ${escHtml(d.date)}</div>`:''}
+              ${d.source?`<div>📚 ${escHtml(d.source)} 기록</div>`:''}
+            </div>
+          </div>
+        </div>
+        ${d.desc?`<div style="background:var(--s2);border-radius:11px;padding:13px 15px;margin-bottom:18px">
+          <div style="font-size:11px;font-weight:700;color:var(--ink3);margin-bottom:5px">책 소개</div>
+          <div style="font-size:12.5px;color:var(--ink2);line-height:1.75;max-height:150px;overflow-y:auto">${escHtml(d.desc)}</div>
+        </div>`:''}
+        <div style="border-top:2px solid var(--border);padding-top:16px">
+          <div style="font-size:12px;font-weight:700;color:var(--ink3);margin-bottom:10px">독후감</div>
+          <div style="font-family:'Noto Serif KR',serif;font-size:15px;color:var(--ink);line-height:2;white-space:pre-wrap">${escHtml(d.body)||'<span style="color:var(--ink3)">내용이 없습니다.</span>'}</div>
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+}
+
+function printBookReport(kind, key) {
+  const d = bookReportData(kind, key); if (!d) return;
+  const writer = (ME && ME.name) ? ME.name : '';
+  const period = bookPeriodText(d);
+  const meta = [
+    writer ? `글쓴이 ${escHtml(writer)}` : '',
+    period ? escHtml(period) : '',
+    d.date ? `작성일 ${escHtml(d.date)}` : '',
+    d.source ? `${escHtml(d.source)} 기록` : '',
+  ].filter(Boolean).join('&nbsp;&nbsp;·&nbsp;&nbsp;');
+  const coverImg = d.cover ? `<img id="cv" src="${escAttr(d.cover)}"/>` : '';
+  const win = window.open('', '_blank');
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"/>
+  <title>독후감 - ${escHtml(d.title)}</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;600;700&display=swap"/>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Noto Serif KR','Malgun Gothic',serif;color:#1a1a1a;padding:20mm 18mm}
+    .head{display:flex;gap:20px;align-items:flex-start;border-bottom:2px solid #1d3a5f;padding-bottom:16px;margin-bottom:18px}
+    #cv{width:120px;height:172px;object-fit:cover;border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,.2);flex-shrink:0}
+    .ttl{font-size:22pt;font-weight:700;color:#1d3a5f;line-height:1.3}
+    .auth{font-size:12pt;color:#555;margin-top:6px}
+    .meta{font-size:9.5pt;color:#666;margin-top:12px;line-height:1.8}
+    .desc{background:#f4f6fa;border-radius:8px;padding:12px 14px;margin-bottom:18px;font-size:10pt;color:#444;line-height:1.7}
+    .desc b{display:block;font-size:9pt;color:#1d3a5f;margin-bottom:4px}
+    .label{font-size:10pt;font-weight:700;color:#1d3a5f;margin-bottom:10px}
+    .body{font-size:12pt;line-height:2.05;white-space:pre-wrap}
+    @page{size:A4;margin:16mm}
+  </style></head><body>
+    <div class="head">
+      ${coverImg}
+      <div>
+        <div class="ttl">${escHtml(d.title)}</div>
+        ${d.author?`<div class="auth">${escHtml(d.author)}</div>`:''}
+        ${meta?`<div class="meta">${meta}</div>`:''}
+      </div>
+    </div>
+    ${d.desc?`<div class="desc"><b>책 소개</b>${escHtml(d.desc)}</div>`:''}
+    <div class="label">■ 독후감</div>
+    <div class="body">${escHtml(d.body)}</div>
+    <script>
+      var img=document.getElementById('cv');
+      function go(){ setTimeout(function(){ window.print(); }, 250); }
+      if(img && !img.complete){ img.onload=go; img.onerror=go; setTimeout(go,1500); }
+      else { go(); }
+    <\/script>
+  </body></html>`);
+  win.document.close();
+}
+
 async function addWriting() {
   const title = (document.getElementById('wr-title')?.value || '').trim();
   const date  = document.getElementById('wr-date')?.value || attTodayStr();
@@ -9101,6 +9311,12 @@ async function addWriting() {
   if (writingKind === 'book') {
     row.read_start = document.getElementById('wr-rstart')?.value || null;
     row.read_end   = document.getElementById('wr-rend')?.value || null;
+    if (bookPick) {
+      if (!row.title) row.title = bookPick.title;
+      row.cover_url = bookPick.cover || null;
+      row.author    = bookPick.author || null;
+      row.book_desc = bookPick.desc || null;
+    }
   }
   const { error } = await sb.from('student_writings').insert(row);
   if (error) { if (schoolTableMissing(error)) { document.getElementById('writing-main').innerHTML = writingSetupHtml(); return; } showUploadToast('저장 실패: ' + error.message); return; }

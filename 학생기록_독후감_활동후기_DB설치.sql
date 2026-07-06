@@ -23,6 +23,10 @@ create index if not exists idx_writings_member on public.student_writings (membe
 -- 이미 테이블이 있던 경우 컬럼 보강
 alter table public.student_writings add column if not exists read_start date;
 alter table public.student_writings add column if not exists read_end   date;
+-- (독후감) 구글북스에서 선택한 책 정보
+alter table public.student_writings add column if not exists cover_url  text;   -- 표지 이미지
+alter table public.student_writings add column if not exists author     text;   -- 지은이
+alter table public.student_writings add column if not exists book_desc  text;   -- 책 소개(줄거리)
 
 alter table public.student_writings enable row level security;
 drop policy if exists writings_select on public.student_writings;
