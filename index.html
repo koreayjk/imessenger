@@ -8911,6 +8911,16 @@ async function rejectAllowDelete(id) {
 // ════════════════════════════════════════════════════════════════════
 //  학생 기록 — 독후감(book) / 활동 후기(activity)
 // ════════════════════════════════════════════════════════════════════
+// 독후감 안내 질문 — 답변만 이어 붙이면 기승전결 형식의 독후감이 됨
+//  起(도입) → 承(내용) → 轉(생각·깨달음) → 結(마무리)
+const BOOK_QS = [
+  { key:'q1', q:'① 어떤 책인가요?',                    hint:'책 제목·지은이와 이 책을 읽게 된 계기를 적어보세요. (起)' },
+  { key:'q2', q:'② 어떤 내용의 책이었나요?',            hint:'책의 줄거리나 중심 내용을 간단히 정리해보세요. (承)' },
+  { key:'q3', q:'③ 가장 기억에 남는 장면·문장과 그 이유는?', hint:'인상 깊었던 부분과 왜 그랬는지 함께 적어보세요. (轉)' },
+  { key:'q4', q:'④ 새롭게 알게 되거나 느낀 점은?',      hint:'책을 읽고 생각이 바뀌거나 배운 점을 적어보세요. (轉)' },
+  { key:'q5', q:'⑤ 앞으로 어떻게 적용하고 싶나요?',      hint:'내 삶에 적용하고 싶은 점이나 다짐을 적어보세요. (結)' },
+];
+
 let writingKind = 'book';        // 'book'(독후감) | 'activity'(활동후기)
 let writingEntries = [];
 let writingReadReports = [];     // 독후감: Triple School reading_logs
@@ -9008,13 +9018,9 @@ function renderWriting() {
         ${statChip('전체', st.total)}
       </div>
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-          <div style="font-size:13px;font-weight:700;color:var(--ink)">✍️ 자유 독후감 쓰기</div>
-          <div style="flex:1"></div>
-          <button onclick="fillBookTemplate()" style="height:28px;padding:0 11px;border:1px solid var(--border);background:var(--s2);color:var(--ink2);border-radius:8px;cursor:pointer;font:700 11px var(--font)">📝 작성 양식 넣기</button>
-        </div>
+        <div style="font-size:13px;font-weight:700;color:var(--ink);margin-bottom:10px">✍️ 독후감 쓰기</div>
         <input id="wr-title" placeholder="책 제목" style="${inp};width:100%;margin-bottom:8px"/>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:4px;align-items:center">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
           <span style="font-size:11px;color:var(--ink3)">읽은 기간</span>
           <input id="wr-rstart" type="date" title="읽기 시작한 날" style="${inp}"/>
           <span style="font-size:12px;color:var(--ink3)">~</span>
@@ -9023,11 +9029,16 @@ function renderWriting() {
           <span style="font-size:11px;color:var(--ink3)">작성일</span>
           <input id="wr-date" type="date" value="${attTodayStr()}" style="${inp}"/>
         </div>
-        <div style="font-size:11px;color:var(--ink3);line-height:1.7;margin:8px 0 6px;padding:8px 11px;background:var(--s2);border-radius:9px">
-          💡 <b>이렇게 써보면 쉬워요</b> — ① 어떤 내용의 책인가요? ② 가장 기억에 남는 장면·문장은? ③ 왜 그 부분이 인상 깊었나요? ④ 새롭게 알게 되거나 느낀 점은? ⑤ 내 삶에 적용하고 싶은 점은?
+        <div style="font-size:11px;color:var(--ink3);line-height:1.6;margin-bottom:12px;padding:9px 11px;background:var(--s2);border-radius:9px">
+          💡 아래 <b>질문에 하나씩 답</b>하면 자연스럽게 <b>기승전결</b>을 갖춘 독후감이 완성돼요. 저장하면 <b>내가 쓴 답만</b> 이어져 한 편의 글로 보입니다.
         </div>
-        <textarea id="wr-body" placeholder="위 질문을 따라 자유롭게 적어보세요. ‘작성 양식 넣기’를 누르면 빈칸 양식이 채워져요." style="${ta};margin-bottom:8px"></textarea>
-        <div style="display:flex;justify-content:flex-end"><button onclick="addWriting()" style="height:36px;padding:0 18px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 13px var(--font)">＋ 독후감 저장</button></div>
+        ${BOOK_QS.map(x=>`
+          <div style="margin-bottom:13px">
+            <div style="font-size:13px;font-weight:700;color:var(--ink);margin-bottom:2px">${x.q}</div>
+            <div style="font-size:11px;color:var(--ink3);margin-bottom:5px">${x.hint}</div>
+            <textarea id="wr-${x.key}" placeholder="여기에 답을 적어보세요" style="${ta};min-height:64px"></textarea>
+          </div>`).join('')}
+        <div style="display:flex;justify-content:flex-end;margin-top:4px"><button onclick="addWriting()" style="height:36px;padding:0 18px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 13px var(--font)">＋ 독후감 저장</button></div>
       </div>
       ${(tsCards||myCards) ? `${tsCards}${myCards}` : '<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px;background:var(--surface);border:1px solid var(--border);border-radius:12px">아직 독후감이 없어요. Triple School에서 책을 읽고 독후감을 쓰거나, 위에서 직접 써보세요!</div>'}
     </div>`;
@@ -9064,28 +9075,6 @@ function bookStats() {
   return { month, yearCnt, total: dates.length, year: yr };
 }
 
-function fillBookTemplate() {
-  const ta = document.getElementById('wr-body');
-  if (!ta) return;
-  if (ta.value.trim() && !confirm('작성 중인 내용을 양식으로 바꿀까요?')) return;
-  ta.value =
-`📚 어떤 내용의 책인가요?
--
-
-✨ 가장 기억에 남는 장면이나 문장은?
--
-
-🤔 왜 그 부분이 인상 깊었나요?
--
-
-💡 새롭게 알게 되거나 느낀 점은?
--
-
-🌱 내 삶에 적용하고 싶은 점은?
-- `;
-  ta.focus();
-}
-
 function onReviewCatChange(v) {
   reviewCatCustom = (v === '__custom__');
   const el = document.getElementById('wr-cat-custom');
@@ -9094,15 +9083,20 @@ function onReviewCatChange(v) {
 
 async function addWriting() {
   const title = (document.getElementById('wr-title')?.value || '').trim();
-  const body  = (document.getElementById('wr-body')?.value || '').trim();
   const date  = document.getElementById('wr-date')?.value || attTodayStr();
   let category = null;
-  if (writingKind === 'activity') {
+  let body;
+  if (writingKind === 'book') {
+    // 질문별 답변만 이어 붙여 기승전결 형식의 독후감으로 저장 (질문 문구는 저장하지 않음)
+    body = BOOK_QS.map(x => (document.getElementById('wr-'+x.key)?.value || '').trim())
+                  .filter(Boolean).join('\n\n');
+  } else {
+    body = (document.getElementById('wr-body')?.value || '').trim();
     const sel = document.getElementById('wr-cat').value;
     category = sel === '__custom__' ? (document.getElementById('wr-cat-custom').value || '').trim() : sel;
     if (!category) { showUploadToast('분류를 선택하거나 입력하세요'); return; }
   }
-  if (!title && !body) { showUploadToast('제목이나 내용을 입력하세요'); return; }
+  if (!title && !body) { showUploadToast(writingKind==='book'?'책 제목이나 답변을 하나 이상 적어주세요':'제목이나 내용을 입력하세요'); return; }
   const row = { member_id: ME.id, community_id: CID(), kind: writingKind, category, title, body, date };
   if (writingKind === 'book') {
     row.read_start = document.getElementById('wr-rstart')?.value || null;
