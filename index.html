@@ -617,9 +617,9 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>
       <span>일정</span>
     </div>
-    <div class="sb-btn" id="sb-tcs" onclick="setMode('tcs')" title="TCS" style="display:none">
+    <div class="sb-btn" id="sb-tcs" onclick="setMode('tcs')" title="생기부" style="display:none">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-      <span>TCS</span>
+      <span>생기부</span>
     </div>
     <div class="sb-btn" id="sb-school" onclick="setMode('school')" title="학사" style="display:none">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10L12 5 2 10l10 5 10-5z"/><path d="M6 12v5c3 2 9 2 12 0v-5"/><path d="M22 10v6"/></svg>
@@ -1649,7 +1649,7 @@ function setMode(m) {
   if (m==='review') { writingKind='activity'; initWritingPage(); }
   if (m==='profile') { renderProfilePage(); }
   sessionStorage.setItem('last_mode', m);
-  document.getElementById('panel-title').textContent = {chat:'채팅',prayer:'기도제목',home:'홈',calendar:'일정',admin:'관리자',tcs:'TCS',mock:'모의고사 분석',reading:'Triple School',school:'학사관리',allowance:'용돈기입장',bookreport:'독후감',review:'활동 후기',profile:'내 프로필'}[m] || m;
+  document.getElementById('panel-title').textContent = {chat:'채팅',prayer:'기도제목',home:'홈',calendar:'일정',admin:'관리자',tcs:'생기부',mock:'모의고사 분석',reading:'Triple School',school:'학사관리',allowance:'용돈기입장',bookreport:'독후감',review:'활동 후기',profile:'내 프로필'}[m] || m;
 }
 
 // ── 채널 패널 렌더 ──
