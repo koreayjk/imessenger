@@ -12,11 +12,17 @@ create table if not exists public.student_writings (
   category      text,                 -- activity: 분류 / book: 책 제목
   title         text,
   body          text,
-  date          date,
+  date          date,                 -- 작성일(권수 통계 기준)
+  read_start    date,                 -- (독후감) 읽기 시작한 날
+  read_end      date,                 -- (독후감) 다 읽은 날
   created_at    timestamptz default now(),
   updated_at    timestamptz default now()
 );
 create index if not exists idx_writings_member on public.student_writings (member_id, kind, date desc);
+
+-- 이미 테이블이 있던 경우 컬럼 보강
+alter table public.student_writings add column if not exists read_start date;
+alter table public.student_writings add column if not exists read_end   date;
 
 alter table public.student_writings enable row level security;
 drop policy if exists writings_select on public.student_writings;

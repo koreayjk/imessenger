@@ -7269,10 +7269,10 @@ async function initSchoolPage() {
     .or('community_role.eq.student,role.eq.학생,community_role.eq.staff,role.eq.간사')
     .order('name');
   schoolStudents = students || [];
-  // 교사·간사·관리자 목록 (담당교사 배정용)
+  // 교사·간사·관리자·행정담당자 목록 (담임 배정용 — 간사도 담임이 될 수 있음)
   const { data: teachers } = await sb.from('members').select('id,name,role,community_role')
     .eq('community_id', CID())
-    .or('community_role.eq.teacher,community_role.eq.community_admin,community_role.eq.super_admin,role.eq.교사,role.eq.간사')
+    .or('community_role.eq.teacher,community_role.eq.staff,community_role.eq.admin_officer,community_role.eq.community_admin,community_role.eq.super_admin,role.eq.교사,role.eq.간사')
     .order('name');
   schoolTeachers = teachers || [];
   renderSchoolMain();
@@ -8379,9 +8379,11 @@ async function loadStudent360(id) {
     sb.from('counseling_logs').select('*').eq('community_id',CID()).eq('student_id',id).order('date',{ascending:false}).order('created_at',{ascending:false}),
     sb.from('health_logs').select('*').eq('community_id',CID()).eq('student_id',id).order('date',{ascending:false}).order('created_at',{ascending:false}),
     sb.from('tcs_records').select('section,data').eq('community_id',CID()).eq('student_id',id),
-    sb.from('allowance_entries').select('*').eq('member_id',id).eq('delete_status','requested').order('delete_requested_at',{ascending:false}),
+    sb.from('allowance_entries').select('*').eq('member_id',id).order('date',{ascending:false}).order('created_at',{ascending:false}),
   ]);
-  return { att:a.data||[], bills:b.data||[], counseling:c.data||[], health:h.data||[], tcs:t.data||[], allowReq:(al&&al.data)||[], month };
+  const allowAll = (al&&al.data)||[];
+  const allowReq = allowAll.filter(e => e.delete_status === 'requested');
+  return { att:a.data||[], bills:b.data||[], counseling:c.data||[], health:h.data||[], tcs:t.data||[], allowAll, allowReq, month };
 }
 
 async function renderStudent360() {
@@ -8561,6 +8563,8 @@ async function renderS360Detail() {
       ${billRows}
     </div>
 
+    ${s360AllowCard(d.allowAll||[])}
+
     ${s360LogCard('counseling', d.counseling)}
     ${s360LogCard('health', d.health)}
 
@@ -8573,6 +8577,70 @@ async function renderS360Detail() {
         <button onclick="openTcsForStudent('${s.id}')" style="height:32px;padding:0 14px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 12px var(--font)">📄 미리보기 / 출력</button>
       </div>
     </div>`;
+}
+
+// 담당학생 용돈기입장 (교사·간사·관리자: 조회 + 수정/삭제)
+function s360AllowCard(entries) {
+  const curs = [...new Set(entries.map(e => e.currency || '원'))];
+  if (!curs.length) curs.push('원');
+  const bal = curs.map(cur => {
+    const tin  = entries.filter(e=>e.type==='income'  && (e.currency||'원')===cur).reduce((a,e)=>a+(Number(e.amount)||0),0);
+    const tout = entries.filter(e=>e.type==='expense' && (e.currency||'원')===cur).reduce((a,e)=>a+(Number(e.amount)||0),0);
+    return `<div style="flex:1;min-width:130px;padding:9px 12px;background:var(--s2);border:1px solid var(--border);border-radius:10px">
+      <div style="font-size:10.5px;color:var(--ink3)">잔액 ${cur==='$'?'(달러)':'(원)'}</div>
+      <div style="font-size:16px;font-weight:800;color:#1d3a5f">${allowMoney(tin-tout,cur)}</div>
+      <div style="font-size:10.5px;color:var(--ink3);margin-top:2px">수입 ${allowMoney(tin,cur)} · 지출 ${allowMoney(tout,cur)}</div>
+    </div>`;
+  }).join('');
+  const rows = entries.slice(0,12).map(e => {
+    const income = e.type==='income'; const cur = e.currency||'원';
+    const pending = e.delete_status==='requested';
+    return `<div style="display:flex;align-items:center;gap:9px;padding:8px 2px;border-top:1px solid var(--border);${pending?'opacity:.6':''}">
+      <span style="font-size:14px">${income?'➕':'➖'}</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12.5px;font-weight:600;color:var(--ink)">${escHtml(e.category||'기타')}${e.memo?` <span style="font-weight:400;color:var(--ink3)">· ${escHtml(e.memo)}</span>`:''}</div>
+        <div style="font-size:10.5px;color:var(--ink3)">${e.date||''}${pending?' · <span style="color:#b8860b;font-weight:600">🕓 삭제요청</span>':''}</div>
+      </div>
+      <span style="font-size:13px;font-weight:700;color:${income?'#2a7a5a':'#c0392b'};white-space:nowrap">${income?'+':'-'}${allowMoney(e.amount,cur)}</span>
+      <button onclick="teacherEditAllow('${e.id}')" title="수정" style="border:none;background:transparent;cursor:pointer;color:var(--ink3);font-size:13px;flex-shrink:0">✏️</button>
+      <button onclick="teacherDeleteAllow('${e.id}')" title="삭제" style="border:none;background:transparent;cursor:pointer;color:#c0392b;font-size:13px;flex-shrink:0">✕</button>
+    </div>`;
+  }).join('');
+  return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin-bottom:14px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+      <div style="font-size:14px;font-weight:700;color:var(--ink)">🐷 용돈기입장</div>
+      <span style="font-size:11px;color:var(--ink3)">담당 학생의 용돈을 확인·수정할 수 있어요</span>
+      <div style="flex:1"></div>
+      <span style="font-size:11px;color:var(--ink3)">전체 ${entries.length}건</span>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px">${bal}</div>
+    ${entries.length ? rows : '<div style="font-size:12px;color:var(--ink3);padding:10px 0">아직 용돈 기록이 없어요.</div>'}
+    ${entries.length>12?'<div style="font-size:10.5px;color:var(--ink3);text-align:center;margin-top:8px">최근 12건만 표시</div>':''}
+  </div>`;
+}
+
+async function teacherDeleteAllow(id) {
+  if (!confirm('이 용돈 기록을 삭제할까요? 되돌릴 수 없어요.')) return;
+  const { error } = await sb.from('allowance_entries').delete().eq('id', id);
+  if (error) { showUploadToast('삭제 실패: ' + error.message); return; }
+  showUploadToast('🗑 삭제됐어요');
+  renderS360Detail();
+}
+
+async function teacherEditAllow(id) {
+  const d = await loadStudent360(s360Id);
+  const e = (d.allowAll||[]).find(x=>x.id===id); if (!e) return;
+  const cur = e.currency || '원';
+  const amtStr = prompt(`금액 수정 (${cur})`, e.amount);
+  if (amtStr === null) return;
+  const amount = parseFloat(amtStr);
+  if (!(amount > 0)) { showUploadToast('올바른 금액을 입력하세요'); return; }
+  const memo = prompt('내용 수정', e.memo || '');
+  if (memo === null) return;
+  const { error } = await sb.from('allowance_entries').update({ amount, memo: memo.trim() }).eq('id', id);
+  if (error) { showUploadToast('수정 실패: ' + error.message); return; }
+  showUploadToast('✏️ 수정됐어요');
+  renderS360Detail();
 }
 
 function renderS360TcsNav() {
@@ -8898,12 +8966,18 @@ function renderWriting() {
   const inp = 'height:36px;padding:0 10px;border:1px solid var(--border);border-radius:9px;font:600 13px var(--font);color:var(--ink);background:var(--surface)';
   const ta = 'width:100%;min-height:120px;padding:11px;border:1px solid var(--border);border-radius:9px;font:400 14px var(--font);color:var(--ink);line-height:1.7;resize:vertical';
 
+  const readPeriod = e => {
+    if (!e.read_start && !e.read_end) return '';
+    const s = e.read_start||'?', en = e.read_end||'?';
+    return `<span style="font-size:11px;color:var(--ink3)">📅 ${s} ~ ${en}</span>`;
+  };
   const myCards = writingEntries.map(e => `
     <div style="border:1px solid var(--border);border-radius:12px;padding:13px 15px;margin-bottom:10px;background:var(--surface)">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;flex-wrap:wrap">
         ${e.category?`<span style="font-size:11px;font-weight:700;color:#1d3a5f;background:var(--asoft);padding:2px 8px;border-radius:6px">${escHtml(e.category)}</span>`:''}
         ${e.title?`<span style="font-size:14px;font-weight:700;color:var(--ink)">${escHtml(e.title)}</span>`:''}
-        <span style="font-size:11px;color:var(--ink3)">${e.date||''}</span>
+        ${writingKind==='book'?readPeriod(e):''}
+        <span style="font-size:11px;color:var(--ink3)">${writingKind==='book'?'✍️ ':''}${e.date||''}</span>
         <div style="flex:1"></div>
         <button onclick="deleteWriting('${e.id}')" title="삭제" style="border:none;background:transparent;cursor:pointer;color:var(--ink3);font-size:14px">✕</button>
       </div>
@@ -8923,14 +8997,36 @@ function renderWriting() {
         <div style="font-size:13px;color:var(--ink2);line-height:1.7;white-space:pre-wrap">${escHtml(r.report)}</div>
       </div>`;
     }).join('');
+    const st = bookStats();
+    const statChip = (label,val) => `<div style="flex:1;min-width:90px;text-align:center;padding:10px 6px;background:var(--s2);border:1px solid var(--border);border-radius:11px">
+      <div style="font-size:20px;font-weight:800;color:#1d3a5f;line-height:1.1">${val}<span style="font-size:12px;font-weight:700">권</span></div>
+      <div style="font-size:11px;color:var(--ink3);margin-top:3px">${label}</div></div>`;
     main.innerHTML = `<div style="max-width:680px;margin:0 auto">
+      <div style="display:flex;gap:8px;margin-bottom:16px">
+        ${statChip('이번 달', st.month)}
+        ${statChip(st.year+'년', st.yearCnt)}
+        ${statChip('전체', st.total)}
+      </div>
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px">
-        <div style="font-size:13px;font-weight:700;color:var(--ink);margin-bottom:8px">✍️ 자유 독후감 쓰기</div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
-          <input id="wr-title" placeholder="책 제목" style="${inp};flex:1;min-width:160px"/>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <div style="font-size:13px;font-weight:700;color:var(--ink)">✍️ 자유 독후감 쓰기</div>
+          <div style="flex:1"></div>
+          <button onclick="fillBookTemplate()" style="height:28px;padding:0 11px;border:1px solid var(--border);background:var(--s2);color:var(--ink2);border-radius:8px;cursor:pointer;font:700 11px var(--font)">📝 작성 양식 넣기</button>
+        </div>
+        <input id="wr-title" placeholder="책 제목" style="${inp};width:100%;margin-bottom:8px"/>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:4px;align-items:center">
+          <span style="font-size:11px;color:var(--ink3)">읽은 기간</span>
+          <input id="wr-rstart" type="date" title="읽기 시작한 날" style="${inp}"/>
+          <span style="font-size:12px;color:var(--ink3)">~</span>
+          <input id="wr-rend" type="date" title="다 읽은 날" style="${inp}"/>
+          <div style="flex:1"></div>
+          <span style="font-size:11px;color:var(--ink3)">작성일</span>
           <input id="wr-date" type="date" value="${attTodayStr()}" style="${inp}"/>
         </div>
-        <textarea id="wr-body" placeholder="이 책에서 배운 점, 느낀 점을 자유롭게 적어보세요" style="${ta};margin-bottom:8px"></textarea>
+        <div style="font-size:11px;color:var(--ink3);line-height:1.7;margin:8px 0 6px;padding:8px 11px;background:var(--s2);border-radius:9px">
+          💡 <b>이렇게 써보면 쉬워요</b> — ① 어떤 내용의 책인가요? ② 가장 기억에 남는 장면·문장은? ③ 왜 그 부분이 인상 깊었나요? ④ 새롭게 알게 되거나 느낀 점은? ⑤ 내 삶에 적용하고 싶은 점은?
+        </div>
+        <textarea id="wr-body" placeholder="위 질문을 따라 자유롭게 적어보세요. ‘작성 양식 넣기’를 누르면 빈칸 양식이 채워져요." style="${ta};margin-bottom:8px"></textarea>
         <div style="display:flex;justify-content:flex-end"><button onclick="addWriting()" style="height:36px;padding:0 18px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 13px var(--font)">＋ 독후감 저장</button></div>
       </div>
       ${(tsCards||myCards) ? `${tsCards}${myCards}` : '<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px;background:var(--surface);border:1px solid var(--border);border-radius:12px">아직 독후감이 없어요. Triple School에서 책을 읽고 독후감을 쓰거나, 위에서 직접 써보세요!</div>'}
@@ -8954,6 +9050,42 @@ function renderWriting() {
   }
 }
 
+// 독후감 권수 통계 (작성일 기준): 이번 달 / 올해 / 전체
+// 자유 독후감(writingEntries) + Triple School 독후감(writingReadReports) 합산
+function bookStats() {
+  const now = new Date();
+  const ym = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  const yr = String(now.getFullYear());
+  const dates = [];
+  writingEntries.forEach(e => { if (e.date) dates.push(e.date); });
+  writingReadReports.forEach(r => { if (r.read_date) dates.push(r.read_date); });
+  let month=0, yearCnt=0;
+  dates.forEach(d => { if (d.startsWith(ym)) month++; if (d.startsWith(yr)) yearCnt++; });
+  return { month, yearCnt, total: dates.length, year: yr };
+}
+
+function fillBookTemplate() {
+  const ta = document.getElementById('wr-body');
+  if (!ta) return;
+  if (ta.value.trim() && !confirm('작성 중인 내용을 양식으로 바꿀까요?')) return;
+  ta.value =
+`📚 어떤 내용의 책인가요?
+-
+
+✨ 가장 기억에 남는 장면이나 문장은?
+-
+
+🤔 왜 그 부분이 인상 깊었나요?
+-
+
+💡 새롭게 알게 되거나 느낀 점은?
+-
+
+🌱 내 삶에 적용하고 싶은 점은?
+- `;
+  ta.focus();
+}
+
 function onReviewCatChange(v) {
   reviewCatCustom = (v === '__custom__');
   const el = document.getElementById('wr-cat-custom');
@@ -8971,9 +9103,12 @@ async function addWriting() {
     if (!category) { showUploadToast('분류를 선택하거나 입력하세요'); return; }
   }
   if (!title && !body) { showUploadToast('제목이나 내용을 입력하세요'); return; }
-  const { error } = await sb.from('student_writings').insert({
-    member_id: ME.id, community_id: CID(), kind: writingKind, category, title, body, date,
-  });
+  const row = { member_id: ME.id, community_id: CID(), kind: writingKind, category, title, body, date };
+  if (writingKind === 'book') {
+    row.read_start = document.getElementById('wr-rstart')?.value || null;
+    row.read_end   = document.getElementById('wr-rend')?.value || null;
+  }
+  const { error } = await sb.from('student_writings').insert(row);
   if (error) { if (schoolTableMissing(error)) { document.getElementById('writing-main').innerHTML = writingSetupHtml(); return; } showUploadToast('저장 실패: ' + error.message); return; }
   // 직접 입력한 새 분류는 마스터 목록에도 시도(학생은 RLS로 자동 무시, 교사·관리자만 추가됨)
   if (writingKind === 'activity' && category && !reviewCats.some(c=>c.name===category)) {
