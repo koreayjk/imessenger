@@ -3144,10 +3144,10 @@ async function renderProfilePage() {
     </div>`;
 
   area.innerHTML = `
-    <div style="max-width:580px">
+    <div style="max-width:920px;margin:0 auto">
 
       <!-- 프로필 카드 -->
-      <div style="background:linear-gradient(135deg,#1d3a5f,#2a5298);border-radius:20px;padding:24px;margin-bottom:28px;display:flex;align-items:center;gap:16px">
+      <div style="background:linear-gradient(135deg,#1d3a5f,#2a5298);border-radius:20px;padding:24px;margin-bottom:20px;display:flex;align-items:center;gap:16px">
         <div style="width:60px;height:60px;border-radius:16px;background:${ME.color||'rgba(255,255,255,.2)'};display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:white;flex-shrink:0">${ME.initials||ME.name?.[0]||'?'}</div>
         <div style="flex:1">
           <div style="font-size:18px;font-weight:700;color:white">${ME.name}</div>
@@ -3155,6 +3155,9 @@ async function renderProfilePage() {
           <span style="display:inline-block;margin-top:6px;font-size:11px;font-weight:700;padding:3px 10px;border-radius:99px;background:rgba(255,255,255,.2);color:white">${roleLabel}</span>
         </div>
       </div>
+
+      <!-- 섹션 카드: 데스크탑에선 2열, 모바일에선 1열 자동 배치 -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:0 16px;align-items:start">
 
       ${isStudent() && myGroups.length ? `
       <!-- 내 그룹 (학생 자가 선택) -->
@@ -3243,6 +3246,8 @@ async function renderProfilePage() {
           비밀번호 변경
         </button>
       </div>
+
+      </div><!-- /섹션 카드 그리드 -->
 
       <!-- 저장 버튼 -->
       <button onclick="saveProfile()"
@@ -8825,10 +8830,12 @@ function renderAllowance() {
     </div>`;
   }).join('');
 
-  main.innerHTML = `<div style="max-width:680px;margin:0 auto">
-    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">${balCards}</div>
+  main.innerHTML = `<div style="max-width:1180px;margin:0 auto">
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px">${balCards}</div>
 
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px">
+    <div style="display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap">
+    <div style="flex:1 1 360px;min-width:0">
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px">
       <div style="display:flex;gap:8px;margin-bottom:10px">${typeBtn('income','수입 ➕','#2a7a5a')}${typeBtn('expense','지출 ➖','#c0392b')}</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;align-items:center">
         <input id="allow-date" type="date" value="${attTodayStr()}" style="${inp}"/>
@@ -8840,19 +8847,22 @@ function renderAllowance() {
         <input id="allow-memo" placeholder="내용 (예: 편의점 과자)" style="${inp};flex:1"/>
         <button onclick="addAllowEntry()" style="height:36px;padding:0 18px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 13px var(--font)">＋ 기록</button>
       </div>
+      <div style="font-size:11px;color:var(--ink3);margin-top:12px">🔒 기록 삭제는 <b>담당 선생님·관리자 승인</b> 후 완료됩니다.</div>
+    </div>
     </div>
 
+    <div style="flex:1.3 1 420px;min-width:0">
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
       <input type="month" value="${allowMonth}" onchange="setAllowMonth(this.value)" style="${inp}"/>
       ${allowMonth?`<button onclick="setAllowMonth('')" style="${inp};cursor:pointer;color:var(--ink3)">전체 보기</button>`:''}
       <div style="flex:1"></div>
       <span style="font-size:11.5px;color:var(--ink3)">${periodLabel} · ${list.length}건</span>
     </div>
-
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:4px 14px">
-      ${list.length ? rows : '<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px">아직 기록이 없어요. 위에서 첫 기록을 추가해보세요!</div>'}
+      ${list.length ? rows : '<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px">아직 기록이 없어요. 왼쪽에서 첫 기록을 추가해보세요!</div>'}
     </div>
-    <div style="font-size:11px;color:var(--ink3);text-align:center;margin-top:12px">🔒 기록 삭제는 <b>담당 선생님·관리자 승인</b> 후 완료됩니다.</div>
+    </div>
+    </div>
   </div>`;
 }
 
@@ -9102,13 +9112,18 @@ function renderWriting() {
     const statChip = (label,val) => `<div style="flex:1;min-width:90px;text-align:center;padding:10px 6px;background:var(--s2);border:1px solid var(--border);border-radius:11px">
       <div style="font-size:20px;font-weight:800;color:#1d3a5f;line-height:1.1">${val}<span style="font-size:12px;font-weight:700">권</span></div>
       <div style="font-size:11px;color:var(--ink3);margin-top:3px">${label}</div></div>`;
-    main.innerHTML = `<div style="max-width:680px;margin:0 auto">
-      <div style="display:flex;gap:8px;margin-bottom:16px">
+    const bookList = (tsCards||bookMineCards)
+      ? `${bookMineCards}${tsCards}`
+      : '<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px;background:var(--surface);border:1px solid var(--border);border-radius:12px">아직 독후감이 없어요. Triple School에서 책을 읽고 독후감을 쓰거나, 왼쪽에서 직접 써보세요!</div>';
+    main.innerHTML = `<div style="max-width:1180px;margin:0 auto">
+      <div style="display:flex;gap:8px;margin-bottom:16px;max-width:520px">
         ${statChip('이번 달', st.month)}
         ${statChip(st.year+'년', st.yearCnt)}
         ${statChip('전체', st.total)}
       </div>
-      <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px">
+      <div style="display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap">
+      <div style="flex:1.35 1 440px;min-width:0">
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px">
         <div style="font-size:13px;font-weight:700;color:var(--ink);margin-bottom:10px">✍️ 독후감 쓰기</div>
         <div style="display:flex;gap:8px;margin-bottom:6px">
           <input id="wr-title" placeholder="책 제목 (검색해서 표지·작가·줄거리를 불러올 수 있어요)" onkeydown="if(event.key==='Enter'){event.preventDefault();searchGoogleBooks();}" style="${inp};flex:1"/>
@@ -9136,12 +9151,18 @@ function renderWriting() {
           </div>`).join('')}
         <div style="display:flex;justify-content:flex-end;margin-top:4px"><button onclick="addWriting()" style="height:36px;padding:0 18px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 13px var(--font)">＋ 독후감 저장</button></div>
       </div>
-      ${(tsCards||bookMineCards) ? `${bookMineCards}${tsCards}` : '<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px;background:var(--surface);border:1px solid var(--border);border-radius:12px">아직 독후감이 없어요. Triple School에서 책을 읽고 독후감을 쓰거나, 위에서 직접 써보세요!</div>'}
+      </div>
+      <div style="flex:1 1 340px;min-width:0">
+        <div style="font-size:12px;font-weight:700;color:var(--ink3);margin:4px 2px 10px">📚 내 독후감</div>
+        ${bookList}
+      </div>
+      </div>
     </div>`;
   } else {
     const catOpts = reviewCats.map(c=>`<option value="${escAttr(c.name)}">${escHtml(c.name)}</option>`).join('') + `<option value="__custom__">＋ 직접 입력</option>`;
-    main.innerHTML = `<div style="max-width:680px;margin:0 auto">
-      <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:18px">
+    main.innerHTML = `<div style="max-width:1180px;margin:0 auto;display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap">
+      <div style="flex:1.35 1 440px;min-width:0">
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px">
         <div style="font-size:13px;font-weight:700;color:var(--ink);margin-bottom:8px">✍️ 활동 후기 쓰기</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;align-items:center">
           <select id="wr-cat" onchange="onReviewCatChange(this.value)" style="${inp}">${catOpts}</select>
@@ -9149,10 +9170,14 @@ function renderWriting() {
           <input id="wr-date" type="date" value="${attTodayStr()}" style="${inp}"/>
         </div>
         <input id="wr-title" placeholder="제목 (예: 여름 단기선교 후기)" style="${inp};width:100%;margin-bottom:8px"/>
-        <textarea id="wr-body" placeholder="어디에 다녀왔는지, 무엇을 배우고 느꼈는지 자유롭게 적어보세요" style="${ta};margin-bottom:8px"></textarea>
+        <textarea id="wr-body" placeholder="어디에 다녀왔는지, 무엇을 배우고 느꼈는지 자유롭게 적어보세요" style="${ta};min-height:200px;margin-bottom:8px"></textarea>
         <div style="display:flex;justify-content:flex-end"><button onclick="addWriting()" style="height:36px;padding:0 18px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 13px var(--font)">＋ 후기 저장</button></div>
       </div>
-      ${myCards || '<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px;background:var(--surface);border:1px solid var(--border);border-radius:12px">아직 후기가 없어요. 어딘가 다녀온 뒤 첫 후기를 남겨보세요!</div>'}
+      </div>
+      <div style="flex:1 1 340px;min-width:0">
+        <div style="font-size:12px;font-weight:700;color:var(--ink3);margin:4px 2px 10px">📝 내 활동 후기</div>
+        ${myCards || '<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px;background:var(--surface);border:1px solid var(--border);border-radius:12px">아직 후기가 없어요. 어딘가 다녀온 뒤 첫 후기를 남겨보세요!</div>'}
+      </div>
     </div>`;
   }
 }
