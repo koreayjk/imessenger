@@ -1253,8 +1253,12 @@ async function doSignUp() {
 const DEFAULT_CID = '00000000-0000-0000-0000-000000000001';
 function CID() { return ME?.community_id || DEFAULT_CID; }
 
+// 총관리자 이메일 (DB 값이 바뀌어도 항상 총관리자로 보장 — 소유자 계정)
+const SUPER_ADMIN_EMAILS = ['koreayjk@gmail.com'];
 function isSuperAdmin() {
-  return ME && ME.community_role === 'super_admin';
+  if (!ME) return false;
+  if (ME.email && SUPER_ADMIN_EMAILS.includes(ME.email.toLowerCase())) return true;
+  return ME.community_role === 'super_admin';
 }
 function isCommunityAdmin() {
   return ME && (ME.community_role === 'super_admin' || ME.community_role === 'community_admin');
@@ -1317,23 +1321,20 @@ async function doSignIn() {
 
     ME = member;
 
-    // 총관리자는 공동체 선택 화면 없이 바로 진입
+    // 총관리자만 공동체를 선택할 수 있음 (여러 공동체 열람·관리)
+    // 각 공동체 관리자·교사·학생 등은 본인 소속 공동체로 바로 진입
     if (isSuperAdmin()) {
-      enterApp();
+      const { data: multiCommunities } = await sb.from('communities').select('*').order('name');
+      if (multiCommunities && multiCommunities.length > 1) {
+        showCommunitySelect(multiCommunities);
+      } else {
+        enterApp();
+      }
       return;
     }
 
-    // 여러 공동체 접근 권한이 있는 관리자 → 공동체 선택
-    const { data: multiCommunities } = await sb.from('communities').select('*').order('name');
-    const hasMultiAccess = member.community_role === 'super_admin' ||
-      (multiCommunities && multiCommunities.length > 1 && member.community_role === 'community_admin');
-
-    if (hasMultiAccess && multiCommunities && multiCommunities.length > 1) {
-      showCommunitySelect(multiCommunities);
-    } else {
-      // 일반 사용자 → 소속 공동체로 바로 진입
-      enterApp();
-    }
+    // 그 외 모든 사용자(공동체 관리자 포함)는 본인 소속 공동체로 진입
+    enterApp();
   } catch(e) {
     const err = e.message || '';
     if (err.includes('Invalid login') || err.includes('invalid') || err.includes('Invalid')) {
