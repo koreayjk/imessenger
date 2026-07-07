@@ -835,6 +835,19 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
       <div id="allowance-main" style="flex:1;overflow-y:auto;padding:24px 28px"></div>
     </div>
 
+    <!-- 출결 신청(전자결재) 뷰 -->
+    <div id="leave-view" style="display:none;flex-direction:column;height:100%;background:var(--bg)">
+      <div style="position:relative;height:56px;padding:0 24px;display:flex;align-items:center;gap:10px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0">
+        <div style="width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#2a5298,#1d3a5f);display:flex;align-items:center;justify-content:center;font-size:16px">📝</div>
+        <div>
+          <div style="font-size:15px;font-weight:700;color:var(--ink)">출결 신청</div>
+          <div style="font-size:11px;color:var(--ink3)">결석·조퇴·체험학습 등을 신청하고 승인 상태를 확인해요</div>
+        </div>
+        <div id="subnav-leave" class="subnav-center"></div>
+      </div>
+      <div id="leave-main" style="flex:1;overflow-y:auto;padding:24px 28px"></div>
+    </div>
+
     <!-- 독후감 / 활동후기 뷰 -->
     <div id="writing-view" style="display:none;flex-direction:column;height:100%;background:var(--bg)">
       <div style="position:relative;height:56px;padding:0 24px;display:flex;align-items:center;gap:10px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0">
@@ -1613,6 +1626,7 @@ function setMode(m) {
   document.getElementById('home-view').style.display = m==='home' ? 'flex' : 'none';
   document.getElementById('calendar-view').style.display = m==='calendar' ? 'flex' : 'none';
   document.getElementById('allowance-view').style.display = m==='allowance' ? 'flex' : 'none';
+  document.getElementById('leave-view').style.display = m==='leave' ? 'flex' : 'none';
   document.getElementById('writing-view').style.display = (m==='bookreport'||m==='review') ? 'flex' : 'none';
   document.getElementById('admin-view').style.display = m==='admin' ? 'flex' : 'none';
   document.getElementById('school-view').style.display = (canAccessSchool() && m==='school') ? 'flex' : 'none';
@@ -1624,12 +1638,12 @@ function setMode(m) {
 
   const sbTcsBtn = document.getElementById('sb-tcs');
   if (sbTcsBtn) {
-    const tcsActive = isTeacher() ? (m==='tcs' || m==='mock' || m==='reading') : (m==='profile' || m==='reading' || m==='allowance' || m==='bookreport' || m==='review');
+    const tcsActive = isTeacher() ? (m==='tcs' || m==='mock' || m==='reading') : (m==='profile' || m==='reading' || m==='allowance' || m==='bookreport' || m==='review' || m==='leave');
     sbTcsBtn.classList.toggle('active', tcsActive);
   }
 
   const panel = document.getElementById('panel');
-  if (m === 'home' || m === 'calendar' || m === 'admin' || m === 'tcs' || m === 'mock' || m === 'reading' || m === 'profile' || m === 'school' || m === 'allowance' || m === 'bookreport' || m === 'review') {
+  if (m === 'home' || m === 'calendar' || m === 'admin' || m === 'tcs' || m === 'mock' || m === 'reading' || m === 'profile' || m === 'school' || m === 'allowance' || m === 'leave' || m === 'bookreport' || m === 'review') {
     panel.style.display = 'none';
   } else {
     panel.style.display = 'flex';
@@ -1645,11 +1659,12 @@ function setMode(m) {
   if (m==='reading') { if(isTeacher()){ tcsSubMode='reading'; initTcsPage(); } else initReadingPage(); return; }
   if (m==='school') { if(canAccessSchool()){ initSchoolPage(); } else setMode('home'); return; }
   if (m==='allowance') { initAllowancePage(); }
+  if (m==='leave') { initLeavePage(); }
   if (m==='bookreport') { writingKind='book'; initWritingPage(); }
   if (m==='review') { writingKind='activity'; initWritingPage(); }
   if (m==='profile') { renderProfilePage(); }
   sessionStorage.setItem('last_mode', m);
-  document.getElementById('panel-title').textContent = {chat:'채팅',prayer:'기도제목',home:'홈',calendar:'일정',admin:'관리자',tcs:'생기부',mock:'모의고사 분석',reading:'Triple School',school:'학사관리',allowance:'용돈기입장',bookreport:'독후감',review:'활동 후기',profile:'내 프로필'}[m] || m;
+  document.getElementById('panel-title').textContent = {chat:'채팅',prayer:'기도제목',home:'홈',calendar:'일정',admin:'관리자',tcs:'생기부',mock:'모의고사 분석',reading:'Triple School',school:'학사관리',allowance:'용돈기입장',leave:'출결 신청',bookreport:'독후감',review:'활동 후기',profile:'내 프로필'}[m] || m;
 }
 
 // ── 채널 패널 렌더 ──
@@ -4725,7 +4740,7 @@ function tcsSubnavHtml(active) {
       return `<button onclick="setMode('${m}')" style="height:30px;padding:0 13px;border:none;border-radius:8px;font:600 12px var(--font);cursor:pointer;background:${on ? '#1d3a5f' : 'transparent'};color:${on ? '#fff' : 'var(--ink2)'}">${label}</button>`;
     };
     tabs = tab('profile', '개인정보') + tab('reading', 'Triple School')
-         + tab('bookreport', '독후감') + tab('review', '활동후기') + tab('allowance', '용돈');
+         + tab('bookreport', '독후감') + tab('review', '활동후기') + tab('allowance', '용돈') + tab('leave', '출결신청');
   }
   return `<div style="display:inline-flex;gap:2px;background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:3px">${tabs}</div>`;
 }
@@ -7205,6 +7220,7 @@ async function deleteEvent() {
 const SCHOOL_TABS = [
   { id:'student',    icon:'👤', label:'학생',     ready:true  },
   { id:'attendance', icon:'📋', label:'출석부',   ready:true  },
+  { id:'approval',   icon:'🖊', label:'결재',     ready:true  },
   { id:'timetable',  icon:'🗓', label:'시간표',   ready:true  },
   { id:'record',     icon:'🗂', label:'생활기록부', ready:true  },
   { id:'reading',    icon:'📖', label:'트리플스쿨', ready:true  },
@@ -7300,6 +7316,7 @@ function renderSchoolMain() {
   document.getElementById('school-header-actions').innerHTML = '';
   if (['student','record','reading','mock'].includes(schoolSubMode)) return renderStudent360();
   if (schoolSubMode === 'attendance') return renderAttendanceHub();
+  if (schoolSubMode === 'approval')   return renderApprovalHub();
   if (schoolSubMode === 'timetable')  return renderTimetableHub();
   if (schoolSubMode === 'tuition')    return renderTuitionHub();
   if (schoolSubMode === 'newsletter') return renderNewsletterHub();
@@ -7313,6 +7330,224 @@ function renderSchoolComingSoon(tab) {
     <div style="font-size:17px;font-weight:700;color:var(--ink);margin-bottom:8px">${tab?tab.label:''} 기능 준비 중</div>
     <div style="font-size:13px;color:var(--ink3);line-height:1.8">이 모듈은 곧 추가됩니다.<br>지금은 <b>출석부</b>를 먼저 사용할 수 있어요.</div>
   </div>`;
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  전자결재 — 출결 신청(학생) → 승인(담임/관리자) → 출석부 자동 반영
+// ════════════════════════════════════════════════════════════════════
+const LEAVE_TYPES = [
+  { label:'결석',    att:'absent'  },
+  { label:'지각',    att:'late'    },
+  { label:'조퇴',    att:'early'   },
+  { label:'외출',    att:'excused' },
+  { label:'체험학습', att:'excused' },
+  { label:'병결',    att:'sick'    },
+  { label:'기타',    att:'excused' },
+];
+const LEAVE_STATUS = {
+  pending:  { label:'승인 대기', color:'#b8860b', bg:'#fdf6e3' },
+  approved: { label:'승인됨',    color:'#2a7a5a', bg:'#e8f5ee' },
+  rejected: { label:'반려됨',    color:'#c0392b', bg:'#fdecea' },
+};
+let approvalFilter = 'pending';
+
+function leaveDateRange(start, end) {
+  const out = []; if (!start) return out;
+  const [y,m,d] = start.split('-').map(Number);
+  const cur = new Date(y, m-1, d);
+  const [ey,em,ed] = (end||start).split('-').map(Number);
+  const last = new Date(ey, em-1, ed);
+  let guard = 0;
+  while (cur <= last && guard < 370) {
+    out.push(`${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}-${String(cur.getDate()).padStart(2,'0')}`);
+    cur.setDate(cur.getDate()+1); guard++;
+  }
+  return out;
+}
+function leavePeriodText(r) {
+  if (!r.start_date) return '';
+  return r.end_date && r.end_date !== r.start_date ? `${r.start_date} ~ ${r.end_date}` : r.start_date;
+}
+function leaveStatusBadge(st) {
+  const s = LEAVE_STATUS[st] || LEAVE_STATUS.pending;
+  return `<span style="font-size:10.5px;font-weight:700;color:${s.color};background:${s.bg};padding:2px 9px;border-radius:99px">${s.label}</span>`;
+}
+
+// ── 학생: 출결 신청 화면 ──
+async function initLeavePage() {
+  const sn = document.getElementById('subnav-leave');
+  if (sn) sn.innerHTML = isTeacher() ? '' : tcsSubnavHtml('leave');
+  const main = document.getElementById('leave-main');
+  if (main) main.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink3);font-size:13px">불러오는 중...</div>';
+  let mine = [];
+  try {
+    const { data, error } = await sb.from('leave_requests').select('*').eq('student_id', ME.id).order('created_at',{ascending:false});
+    if (error) throw error;
+    mine = data || [];
+  } catch(e) {
+    if (schoolTableMissing(e)) { main.innerHTML = leaveSetupHtml(); return; }
+    main.innerHTML = `<div style="color:#b91c1c;padding:30px;text-align:center;font-size:13px">불러오기 실패: ${e.message||e}</div>`;
+    return;
+  }
+  renderLeaveStudent(mine);
+}
+
+function leaveSetupHtml() {
+  return `<div style="max-width:560px;margin:40px auto;text-align:center">
+    <div style="font-size:40px;margin-bottom:12px">📝</div>
+    <div style="font-size:16px;font-weight:700;margin-bottom:8px">데이터베이스 설정이 필요해요</div>
+    <div style="font-size:13px;color:var(--ink3);line-height:1.8">출결 신청을 쓰려면 <b>학사_전자결재_출결신청_DB설치.sql</b> 을 Supabase → SQL Editor에서 실행해주세요.</div>
+  </div>`;
+}
+
+function renderLeaveStudent(mine) {
+  const main = document.getElementById('leave-main'); if (!main) return;
+  const inp = 'height:36px;padding:0 10px;border:1px solid var(--border);border-radius:9px;font:600 13px var(--font);color:var(--ink);background:var(--surface)';
+  const typeOpts = LEAVE_TYPES.map(t=>`<option value="${t.label}">${t.label}</option>`).join('');
+  const cards = mine.map(r => `
+    <div style="border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:10px;background:var(--surface)">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
+        <span style="font-size:13.5px;font-weight:700;color:var(--ink)">${escHtml(r.type||'')}</span>
+        ${leaveStatusBadge(r.status)}
+        <span style="font-size:11px;color:var(--ink3)">📅 ${leavePeriodText(r)}</span>
+        <div style="flex:1"></div>
+        ${r.status==='pending'?`<button onclick="cancelLeaveRequest('${r.id}')" style="border:1px solid var(--border);background:var(--surface);border-radius:7px;height:26px;padding:0 9px;cursor:pointer;font:600 10.5px var(--font);color:var(--ink3)">취소</button>`:''}
+      </div>
+      ${r.reason?`<div style="font-size:12.5px;color:var(--ink2);line-height:1.6">${escHtml(r.reason)}</div>`:''}
+      ${r.status!=='pending'&&r.decider_name?`<div style="font-size:10.5px;color:var(--ink3);margin-top:5px">${r.status==='approved'?'✅':'↩︎'} ${escHtml(r.decider_name)} 선생님${r.decision_note?` · ${escHtml(r.decision_note)}`:''}</div>`:''}
+    </div>`).join('');
+  main.innerHTML = `<div style="max-width:1180px;margin:0 auto;display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap">
+    <div style="flex:1 1 360px;min-width:0">
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px">
+      <div style="font-size:13px;font-weight:700;color:var(--ink);margin-bottom:10px">📝 출결 신청서</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;align-items:center">
+        <select id="leave-type" style="${inp}">${typeOpts}</select>
+        <span style="font-size:11px;color:var(--ink3)">기간</span>
+        <input id="leave-start" type="date" value="${attTodayStr()}" style="${inp}"/>
+        <span style="font-size:12px;color:var(--ink3)">~</span>
+        <input id="leave-end" type="date" value="${attTodayStr()}" style="${inp}"/>
+      </div>
+      <textarea id="leave-reason" placeholder="사유를 적어주세요 (예: 가족 여행 / 병원 진료)" style="width:100%;min-height:90px;padding:11px;border:1px solid var(--border);border-radius:9px;font:400 13.5px var(--font);color:var(--ink);line-height:1.6;resize:vertical;margin-bottom:8px"></textarea>
+      <div style="display:flex;justify-content:flex-end"><button onclick="submitLeaveRequest()" style="height:36px;padding:0 18px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 13px var(--font)">신청하기</button></div>
+      <div style="font-size:11px;color:var(--ink3);margin-top:12px;line-height:1.6">신청하면 <b>담임 선생님</b>이 승인/반려합니다. 승인되면 출석부에 자동 반영돼요.</div>
+    </div>
+    </div>
+    <div style="flex:1.3 1 420px;min-width:0">
+      <div style="font-size:12px;font-weight:700;color:var(--ink3);margin:4px 2px 10px">내 신청 내역</div>
+      ${mine.length ? cards : '<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px;background:var(--surface);border:1px solid var(--border);border-radius:12px">아직 신청 내역이 없어요.</div>'}
+    </div>
+  </div>`;
+}
+
+async function submitLeaveRequest() {
+  const type = document.getElementById('leave-type')?.value || '기타';
+  const start = document.getElementById('leave-start')?.value;
+  const end = document.getElementById('leave-end')?.value || start;
+  const reason = (document.getElementById('leave-reason')?.value || '').trim();
+  if (!start) { showUploadToast('기간(시작일)을 선택하세요'); return; }
+  if (end < start) { showUploadToast('종료일이 시작일보다 빠를 수 없어요'); return; }
+  const spec = LEAVE_TYPES.find(t=>t.label===type) || LEAVE_TYPES[0];
+  const { error } = await sb.from('leave_requests').insert({
+    community_id: CID(), student_id: ME.id, student_name: ME.name,
+    type, att_status: spec.att, start_date: start, end_date: end, reason,
+    status: 'pending', created_by: ME.id,
+  });
+  if (error) { if (schoolTableMissing(error)) { document.getElementById('leave-main').innerHTML = leaveSetupHtml(); return; } showUploadToast('신청 실패: ' + error.message); return; }
+  showUploadToast('✅ 신청됐어요 — 승인을 기다려주세요');
+  initLeavePage();
+}
+
+async function cancelLeaveRequest(id) {
+  if (!confirm('이 신청을 취소(삭제)할까요?')) return;
+  const { error } = await sb.from('leave_requests').delete().eq('id', id);
+  if (error) { showUploadToast('취소 실패: ' + error.message); return; }
+  showUploadToast('신청이 취소됐어요');
+  initLeavePage();
+}
+
+// ── 교사·관리자: 결재(승인) 허브 ──
+function setApprovalFilter(f) { approvalFilter = f; renderApprovalHub(); }
+
+async function renderApprovalHub() {
+  const main = document.getElementById('school-main');
+  main.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink3);font-size:13px">불러오는 중...</div>';
+  let rows = [];
+  try {
+    const { data, error } = await sb.from('leave_requests').select('*').eq('community_id', CID()).order('created_at',{ascending:false});
+    if (error) throw error;
+    rows = data || [];
+  } catch(e) {
+    if (schoolTableMissing(e)) return schoolSetupNeeded(e, '학사_전자결재_출결신청_DB설치.sql');
+    main.innerHTML = `<div style="color:#b91c1c;padding:30px;text-align:center;font-size:13px">불러오기 실패: ${e.message||e}</div>`;
+    return;
+  }
+  const pendingCount = rows.filter(r=>r.status==='pending').length;
+  const list = approvalFilter==='pending' ? rows.filter(r=>r.status==='pending') : rows;
+  const fBtn = (f,label) => `<button onclick="setApprovalFilter('${f}')" style="height:32px;padding:0 14px;border:1px solid ${approvalFilter===f?'#1d3a5f':'var(--border)'};border-radius:9px;cursor:pointer;font:700 12px var(--font);background:${approvalFilter===f?'#1d3a5f':'var(--surface)'};color:${approvalFilter===f?'#fff':'var(--ink2)'}">${label}</button>`;
+
+  const card = r => {
+    const dates = leaveDateRange(r.start_date, r.end_date);
+    return `<div style="border:1px solid var(--border);border-radius:13px;padding:14px 16px;margin-bottom:12px;background:var(--surface)">
+      <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:6px">
+        <span style="font-size:14.5px;font-weight:800;color:var(--ink)">${escHtml(r.student_name||'학생')}</span>
+        <span style="font-size:12.5px;font-weight:700;color:#1d3a5f;background:var(--asoft);padding:2px 9px;border-radius:6px">${escHtml(r.type||'')}</span>
+        ${leaveStatusBadge(r.status)}
+        <div style="flex:1"></div>
+        <span style="font-size:11.5px;color:var(--ink3)">📅 ${leavePeriodText(r)}${dates.length>1?` (${dates.length}일)`:''}</span>
+      </div>
+      ${r.reason?`<div style="font-size:13px;color:var(--ink2);line-height:1.65;margin-bottom:8px">${escHtml(r.reason)}</div>`:''}
+      ${r.status==='pending' ? `
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button onclick="rejectLeave('${r.id}')" style="height:32px;padding:0 15px;border:1px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:9px;cursor:pointer;font:600 12px var(--font)">반려</button>
+          <button onclick="approveLeave('${r.id}')" style="height:32px;padding:0 16px;border:none;background:#2a7a5a;color:#fff;border-radius:9px;cursor:pointer;font:700 12px var(--font)">✅ 승인 → 출석부 반영</button>
+        </div>`
+      : `<div style="font-size:11px;color:var(--ink3)">${r.status==='approved'?'✅ 승인':'↩︎ 반려'} · ${escHtml(r.decider_name||'')} ${r.decided_at?('· '+String(r.decided_at).slice(0,10)):''}${r.decision_note?` · ${escHtml(r.decision_note)}`:''}</div>`}
+    </div>`;
+  };
+
+  main.innerHTML = `<div style="max-width:900px;margin:0 auto">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+      ${fBtn('pending', `승인 대기${pendingCount?` (${pendingCount})`:''}`)}
+      ${fBtn('all','전체')}
+      <div style="flex:1"></div>
+      <span style="font-size:11.5px;color:var(--ink3)">승인하면 신청 기간의 출석부가 자동으로 채워집니다</span>
+    </div>
+    ${list.length ? list.map(card).join('') : `<div style="padding:50px;text-align:center;color:var(--ink3);font-size:13px;background:var(--surface);border:1px solid var(--border);border-radius:12px">${approvalFilter==='pending'?'대기 중인 신청이 없어요. 👍':'신청 내역이 없어요.'}</div>`}
+  </div>`;
+}
+
+async function approveLeave(id) {
+  const { data: r } = await sb.from('leave_requests').select('*').eq('id', id).maybeSingle();
+  if (!r) { showUploadToast('신청을 찾을 수 없어요'); return; }
+  const dates = leaveDateRange(r.start_date, r.end_date);
+  if (!confirm(`${r.student_name||'학생'} · ${r.type}\n${leavePeriodText(r)} (${dates.length}일)\n\n승인하고 출석부에 '${(ATT_STATUSES.find(s=>s.key===r.att_status)||{}).label||r.att_status}'(으)로 반영할까요?`)) return;
+  // 출석부 자동 반영
+  const rowsUp = dates.map(d => ({
+    community_id: r.community_id, student_id: r.student_id, date: d,
+    status: r.att_status || 'excused', note: `[결재] ${r.type}${r.reason?': '+r.reason:''}`,
+    recorded_by: ME.id, updated_at: new Date().toISOString(),
+  }));
+  if (rowsUp.length) {
+    const { error: aErr } = await sb.from('attendance_daily').upsert(rowsUp, { onConflict: 'student_id,date' });
+    if (aErr) { showUploadToast('출석부 반영 실패: ' + aErr.message); return; }
+  }
+  const { error } = await sb.from('leave_requests').update({
+    status: 'approved', decided_by: ME.id, decider_name: ME.name, decided_at: new Date().toISOString(),
+  }).eq('id', id);
+  if (error) { showUploadToast('승인 저장 실패: ' + error.message); return; }
+  showUploadToast('✅ 승인 · 출석부에 반영됐어요');
+  renderApprovalHub();
+}
+
+async function rejectLeave(id) {
+  const note = prompt('반려 사유 (선택)', '');
+  if (note === null) return;
+  const { error } = await sb.from('leave_requests').update({
+    status: 'rejected', decided_by: ME.id, decider_name: ME.name, decided_at: new Date().toISOString(), decision_note: note.trim() || null,
+  }).eq('id', id);
+  if (error) { showUploadToast('반려 실패: ' + error.message); return; }
+  showUploadToast('신청을 반려했어요');
+  renderApprovalHub();
 }
 
 // ── 출석부 ──
