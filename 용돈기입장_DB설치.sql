@@ -28,7 +28,7 @@ create index if not exists idx_allowance_member_date on public.allowance_entries
 -- =====================================================================
 --  RLS
 --  - 조회/수정: 본인 + 담당교사 + 관리자
---  - 추가: 본인만
+--  - 추가: 본인 + 담당교사 + 관리자 (선생님이 학생 지출을 대신 기록 가능)
 --  - 삭제(=요청 승인): 담당교사·관리자만 (학생 본인은 직접 삭제 불가 → '요청'만)
 -- =====================================================================
 alter table public.allowance_entries enable row level security;
@@ -47,7 +47,11 @@ using (
 );
 
 create policy allowance_insert on public.allowance_entries for insert to authenticated
-with check ( member_id = auth.uid() );
+with check (
+  member_id = auth.uid()
+  or exists (select 1 from public.members s where s.id = allowance_entries.member_id and s.homeroom_teacher_id = auth.uid())
+  or exists (select 1 from public.members me where me.id = auth.uid() and me.community_role in ('super_admin','community_admin','admin_officer'))
+);
 
 create policy allowance_update on public.allowance_entries for update to authenticated
 using (
