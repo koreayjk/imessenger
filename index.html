@@ -8244,6 +8244,11 @@ function printCertificate() {
 //  학사 — 상담·생활지도 / 보건·건강 (학생별 기록 로그, 공용 엔진)
 // ════════════════════════════════════════════════════════════════════
 const LOG_SPECS = {
+  observation: { table:'observation_logs', file:'학사_관찰기록_DB설치.sql', icon:'📝', title:'관찰 누가기록',
+    desc:'평소 학생을 관찰한 내용을 한 줄씩 쌓아 생기부 종합의견의 재료로 씁니다.',
+    cats:['학습','태도','인성','교우관계','특기·재능','기타'],
+    catColor:{ '학습':'#2a5298','태도':'#b8860b','인성':'#2a7a5a','교우관계':'#8e44ad','특기·재능':'#e67e22','기타':'#7f8c8d' },
+    titlePh:'한 줄 요약 (예: 발표 적극적)', bodyPh:'관찰한 내용을 간단히 적어보세요' },
   counseling: { table:'counseling_logs', file:'학사_상담_DB설치.sql', icon:'💬', title:'상담·생활지도 기록',
     desc:'학생별 상담·생활지도 내용을 날짜별로 기록합니다.',
     cats:['상담','생활지도','칭찬','주의','기타'],
@@ -8378,17 +8383,18 @@ async function loadStudent360(id) {
   const [y,mm] = month.split('-').map(Number);
   const ny = mm===12?y+1:y, nm = mm===12?1:mm+1;
   const start = `${month}-01`, end = `${ny}-${String(nm).padStart(2,'0')}-01`;
-  const [a,b,c,h,t,al] = await Promise.all([
+  const [a,b,c,h,t,al,ob] = await Promise.all([
     sb.from('attendance_daily').select('status,date').eq('community_id',CID()).eq('student_id',id).gte('date',start).lt('date',end),
     sb.from('tuition_bills').select('*').eq('community_id',CID()).eq('student_id',id).order('created_at',{ascending:false}),
     sb.from('counseling_logs').select('*').eq('community_id',CID()).eq('student_id',id).order('date',{ascending:false}).order('created_at',{ascending:false}),
     sb.from('health_logs').select('*').eq('community_id',CID()).eq('student_id',id).order('date',{ascending:false}).order('created_at',{ascending:false}),
     sb.from('tcs_records').select('section,data').eq('community_id',CID()).eq('student_id',id),
     sb.from('allowance_entries').select('*').eq('member_id',id).order('date',{ascending:false}).order('created_at',{ascending:false}),
+    sb.from('observation_logs').select('*').eq('community_id',CID()).eq('student_id',id).order('date',{ascending:false}).order('created_at',{ascending:false}),
   ]);
   const allowAll = (al&&al.data)||[];
   const allowReq = allowAll.filter(e => e.delete_status === 'requested');
-  return { att:a.data||[], bills:b.data||[], counseling:c.data||[], health:h.data||[], tcs:t.data||[], allowAll, allowReq, month };
+  return { att:a.data||[], bills:b.data||[], counseling:c.data||[], health:h.data||[], tcs:t.data||[], allowAll, allowReq, observation:(ob&&ob.data)||[], month };
 }
 
 async function renderStudent360() {
@@ -8568,6 +8574,9 @@ async function renderS360Detail() {
       ${billRows}
     </div>
 
+    ${s360LogCard('observation', d.observation||[])}
+    ${s360AssessmentCard()}
+
     ${s360AllowCard(d.allowAll||[])}
 
     ${s360LogCard('counseling', d.counseling)}
@@ -8701,6 +8710,92 @@ async function teacherEditAllow(id) {
   if (error) { showUploadToast('수정 실패: ' + error.message); return; }
   showUploadToast('✏️ 수정됐어요');
   renderS360Detail();
+}
+
+// ── 생기부 종합의견 AI 초안 ─────────────────────────────────────────
+const TCS_ASSESS_FN = 'draft-assessment';
+let lastAssessmentDraft = '';
+
+function s360AssessmentCard() {
+  return `<div style="background:linear-gradient(135deg,#f5f3ff,#eef2ff);border:1px solid #ddd6fe;border-radius:14px;padding:16px 18px;margin-bottom:14px">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <div style="font-size:14px;font-weight:700;color:#5b21b6">🤖 생기부 종합의견 AI 초안</div>
+      <span style="font-size:11px;color:#7c6ba0">관찰기록·출결·상담·독서·활동을 모아 종합의견 초안을 만들어요</span>
+      <div style="flex:1"></div>
+      <button id="assess-btn" onclick="generateAssessmentDraft()" style="height:34px;padding:0 16px;border:none;background:#6d28d9;color:#fff;border-radius:9px;cursor:pointer;font:700 12.5px var(--font)">✨ 초안 생성</button>
+    </div>
+    <div id="assess-result" style="margin-top:10px"></div>
+  </div>`;
+}
+
+async function generateAssessmentDraft() {
+  const s = schoolStudents.find(x=>x.id===s360Id); if (!s) return;
+  const btn = document.getElementById('assess-btn');
+  const box = document.getElementById('assess-result');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ 생성 중…'; }
+  if (box) box.innerHTML = '<div style="font-size:12px;color:#7c6ba0;padding:8px 2px">AI가 기록을 읽고 종합의견을 작성 중이에요… (최대 1분)</div>';
+  try {
+    const d = await loadStudent360(s360Id);
+    const cc = {present:0,late:0,early:0,absent:0,sick:0,excused:0};
+    d.att.forEach(r=>{ if(cc[r.status]!==undefined)cc[r.status]++; });
+    const [rl, wr] = await Promise.all([
+      sb.from('reading_logs').select('read_date,report,reading_books(title,author)').eq('student_id',s360Id),
+      sb.from('student_writings').select('kind,category,title,body,date').eq('member_id',s360Id),
+    ]);
+    const payload = {
+      studentName: s.name, grade: s.grade || '',
+      observations: (d.observation||[]).map(o=>({date:o.date,category:o.category,title:o.title,content:o.content})),
+      counseling:   (d.counseling||[]).map(o=>({date:o.date,category:o.category,title:o.title,content:o.content})),
+      attendance: cc, attendanceMonth: (attMonth || attTodayStr().slice(0,7)),
+      reading:  (rl.data||[]).map(r=>({date:r.read_date, title:(r.reading_books&&r.reading_books.title)||'', report:(r.report||'').slice(0,300)})),
+      writings: (wr.data||[]).map(w=>({kind:w.kind, category:w.category, title:w.title, body:(w.body||'').slice(0,400), date:w.date})),
+    };
+    const invokeP = sb.functions.invoke(TCS_ASSESS_FN, { body: payload });
+    const timeoutP = new Promise((_,rej)=>setTimeout(()=>rej(new Error('TIMEOUT')),120000));
+    const { data, error } = await Promise.race([invokeP, timeoutP]);
+    if (error) throw new Error(error.message || '함수 호출 실패');
+    const draft = (data && (data.draft || data.result || data.text)) || '';
+    if (!draft) throw new Error('초안을 받지 못했어요');
+    renderAssessmentDraft(draft);
+  } catch(e) {
+    const msg = e.message==='TIMEOUT' ? '응답이 너무 오래 걸려요. 잠시 후 다시 시도해주세요.' : '생성 실패: ' + e.message;
+    if (box) box.innerHTML = `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:9px;padding:12px;font-size:12.5px;color:#b91c1c">${msg}<br><span style="font-size:10.5px;color:#9ca3af">Edge Function(${TCS_ASSESS_FN}) 배포·Gemini 키 등록 여부를 확인해주세요.</span></div>`;
+  } finally {
+    if (btn) { btn.disabled=false; btn.textContent='✨ 초안 생성'; }
+  }
+}
+
+function renderAssessmentDraft(text) {
+  lastAssessmentDraft = text;
+  const box = document.getElementById('assess-result'); if (!box) return;
+  box.innerHTML = `
+    <textarea id="assess-text" style="width:100%;min-height:150px;padding:12px;border:1px solid #ddd6fe;border-radius:10px;font:400 13.5px var(--font);color:var(--ink);line-height:1.85;background:#fff;resize:vertical">${escHtml(text)}</textarea>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;margin-top:8px">
+      <button onclick="copyAssessment()" style="height:32px;padding:0 13px;border:1px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:8px;cursor:pointer;font:600 12px var(--font)">📋 복사</button>
+      <button onclick="applyAssessmentToRecord()" style="height:32px;padding:0 14px;border:none;background:#6d28d9;color:#fff;border-radius:8px;cursor:pointer;font:700 12px var(--font)">📄 생기부 종합의견에 넣기</button>
+    </div>
+    <div style="font-size:10.5px;color:#7c6ba0;margin-top:6px">※ AI 초안입니다. 반드시 담임 선생님이 확인·수정한 뒤 사용하세요.</div>`;
+}
+
+function copyAssessment() {
+  const t = document.getElementById('assess-text')?.value || lastAssessmentDraft;
+  if (navigator.clipboard) navigator.clipboard.writeText(t).then(()=>showUploadToast('📋 복사됐어요'), ()=>showUploadToast('복사 실패'));
+}
+
+async function applyAssessmentToRecord() {
+  const text = (document.getElementById('assess-text')?.value || lastAssessmentDraft).trim();
+  if (!text) return;
+  if (!confirm('생기부 종합의견(담임 종합의견)에 이 내용을 저장할까요?\n기존 내용이 있으면 덮어씁니다.')) return;
+  const { data: rec } = await sb.from('tcs_records').select('data').eq('community_id',CID()).eq('student_id',s360Id).eq('section','comment').maybeSingle();
+  const data = (rec && rec.data) || {};
+  data.comment_ko = text;
+  if (!data.teacher_name) data.teacher_name = ME.name || '';
+  const { error } = await sb.from('tcs_records').upsert({
+    student_id: s360Id, community_id: CID(), section:'comment', data,
+    updated_at: new Date().toISOString(), updated_by: ME.id,
+  }, { onConflict: 'student_id,section' });
+  if (error) { showUploadToast('저장 실패: ' + error.message); return; }
+  showUploadToast('✅ 생기부 종합의견에 저장됐어요');
 }
 
 function renderS360TcsNav() {
