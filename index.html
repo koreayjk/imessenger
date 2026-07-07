@@ -803,6 +803,8 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ink)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
           </div>
         </div>
+        <!-- 학사력 분류 필터 -->
+        <div id="cal-legend" style="padding:2px 16px 8px;display:flex;gap:6px;flex-wrap:wrap;overflow-x:auto"></div>
         <!-- 요일 헤더 -->
         <div style="display:grid;grid-template-columns:repeat(7,1fr);padding:0 16px;margin-bottom:4px">
           <div style="text-align:center;font-size:12px;font-weight:600;color:var(--rose);padding:6px 0">일</div>
@@ -1113,6 +1115,19 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
           <div style="font-size:11.5px;color:var(--ink3);margin-bottom:5px">종료 시간</div>
           <input id="ev-end-time" type="time" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none"/>
         </div>
+      </div>
+      <div style="margin-bottom:12px">
+        <div style="font-size:11.5px;color:var(--ink3);margin-bottom:5px">분류 (학사력)</div>
+        <select id="ev-cat" onchange="selectEventCat(this.value)" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none;background:var(--surface);color:var(--ink)">
+          <option value="">분류 없음</option>
+          <option value="예배/집회">🙏 예배/집회</option>
+          <option value="시험">📝 시험</option>
+          <option value="행사">🎉 행사</option>
+          <option value="방학/휴일">🌴 방학/휴일</option>
+          <option value="현장학습">🚌 현장학습</option>
+          <option value="회의">👥 회의</option>
+          <option value="기타">📌 기타</option>
+        </select>
       </div>
       <div style="margin-bottom:16px">
         <div style="font-size:11.5px;color:var(--ink3);margin-bottom:8px">색상</div>
@@ -6922,6 +6937,28 @@ let calSelectedDate = null;
 let editingEventId = null;
 let selectedEventColor = '#2a5298';
 
+// 학사력 분류 (색상 자동 지정 + 달력 필터)
+const EVENT_CATS = [
+  { label:'예배/집회', emoji:'🙏', color:'#7B6BA0' },
+  { label:'시험',      emoji:'📝', color:'#B05865' },
+  { label:'행사',      emoji:'🎉', color:'#2a7ab8' },
+  { label:'방학/휴일', emoji:'🌴', color:'#6F8A5C' },
+  { label:'현장학습',  emoji:'🚌', color:'#5A7C8B' },
+  { label:'회의',      emoji:'👥', color:'#2a5298' },
+  { label:'기타',      emoji:'📌', color:'#8a94a6' },
+];
+let calCatFilter = null;   // null = 전체
+
+function eventCat(label) { return EVENT_CATS.find(c => c.label === label) || null; }
+function setCalCatFilter(v) { calCatFilter = v; renderCalendar(); }
+function selectEventCat(v) {
+  const c = eventCat(v); if (!c) return;
+  selectedEventColor = c.color;
+  document.querySelectorAll('#event-modal [data-color]').forEach(x => { x.style.outline='none'; x.style.transform=''; });
+  const el = document.querySelector(`#event-modal [data-color="${c.color}"]`);
+  if (el) { el.style.outline = `3px solid ${c.color}`; el.style.outlineOffset = '2px'; el.style.transform = 'scale(1.2)'; }
+}
+
 async function loadCalendar() {
   const { data } = await sb.from('events').select('*').eq('community_id', CID()).order('start_date').order('start_time');
   calEvents = data || [];
@@ -6937,6 +6974,15 @@ function renderCalendar() {
   document.getElementById('cal-nav-title').textContent = `${calYear}년 ${monthNames[calMonth]}`;
   document.getElementById('cal-month-title').textContent = `${calYear}년 ${monthNames[calMonth]}`;
 
+  // 학사력 분류 필터 범례
+  const legend = document.getElementById('cal-legend');
+  if (legend) {
+    const chip = (label, color, active) =>
+      `<button onclick="setCalCatFilter(${label===null?'null':`'${label}'`})" style="display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 11px;border:1px solid ${active?(color||'#1d3a5f'):'var(--border)'};border-radius:99px;cursor:pointer;font:600 11px var(--font);white-space:nowrap;background:${active?(color||'#1d3a5f'):'var(--surface)'};color:${active?'#fff':'var(--ink2)'}">${color?`<span style="width:8px;height:8px;border-radius:50%;background:${active?'#fff':color}"></span>`:''}${label===null?'전체':label}</button>`;
+    legend.innerHTML = chip(null, null, !calCatFilter) + EVENT_CATS.map(c => chip(c.label, c.color, calCatFilter===c.label)).join('');
+  }
+  const evs = calCatFilter ? calEvents.filter(e => (e.category||'') === calCatFilter) : calEvents;
+
   const rows = Math.ceil((firstDay + daysInMonth) / 7);
 
   // ── 날짜 → 셀 인덱스 계산 ──
@@ -6948,8 +6994,8 @@ function renderCalendar() {
 
   // ── 다일 이벤트 레이아웃 계산 ──
   // 각 이벤트의 시작/끝 셀, 어느 row에 배치할지 결정
-  const multiEvents = calEvents.filter(e => e.end_date && e.end_date !== e.start_date);
-  const singleEvents = calEvents.filter(e => !e.end_date || e.end_date === e.start_date);
+  const multiEvents = evs.filter(e => e.end_date && e.end_date !== e.start_date);
+  const singleEvents = evs.filter(e => !e.end_date || e.end_date === e.start_date);
 
   // 셀별 단일 이벤트 맵
   const singleMap = {};
@@ -7116,7 +7162,10 @@ function showDayEvents(dateStr) {
     <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:14px;background:var(--bg);margin-bottom:8px;cursor:pointer" onclick="editEvent('${e.id}')">
       <div style="width:4px;height:40px;border-radius:2px;background:${e.color||'var(--accent)'};flex-shrink:0"></div>
       <div style="flex:1;min-width:0">
-        <div style="font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${e.title}</div>
+        <div style="display:flex;align-items:center;gap:6px">
+          ${e.category?`<span style="font-size:10px;font-weight:700;color:#fff;background:${(eventCat(e.category)||{}).color||e.color||'#8a94a6'};padding:1px 7px;border-radius:6px;white-space:nowrap">${(eventCat(e.category)||{}).emoji||''}${escHtml(e.category)}</span>`:''}
+          <div style="font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${e.title}</div>
+        </div>
         <div style="font-size:12px;color:var(--ink3);margin-top:2px">
           ${e.end_date && e.end_date !== e.start_date ? `${e.start_date} ~ ${e.end_date}` : (e.start_time ? e.start_time.slice(0,5) : '종일') + (e.end_time?' ~ '+e.end_time.slice(0,5):'')}
         </div>
@@ -7150,6 +7199,7 @@ function showEventForm(dateStr) {
   document.getElementById('ev-end-date').value = '';
   document.getElementById('ev-time').value = '';
   document.getElementById('ev-end-time').value = '';
+  document.getElementById('ev-cat').value = '';
   document.getElementById('ev-delete-btn').style.display = 'none';
   document.querySelectorAll('#event-modal [data-color]').forEach(x => { x.style.outline='none'; x.style.transform=''; });
   document.querySelector('#event-modal [data-color="#2a5298"]').style.outline = '3px solid #2a5298';
@@ -7170,6 +7220,7 @@ function editEvent(id) {
   document.getElementById('ev-end-date').value = ev.end_date || '';
   document.getElementById('ev-time').value = ev.start_time ? ev.start_time.slice(0,5) : '';
   document.getElementById('ev-end-time').value = ev.end_time ? ev.end_time.slice(0,5) : '';
+  document.getElementById('ev-cat').value = ev.category || '';
   document.getElementById('ev-delete-btn').style.display = 'flex';
   document.querySelectorAll('#event-modal [data-color]').forEach(x => { x.style.outline='none'; x.style.transform=''; });
   const colorEl = document.querySelector(`#event-modal [data-color="${selectedEventColor}"]`);
@@ -7190,6 +7241,7 @@ async function submitEvent() {
     start_time: document.getElementById('ev-time').value || null,
     end_time: document.getElementById('ev-end-time').value || null,
     color: selectedEventColor,
+    category: document.getElementById('ev-cat').value || null,
     created_by: ME.id,
     created_by_name: ME.name,
     community_id: CID(),
