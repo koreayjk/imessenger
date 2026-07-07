@@ -8532,14 +8532,14 @@ function printCertificate() {
 // ════════════════════════════════════════════════════════════════════
 const LOG_SPECS = {
   observation: { table:'observation_logs', file:'학사_관찰기록_DB설치.sql', icon:'📝', title:'관찰 누가기록',
-    desc:'평소 학생을 관찰한 내용을 한 줄씩 쌓아 생기부 종합의견의 재료로 씁니다.',
-    cats:['학습','태도','인성','교우관계','특기·재능','기타'],
-    catColor:{ '학습':'#2a5298','태도':'#b8860b','인성':'#2a7a5a','교우관계':'#8e44ad','특기·재능':'#e67e22','기타':'#7f8c8d' },
-    titlePh:'한 줄 요약 (예: 발표 적극적)', bodyPh:'관찰한 내용을 간단히 적어보세요' },
+    desc:'평소 <b>지켜본 모습</b>을 한 줄씩 — 생기부 종합의견의 재료가 됩니다. (개입 없이 관찰한 것)',
+    cats:['학습','태도','인성','교우관계','특기·재능','칭찬','기타'],
+    catColor:{ '학습':'#2a5298','태도':'#b8860b','인성':'#2a7a5a','교우관계':'#8e44ad','특기·재능':'#e67e22','칭찬':'#2a9d8f','기타':'#7f8c8d' },
+    titlePh:'한 줄 요약 (예: 발표 적극적)', bodyPh:'관찰한 모습을 간단히 적어보세요' },
   counseling: { table:'counseling_logs', file:'학사_상담_DB설치.sql', icon:'💬', title:'상담·생활지도 기록',
-    desc:'학생별 상담·생활지도 내용을 날짜별로 기록합니다.',
-    cats:['상담','생활지도','칭찬','주의','기타'],
-    catColor:{ '상담':'#2a5298','생활지도':'#b8860b','칭찬':'#2a7a5a','주의':'#c0392b','기타':'#7f8c8d' },
+    desc:'면담·상담하거나 <b>생활지도한 일</b>을 기록해요. (선생님이 개입·지도한 내용)',
+    cats:['상담','생활지도','주의','기타'],
+    catColor:{ '상담':'#2a5298','생활지도':'#b8860b','주의':'#c0392b','기타':'#7f8c8d' },
     titlePh:'제목 (예: 진로 상담)', bodyPh:'상담/지도 내용을 입력하세요' },
   health: { table:'health_logs', file:'학사_보건_DB설치.sql', icon:'🏥', title:'보건·건강 기록',
     desc:'보건실 방문·투약·병결 등 건강 관련 기록을 남깁니다.',
@@ -8771,7 +8771,8 @@ function s360LogCard(kind, entries) {
     </div>`;
   }).join('') : '<div style="font-size:12px;color:var(--ink3);padding:8px 0">아직 기록이 없어요.</div>';
   return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin-bottom:14px">
-    <div style="font-size:14px;font-weight:700;color:var(--ink);margin-bottom:10px">${spec.icon} ${spec.title}</div>
+    <div style="font-size:14px;font-weight:700;color:var(--ink);margin-bottom:3px">${spec.icon} ${spec.title}</div>
+    <div style="font-size:11px;color:var(--ink3);margin-bottom:10px;line-height:1.5">${spec.desc||''}</div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
       <select id="s360-${kind}-cat" style="${inp}">${catOpts}</select>
       <input id="s360-${kind}-date" type="date" value="${attTodayStr()}" style="${inp}"/>
