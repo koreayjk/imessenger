@@ -8788,45 +8788,100 @@ function renderAllowSetup(err) {
   </div>`;
 }
 
+function allowWeekday(dstr) {
+  const p = (dstr||'').split('-'); if (p.length < 3) return '';
+  const d = new Date(Number(p[0]), Number(p[1])-1, Number(p[2]));
+  return ['일','월','화','수','목','금','토'][d.getDay()] || '';
+}
+
 function renderAllowance() {
   const main = document.getElementById('allowance-main'); if (!main) return;
   const curs = allowCurrencies();
+  const list = allowMonth ? allowEntries.filter(e => (e.date||'').slice(0,7) === allowMonth) : allowEntries;
+  const periodLabel = allowMonth ? `${Number(allowMonth.slice(5,7))}월` : '전체 기간';
 
-  // 통화별 잔액 카드
+  const inp = 'height:36px;padding:0 10px;border:1px solid var(--border);border-radius:9px;font:600 13px var(--font);color:var(--ink);background:var(--surface)';
+  const navBtn = 'width:34px;height:36px;border:1px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:9px;cursor:pointer;font:700 14px var(--font);flex-shrink:0';
+  const catOpts = ALLOW_CATS[allowType].map(c=>`<option value="${c}">${c}</option>`).join('');
+  const typeBtn = (t,label,color) => `<button onclick="setAllowType('${t}')" style="flex:1;height:40px;border:none;border-radius:10px;font:700 13.5px var(--font);cursor:pointer;background:${allowType===t?color:'var(--s2)'};color:${allowType===t?'#fff':'var(--ink2)'}">${label}</button>`;
+  const curBtn = (c,label) => `<button onclick="setAllowCurrency('${c}')" style="height:36px;padding:0 12px;border:1px solid ${allowCurrency===c?'#1d3a5f':'var(--border)'};border-radius:9px;font:700 13px var(--font);cursor:pointer;background:${allowCurrency===c?'#1d3a5f':'var(--surface)'};color:${allowCurrency===c?'#fff':'var(--ink2)'}">${label}</button>`;
+
+  // 통화별 잔액(전체 누적) + 이 기간 수입/지출
   const balCards = curs.map(cur => {
-    const tin  = allowEntries.filter(e=>e.type==='income'  && (e.currency||'원')===cur).reduce((a,e)=>a+(Number(e.amount)||0),0);
-    const tout = allowEntries.filter(e=>e.type==='expense' && (e.currency||'원')===cur).reduce((a,e)=>a+(Number(e.amount)||0),0);
-    return `<div style="flex:1;min-width:200px;background:linear-gradient(135deg,#2a7a5a,#2a5298);border-radius:18px;padding:18px 20px;color:#fff">
+    const inAll  = allowEntries.filter(e=>e.type==='income'  && (e.currency||'원')===cur).reduce((a,e)=>a+(Number(e.amount)||0),0);
+    const outAll = allowEntries.filter(e=>e.type==='expense' && (e.currency||'원')===cur).reduce((a,e)=>a+(Number(e.amount)||0),0);
+    const inP  = list.filter(e=>e.type==='income'  && (e.currency||'원')===cur).reduce((a,e)=>a+(Number(e.amount)||0),0);
+    const outP = list.filter(e=>e.type==='expense' && (e.currency||'원')===cur).reduce((a,e)=>a+(Number(e.amount)||0),0);
+    return `<div style="flex:1;min-width:230px;background:linear-gradient(135deg,#2a7a5a,#2a5298);border-radius:18px;padding:18px 20px;color:#fff;box-shadow:0 6px 18px rgba(42,82,152,.22)">
       <div style="font-size:12px;opacity:.85">현재 잔액 ${cur==='$'?'(달러)':'(원)'}</div>
-      <div style="font-size:26px;font-weight:800;letter-spacing:-.02em;margin-top:2px">${allowMoney(tin-tout, cur)}</div>
-      <div style="display:flex;gap:16px;margin-top:10px;font-size:11.5px;opacity:.95">
-        <div>수입 <b>${allowMoney(tin,cur)}</b></div><div>지출 <b>${allowMoney(tout,cur)}</b></div>
+      <div style="font-size:28px;font-weight:800;letter-spacing:-.02em;margin-top:2px">${allowMoney(inAll-outAll, cur)}</div>
+      <div style="display:flex;gap:9px;margin-top:12px">
+        <div style="flex:1;background:rgba(255,255,255,.15);border-radius:10px;padding:7px 11px">
+          <div style="font-size:10px;opacity:.85">${periodLabel} 수입</div>
+          <div style="font-size:14px;font-weight:700;margin-top:1px">＋${allowMoney(inP,cur)}</div>
+        </div>
+        <div style="flex:1;background:rgba(255,255,255,.15);border-radius:10px;padding:7px 11px">
+          <div style="font-size:10px;opacity:.85">${periodLabel} 지출</div>
+          <div style="font-size:14px;font-weight:700;margin-top:1px">－${allowMoney(outP,cur)}</div>
+        </div>
       </div>
     </div>`;
   }).join('');
 
-  const list = allowMonth ? allowEntries.filter(e => (e.date||'').slice(0,7) === allowMonth) : allowEntries;
-  const periodLabel = allowMonth ? `${allowMonth.slice(5,7)}월` : '전체';
+  // 이 기간 지출 카테고리별 분석 (통화 구분, 상위 6)
+  const catMap = {};
+  list.filter(e=>e.type==='expense').forEach(e=>{
+    const k = `${e.category||'기타'}||${e.currency||'원'}`;
+    catMap[k] = (catMap[k]||0) + (Number(e.amount)||0);
+  });
+  const catRows = Object.entries(catMap).map(([k,v])=>({cat:k.split('||')[0], cur:k.split('||')[1], amt:v}))
+    .sort((a,b)=>b.amt-a.amt).slice(0,6);
+  const catMax = catRows.reduce((m,r)=>Math.max(m,r.amt),0) || 1;
+  const CATCOLORS = ['#c0392b','#e67e22','#f1c40f','#16a085','#2980b9','#8e44ad'];
+  const breakdown = catRows.length ? `
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:14px">
+      <div style="font-size:12.5px;font-weight:700;color:var(--ink);margin-bottom:11px">📊 ${periodLabel} 지출 분석</div>
+      ${catRows.map((r,i)=>`
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:9px">
+          <div style="width:60px;font-size:11.5px;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(r.cat)}</div>
+          <div style="flex:1;height:10px;background:var(--s2);border-radius:6px;overflow:hidden"><div style="width:${Math.max(4,Math.round(r.amt/catMax*100))}%;height:100%;background:${CATCOLORS[i%CATCOLORS.length]};border-radius:6px"></div></div>
+          <div style="width:78px;text-align:right;font-size:11.5px;font-weight:700;color:var(--ink)">${allowMoney(r.amt,r.cur)}</div>
+        </div>`).join('')}
+    </div>` : '';
 
-  const inp = 'height:36px;padding:0 10px;border:1px solid var(--border);border-radius:9px;font:600 13px var(--font);color:var(--ink);background:var(--surface)';
-  const catOpts = ALLOW_CATS[allowType].map(c=>`<option value="${c}">${c}</option>`).join('');
-  const typeBtn = (t,label,color) => `<button onclick="setAllowType('${t}')" style="flex:1;height:38px;border:none;border-radius:9px;font:700 13px var(--font);cursor:pointer;background:${allowType===t?color:'var(--s2)'};color:${allowType===t?'#fff':'var(--ink2)'}">${label}</button>`;
-  const curBtn = (c,label) => `<button onclick="setAllowCurrency('${c}')" style="height:36px;padding:0 12px;border:1px solid ${allowCurrency===c?'#1d3a5f':'var(--border)'};border-radius:9px;font:700 13px var(--font);cursor:pointer;background:${allowCurrency===c?'#1d3a5f':'var(--surface)'};color:${allowCurrency===c?'#fff':'var(--ink2)'}">${label}</button>`;
-
-  const rows = list.map(e => {
+  // 날짜별 묶음 + 일일 합계
+  const rowHtml = e => {
     const income = e.type === 'income';
     const cur = e.currency || '원';
     const pending = e.delete_status === 'requested';
-    return `<div style="display:flex;align-items:center;gap:10px;padding:11px 4px;border-bottom:1px solid var(--border);${pending?'opacity:.55':''}">
-      <div style="width:34px;height:34px;border-radius:9px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:15px;background:${income?'#e8f5ee':'#fdecea'}">${income?'➕':'➖'}</div>
+    return `<div style="display:flex;align-items:center;gap:10px;padding:9px 4px;border-top:1px solid var(--border);${pending?'opacity:.55':''}">
+      <div style="width:32px;height:32px;border-radius:9px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:14px;background:${income?'#e8f5ee':'#fdecea'}">${income?'➕':'➖'}</div>
       <div style="flex:1;min-width:0">
-        <div style="font-size:13.5px;font-weight:600;color:var(--ink)">${escHtml(e.category||'기타')}${e.memo?` <span style="font-weight:400;color:var(--ink3)">· ${escHtml(e.memo)}</span>`:''}</div>
-        <div style="font-size:11px;color:var(--ink3)">${e.date||''}${pending?' · <span style="color:#b8860b;font-weight:600">🕓 삭제 요청됨 (승인 대기)</span>':''}</div>
+        <div style="font-size:13px;font-weight:600;color:var(--ink)">${escHtml(e.category||'기타')}</div>
+        ${(e.memo||pending)?`<div style="font-size:11px;color:var(--ink3)">${e.memo?escHtml(e.memo):''}${pending?`${e.memo?' · ':''}<span style="color:#b8860b;font-weight:600">🕓 삭제 요청됨</span>`:''}</div>`:''}
       </div>
       <div style="font-size:14px;font-weight:700;color:${income?'#2a7a5a':'#c0392b'};white-space:nowrap">${income?'+':'-'}${allowMoney(e.amount, cur)}</div>
       ${pending
         ? `<button onclick="cancelDeleteAllow('${e.id}')" title="요청 취소" style="border:1px solid var(--border);background:var(--surface);border-radius:7px;height:26px;padding:0 8px;cursor:pointer;font:600 10.5px var(--font);color:var(--ink3);flex-shrink:0">요청취소</button>`
         : `<button onclick="requestDeleteAllow('${e.id}')" title="삭제 요청" style="border:none;background:transparent;cursor:pointer;color:var(--ink3);font-size:14px;flex-shrink:0">✕</button>`}
+    </div>`;
+  };
+  const byDate = {};
+  list.forEach(e => { const d = e.date || '날짜 미상'; (byDate[d] = byDate[d] || []).push(e); });
+  const dateKeys = Object.keys(byDate).sort((a,b)=>b.localeCompare(a));
+  const groups = dateKeys.map(d => {
+    const items = byDate[d];
+    const perCur = {};
+    items.forEach(e => { const c = e.currency||'원'; perCur[c] = (perCur[c]||0) + (e.type==='income'?1:-1)*(Number(e.amount)||0); });
+    const net = Object.entries(perCur).map(([c,v])=>`${v>=0?'+':'−'}${allowMoney(Math.abs(v),c)}`).join(' · ');
+    const wd = allowWeekday(d);
+    return `<div>
+      <div style="display:flex;align-items:center;gap:8px;padding:12px 4px 2px">
+        <span style="font-size:12px;font-weight:700;color:var(--ink2)">${d}${wd?` <span style="color:var(--ink3);font-weight:600">(${wd})</span>`:''}</span>
+        <div style="flex:1;height:1px;background:var(--border)"></div>
+        <span style="font-size:11.5px;font-weight:700;color:var(--ink3)">${net}</span>
+      </div>
+      ${items.map(rowHtml).join('')}
     </div>`;
   }).join('');
 
@@ -8834,8 +8889,9 @@ function renderAllowance() {
     <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px">${balCards}</div>
 
     <div style="display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap">
-    <div style="flex:1 1 360px;min-width:0">
+    <div style="flex:1 1 340px;min-width:0">
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px">
+      <div style="font-size:12.5px;font-weight:700;color:var(--ink);margin-bottom:10px">✏️ 새 기록</div>
       <div style="display:flex;gap:8px;margin-bottom:10px">${typeBtn('income','수입 ➕','#2a7a5a')}${typeBtn('expense','지출 ➖','#c0392b')}</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;align-items:center">
         <input id="allow-date" type="date" value="${attTodayStr()}" style="${inp}"/>
@@ -8844,22 +8900,28 @@ function renderAllowance() {
         <input id="allow-amount" type="number" min="0" step="${allowCurrency==='$'?'0.01':'100'}" placeholder="금액" style="${inp};width:110px"/>
       </div>
       <div style="display:flex;gap:8px">
-        <input id="allow-memo" placeholder="내용 (예: 편의점 과자)" style="${inp};flex:1"/>
+        <input id="allow-memo" placeholder="내용 (예: 편의점 과자)" style="${inp};flex:1" onkeydown="if(event.key==='Enter')addAllowEntry()"/>
         <button onclick="addAllowEntry()" style="height:36px;padding:0 18px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 13px var(--font)">＋ 기록</button>
       </div>
-      <div style="font-size:11px;color:var(--ink3);margin-top:12px">🔒 기록 삭제는 <b>담당 선생님·관리자 승인</b> 후 완료됩니다.</div>
+      <div style="font-size:11px;color:var(--ink3);margin-top:12px;line-height:1.6">🔒 기록 삭제는 <b>담당 선생님·관리자 승인</b> 후 완료됩니다.</div>
     </div>
+    ${breakdown ? `<div style="margin-top:14px">${breakdown}</div>` : ''}
     </div>
 
     <div style="flex:1.3 1 420px;min-width:0">
-    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
-      <input type="month" value="${allowMonth}" onchange="setAllowMonth(this.value)" style="${inp}"/>
-      ${allowMonth?`<button onclick="setAllowMonth('')" style="${inp};cursor:pointer;color:var(--ink3)">전체 보기</button>`:''}
-      <div style="flex:1"></div>
-      <span style="font-size:11.5px;color:var(--ink3)">${periodLabel} · ${list.length}건</span>
+    <div style="display:flex;gap:6px;align-items:center;margin-bottom:12px">
+      <button onclick="shiftAllowMonth(-1)" style="${navBtn}">◀</button>
+      <input type="month" value="${allowMonth||''}" onchange="setAllowMonth(this.value)" style="${inp};flex:1;min-width:0;text-align:center"/>
+      <button onclick="shiftAllowMonth(1)" style="${navBtn}">▶</button>
+      <button onclick="setAllowMonth('')" style="${inp};cursor:pointer;color:${allowMonth?'var(--ink2)':'#1d3a5f'};font-weight:700;${allowMonth?'':'background:var(--asoft)'}">전체</button>
     </div>
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:4px 14px">
-      ${list.length ? rows : '<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px">아직 기록이 없어요. 왼쪽에서 첫 기록을 추가해보세요!</div>'}
+    <div style="display:flex;align-items:center;margin-bottom:6px;padding:0 2px">
+      <span style="font-size:12px;font-weight:700;color:var(--ink2)">📒 ${periodLabel} 내역</span>
+      <div style="flex:1"></div>
+      <span style="font-size:11.5px;color:var(--ink3)">${list.length}건</span>
+    </div>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:2px 14px 10px">
+      ${list.length ? groups : '<div style="padding:44px 20px;text-align:center;color:var(--ink3);font-size:13px;line-height:1.7">아직 기록이 없어요.<br>왼쪽에서 첫 기록을 추가해보세요!</div>'}
     </div>
     </div>
     </div>
@@ -8869,6 +8931,15 @@ function renderAllowance() {
 function setAllowType(t) { allowType = t; renderAllowance(); }
 function setAllowMonth(v) { allowMonth = v || ''; renderAllowance(); }
 function setAllowCurrency(c) { allowCurrency = c; renderAllowance(); }
+function shiftAllowMonth(delta) {
+  let base = allowMonth || attTodayStr().slice(0,7);
+  let [y,m] = base.split('-').map(Number);
+  m += delta;
+  while (m < 1) { m += 12; y--; }
+  while (m > 12) { m -= 12; y++; }
+  allowMonth = `${y}-${String(m).padStart(2,'0')}`;
+  renderAllowance();
+}
 
 async function addAllowEntry() {
   const date = document.getElementById('allow-date').value || attTodayStr();
