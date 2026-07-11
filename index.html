@@ -837,6 +837,19 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
       <div id="allowance-main" style="flex:1;overflow-y:auto;padding:24px 28px"></div>
     </div>
 
+    <!-- 개인 시간표 뷰 (대학 수업 등) -->
+    <div id="mytt-view" style="display:none;flex-direction:column;height:100%;background:var(--bg)">
+      <div style="position:relative;height:56px;padding:0 24px;display:flex;align-items:center;gap:10px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0">
+        <div style="width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#2a7ab8,#1d3a5f);display:flex;align-items:center;justify-content:center;font-size:16px">🗓</div>
+        <div>
+          <div style="font-size:15px;font-weight:700;color:var(--ink)">내 시간표</div>
+          <div style="font-size:11px;color:var(--ink3)">내 수업 시간표를 등록하면 담당 선생님도 볼 수 있어요</div>
+        </div>
+        <div id="subnav-mytt" class="subnav-center"></div>
+      </div>
+      <div id="mytt-main" style="flex:1;overflow-y:auto;padding:24px 28px"></div>
+    </div>
+
     <!-- 출결 신청(전자결재) 뷰 -->
     <div id="leave-view" style="display:none;flex-direction:column;height:100%;background:var(--bg)">
       <div style="position:relative;height:56px;padding:0 24px;display:flex;align-items:center;gap:10px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0">
@@ -1642,6 +1655,7 @@ function setMode(m) {
   document.getElementById('home-view').style.display = m==='home' ? 'flex' : 'none';
   document.getElementById('calendar-view').style.display = m==='calendar' ? 'flex' : 'none';
   document.getElementById('allowance-view').style.display = m==='allowance' ? 'flex' : 'none';
+  document.getElementById('mytt-view').style.display = m==='mytt' ? 'flex' : 'none';
   document.getElementById('leave-view').style.display = m==='leave' ? 'flex' : 'none';
   document.getElementById('writing-view').style.display = (m==='bookreport'||m==='review') ? 'flex' : 'none';
   document.getElementById('admin-view').style.display = m==='admin' ? 'flex' : 'none';
@@ -1654,12 +1668,12 @@ function setMode(m) {
 
   const sbTcsBtn = document.getElementById('sb-tcs');
   if (sbTcsBtn) {
-    const tcsActive = isTeacher() ? (m==='tcs' || m==='mock' || m==='reading') : (m==='profile' || m==='reading' || m==='allowance' || m==='bookreport' || m==='review' || m==='leave');
+    const tcsActive = isTeacher() ? (m==='tcs' || m==='mock' || m==='reading') : (m==='profile' || m==='reading' || m==='allowance' || m==='bookreport' || m==='review' || m==='leave' || m==='mytt');
     sbTcsBtn.classList.toggle('active', tcsActive);
   }
 
   const panel = document.getElementById('panel');
-  if (m === 'home' || m === 'calendar' || m === 'admin' || m === 'tcs' || m === 'mock' || m === 'reading' || m === 'profile' || m === 'school' || m === 'allowance' || m === 'leave' || m === 'bookreport' || m === 'review') {
+  if (m === 'home' || m === 'calendar' || m === 'admin' || m === 'tcs' || m === 'mock' || m === 'reading' || m === 'profile' || m === 'school' || m === 'allowance' || m === 'mytt' || m === 'leave' || m === 'bookreport' || m === 'review') {
     panel.style.display = 'none';
   } else {
     panel.style.display = 'flex';
@@ -1675,12 +1689,13 @@ function setMode(m) {
   if (m==='reading') { if(isTeacher()){ tcsSubMode='reading'; initTcsPage(); } else initReadingPage(); return; }
   if (m==='school') { if(canAccessSchool()){ initSchoolPage(); } else setMode('home'); return; }
   if (m==='allowance') { initAllowancePage(); }
+  if (m==='mytt') { initMyTimetable(); }
   if (m==='leave') { initLeavePage(); }
   if (m==='bookreport') { writingKind='book'; initWritingPage(); }
   if (m==='review') { writingKind='activity'; initWritingPage(); }
   if (m==='profile') { renderProfilePage(); }
   sessionStorage.setItem('last_mode', m);
-  document.getElementById('panel-title').textContent = {chat:'채팅',prayer:'기도제목',home:'홈',calendar:'일정',admin:'관리자',tcs:'생기부',mock:'모의고사 분석',reading:'Triple School',school:'학사관리',allowance:'용돈기입장',leave:'출결 신청',bookreport:'독후감',review:'활동 후기',profile:'내 프로필'}[m] || m;
+  document.getElementById('panel-title').textContent = {chat:'채팅',prayer:'기도제목',home:'홈',calendar:'일정',admin:'관리자',tcs:'생기부',mock:'모의고사 분석',reading:'Triple School',school:'학사관리',allowance:'용돈기입장',mytt:'내 시간표',leave:'출결 신청',bookreport:'독후감',review:'활동 후기',profile:'내 프로필'}[m] || m;
 }
 
 // ── 채널 패널 렌더 ──
@@ -4756,7 +4771,7 @@ function tcsSubnavHtml(active) {
       return `<button onclick="setMode('${m}')" style="height:30px;padding:0 13px;border:none;border-radius:8px;font:600 12px var(--font);cursor:pointer;background:${on ? '#1d3a5f' : 'transparent'};color:${on ? '#fff' : 'var(--ink2)'}">${label}</button>`;
     };
     tabs = tab('profile', '개인정보') + tab('reading', 'Triple School')
-         + tab('bookreport', '독후감') + tab('review', '활동후기') + tab('allowance', '용돈') + tab('leave', '출결신청');
+         + tab('bookreport', '독후감') + tab('review', '활동후기') + tab('mytt', '시간표') + tab('allowance', '용돈') + tab('leave', '출결신청');
   }
   return `<div style="display:inline-flex;gap:2px;background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:3px">${tabs}</div>`;
 }
@@ -7451,6 +7466,16 @@ async function initSchoolPage() {
     .or('community_role.eq.teacher,community_role.eq.staff,community_role.eq.admin_officer,community_role.eq.community_admin,community_role.eq.super_admin,role.eq.교사,role.eq.간사')
     .order('name');
   schoolTeachers = teachers || [];
+  // 담당교사 맵 (다중 담당 지원) — junction 있으면 우선, 없으면 단일 컬럼 폴백
+  homeroomMap = {};
+  schoolStudents.forEach(s => { if (s.homeroom_teacher_id) homeroomMap[s.id] = [s.homeroom_teacher_id]; });
+  try {
+    const { data: hr, error } = await sb.from('student_homerooms').select('student_id,teacher_id');
+    if (!error && hr) {
+      homeroomMap = {};
+      hr.forEach(r => { (homeroomMap[r.student_id] = homeroomMap[r.student_id] || []).push(r.teacher_id); });
+    }
+  } catch(e) {}
   renderSchoolMain();
 }
 
@@ -7703,6 +7728,135 @@ async function rejectLeave(id) {
   if (error) { showUploadToast('반려 실패: ' + error.message); return; }
   showUploadToast('신청을 반려했어요');
   renderApprovalHub();
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  개인 시간표 (학생 대학 수업 등) — 담당 선생님도 열람
+// ════════════════════════════════════════════════════════════════════
+const TT_DAYS_FULL = ['','월','화','수','목','금','토','일'];
+const TT_COLORS = ['#2a5298','#2a7a5a','#b8860b','#8e44ad','#c0392b','#2a7ab8','#5A7C8B','#B05865'];
+let myTT = [];
+
+function ttMin(hhmm){ const p=(hhmm||'').split(':'); return (Number(p[0])||0)*60 + (Number(p[1])||0); }
+function ttFmt(hhmm){ return (hhmm||'').slice(0,5); }
+
+// 시간표 그리드 (학생: editable / 교사: 읽기전용)
+function ttGridHtml(entries, editable) {
+  if (!entries.length) return editable
+    ? '<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px;background:var(--surface);border:1px solid var(--border);border-radius:12px">아직 등록한 수업이 없어요. 위에서 추가해보세요!</div>'
+    : '<div style="padding:18px;text-align:center;color:var(--ink3);font-size:12.5px">학생이 아직 시간표를 등록하지 않았어요.</div>';
+  const maxDay = Math.max(5, ...entries.map(e => e.day || 1));
+  const days = []; for (let d=1; d<=maxDay; d++) days.push(d);
+  let minH = 24, maxH = 0;
+  entries.forEach(e => { minH = Math.min(minH, Math.floor(ttMin(e.start_time)/60)); maxH = Math.max(maxH, Math.ceil(ttMin(e.end_time)/60)); });
+  if (minH > maxH) { minH = 9; maxH = 18; }
+  minH = Math.min(minH, 9); maxH = Math.max(maxH, 16);
+  const PPH = editable ? 52 : 40, HEAD = 30;
+  const gridH = (maxH - minH) * PPH;
+  const gutterLabels = [];
+  for (let h=minH; h<=maxH; h++) gutterLabels.push(`<span style="position:absolute;top:${(h-minH)*PPH - 6}px;right:4px;font-size:10px;color:var(--ink3)">${h}</span>`);
+  const bg = `background-image:repeating-linear-gradient(to bottom, var(--border) 0, var(--border) 1px, transparent 1px, transparent ${PPH}px)`;
+  const dayCols = days.map(d => {
+    const items = entries.filter(e => e.day === d).map(e => {
+      const top = (ttMin(e.start_time) - minH*60)/60*PPH;
+      const h = Math.max(22, (ttMin(e.end_time) - ttMin(e.start_time))/60*PPH);
+      const col = e.color || TT_COLORS[Math.floor(ttMin(e.start_time)/30) % TT_COLORS.length];
+      return `<div style="position:absolute;top:${top}px;height:${h}px;left:3px;right:3px;background:${col};color:#fff;border-radius:7px;padding:4px 6px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.15)">
+        <div style="font-weight:800;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(e.subject||'수업')}</div>
+        ${e.place?`<div style="opacity:.92;font-size:9.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(e.place)}</div>`:''}
+        <div style="opacity:.85;font-size:9px">${ttFmt(e.start_time)}~${ttFmt(e.end_time)}</div>
+        ${editable?`<b onclick="event.stopPropagation();deleteMyTTEntry('${e.id}')" title="삭제" style="position:absolute;top:2px;right:4px;cursor:pointer;font-size:11px;opacity:.9">✕</b>`:''}
+      </div>`;
+    }).join('');
+    return `<div style="flex:1;min-width:0;border-left:1px solid var(--border)">
+      <div style="height:${HEAD}px;line-height:${HEAD}px;text-align:center;font-size:11.5px;font-weight:700;color:var(--ink2);border-bottom:1px solid var(--border)">${TT_DAYS_FULL[d]}</div>
+      <div style="position:relative;height:${gridH}px;${bg}">${items}</div>
+    </div>`;
+  }).join('');
+  return `<div style="overflow-x:auto"><div style="display:flex;min-width:${maxDay*88+32}px;background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden">
+    <div style="width:30px;flex-shrink:0">
+      <div style="height:${HEAD}px;border-bottom:1px solid var(--border)"></div>
+      <div style="position:relative;height:${gridH}px">${gutterLabels.join('')}</div>
+    </div>
+    ${dayCols}
+  </div></div>`;
+}
+
+function myTTSetupHtml() {
+  return `<div style="max-width:560px;margin:40px auto;text-align:center"><div style="font-size:40px;margin-bottom:12px">🗓</div><div style="font-size:16px;font-weight:700;margin-bottom:8px">데이터베이스 설정이 필요해요</div><div style="font-size:13px;color:var(--ink3);line-height:1.8"><b>학사_다중담당_개인시간표_DB설치.sql</b> 을 Supabase → SQL Editor에서 실행해주세요.</div></div>`;
+}
+
+async function initMyTimetable() {
+  const sn = document.getElementById('subnav-mytt');
+  if (sn) sn.innerHTML = isTeacher() ? '' : tcsSubnavHtml('mytt');
+  const main = document.getElementById('mytt-main');
+  if (main) main.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink3);font-size:13px">불러오는 중...</div>';
+  try {
+    const { data, error } = await sb.from('student_timetables').select('*').eq('member_id', ME.id).order('day').order('start_time');
+    if (error) throw error;
+    myTT = data || [];
+  } catch(e) {
+    if (schoolTableMissing(e)) { main.innerHTML = myTTSetupHtml(); return; }
+    main.innerHTML = `<div style="color:#b91c1c;padding:30px;text-align:center;font-size:13px">불러오기 실패: ${e.message||e}</div>`;
+    return;
+  }
+  renderMyTimetable();
+}
+
+function renderMyTimetable() {
+  const main = document.getElementById('mytt-main'); if (!main) return;
+  const inp = 'height:36px;padding:0 10px;border:1px solid var(--border);border-radius:9px;font:600 13px var(--font);color:var(--ink);background:var(--surface)';
+  const dayOpts = [1,2,3,4,5,6,7].map(d=>`<option value="${d}">${TT_DAYS_FULL[d]}</option>`).join('');
+  main.innerHTML = `<div style="max-width:980px;margin:0 auto">
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:16px">
+      <div style="font-size:12.5px;font-weight:700;color:var(--ink);margin-bottom:9px">＋ 수업 추가</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <select id="mtt-day" style="${inp}">${dayOpts}</select>
+        <input id="mtt-start" type="time" value="09:00" style="${inp}"/>
+        <span style="color:var(--ink3)">~</span>
+        <input id="mtt-end" type="time" value="10:30" style="${inp}"/>
+        <input id="mtt-subject" placeholder="과목명 (예: 자료구조)" style="${inp};flex:1;min-width:150px" onkeydown="if(event.key==='Enter')addMyTTEntry()"/>
+        <input id="mtt-place" placeholder="장소 (예: 공학관 301)" style="${inp};flex:1;min-width:130px" onkeydown="if(event.key==='Enter')addMyTTEntry()"/>
+        <button onclick="addMyTTEntry()" style="height:36px;padding:0 16px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 13px var(--font)">＋ 추가</button>
+      </div>
+    </div>
+    ${ttGridHtml(myTT, true)}
+  </div>`;
+}
+
+async function addMyTTEntry() {
+  const day = parseInt(document.getElementById('mtt-day').value) || 1;
+  const start = document.getElementById('mtt-start').value;
+  const end = document.getElementById('mtt-end').value;
+  const subject = (document.getElementById('mtt-subject').value || '').trim();
+  const place = (document.getElementById('mtt-place').value || '').trim();
+  if (!start || !end) { showUploadToast('시간을 입력하세요'); return; }
+  if (end <= start) { showUploadToast('종료 시간이 시작보다 늦어야 해요'); return; }
+  if (!subject) { showUploadToast('과목명을 입력하세요'); return; }
+  const color = TT_COLORS[myTT.length % TT_COLORS.length];
+  const { error } = await sb.from('student_timetables').insert({ member_id: ME.id, community_id: CID(), day, start_time: start, end_time: end, subject, place, color });
+  if (error) { if (schoolTableMissing(error)) { document.getElementById('mytt-main').innerHTML = myTTSetupHtml(); return; } showUploadToast('추가 실패: ' + error.message); return; }
+  showUploadToast('✅ 추가됐어요');
+  initMyTimetable();
+}
+
+async function deleteMyTTEntry(id) {
+  if (!confirm('이 수업을 삭제할까요?')) return;
+  const { error } = await sb.from('student_timetables').delete().eq('id', id);
+  if (error) { showUploadToast('삭제 실패: ' + error.message); return; }
+  myTT = myTT.filter(e => e.id !== id);
+  renderMyTimetable();
+}
+
+// 교사·관리자: 학생 상세에 표시할 개인 시간표 카드
+function s360TimetableCard(entries) {
+  return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin-bottom:14px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+      <div style="font-size:14px;font-weight:700;color:var(--ink)">🗓 개인 시간표</div>
+      <span style="font-size:11px;color:var(--ink3)">학생이 등록한 수업 시간표</span>
+    </div>
+    ${ttGridHtml(entries||[], false)}
+  </div>`;
 }
 
 // ── 출석부 ──
@@ -8757,13 +8911,18 @@ async function deleteLog(id) {
 let s360Id = '';
 let s360Filter = 'all';     // 'all' | 'mine'
 let s360Group = 'all';
+let homeroomMap = {};       // studentId -> [teacherId, ...] (다중 담당)
 
 function s360TeacherName(id) { const t = schoolTeachers.find(x => x.id === id); return t ? t.name : ''; }
+function homeroomTeachers(studentId) { return homeroomMap[studentId] || []; }
+function s360TeacherNames(studentId) {
+  return homeroomTeachers(studentId).map(s360TeacherName).filter(Boolean).join(', ');
+}
 function s360GroupName(gid) { const g = tcsGroups.find(x => x.id === gid); return g ? g.name : ''; }
 
 function s360List() {
   let list = schoolStudents;
-  if (s360Filter === 'mine') list = list.filter(s => s.homeroom_teacher_id === ME.id);
+  if (s360Filter === 'mine') list = list.filter(s => homeroomTeachers(s.id).includes(ME.id));
   if (s360Group !== 'all') list = s360Group === 'none' ? list.filter(s => !s.group_id) : list.filter(s => s.group_id === s360Group);
   return list;
 }
@@ -8773,7 +8932,7 @@ async function loadStudent360(id) {
   const [y,mm] = month.split('-').map(Number);
   const ny = mm===12?y+1:y, nm = mm===12?1:mm+1;
   const start = `${month}-01`, end = `${ny}-${String(nm).padStart(2,'0')}-01`;
-  const [a,b,c,h,t,al,ob] = await Promise.all([
+  const [a,b,c,h,t,al,ob,tt] = await Promise.all([
     sb.from('attendance_daily').select('status,date').eq('community_id',CID()).eq('student_id',id).gte('date',start).lt('date',end),
     sb.from('tuition_bills').select('*').eq('community_id',CID()).eq('student_id',id).order('created_at',{ascending:false}),
     sb.from('counseling_logs').select('*').eq('community_id',CID()).eq('student_id',id).order('date',{ascending:false}).order('created_at',{ascending:false}),
@@ -8781,10 +8940,11 @@ async function loadStudent360(id) {
     sb.from('tcs_records').select('section,data').eq('community_id',CID()).eq('student_id',id),
     sb.from('allowance_entries').select('*').eq('member_id',id).order('date',{ascending:false}).order('created_at',{ascending:false}),
     sb.from('observation_logs').select('*').eq('community_id',CID()).eq('student_id',id).order('date',{ascending:false}).order('created_at',{ascending:false}),
+    sb.from('student_timetables').select('*').eq('member_id',id).order('day').order('start_time'),
   ]);
   const allowAll = (al&&al.data)||[];
   const allowReq = allowAll.filter(e => e.delete_status === 'requested');
-  return { att:a.data||[], bills:b.data||[], counseling:c.data||[], health:h.data||[], tcs:t.data||[], allowAll, allowReq, observation:(ob&&ob.data)||[], month };
+  return { att:a.data||[], bills:b.data||[], counseling:c.data||[], health:h.data||[], tcs:t.data||[], allowAll, allowReq, observation:(ob&&ob.data)||[], timetable:(tt&&tt.data)||[], month };
 }
 
 async function renderStudent360() {
@@ -8834,7 +8994,7 @@ function renderS360List() {
     `<option value="none" ${s360Group==='none'?'selected':''}>미배정</option>`;
   const rows = list.map(s => {
     const on = s.id===s360Id;
-    const tn = s360TeacherName(s.homeroom_teacher_id);
+    const tn = s360TeacherNames(s.id);
     return `<div onclick="selectS360('${s.id}')" style="display:flex;align-items:center;gap:9px;padding:9px 10px;border-radius:10px;cursor:pointer;margin-bottom:2px;background:${on?'var(--asoft)':'transparent'}"
       onmouseover="if(!${on})this.style.background='var(--s3)'" onmouseout="if(!${on})this.style.background='transparent'">
       <div style="width:28px;height:28px;border-radius:8px;background:${s.color||'#1d3a5f'};display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700;flex-shrink:0">${s.initials||s.name?.[0]||'?'}</div>
@@ -8902,8 +9062,10 @@ async function renderS360Detail() {
   const unpaidSum = unpaid.reduce((a,b)=>a+(Number(b.amount)||0),0);
   const monthLabel = (d.month||'').slice(5,7) + '월';
 
-  const tOpts = `<option value="">담당교사 미지정</option>` +
-    schoolTeachers.map(t=>`<option value="${t.id}" ${s.homeroom_teacher_id===t.id?'selected':''}>${t.name}</option>`).join('');
+  const assignedT = homeroomTeachers(s.id);
+  const hrChips = assignedT.map(tid => `<span style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;color:#1d3a5f;background:var(--asoft);padding:4px 6px 4px 10px;border-radius:99px">${escHtml(s360TeacherName(tid)||'?')}<b onclick="removeHomeroom('${s.id}','${tid}')" title="해제" style="cursor:pointer;color:#c0392b;font-size:13px;line-height:1">✕</b></span>`).join('');
+  const addableT = schoolTeachers.filter(t => !assignedT.includes(t.id));
+  const hrAdd = `<select onchange="if(this.value){addHomeroom('${s.id}',this.value)}" style="height:30px;padding:0 8px;border:1px solid var(--border);border-radius:9px;font:600 12px var(--font);background:var(--surface);color:var(--ink2)"><option value="">＋ 담당 추가</option>${addableT.map(t=>`<option value="${t.id}">${escHtml(t.name)}</option>`).join('')}</select>`;
 
   const attBadges = ATT_STATUSES.map(st=>`<span style="font-size:12px;color:${st.color};font-weight:600">${st.label} ${c[st.key]}</span>`).join('<span style="color:var(--border)">|</span>');
 
@@ -8937,9 +9099,10 @@ async function renderS360Detail() {
           <div style="font-size:19px;font-weight:800;color:var(--ink)">${s.name}</div>
           <div style="font-size:12.5px;color:var(--ink3)">${s.grade||'학년 미정'}${s360GroupName(s.group_id)?` · ${s360GroupName(s.group_id)}`:''}</div>
         </div>
-        <div style="display:flex;align-items:center;gap:8px">
+        <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;justify-content:flex-end">
           <span style="font-size:11.5px;font-weight:600;color:var(--ink2)">담당교사</span>
-          <select onchange="assignHomeroom('${s.id}',this.value)" style="height:34px;padding:0 10px;border:1px solid var(--border);border-radius:9px;font:600 13px var(--font);background:var(--surface);color:var(--ink)">${tOpts}</select>
+          ${hrChips}
+          ${hrAdd}
         </div>
       </div>
       <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap">
@@ -8964,6 +9127,8 @@ async function renderS360Detail() {
         <button onclick="setSchoolSubMode('tuition')" style="height:28px;padding:0 11px;border:1px solid var(--border);background:var(--surface);border-radius:8px;cursor:pointer;font:600 11px var(--font);color:var(--ink2)">학비 열기 →</button></div>
       ${billRows}
     </div>
+
+    ${s360TimetableCard(d.timetable||[])}
 
     ${s360LogCard('observation', d.observation||[])}
     ${s360AssessmentCard()}
@@ -9214,18 +9379,32 @@ function selectS360(id) { s360Id = id; renderS360List(); renderS360Right(); }
 function setS360Filter(v) { s360Filter = v; renderStudent360(); }
 function setS360Group(v) { s360Group = v; renderStudent360(); }
 
-async function assignHomeroom(studentId, teacherId) {
-  const { error } = await sb.from('members').update({ homeroom_teacher_id: teacherId || null }).eq('id', studentId);
+// 다중 담당교사: junction(student_homerooms) 기반. 단일 컬럼은 첫 담당으로 동기화(하위호환).
+async function syncPrimaryHomeroom(studentId) {
+  const first = (homeroomMap[studentId] || [])[0] || null;
+  await sb.from('members').update({ homeroom_teacher_id: first }).eq('id', studentId).then(()=>{}, ()=>{});
+  const s = schoolStudents.find(x=>x.id===studentId); if (s) s.homeroom_teacher_id = first;
+}
+async function addHomeroom(studentId, teacherId) {
+  if (!teacherId) return;
+  const { error } = await sb.from('student_homerooms').insert({ community_id: CID(), student_id: studentId, teacher_id: teacherId });
   if (error) {
-    const m = (error.message||'') + '';
-    if (m.includes('homeroom_teacher_id') || m.includes('column'))
-      showUploadToast('담당교사 컬럼이 없어요. 학사_담당교사_DB설치.sql 을 먼저 실행해주세요');
-    else showUploadToast('배정 실패: ' + error.message);
-    return;
+    if (schoolTableMissing(error)) { showUploadToast('다중담당 테이블이 없어요. 학사_다중담당_개인시간표_DB설치.sql 을 실행해주세요'); return; }
+    if (!/duplicate|unique/i.test(error.message||'')) { showUploadToast('추가 실패: ' + error.message); return; }
   }
-  const s = schoolStudents.find(x=>x.id===studentId); if (s) s.homeroom_teacher_id = teacherId || null;
-  showUploadToast(teacherId ? `✅ 담당교사: ${s360TeacherName(teacherId)}` : '담당교사 해제됨');
-  renderS360List();
+  const arr = homeroomMap[studentId] = homeroomMap[studentId] || [];
+  if (!arr.includes(teacherId)) arr.push(teacherId);
+  await syncPrimaryHomeroom(studentId);
+  showUploadToast(`✅ 담당 추가: ${s360TeacherName(teacherId)}`);
+  renderS360Detail(); renderS360List();
+}
+async function removeHomeroom(studentId, teacherId) {
+  const { error } = await sb.from('student_homerooms').delete().eq('student_id', studentId).eq('teacher_id', teacherId);
+  if (error) { showUploadToast('해제 실패: ' + error.message); return; }
+  homeroomMap[studentId] = (homeroomMap[studentId] || []).filter(x => x !== teacherId);
+  await syncPrimaryHomeroom(studentId);
+  showUploadToast('담당 해제됨');
+  renderS360Detail(); renderS360List();
 }
 
 async function addStudentLog(kind) {
