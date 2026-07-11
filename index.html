@@ -5558,10 +5558,12 @@ async function renderCommunitySettings() {
   if (!comm) { area.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink3)">공동체 정보를 불러올 수 없어요</div>'; return; }
 
   area.innerHTML = `
-    <div style="max-width:600px">
+    <div style="max-width:1100px;margin:0 auto">
       <div style="font-size:18px;font-weight:700;color:var(--adeep);margin-bottom:6px">⚙️ 공동체 설정</div>
-      <div style="font-size:13px;color:var(--ink3);margin-bottom:24px">공동체의 이름, 로고, 색상을 설정할 수 있어요</div>
+      <div style="font-size:13px;color:var(--ink3);margin-bottom:22px">공동체의 이름, 로고, 색상을 설정할 수 있어요</div>
 
+      <div style="display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap">
+      <div style="flex:1.25 1 420px;min-width:0">
       <!-- 현재 공동체 미리보기 -->
       <div style="background:linear-gradient(135deg,${comm.color||'#1d3a5f'},${comm.color||'#1d3a5f'}cc);border-radius:20px;padding:24px;margin-bottom:24px;display:flex;align-items:center;gap:16px">
         <div id="comm-preview-logo" style="width:64px;height:64px;border-radius:16px;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700;color:white;overflow:hidden;flex-shrink:0">
@@ -5634,7 +5636,9 @@ async function renderCommunitySettings() {
           ✅ 설정 저장하기
         </button>
       </div>
+      </div><!-- /left -->
 
+      <div style="flex:1 1 340px;min-width:0">
       <!-- 기록부 기관 프리셋 -->
       <div style="font-size:14px;font-weight:700;color:var(--adeep);margin:18px 0 8px">🏷️ 기록부 기관 (이름·로고)</div>
       <div style="font-size:12px;color:var(--ink3);margin-bottom:10px">학생 종합기록부 맨 위에 찍을 기관을 2~3개 등록해 두면, 기록부를 만들 때 골라 쓸 수 있어요.</div>
@@ -5655,6 +5659,8 @@ async function renderCommunitySettings() {
         <div style="font-size:13px;font-weight:700;color:#dc2626;margin-bottom:8px">⚠️ 위험 구역</div>
         <div style="font-size:12px;color:var(--ink3);margin-bottom:12px">공동체를 삭제하면 되돌릴 수 없어요. 총관리자에게 요청해주세요.</div>
       </div>
+      </div><!-- /right -->
+      </div><!-- /flex -->
     </div>`;
   renderRecordOrgsAdmin();
 }
@@ -5788,7 +5794,7 @@ async function renderAdminCommunities() {
   const totalPending = (pendingRows || []).length;
 
   area.innerHTML = `
-    <div style="max-width:720px">
+    <div style="max-width:1100px;margin:0 auto">
       ${totalPending ? `<div style="background:#fee2e2;border:1.5px solid #fca5a5;border-radius:12px;padding:12px 15px;margin-bottom:16px;display:flex;align-items:center;gap:10px">
         <span style="font-size:20px">🔔</span>
         <span style="font-size:13.5px;font-weight:700;color:#b91c1c">승인 대기 ${totalPending}명 — 아래 빨간 배지가 있는 공동체의 "멤버 보기"에서 승인하세요</span>
@@ -5821,8 +5827,9 @@ async function renderAdminCommunities() {
 
       <!-- 공동체 목록 -->
       <div style="font-size:13px;font-weight:700;color:var(--ink2);margin-bottom:12px">전체 공동체 (${list.length}개)</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;align-items:start">
       ${list.map(c => `
-        <div class="adm-card" style="border-left:4px solid ${c.color||'#1d3a5f'};margin-bottom:12px">
+        <div class="adm-card" style="border-left:4px solid ${c.color||'#1d3a5f'};margin-bottom:0">
           <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
             <div style="display:flex;align-items:center;gap:12px;flex:1">
               <div style="width:44px;height:44px;border-radius:12px;background:${c.color||'#1d3a5f'};display:flex;align-items:center;justify-content:center;font-size:20px;color:white;font-weight:700;flex-shrink:0">
@@ -5852,6 +5859,7 @@ async function renderAdminCommunities() {
           </div>
         </div>
       `).join('')}
+      </div>
     </div>`;
 
   // 첫 번째 색상 선택 표시
