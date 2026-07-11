@@ -9946,20 +9946,8 @@ function renderWriting() {
           <input id="wr-date" type="date" value="${attTodayStr()}" style="${inp}"/>
         </div>
         <div style="font-size:11.5px;color:var(--ink2);line-height:1.7;margin-bottom:12px;padding:11px 13px;background:var(--asoft);border-radius:9px">
-          📚 <b>이어쓰는 독후감</b> — 책을 먼저 등록하고, <b>읽은 만큼 메모를 이어가면</b> 그 메모들이 모여 한 편의 독후감이 됩니다.
-          아래 질문은 <b>다 읽은 뒤 마무리 정리</b>에 쓰면 좋아요. <b>지금은 비워두고 등록만</b> 해도 됩니다.
+          📚 <b>이어쓰는 독후감</b> — 여기서는 <b>책만 등록</b>하면 돼요. 등록한 뒤 <b>오른쪽 목록에서 책을 눌러</b> 읽은 만큼 메모를 이어가고, 다 읽으면 그 안에서 <b>마무리 정리</b>까지 하면 한 편이 완성됩니다.
         </div>
-        <details style="margin-bottom:8px">
-          <summary style="cursor:pointer;font-size:12.5px;font-weight:700;color:var(--ink2)">✍️ 마무리 정리 (선택 · 다 읽은 뒤)</summary>
-          <div style="margin-top:10px">
-          ${BOOK_QS.map(x=>`
-            <div style="margin-bottom:13px">
-              <div style="font-size:13px;font-weight:700;color:var(--ink);margin-bottom:2px">${x.q}</div>
-              <div style="font-size:11px;color:var(--ink3);margin-bottom:5px">${x.hint}</div>
-              <textarea id="wr-${x.key}" placeholder="여기에 답을 적어보세요" style="${ta};min-height:64px"></textarea>
-            </div>`).join('')}
-          </div>
-        </details>
         <div style="display:flex;justify-content:flex-end;margin-top:4px"><button onclick="addWriting()" style="height:36px;padding:0 18px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 13px var(--font)">＋ 책 등록</button></div>
       </div>
       </div>
@@ -10106,10 +10094,22 @@ function bookNotesSectionHtml(d, key) {
       ${notes.length ? noteItems : '<div style="font-size:12.5px;color:var(--ink3);padding:2px 0 12px">아직 메모가 없어요. 아래에서 읽은 만큼 적어보세요 👇</div>'}
       ${addForm}
     </div>
-    ${d.body ? `<div style="border-top:1px solid var(--border);padding-top:14px">
-      <div style="font-size:12px;font-weight:700;color:var(--ink3);margin-bottom:8px">✍️ 마무리 정리</div>
-      <div style="font-family:'Noto Serif KR',serif;font-size:14.5px;color:var(--ink);line-height:1.95;white-space:pre-wrap">${escHtml(d.body)}</div>
-    </div>` : ''}`;
+    <div style="border-top:1px solid var(--border);padding-top:14px">
+      <div style="font-size:12.5px;font-weight:800;color:var(--ink);margin-bottom:3px">✍️ 마무리 정리 <span style="color:var(--ink3);font-weight:600;font-size:11px">· 다 읽은 뒤 전체 소감</span></div>
+      <div style="font-size:11px;color:var(--ink3);line-height:1.6;margin-bottom:8px">💡 ${escHtml(BOOK_QS.map(x=>x.q).join('  '))}</div>
+      <textarea id="bf-body" placeholder="쌓아온 메모를 바탕으로 전체 독후감을 정리해보세요" style="width:100%;min-height:110px;padding:10px;border:1px solid var(--border);border-radius:9px;font:400 14px var(--font);color:var(--ink);line-height:1.8;resize:vertical">${escHtml(d.body||'')}</textarea>
+      <div style="display:flex;justify-content:flex-end;margin-top:7px"><button onclick="saveBookFinal('${key}')" style="height:32px;padding:0 16px;border:none;background:#2a7a5a;color:#fff;border-radius:8px;cursor:pointer;font:700 12px var(--font)">마무리 저장</button></div>
+    </div>`;
+}
+
+async function saveBookFinal(writingId) {
+  const body = (document.getElementById('bf-body')?.value || '').trim();
+  const { error } = await sb.from('student_writings').update({ body }).eq('id', writingId);
+  if (error) { showUploadToast('저장 실패: ' + error.message); return; }
+  const e = writingEntries.find(x => x.id === writingId); if (e) e.body = body;
+  showUploadToast('✅ 마무리 저장됨');
+  renderWriting();
+  openBookReport('mine', writingId);
 }
 
 async function addBookNote(writingId) {
