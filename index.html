@@ -7774,8 +7774,8 @@ function ttGridHtml(entries, editable) {
   const days = []; for (let d=1; d<=maxDay; d++) days.push(d);
   let minH = 24, maxH = 0;
   entries.forEach(e => { minH = Math.min(minH, Math.floor(ttMin(e.start_time)/60)); maxH = Math.max(maxH, Math.ceil(ttMin(e.end_time)/60)); });
-  if (minH > maxH) { minH = 9; maxH = 18; }
-  minH = Math.min(minH, 9); maxH = Math.max(maxH, 16);
+  if (minH > maxH) { minH = 7; maxH = 18; }
+  minH = Math.min(minH, 7); maxH = Math.max(maxH, 18);
   const PPH = editable ? 70 : 46, HEAD = 32;
   const gridH = (maxH - minH) * PPH;
   const gutterLabels = [];
@@ -7863,10 +7863,10 @@ function renderMyTimetable() {
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:16px">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:9px;flex-wrap:wrap">
         <div style="font-size:12.5px;font-weight:700;color:${sel?'#2a7a5a':'var(--ink)'}">${sel?'✏️ 선택한 일정 수정':'＋ 일정 추가'}</div>
-        <span style="font-size:11px;color:var(--ink3)">${sel?'· 카테고리·요일·시간·내용·<b>장소</b>를 바꾸고 저장하세요':'· <b>표에서 드래그</b>해 등록 · 블록을 <b>드래그해 이동</b> · 클릭 후 <b>Ctrl/⌘+C→V로 복사</b>'}</span>
+        <span style="font-size:11px;color:var(--ink3)">${sel?'· <b>카테고리는 바꾸면 바로 적용</b> · 요일·시간·내용·<b>장소</b>는 고친 뒤 저장':'· <b>표에서 드래그</b>해 등록 · 블록을 <b>드래그해 이동</b> · 클릭 후 <b>Ctrl/⌘+C→V로 복사</b>'}</span>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-        <select id="mtt-kind" onchange="mttKind=this.value" style="${inp}">${kindOpts}</select>
+        <select id="mtt-kind" onchange="${sel?'saveMyTTEdit()':'mttKind=this.value'}" style="${inp}">${kindOpts}</select>
         <select id="mtt-day" style="${inp}">${dayOpts}</select>
         <input id="mtt-start" type="time" value="${fStart}" style="${inp}"/>
         <span style="color:var(--ink3)">~</span>
