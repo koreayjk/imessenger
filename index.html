@@ -7746,6 +7746,7 @@ const TT_COLORS = ['#2a5298','#2a7a5a','#b8860b','#8e44ad','#c0392b','#2a7ab8','
 // 카탈로그 2종: 수업(기존 파란색) / 개인시간(노란색)
 const TT_KINDS = [ {key:'class', label:'수업', color:'#2a5298'}, {key:'personal', label:'개인시간', color:'#d9a441'} ];
 function ttColorForKind(k){ const f = TT_KINDS.find(x=>x.key===k); return f ? f.color : '#2a5298'; }
+function ttKindForColor(c){ const f = TT_KINDS.find(x=>x.color===c); return f ? f.key : 'class'; }
 let myTT = [];
 let mttKind = 'class';   // 입력 폼 선택 카탈로그
 let mttTerm = null;      // 학기: 'YYYY-spring|summer|fall'
@@ -7835,8 +7836,16 @@ function renderMyTimetable() {
   const main = document.getElementById('mytt-main'); if (!main) return;
   const inp = 'height:36px;padding:0 10px;border:1px solid var(--border);border-radius:9px;font:600 13px var(--font);color:var(--ink);background:var(--surface)';
   if (!mttTerm) mttTerm = ttDefaultTerm();
-  const dayOpts = [1,2,3,4,5,6,7].map(d=>`<option value="${d}">${TT_DAYS_FULL[d]}</option>`).join('');
-  const kindOpts = TT_KINDS.map(k=>`<option value="${k.key}" ${mttKind===k.key?'selected':''}>${k.label}</option>`).join('');
+  const shownAll = ttEntriesForTerm(myTT, mttTerm);
+  const sel = ttSelectedId ? shownAll.find(e => e.id === ttSelectedId) : null;   // 선택된 일정(편집 대상)
+  const fKind = sel ? ttKindForColor(sel.color) : mttKind;
+  const fDay = sel ? sel.day : 1;
+  const fStart = sel ? ttFmt(sel.start_time) : '09:00';
+  const fEnd = sel ? ttFmt(sel.end_time) : '10:00';
+  const fSubject = sel ? escAttr(sel.subject || '') : '';
+  const fPlace = sel ? escAttr(sel.place || '') : '';
+  const dayOpts = [1,2,3,4,5,6,7].map(d=>`<option value="${d}" ${d===fDay?'selected':''}>${TT_DAYS_FULL[d]}</option>`).join('');
+  const kindOpts = TT_KINDS.map(k=>`<option value="${k.key}" ${fKind===k.key?'selected':''}>${k.label}</option>`).join('');
   const dot = c => `<span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${c};vertical-align:middle;margin-right:5px"></span>`;
   const navBtn = 'width:30px;height:32px;border:1px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:8px;cursor:pointer;font:700 14px var(--font)';
   const season = ttTermSeason();
@@ -7853,18 +7862,21 @@ function renderMyTimetable() {
     </div>
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:16px">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:9px;flex-wrap:wrap">
-        <div style="font-size:12.5px;font-weight:700;color:var(--ink)">＋ 일정 추가</div>
-        <span style="font-size:11px;color:var(--ink3)">· <b>표에서 드래그</b>해 등록 · 블록을 <b>드래그해 이동</b> · 클릭 후 <b>Ctrl/⌘+C→V로 복사</b></span>
+        <div style="font-size:12.5px;font-weight:700;color:${sel?'#2a7a5a':'var(--ink)'}">${sel?'✏️ 선택한 일정 수정':'＋ 일정 추가'}</div>
+        <span style="font-size:11px;color:var(--ink3)">${sel?'· 카테고리·요일·시간·내용·<b>장소</b>를 바꾸고 저장하세요':'· <b>표에서 드래그</b>해 등록 · 블록을 <b>드래그해 이동</b> · 클릭 후 <b>Ctrl/⌘+C→V로 복사</b>'}</span>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <select id="mtt-kind" onchange="mttKind=this.value" style="${inp}">${kindOpts}</select>
         <select id="mtt-day" style="${inp}">${dayOpts}</select>
-        <input id="mtt-start" type="time" value="09:00" style="${inp}"/>
+        <input id="mtt-start" type="time" value="${fStart}" style="${inp}"/>
         <span style="color:var(--ink3)">~</span>
-        <input id="mtt-end" type="time" value="10:00" style="${inp}"/>
-        <input id="mtt-subject" placeholder="내용 (예: 국어 / 알바)" style="${inp};flex:1;min-width:150px" onkeydown="if(event.key==='Enter')addMyTTEntry()"/>
-        <input id="mtt-place" placeholder="장소(선택)" style="${inp};flex:1;min-width:110px" onkeydown="if(event.key==='Enter')addMyTTEntry()"/>
-        <button onclick="addMyTTEntry()" style="height:36px;padding:0 16px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 13px var(--font)">＋ 추가</button>
+        <input id="mtt-end" type="time" value="${fEnd}" style="${inp}"/>
+        <input id="mtt-subject" value="${fSubject}" placeholder="내용 (예: 국어 / 알바)" style="${inp};flex:1;min-width:150px" onkeydown="if(event.key==='Enter')${sel?'saveMyTTEdit()':'addMyTTEntry()'}"/>
+        <input id="mtt-place" value="${fPlace}" placeholder="장소 (예: 공학관 301)" style="${inp};flex:1;min-width:130px" onkeydown="if(event.key==='Enter')${sel?'saveMyTTEdit()':'addMyTTEntry()'}"/>
+        ${sel
+          ? `<button onclick="saveMyTTEdit()" style="height:36px;padding:0 16px;border:none;background:#2a7a5a;color:#fff;border-radius:9px;cursor:pointer;font:700 13px var(--font)">저장</button>
+             <button onclick="ttDeselect()" style="height:36px;padding:0 13px;border:1px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:9px;cursor:pointer;font:600 13px var(--font)">새 일정</button>`
+          : `<button onclick="addMyTTEntry()" style="height:36px;padding:0 16px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 13px var(--font)">＋ 추가</button>`}
       </div>
     </div>
     ${ttGridHtml(shown, true)}
@@ -7956,7 +7968,25 @@ async function ttInsertEntry(row) {
 async function ttCreateEntry(day, start, end, subject, place, color) {
   if (end <= start) { showUploadToast('시간 범위가 올바르지 않아요'); return; }
   const ok = await ttInsertEntry({ day, start_time: start, end_time: end, subject, place: place || null, color: color || ttColorForKind(mttKind) });
-  if (ok) { showUploadToast('✅ 추가됐어요'); initMyTimetable(); }
+  if (ok) { ttSelectedId = null; showUploadToast('✅ 추가됐어요'); initMyTimetable(); }
+}
+
+function ttDeselect() { ttSelectedId = null; renderMyTimetable(); }
+
+// 선택한 일정 수정 저장 (카테고리·요일·시간·내용·장소)
+async function saveMyTTEdit() {
+  if (!ttSelectedId) { addMyTTEntry(); return; }
+  const kindV = document.getElementById('mtt-kind').value;
+  const day = parseInt(document.getElementById('mtt-day').value) || 1;
+  const start = document.getElementById('mtt-start').value;
+  const end = document.getElementById('mtt-end').value;
+  const subject = (document.getElementById('mtt-subject').value || '').trim();
+  const place = (document.getElementById('mtt-place').value || '').trim();
+  if (!start || !end) { showUploadToast('시간을 입력하세요'); return; }
+  if (end <= start) { showUploadToast('종료가 시작보다 빨라요 — 오전/오후를 확인해주세요'); return; }
+  if (!subject) { showUploadToast('내용(과목명 등)을 입력하세요'); return; }
+  await updateMyTTEntry(ttSelectedId, { day, start_time: start, end_time: end, subject, place: place || null, color: ttColorForKind(kindV) });
+  showUploadToast('✅ 수정됐어요');
 }
 
 async function addMyTTEntry() {
@@ -7969,7 +7999,7 @@ async function addMyTTEntry() {
   if (end <= start) { showUploadToast('종료가 시작보다 빨라요 — 오전/오후를 확인해주세요'); return; }
   if (!subject) { showUploadToast('내용(과목명 등)을 입력하세요'); return; }
   const ok = await ttInsertEntry({ day, start_time: start, end_time: end, subject, place, color: ttColorForKind(mttKind) });
-  if (ok) { showUploadToast('✅ 추가됐어요'); initMyTimetable(); }
+  if (ok) { ttSelectedId = null; showUploadToast('✅ 추가됐어요'); initMyTimetable(); }
 }
 
 // ── 마우스 hover: 정확한 시각 표시 ──
