@@ -7772,7 +7772,7 @@ function ttGridHtml(entries, editable) {
       const top = (ttMin(e.start_time) - minH*60)/60*PPH;
       const h = Math.max(22, (ttMin(e.end_time) - ttMin(e.start_time))/60*PPH);
       const col = e.color || TT_COLORS[Math.floor(ttMin(e.start_time)/30) % TT_COLORS.length];
-      return `<div style="position:absolute;top:${top}px;height:${h}px;left:3px;right:3px;background:${col};color:#fff;border-radius:7px;padding:4px 6px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.15)">
+      return `<div class="tt-block" style="position:absolute;top:${top}px;height:${h}px;left:3px;right:3px;background:${col};color:#fff;border-radius:7px;padding:4px 6px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.15)">
         <div style="font-weight:800;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(e.subject||'수업')}</div>
         ${e.place?`<div style="opacity:.92;font-size:9.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(e.place)}</div>`:''}
         <div style="opacity:.85;font-size:9px">${ttFmt(e.start_time)}~${ttFmt(e.end_time)}</div>
@@ -7781,7 +7781,7 @@ function ttGridHtml(entries, editable) {
     }).join('');
     return `<div style="flex:1;min-width:0;border-left:1px solid var(--border)">
       <div style="height:${HEAD}px;line-height:${HEAD}px;text-align:center;font-size:11.5px;font-weight:700;color:var(--ink2);border-bottom:1px solid var(--border)">${TT_DAYS_FULL[d]}</div>
-      <div ${editable?`onclick="ttCellClick(event,${d},${minH},${PPH})"`:''} style="position:relative;height:${gridH}px;${bg};${editable?'cursor:pointer':''}">${items}</div>
+      <div ${editable?`onmousedown="ttDragStart(event,${d},${minH},${PPH})"`:''} style="position:relative;height:${gridH}px;${bg};${editable?'cursor:crosshair;user-select:none':''}">${items}</div>
     </div>`;
   }).join('');
   return `<div style="overflow-x:auto"><div style="display:flex;min-width:${maxDay*88+32}px;background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden">
@@ -7824,7 +7824,7 @@ function renderMyTimetable() {
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:16px">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:9px;flex-wrap:wrap">
         <div style="font-size:12.5px;font-weight:700;color:var(--ink)">＋ 일정 추가</div>
-        <span style="font-size:11px;color:var(--ink3)">· 아래 <b>표의 빈 칸을 클릭</b>하면 요일·시간이 자동으로 채워져요</span>
+        <span style="font-size:11px;color:var(--ink3)">· 아래 <b>표에서 마우스로 드래그</b>하면 바로 등록돼요 (짧게 클릭하면 시간만 채움)</span>
         <div style="flex:1"></div>
         <span style="font-size:11.5px;color:var(--ink3)">${dot(TT_KINDS[0].color)}수업 &nbsp; ${dot(TT_KINDS[1].color)}개인시간</span>
       </div>
@@ -7843,17 +7843,85 @@ function renderMyTimetable() {
   </div>`;
 }
 
-// 표의 빈 칸을 클릭하면 요일·시간을 폼에 자동으로 채워줌 (오전/오후 혼동 방지)
-function ttCellClick(ev, day, minH, pph) {
-  const rect = ev.currentTarget.getBoundingClientRect();
-  const y = ev.clientY - rect.top;
-  let hour = minH + Math.floor(y / pph);
-  hour = Math.max(0, Math.min(hour, 22));
-  const z = n => String(n).padStart(2,'0');
-  const dEl = document.getElementById('mtt-day'); if (dEl) dEl.value = day;
-  const s = document.getElementById('mtt-start'); if (s) s.value = `${z(hour)}:00`;
-  const e = document.getElementById('mtt-end'); if (e) e.value = `${z(Math.min(hour+1,23))}:00`;
-  const subj = document.getElementById('mtt-subject'); if (subj) subj.focus();
+// ── 마우스 드래그로 시간표 등록 (에브리타임 스타일) ──
+let ttDrag = null;
+function ttSnap(m){ return Math.round(m/5)*5; }
+function ttMinToStr(m){ m=Math.max(0,Math.min(m,24*60)); return `${String(Math.floor(m/60)).padStart(2,'0')}:${String(m%60).padStart(2,'0')}`; }
+
+function ttDragStart(ev, day, minH, pph) {
+  if (ev.button !== 0) return;
+  if (ev.target.closest && ev.target.closest('.tt-block')) return;  // 기존 블록/삭제버튼은 드래그 시작 안 함
+  ev.preventDefault();
+  const col = ev.currentTarget;
+  const rect = col.getBoundingClientRect();
+  const startY = Math.max(0, Math.min(ev.clientY - rect.top, col.clientHeight));
+  const color = ttColorForKind(mttKind);
+  const preview = document.createElement('div');
+  preview.className = 'tt-preview';
+  preview.style.cssText = `position:absolute;left:3px;right:3px;top:${startY}px;height:2px;background:${color};opacity:.55;border-radius:7px;z-index:6;overflow:hidden`;
+  col.appendChild(preview);
+  ttDrag = { day, minH, pph, col, rect, startY, preview, gridH: col.clientHeight, color, curTop: startY, curH: 0, done: false };
+  document.addEventListener('mousemove', ttDragMove);
+  document.addEventListener('mouseup', ttDragEnd);
+}
+function ttDragTimes() {
+  const sMin = ttSnap(ttDrag.minH*60 + ttDrag.curTop / ttDrag.pph * 60);
+  const eMin = ttSnap(ttDrag.minH*60 + (ttDrag.curTop + ttDrag.curH) / ttDrag.pph * 60);
+  return [ttMinToStr(sMin), ttMinToStr(eMin)];
+}
+function ttDragMove(ev) {
+  if (!ttDrag) return;
+  let y = Math.max(0, Math.min(ev.clientY - ttDrag.rect.top, ttDrag.gridH));
+  ttDrag.curTop = Math.min(ttDrag.startY, y);
+  ttDrag.curH = Math.abs(y - ttDrag.startY);
+  ttDrag.preview.style.top = ttDrag.curTop + 'px';
+  ttDrag.preview.style.height = Math.max(2, ttDrag.curH) + 'px';
+  const [s,e] = ttDragTimes();
+  ttDrag.preview.innerHTML = `<div style="font-size:10px;color:#fff;font-weight:800;padding:2px 5px">${s}~${e}</div>`;
+}
+function ttDragEnd() {
+  document.removeEventListener('mousemove', ttDragMove);
+  document.removeEventListener('mouseup', ttDragEnd);
+  if (!ttDrag) return;
+  const dg = ttDrag;
+  // 짧은 클릭 → 그 시각으로 폼만 채움
+  if (dg.curH < 12) {
+    dg.preview.remove();
+    const hour = Math.max(0, Math.min(dg.minH + Math.floor(dg.curTop / dg.pph), 22));
+    const z = n => String(n).padStart(2,'0');
+    const dEl = document.getElementById('mtt-day'); if (dEl) dEl.value = dg.day;
+    const s = document.getElementById('mtt-start'); if (s) s.value = `${z(hour)}:00`;
+    const e = document.getElementById('mtt-end'); if (e) e.value = `${z(Math.min(hour+1,23))}:00`;
+    const subj = document.getElementById('mtt-subject'); if (subj) subj.focus();
+    ttDrag = null; return;
+  }
+  // 드래그 → 인라인 이름 입력 후 등록
+  const [st, en] = ttDragTimes();
+  const day = dg.day;
+  dg.preview.style.opacity = '.95';
+  dg.preview.innerHTML = `<div style="font-size:9px;color:#fff;font-weight:700;padding:2px 5px 0">${st}~${en}</div><input class="tt-newsubj" placeholder="이름 입력 후 Enter" style="width:100%;height:22px;border:none;background:transparent;color:#fff;font:700 11px var(--font);padding:0 5px;outline:none"/>`;
+  const input = dg.preview.querySelector('.tt-newsubj');
+  const finish = async (save) => {
+    if (dg.done) return; dg.done = true;
+    const val = (input.value || '').trim();
+    dg.preview.remove();
+    if (save && val) await ttCreateEntry(day, st, en, val);
+  };
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+    else if (e.key === 'Escape') { finish(false); }
+  });
+  input.addEventListener('blur', () => finish(true));
+  input.focus();
+  ttDrag = null;   // 이동 종료 (인라인 입력은 dg로 처리)
+}
+async function ttCreateEntry(day, start, end, subject, place) {
+  if (end <= start) { showUploadToast('시간 범위가 올바르지 않아요'); return; }
+  const color = ttColorForKind(mttKind);
+  const { error } = await sb.from('student_timetables').insert({ member_id: ME.id, community_id: CID(), day, start_time: start, end_time: end, subject, place: place || null, color });
+  if (error) { if (schoolTableMissing(error)) { document.getElementById('mytt-main').innerHTML = myTTSetupHtml(); return; } showUploadToast('추가 실패: ' + error.message); return; }
+  showUploadToast('✅ 추가됐어요');
+  initMyTimetable();
 }
 
 async function addMyTTEntry() {
