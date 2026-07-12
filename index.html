@@ -7748,6 +7748,19 @@ const TT_KINDS = [ {key:'class', label:'수업', color:'#2a5298'}, {key:'persona
 function ttColorForKind(k){ const f = TT_KINDS.find(x=>x.key===k); return f ? f.color : '#2a5298'; }
 let myTT = [];
 let mttKind = 'class';   // 입력 폼 선택 카탈로그
+let mttTerm = null;      // 학기: 'YYYY-spring|summer|fall'
+let ttSelectedId = null; // 선택된 블록
+let ttClipboard = null;  // 복사한 블록
+let ttLastHover = null;  // 마지막 마우스 위치 {day, minutes}
+
+const TT_SEASONS = [ {key:'spring',label:'봄'}, {key:'summer',label:'여름'}, {key:'fall',label:'가을'} ];
+function ttDefaultTerm(){ const d=new Date(); const m=d.getMonth()+1; const s = m<=5?'spring':(m<=8?'summer':'fall'); return `${d.getFullYear()}-${s}`; }
+function ttTermYear(){ return parseInt((mttTerm||ttDefaultTerm()).split('-')[0]); }
+function ttTermSeason(){ return (mttTerm||ttDefaultTerm()).split('-')[1]; }
+function ttTermLabel(t){ if(!t) return ''; const [y,s]=t.split('-'); const f=TT_SEASONS.find(x=>x.key===s); return `${y} ${f?f.label:''}학기`; }
+function shiftMttYear(d){ mttTerm = `${ttTermYear()+d}-${ttTermSeason()}`; ttSelectedId=null; renderMyTimetable(); }
+function setMttSeason(s){ mttTerm = `${ttTermYear()}-${s}`; ttSelectedId=null; renderMyTimetable(); }
+function ttEntriesForTerm(list, term){ return (list||[]).filter(e => (e.term || ttDefaultTerm()) === term); }
 
 function ttMin(hhmm){ const p=(hhmm||'').split(':'); return (Number(p[0])||0)*60 + (Number(p[1])||0); }
 function ttFmt(hhmm){ return (hhmm||'').slice(0,5); }
@@ -7762,30 +7775,32 @@ function ttGridHtml(entries, editable) {
   entries.forEach(e => { minH = Math.min(minH, Math.floor(ttMin(e.start_time)/60)); maxH = Math.max(maxH, Math.ceil(ttMin(e.end_time)/60)); });
   if (minH > maxH) { minH = 9; maxH = 18; }
   minH = Math.min(minH, 9); maxH = Math.max(maxH, 16);
-  const PPH = editable ? 52 : 40, HEAD = 30;
+  const PPH = editable ? 70 : 46, HEAD = 32;
   const gridH = (maxH - minH) * PPH;
   const gutterLabels = [];
-  for (let h=minH; h<=maxH; h++) gutterLabels.push(`<span style="position:absolute;top:${(h-minH)*PPH - 6}px;right:4px;font-size:10px;color:var(--ink3)">${h}</span>`);
-  const bg = `background-image:repeating-linear-gradient(to bottom, var(--border) 0, var(--border) 1px, transparent 1px, transparent ${PPH}px)`;
+  for (let h=minH; h<=maxH; h++) gutterLabels.push(`<span style="position:absolute;top:${(h-minH)*PPH - 6}px;right:5px;font-size:10.5px;color:var(--ink3)">${h}</span>`);
+  // 30분 보조선 + 정시선
+  const bg = `background-image:repeating-linear-gradient(to bottom, var(--border) 0, var(--border) 1px, transparent 1px, transparent ${PPH}px), repeating-linear-gradient(to bottom, transparent 0, transparent ${PPH/2}px, var(--s2) ${PPH/2}px, var(--s2) ${PPH/2+1}px, transparent ${PPH/2+1}px, transparent ${PPH}px)`;
   const dayCols = days.map(d => {
     const items = entries.filter(e => e.day === d).map(e => {
       const top = (ttMin(e.start_time) - minH*60)/60*PPH;
-      const h = Math.max(22, (ttMin(e.end_time) - ttMin(e.start_time))/60*PPH);
+      const h = Math.max(24, (ttMin(e.end_time) - ttMin(e.start_time))/60*PPH);
       const col = e.color || TT_COLORS[Math.floor(ttMin(e.start_time)/30) % TT_COLORS.length];
-      return `<div class="tt-block" style="position:absolute;top:${top}px;height:${h}px;left:3px;right:3px;background:${col};color:#fff;border-radius:7px;padding:4px 6px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.15)">
-        <div style="font-weight:800;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(e.subject||'수업')}</div>
-        ${e.place?`<div style="opacity:.92;font-size:9.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(e.place)}</div>`:''}
-        <div style="opacity:.85;font-size:9px">${ttFmt(e.start_time)}~${ttFmt(e.end_time)}</div>
-        ${editable?`<b onclick="event.stopPropagation();deleteMyTTEntry('${e.id}')" title="삭제" style="position:absolute;top:2px;right:4px;cursor:pointer;font-size:11px;opacity:.9">✕</b>`:''}
+      const sel = editable && e.id === ttSelectedId;
+      return `<div class="tt-block" data-id="${e.id}" ${editable?`onmousedown="ttBlockDown(event,'${e.id}')"`:''} style="position:absolute;top:${top}px;height:${h}px;left:3px;right:3px;background:${col};color:#fff;border-radius:7px;padding:5px 7px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.18);${editable?'cursor:grab;':''}${sel?'outline:3px solid #16304f;outline-offset:1px;box-shadow:0 4px 14px rgba(0,0,0,.35);':''}">
+        <div style="font-weight:800;font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(e.subject||'수업')}</div>
+        ${e.place?`<div style="opacity:.92;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(e.place)}</div>`:''}
+        <div style="opacity:.85;font-size:9.5px">${ttFmt(e.start_time)}~${ttFmt(e.end_time)}</div>
+        ${editable?`<b onmousedown="event.stopPropagation()" onclick="event.stopPropagation();deleteMyTTEntry('${e.id}')" title="삭제" style="position:absolute;top:2px;right:5px;cursor:pointer;font-size:12px;opacity:.9">✕</b>`:''}
       </div>`;
     }).join('');
     return `<div style="flex:1;min-width:0;border-left:1px solid var(--border)">
-      <div style="height:${HEAD}px;line-height:${HEAD}px;text-align:center;font-size:11.5px;font-weight:700;color:var(--ink2);border-bottom:1px solid var(--border)">${TT_DAYS_FULL[d]}</div>
-      <div ${editable?`onmousedown="ttDragStart(event,${d},${minH},${PPH})"`:''} style="position:relative;height:${gridH}px;${bg};${editable?'cursor:crosshair;user-select:none':''}">${items}</div>
+      <div style="height:${HEAD}px;line-height:${HEAD}px;text-align:center;font-size:12.5px;font-weight:700;color:var(--ink2);border-bottom:1px solid var(--border)">${TT_DAYS_FULL[d]}</div>
+      <div class="tt-col" data-day="${d}" data-minh="${minH}" data-pph="${PPH}" ${editable?`onmousedown="ttDragStart(event,${d},${minH},${PPH})" onmousemove="ttHover(event,${minH},${PPH})" onmouseleave="ttHoverOut()"`:''} style="position:relative;height:${gridH}px;${bg};${editable?'cursor:crosshair;user-select:none':''}">${items}</div>
     </div>`;
   }).join('');
-  return `<div style="overflow-x:auto"><div style="display:flex;min-width:${maxDay*88+32}px;background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden">
-    <div style="width:30px;flex-shrink:0">
+  return `<div style="overflow-x:auto"><div style="display:flex;min-width:${maxDay*120+34}px;background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden">
+    <div style="width:34px;flex-shrink:0">
       <div style="height:${HEAD}px;border-bottom:1px solid var(--border)"></div>
       <div style="position:relative;height:${gridH}px">${gutterLabels.join('')}</div>
     </div>
@@ -7800,6 +7815,8 @@ function myTTSetupHtml() {
 async function initMyTimetable() {
   const sn = document.getElementById('subnav-mytt');
   if (sn) sn.innerHTML = isTeacher() ? '' : tcsSubnavHtml('mytt');
+  if (!mttTerm) mttTerm = ttDefaultTerm();
+  ttBindKeys();
   const main = document.getElementById('mytt-main');
   if (main) main.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink3);font-size:13px">불러오는 중...</div>';
   try {
@@ -7817,16 +7834,27 @@ async function initMyTimetable() {
 function renderMyTimetable() {
   const main = document.getElementById('mytt-main'); if (!main) return;
   const inp = 'height:36px;padding:0 10px;border:1px solid var(--border);border-radius:9px;font:600 13px var(--font);color:var(--ink);background:var(--surface)';
+  if (!mttTerm) mttTerm = ttDefaultTerm();
   const dayOpts = [1,2,3,4,5,6,7].map(d=>`<option value="${d}">${TT_DAYS_FULL[d]}</option>`).join('');
   const kindOpts = TT_KINDS.map(k=>`<option value="${k.key}" ${mttKind===k.key?'selected':''}>${k.label}</option>`).join('');
   const dot = c => `<span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${c};vertical-align:middle;margin-right:5px"></span>`;
-  main.innerHTML = `<div style="max-width:980px;margin:0 auto">
+  const navBtn = 'width:30px;height:32px;border:1px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:8px;cursor:pointer;font:700 14px var(--font)';
+  const season = ttTermSeason();
+  const seasonBtns = TT_SEASONS.map(s=>`<button onclick="setMttSeason('${s.key}')" style="height:32px;padding:0 14px;border:1px solid ${season===s.key?'#1d3a5f':'var(--border)'};border-radius:9px;cursor:pointer;font:700 12.5px var(--font);background:${season===s.key?'#1d3a5f':'var(--surface)'};color:${season===s.key?'#fff':'var(--ink2)'}">${s.label}학기</button>`).join('');
+  const shown = ttEntriesForTerm(myTT, mttTerm);
+  main.innerHTML = `<div style="max-width:1200px;margin:0 auto">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+      <button onclick="shiftMttYear(-1)" style="${navBtn}">◀</button>
+      <span style="font-size:15px;font-weight:800;color:var(--ink);min-width:52px;text-align:center">${ttTermYear()}</span>
+      <button onclick="shiftMttYear(1)" style="${navBtn}">▶</button>
+      <div style="display:flex;gap:6px;margin-left:6px">${seasonBtns}</div>
+      <div style="flex:1"></div>
+      <span style="font-size:12px;color:var(--ink3)">${dot(TT_KINDS[0].color)}수업 &nbsp; ${dot(TT_KINDS[1].color)}개인시간</span>
+    </div>
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:16px">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:9px;flex-wrap:wrap">
         <div style="font-size:12.5px;font-weight:700;color:var(--ink)">＋ 일정 추가</div>
-        <span style="font-size:11px;color:var(--ink3)">· 아래 <b>표에서 마우스로 드래그</b>하면 바로 등록돼요 (짧게 클릭하면 시간만 채움)</span>
-        <div style="flex:1"></div>
-        <span style="font-size:11.5px;color:var(--ink3)">${dot(TT_KINDS[0].color)}수업 &nbsp; ${dot(TT_KINDS[1].color)}개인시간</span>
+        <span style="font-size:11px;color:var(--ink3)">· <b>표에서 드래그</b>해 등록 · 블록을 <b>드래그해 이동</b> · 클릭 후 <b>Ctrl/⌘+C→V로 복사</b></span>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <select id="mtt-kind" onchange="mttKind=this.value" style="${inp}">${kindOpts}</select>
@@ -7839,7 +7867,7 @@ function renderMyTimetable() {
         <button onclick="addMyTTEntry()" style="height:36px;padding:0 16px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 13px var(--font)">＋ 추가</button>
       </div>
     </div>
-    ${ttGridHtml(myTT, true)}
+    ${ttGridHtml(shown, true)}
   </div>`;
 }
 
@@ -7915,13 +7943,20 @@ function ttDragEnd() {
   input.focus();
   ttDrag = null;   // 이동 종료 (인라인 입력은 dg로 처리)
 }
-async function ttCreateEntry(day, start, end, subject, place) {
+async function ttInsertEntry(row) {
+  row = { member_id: ME.id, community_id: CID(), term: mttTerm, ...row };
+  let { error } = await sb.from('student_timetables').insert(row);
+  if (error && /term|column|schema/i.test(error.message || '')) { // term 컬럼 없으면 제외하고 재시도
+    const r2 = { ...row }; delete r2.term;
+    const rr = await sb.from('student_timetables').insert(r2); error = rr.error;
+  }
+  if (error) { if (schoolTableMissing(error)) { document.getElementById('mytt-main').innerHTML = myTTSetupHtml(); return false; } showUploadToast('추가 실패: ' + error.message); return false; }
+  return true;
+}
+async function ttCreateEntry(day, start, end, subject, place, color) {
   if (end <= start) { showUploadToast('시간 범위가 올바르지 않아요'); return; }
-  const color = ttColorForKind(mttKind);
-  const { error } = await sb.from('student_timetables').insert({ member_id: ME.id, community_id: CID(), day, start_time: start, end_time: end, subject, place: place || null, color });
-  if (error) { if (schoolTableMissing(error)) { document.getElementById('mytt-main').innerHTML = myTTSetupHtml(); return; } showUploadToast('추가 실패: ' + error.message); return; }
-  showUploadToast('✅ 추가됐어요');
-  initMyTimetable();
+  const ok = await ttInsertEntry({ day, start_time: start, end_time: end, subject, place: place || null, color: color || ttColorForKind(mttKind) });
+  if (ok) { showUploadToast('✅ 추가됐어요'); initMyTimetable(); }
 }
 
 async function addMyTTEntry() {
@@ -7933,11 +7968,96 @@ async function addMyTTEntry() {
   if (!start || !end) { showUploadToast('시간을 입력하세요'); return; }
   if (end <= start) { showUploadToast('종료가 시작보다 빨라요 — 오전/오후를 확인해주세요'); return; }
   if (!subject) { showUploadToast('내용(과목명 등)을 입력하세요'); return; }
-  const color = ttColorForKind(mttKind);
-  const { error } = await sb.from('student_timetables').insert({ member_id: ME.id, community_id: CID(), day, start_time: start, end_time: end, subject, place, color });
-  if (error) { if (schoolTableMissing(error)) { document.getElementById('mytt-main').innerHTML = myTTSetupHtml(); return; } showUploadToast('추가 실패: ' + error.message); return; }
-  showUploadToast('✅ 추가됐어요');
-  initMyTimetable();
+  const ok = await ttInsertEntry({ day, start_time: start, end_time: end, subject, place, color: ttColorForKind(mttKind) });
+  if (ok) { showUploadToast('✅ 추가됐어요'); initMyTimetable(); }
+}
+
+// ── 마우스 hover: 정확한 시각 표시 ──
+function ttHover(ev, minH, pph) {
+  if (ttDrag || ttMove) return;
+  const col = ev.currentTarget; const rect = col.getBoundingClientRect();
+  const y = Math.max(0, Math.min(ev.clientY - rect.top, col.clientHeight));
+  const m = ttSnap(minH*60 + y / pph * 60);
+  ttLastHover = { day: Number(col.dataset.day), minutes: m };
+  let tip = document.getElementById('tt-tip');
+  if (!tip) { tip = document.createElement('div'); tip.id = 'tt-tip'; tip.style.cssText = 'position:fixed;z-index:9999;background:#16304f;color:#fff;font:800 11.5px var(--font);padding:3px 8px;border-radius:6px;pointer-events:none;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.3)'; document.body.appendChild(tip); }
+  tip.textContent = ttMinToStr(m);
+  tip.style.left = (ev.clientX + 14) + 'px'; tip.style.top = (ev.clientY - 8) + 'px'; tip.style.display = 'block';
+}
+function ttHoverOut() { const t = document.getElementById('tt-tip'); if (t) t.style.display = 'none'; }
+
+// ── 기존 블록: 클릭 선택 / 드래그 이동 ──
+let ttMove = null;
+function ttSelect(id) { ttSelectedId = (ttSelectedId === id ? null : id); renderMyTimetable(); }
+function ttBlockDown(ev, id) {
+  if (ev.button !== 0) return;
+  if (ev.target.tagName === 'B') return;   // 삭제 ✕ 는 이동 시작 안 함
+  ev.preventDefault(); ev.stopPropagation();
+  const entry = myTT.find(e => e.id === id); if (!entry) return;
+  const cols = Array.from(document.querySelectorAll('.tt-col')).map(c => ({ el:c, rect:c.getBoundingClientRect(), day:Number(c.dataset.day), minH:Number(c.dataset.minh), pph:Number(c.dataset.pph), gridH:c.clientHeight }));
+  ttMove = { id, entry, cols, startX:ev.clientX, startY:ev.clientY, moved:false, dur: ttMin(entry.end_time)-ttMin(entry.start_time), target:null };
+  document.addEventListener('mousemove', ttMoveMove);
+  document.addEventListener('mouseup', ttMoveEnd);
+}
+function ttMoveMove(ev) {
+  if (!ttMove) return;
+  if (!ttMove.moved) { if (Math.abs(ev.clientX-ttMove.startX)+Math.abs(ev.clientY-ttMove.startY) < 5) return; ttMove.moved = true; ttHoverOut(); }
+  const col = ttMove.cols.find(c => ev.clientX>=c.rect.left && ev.clientX<=c.rect.right) || ttMove.cols[0];
+  const y = Math.max(0, Math.min(ev.clientY - col.rect.top, col.gridH));
+  let startMin = ttSnap(col.minH*60 + y / col.pph * 60);
+  const maxMin = Math.round(col.minH*60 + col.gridH / col.pph * 60);
+  if (startMin + ttMove.dur > maxMin) startMin = maxMin - ttMove.dur;
+  if (startMin < col.minH*60) startMin = col.minH*60;
+  ttMove.target = { day: col.day, startMin };
+  let prev = document.getElementById('tt-mvprev');
+  if (!prev) { prev = document.createElement('div'); prev.id = 'tt-mvprev'; }
+  if (prev.parentNode !== col.el) col.el.appendChild(prev);
+  const top = (startMin - col.minH*60)/60*col.pph, h = ttMove.dur/60*col.pph;
+  prev.style.cssText = `position:absolute;left:3px;right:3px;top:${top}px;height:${h}px;background:${ttMove.entry.color||'#2a5298'};opacity:.72;border:2px dashed #fff;border-radius:7px;color:#fff;font:800 10px var(--font);padding:4px 6px;z-index:8;pointer-events:none`;
+  prev.innerHTML = `${escHtml(ttMove.entry.subject||'')}<br>${ttMinToStr(startMin)}~${ttMinToStr(startMin+ttMove.dur)}`;
+}
+function ttMoveEnd() {
+  document.removeEventListener('mousemove', ttMoveMove);
+  document.removeEventListener('mouseup', ttMoveEnd);
+  const mv = ttMove; ttMove = null;
+  const prev = document.getElementById('tt-mvprev'); if (prev) prev.remove();
+  if (!mv) return;
+  if (!mv.moved) { ttSelect(mv.id); return; }   // 클릭 = 선택
+  if (!mv.target) return;
+  const s = ttMinToStr(mv.target.startMin), e = ttMinToStr(mv.target.startMin + mv.dur);
+  updateMyTTEntry(mv.id, { day: mv.target.day, start_time: s, end_time: e });
+}
+async function updateMyTTEntry(id, patch) {
+  const { error } = await sb.from('student_timetables').update(patch).eq('id', id);
+  if (error) { showUploadToast('이동 실패: ' + error.message); return; }
+  const e = myTT.find(x => x.id === id); if (e) Object.assign(e, patch);
+  renderMyTimetable();
+}
+
+// ── 복사/붙여넣기/삭제 키 ──
+function ttBindKeys() { if (window._ttKeyBound) return; window._ttKeyBound = true; document.addEventListener('keydown', ttKey); }
+function ttKey(ev) {
+  if (mode !== 'mytt') return;
+  const t = ev.target; if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
+  const meta = ev.metaKey || ev.ctrlKey;
+  if (meta && (ev.key === 'c' || ev.key === 'C')) {
+    if (ttSelectedId) { const e = myTT.find(x => x.id === ttSelectedId); if (e) { ttClipboard = { subject:e.subject, place:e.place, day:e.day, start_time:e.start_time, end_time:e.end_time, color:e.color }; showUploadToast('📋 복사됨 — 붙일 칸에 마우스 올리고 ⌘/Ctrl+V'); ev.preventDefault(); } }
+  } else if (meta && (ev.key === 'v' || ev.key === 'V')) {
+    if (ttClipboard) { ttPaste(); ev.preventDefault(); }
+  } else if (ev.key === 'Delete' || ev.key === 'Backspace') {
+    if (ttSelectedId) { ev.preventDefault(); const id = ttSelectedId; ttSelectedId = null; sbDeleteTT(id); }
+  }
+}
+async function sbDeleteTT(id) {
+  const { error } = await sb.from('student_timetables').delete().eq('id', id);
+  if (error) { showUploadToast('삭제 실패: ' + error.message); return; }
+  myTT = myTT.filter(e => e.id !== id); renderMyTimetable();
+}
+async function ttPaste() {
+  const c = ttClipboard; const dur = ttMin(c.end_time) - ttMin(c.start_time);
+  let day = c.day, startMin = ttMin(c.start_time);
+  if (ttLastHover) { day = ttLastHover.day; startMin = ttLastHover.minutes; }
+  await ttCreateEntry(day, ttMinToStr(startMin), ttMinToStr(startMin + dur), c.subject, c.place, c.color);
 }
 
 async function deleteMyTTEntry(id) {
@@ -7948,14 +8068,20 @@ async function deleteMyTTEntry(id) {
   renderMyTimetable();
 }
 
-// 교사·관리자: 학생 상세에 표시할 개인 시간표 카드
+// 교사·관리자: 학생 상세에 표시할 개인 시간표 카드 (최근 학기 기준)
 function s360TimetableCard(entries) {
+  entries = entries || [];
+  // 학기별 그룹 → 가장 최근 학기 표시
+  const terms = [...new Set(entries.map(e => e.term || ttDefaultTerm()))].sort().reverse();
+  const term = terms[0] || ttDefaultTerm();
+  const shown = entries.filter(e => (e.term || ttDefaultTerm()) === term);
   return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin-bottom:14px">
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
       <div style="font-size:14px;font-weight:700;color:var(--ink)">🗓 개인 시간표</div>
-      <span style="font-size:11px;color:var(--ink3)">학생이 등록한 수업 시간표</span>
+      ${entries.length?`<span style="font-size:11px;font-weight:700;color:#1d3a5f;background:var(--asoft);padding:2px 9px;border-radius:6px">${ttTermLabel(term)}</span>`:''}
+      <span style="font-size:11px;color:var(--ink3)">학생이 등록한 시간표</span>
     </div>
-    ${ttGridHtml(entries||[], false)}
+    ${ttGridHtml(shown, false)}
   </div>`;
 }
 

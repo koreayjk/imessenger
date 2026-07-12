@@ -38,8 +38,11 @@ create table if not exists public.student_timetables (
   subject      text,                 -- 과목/수업명
   place        text,                 -- 강의실/장소
   color        text,
+  term         text,                 -- 학기: 'YYYY-spring|summer|fall'
   created_at   timestamptz default now()
 );
+-- 이미 있던 경우 학기 컬럼 보강
+alter table public.student_timetables add column if not exists term text;
 create index if not exists idx_stt_member on public.student_timetables (member_id, day);
 
 alter table public.student_timetables enable row level security;
