@@ -36,4 +36,7 @@ create policy booknotes_insert on public.book_report_notes for insert to authent
 create policy booknotes_update on public.book_report_notes for update to authenticated using (member_id = auth.uid());
 create policy booknotes_delete on public.book_report_notes for delete to authenticated using (member_id = auth.uid());
 
+-- 마무리 정리의 질문별 답변 저장(재편집 시 각 칸 복원용). 없어도 body로 동작.
+alter table public.student_writings add column if not exists final_answers text;
+
 NOTIFY pgrst, 'reload schema';
