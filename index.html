@@ -7792,7 +7792,9 @@ function ttGridHtml(entries, editable) {
         <div style="font-weight:800;font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(e.subject||'수업')}</div>
         ${e.place?`<div style="opacity:.92;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(e.place)}</div>`:''}
         <div style="opacity:.85;font-size:9.5px">${ttFmt(e.start_time)}~${ttFmt(e.end_time)}</div>
-        ${editable?`<b onmousedown="event.stopPropagation()" onclick="event.stopPropagation();deleteMyTTEntry('${e.id}')" title="삭제" style="position:absolute;top:2px;right:5px;cursor:pointer;font-size:12px;opacity:.9">✕</b>`:''}
+        ${editable?`<b onmousedown="event.stopPropagation()" onclick="event.stopPropagation();deleteMyTTEntry('${e.id}')" title="삭제" style="position:absolute;top:2px;right:5px;cursor:pointer;font-size:12px;opacity:.9;z-index:5">✕</b>
+        <div onmousedown="ttResizeDown(event,'${e.id}','top')" title="시작 시간 조절" style="position:absolute;top:0;left:0;right:0;height:8px;cursor:ns-resize;z-index:3"></div>
+        <div onmousedown="ttResizeDown(event,'${e.id}','bottom')" title="종료 시간 조절" style="position:absolute;bottom:0;left:0;right:0;height:8px;cursor:ns-resize;z-index:3"></div>`:''}
       </div>`;
     }).join('');
     return `<div style="flex:1;min-width:0;border-left:1px solid var(--border)">
@@ -7851,35 +7853,43 @@ function renderMyTimetable() {
   const season = ttTermSeason();
   const seasonBtns = TT_SEASONS.map(s=>`<button onclick="setMttSeason('${s.key}')" style="height:32px;padding:0 14px;border:1px solid ${season===s.key?'#1d3a5f':'var(--border)'};border-radius:9px;cursor:pointer;font:700 12.5px var(--font);background:${season===s.key?'#1d3a5f':'var(--surface)'};color:${season===s.key?'#fff':'var(--ink2)'}">${s.label}학기</button>`).join('');
   const shown = ttEntriesForTerm(myTT, mttTerm);
-  main.innerHTML = `<div style="max-width:1200px;margin:0 auto">
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap">
-      <button onclick="shiftMttYear(-1)" style="${navBtn}">◀</button>
-      <span style="font-size:15px;font-weight:800;color:var(--ink);min-width:52px;text-align:center">${ttTermYear()}</span>
-      <button onclick="shiftMttYear(1)" style="${navBtn}">▶</button>
-      <div style="display:flex;gap:6px;margin-left:6px">${seasonBtns}</div>
-      <div style="flex:1"></div>
-      <span style="font-size:12px;color:var(--ink3)">${dot(TT_KINDS[0].color)}수업 &nbsp; ${dot(TT_KINDS[1].color)}개인시간</span>
-    </div>
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:16px">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:9px;flex-wrap:wrap">
-        <div style="font-size:12.5px;font-weight:700;color:${sel?'#2a7a5a':'var(--ink)'}">${sel?'✏️ 선택한 일정 수정':'＋ 일정 추가'}</div>
-        <span style="font-size:11px;color:var(--ink3)">${sel?'· <b>카테고리는 바꾸면 바로 적용</b> · 요일·시간·내용·<b>장소</b>는 고친 뒤 저장':'· <b>표에서 드래그</b>해 등록 · 블록을 <b>드래그해 이동</b> · 클릭 후 <b>Ctrl/⌘+C→V로 복사</b>'}</span>
+  const finp = `${inp};width:100%`;
+  main.innerHTML = `<div style="max-width:1320px;margin:0 auto;display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap">
+    <!-- 왼쪽 패널: 학기 + 입력/수정 폼 -->
+    <div style="flex:1 1 250px;max-width:300px;min-width:240px;display:flex;flex-direction:column;gap:12px">
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:12px 13px">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:9px">
+          <button onclick="shiftMttYear(-1)" style="${navBtn}">◀</button>
+          <span style="flex:1;text-align:center;font-size:15px;font-weight:800;color:var(--ink)">${ttTermYear()}</span>
+          <button onclick="shiftMttYear(1)" style="${navBtn}">▶</button>
+        </div>
+        <div style="display:flex;gap:6px">${seasonBtns}</div>
       </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-        <select id="mtt-kind" onchange="${sel?'saveMyTTEdit()':'mttKind=this.value'}" style="${inp}">${kindOpts}</select>
-        <select id="mtt-day" style="${inp}">${dayOpts}</select>
-        <input id="mtt-start" type="time" value="${fStart}" style="${inp}"/>
-        <span style="color:var(--ink3)">~</span>
-        <input id="mtt-end" type="time" value="${fEnd}" style="${inp}"/>
-        <input id="mtt-subject" value="${fSubject}" placeholder="내용 (예: 국어 / 알바)" style="${inp};flex:1;min-width:150px" onkeydown="if(event.key==='Enter')${sel?'saveMyTTEdit()':'addMyTTEntry()'}"/>
-        <input id="mtt-place" value="${fPlace}" placeholder="장소 (예: 공학관 301)" style="${inp};flex:1;min-width:130px" onkeydown="if(event.key==='Enter')${sel?'saveMyTTEdit()':'addMyTTEntry()'}"/>
-        ${sel
-          ? `<button onclick="saveMyTTEdit()" style="height:36px;padding:0 16px;border:none;background:#2a7a5a;color:#fff;border-radius:9px;cursor:pointer;font:700 13px var(--font)">저장</button>
-             <button onclick="ttDeselect()" style="height:36px;padding:0 13px;border:1px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:9px;cursor:pointer;font:600 13px var(--font)">새 일정</button>`
-          : `<button onclick="addMyTTEntry()" style="height:36px;padding:0 16px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 13px var(--font)">＋ 추가</button>`}
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px">
+        <div style="font-size:13px;font-weight:800;color:${sel?'#2a7a5a':'var(--ink)'};margin-bottom:3px">${sel?'✏️ 선택한 일정 수정':'＋ 일정 추가'}</div>
+        <div style="font-size:10.5px;color:var(--ink3);line-height:1.55;margin-bottom:11px">${sel?'카테고리는 바꾸면 바로 적용. 나머지는 고친 뒤 저장.':'표에서 <b>드래그</b>해 등록 · 블록 <b>드래그로 이동</b> · <b>가장자리 드래그로 시간 조절</b> · 클릭 후 <b>⌘/Ctrl+C→V 복사</b>'}</div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <select id="mtt-kind" onchange="${sel?'saveMyTTEdit()':'mttKind=this.value'}" style="${finp}">${kindOpts}</select>
+          <select id="mtt-day" style="${finp}">${dayOpts}</select>
+          <div style="display:flex;gap:6px;align-items:center">
+            <input id="mtt-start" type="time" value="${fStart}" style="${inp};flex:1;min-width:0"/>
+            <span style="color:var(--ink3)">~</span>
+            <input id="mtt-end" type="time" value="${fEnd}" style="${inp};flex:1;min-width:0"/>
+          </div>
+          <input id="mtt-subject" value="${fSubject}" placeholder="내용 (예: 국어 / 알바)" style="${finp}" onkeydown="if(event.key==='Enter')${sel?'saveMyTTEdit()':'addMyTTEntry()'}"/>
+          <input id="mtt-place" value="${fPlace}" placeholder="장소 (예: 공학관 301)" style="${finp}" onkeydown="if(event.key==='Enter')${sel?'saveMyTTEdit()':'addMyTTEntry()'}"/>
+          ${sel
+            ? `<div style="display:flex;gap:6px"><button onclick="saveMyTTEdit()" style="flex:1;height:38px;border:none;background:#2a7a5a;color:#fff;border-radius:9px;cursor:pointer;font:700 13px var(--font)">저장</button>
+               <button onclick="ttDeselect()" style="height:38px;padding:0 14px;border:1px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:9px;cursor:pointer;font:600 13px var(--font)">새 일정</button></div>`
+            : `<button onclick="addMyTTEntry()" style="height:38px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 13px var(--font)">＋ 추가</button>`}
+        </div>
+        <div style="font-size:11px;color:var(--ink3);margin-top:11px;padding-top:10px;border-top:1px solid var(--border)">${dot(TT_KINDS[0].color)}수업 &nbsp; ${dot(TT_KINDS[1].color)}개인시간</div>
       </div>
     </div>
-    ${ttGridHtml(shown, true)}
+    <!-- 오른쪽: 시간표 -->
+    <div style="flex:4 1 420px;min-width:0">
+      ${ttGridHtml(shown, true)}
+    </div>
   </div>`;
 }
 
@@ -8004,7 +8014,7 @@ async function addMyTTEntry() {
 
 // ── 마우스 hover: 정확한 시각 표시 ──
 function ttHover(ev, minH, pph) {
-  if (ttDrag || ttMove) return;
+  if (ttDrag || ttMove || ttResize) return;
   const col = ev.currentTarget; const rect = col.getBoundingClientRect();
   const y = Math.max(0, Math.min(ev.clientY - rect.top, col.clientHeight));
   const m = ttSnap(minH*60 + y / pph * 60);
@@ -8059,9 +8069,49 @@ function ttMoveEnd() {
 }
 async function updateMyTTEntry(id, patch) {
   const { error } = await sb.from('student_timetables').update(patch).eq('id', id);
-  if (error) { showUploadToast('이동 실패: ' + error.message); return; }
+  if (error) { showUploadToast('변경 실패: ' + error.message); return; }
   const e = myTT.find(x => x.id === id); if (e) Object.assign(e, patch);
   renderMyTimetable();
+}
+
+// ── 블록 위/아래 가장자리 드래그로 시간 조절(리사이즈) ──
+let ttResize = null;
+function ttResizeDown(ev, id, edge) {
+  if (ev.button !== 0) return;
+  ev.preventDefault(); ev.stopPropagation();
+  const entry = myTT.find(e => e.id === id); if (!entry) return;
+  const col = ev.target.closest('.tt-col'); if (!col) return;
+  const blockEl = ev.target.closest('.tt-block'); if (!blockEl) return;
+  ttResize = {
+    id, edge, blockEl, rect: col.getBoundingClientRect(),
+    minH: Number(col.dataset.minh), pph: Number(col.dataset.pph), gridH: col.clientHeight,
+    sMin: ttMin(entry.start_time), eMin: ttMin(entry.end_time), curS: ttMin(entry.start_time), curE: ttMin(entry.end_time),
+  };
+  document.addEventListener('mousemove', ttResizeMove);
+  document.addEventListener('mouseup', ttResizeEnd);
+}
+function ttResizeMove(ev) {
+  if (!ttResize) return;
+  const r = ttResize;
+  const y = Math.max(0, Math.min(ev.clientY - r.rect.top, r.gridH));
+  let t = ttSnap(r.minH*60 + y / r.pph * 60);
+  if (r.edge === 'top') { t = Math.min(t, r.eMin - 10); t = Math.max(t, r.minH*60); r.curS = t; }
+  else { t = Math.max(t, r.sMin + 10); r.curE = t; }
+  const top = (r.curS - r.minH*60)/60*r.pph, h = (r.curE - r.curS)/60*r.pph;
+  r.blockEl.style.top = top + 'px'; r.blockEl.style.height = h + 'px';
+  let tip = document.getElementById('tt-tip');
+  if (!tip) { tip = document.createElement('div'); tip.id = 'tt-tip'; tip.style.cssText = 'position:fixed;z-index:9999;background:#16304f;color:#fff;font:800 11.5px var(--font);padding:3px 8px;border-radius:6px;pointer-events:none;box-shadow:0 2px 8px rgba(0,0,0,.3)'; document.body.appendChild(tip); }
+  tip.textContent = `${ttMinToStr(r.curS)}~${ttMinToStr(r.curE)}`;
+  tip.style.left = (ev.clientX + 14) + 'px'; tip.style.top = (ev.clientY - 8) + 'px'; tip.style.display = 'block';
+}
+function ttResizeEnd() {
+  document.removeEventListener('mousemove', ttResizeMove);
+  document.removeEventListener('mouseup', ttResizeEnd);
+  const r = ttResize; ttResize = null; ttHoverOut();
+  if (!r) return;
+  if (r.edge === 'top' && r.curS !== r.sMin) updateMyTTEntry(r.id, { start_time: ttMinToStr(r.curS) });
+  else if (r.edge === 'bottom' && r.curE !== r.eMin) updateMyTTEntry(r.id, { end_time: ttMinToStr(r.curE) });
+  else renderMyTimetable();
 }
 
 // ── 복사/붙여넣기/삭제 키 ──
