@@ -1331,6 +1331,12 @@ async function doSignIn() {
       btn.textContent = '로그인'; btn.disabled = false;
       return;
     }
+    if (member.status === 'removed') {
+      await sb.auth.signOut().catch(()=>{});
+      msg.textContent = '탈퇴 처리된 계정이에요. 관리자에게 문의해주세요.';
+      btn.textContent = '로그인'; btn.disabled = false;
+      return;
+    }
 
     ME = member;
 
@@ -1575,7 +1581,7 @@ async function init() {
   const { data: mems } = await sb.from('members').select('*')
     .eq('community_id', CID());
   members = {};
-  (mems||[]).forEach(m => { members[m.id] = m; });
+  (mems||[]).filter(m => m.status !== 'removed').forEach(m => { members[m.id] = m; });
 
   const isAdmin = isSuperAdmin();
   if (isAdmin) {
@@ -3527,7 +3533,7 @@ async function initTcsPage() {
     .eq('community_id', ME.community_id || '00000000-0000-0000-0000-000000000001')
     .or('community_role.eq.student,role.eq.학생')
     .order('name');
-  tcsStudents = students || [];
+  tcsStudents = (students || []).filter(m => m.status !== 'removed');
   await loadStudentGroups();
 
   renderTcsStudentPanel();
@@ -4453,11 +4459,11 @@ async function initMockPage() {
   page.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink3)">불러오는 중...</div>';
 
   const { data: students } = await sb.from('members')
-    .select('id,name,color,initials,grade')
+    .select('id,name,color,initials,grade,status')
     .eq('community_id', ME.community_id || '00000000-0000-0000-0000-000000000001')
     .or('community_role.eq.student,role.eq.학생')
     .order('name');
-  tcsMockStudents = students || [];
+  tcsMockStudents = (students || []).filter(m => m.status !== 'removed');
 
   if (!tcsMockStudents.length) {
     page.innerHTML = `<div style="text-align:center;padding:60px 20px">
@@ -5020,9 +5026,9 @@ async function deleteReadingLog(bookId) {
 // ── 관리자/교사 화면: 전체 현황 + 책 관리 ──
 async function renderReadingAdmin() {
   const page = document.getElementById('reading-page');
-  const { data: students } = await sb.from('members').select('id,name,initials,color')
+  const { data: students } = await sb.from('members').select('id,name,initials,color,status')
     .eq('community_id', CID()).or('community_role.eq.student,role.eq.학생').order('name');
-  const studs = students || [];
+  const studs = (students || []).filter(m => m.status !== 'removed');
   const ids = studs.map(s => s.id);
   let logs = [];
   if (ids.length) {
@@ -5940,7 +5946,7 @@ async function viewCommunityMembers(communityId, communityName) {
   const area = document.getElementById('admin-content');
   area.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink3)">불러오는 중...</div>';
   const { data: members } = await sb.from('members').select('*').eq('community_id', communityId).order('created_at');
-  const list = members || [];
+  const list = (members || []).filter(m => m.status !== 'removed');
   const roleLabel = { super_admin:'총관리자', community_admin:'관리자', teacher:'교사', staff:'간사', student:'학생', member:'멤버' };
   const roleColor = { super_admin:'#7c3aed', community_admin:'#1d4ed8', teacher:'#0369a1', staff:'#b45309', student:'#15803d', member:'#6b7280' };
 
@@ -6270,12 +6276,14 @@ async function updateMemberRole(id, role) {
 }
 
 async function deleteMember(id, name) {
-  if (!confirm(`${name} 님을 탈퇴시킬까요?\n(메시지/기도제목은 유지됩니다)`)) return;
-  await sb.from('members').delete().eq('id', id);
-  await sb.auth.admin?.deleteUser(id).catch(()=>{});
-  delete members[id];
+  if (!confirm(`${name} 님을 탈퇴시킬까요?\n로그인이 차단되고 모든 목록에서 사라집니다. (작성한 메시지·기록은 유지)`)) return;
+  // 하드 삭제는 RLS로 막혀 있어(관리자 delete 정책 없음) 소프트 탈퇴 처리
+  const { error } = await sb.from('members').update({ status: 'removed' }).eq('id', id);
+  if (error) { showUploadToast('탈퇴 실패: ' + error.message); return; }
+  if (typeof members === 'object' && members) delete members[id];
+  showUploadToast(`✅ ${name} 님 탈퇴 처리됐어요`);
   renderAdminMembers();
-  renderMembers();
+  if (typeof renderMembers === 'function') renderMembers();
 }
 
 // ── 채널 관리 ──
@@ -6814,9 +6822,10 @@ window.addEventListener('load', async () => {
           msg.textContent = '⏳ 관리자 승인 대기 중이에요. 승인 후 이용 가능해요.';
           return;
         }
-        if (member.status === 'rejected') {
+        if (member.status === 'rejected' || member.status === 'removed') {
+          await sb.auth.signOut().catch(()=>{});
           document.getElementById('auth-screen').style.display = 'flex';
-          document.getElementById('si-msg').textContent = '❌ 가입이 거절되었어요. 관리자에게 문의해주세요.';
+          document.getElementById('si-msg').textContent = member.status === 'removed' ? '탈퇴 처리된 계정이에요. 관리자에게 문의해주세요.' : '❌ 가입이 거절되었어요. 관리자에게 문의해주세요.';
           return;
         }
         ME = member;
@@ -7467,13 +7476,13 @@ async function initSchoolPage() {
     .eq('community_id', CID())
     .or('community_role.eq.student,role.eq.학생,community_role.eq.staff,role.eq.간사')
     .order('name');
-  schoolStudents = students || [];
+  schoolStudents = (students || []).filter(m => m.status !== 'removed');
   // 교사·간사·관리자·행정담당자 목록 (담임 배정용 — 간사도 담임이 될 수 있음)
-  const { data: teachers } = await sb.from('members').select('id,name,role,community_role')
+  const { data: teachers } = await sb.from('members').select('id,name,role,community_role,status')
     .eq('community_id', CID())
     .or('community_role.eq.teacher,community_role.eq.staff,community_role.eq.admin_officer,community_role.eq.community_admin,community_role.eq.super_admin,role.eq.교사,role.eq.간사')
     .order('name');
-  schoolTeachers = teachers || [];
+  schoolTeachers = (teachers || []).filter(m => m.status !== 'removed');
   // 담당교사 맵 (다중 담당 지원) — junction 있으면 우선, 없으면 단일 컬럼 폴백
   homeroomMap = {};
   schoolStudents.forEach(s => { if (s.homeroom_teacher_id) homeroomMap[s.id] = [s.homeroom_teacher_id]; });
