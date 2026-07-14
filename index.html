@@ -741,9 +741,10 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
             <div class="icon-btn">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--ink3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
             </div>
-            <textarea id="msgInput" placeholder="메시지 보내기 (Enter)" rows="1"
+            <textarea id="msgInput" placeholder="메시지 보내기 (Enter · 이미지 붙여넣기 가능)" rows="1"
               onkeydown="if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();sendMsg()} "
               oninput="updateSendBtn();autoResizeInput(this)"
+              onpaste="handlePasteImage(event)"
               style="flex:1;border:0;outline:0;background:transparent;font:14px var(--font);color:var(--ink);resize:none;line-height:1.5;max-height:120px;overflow-y:auto;padding:0"></textarea>
             <div class="icon-btn" onclick="openFileChooser()" title="파일 첨부">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--ink3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 7l-6.5 6.5a3 3 0 104.2 4.2L19 10a5 5 0 10-7-7L5.4 9.6"/></svg>
@@ -6722,6 +6723,27 @@ function openFileChooser() {
 function handleFileUpload(input) {
   Array.from(input.files).forEach(f => addPendingFile(f));
   input.value = '';
+}
+
+// 채팅 입력창에 이미지 붙여넣기(Ctrl/⌘+V)
+function handlePasteImage(event) {
+  if (!currentChannel) return;
+  const items = (event.clipboardData || window.clipboardData)?.items;
+  if (!items) return;
+  let found = false;
+  for (const it of items) {
+    if (it.kind === 'file' && it.type && it.type.startsWith('image/')) {
+      const file = it.getAsFile();
+      if (file) {
+        // 붙여넣은 이미지는 이름이 없을 수 있어 시간 기반 이름 부여
+        const ext = (file.type.split('/')[1] || 'png').replace('jpeg','jpg');
+        const named = file.name ? file : new File([file], `paste_${Date.now()}.${ext}`, { type: file.type });
+        addPendingFile(named);
+        found = true;
+      }
+    }
+  }
+  if (found) { event.preventDefault(); showUploadToast('📎 이미지가 첨부됐어요 — 전송 버튼을 눌러주세요'); }
 }
 
 function addPendingFile(file) {
