@@ -990,8 +990,10 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
   <!-- 이미지 크게 보기 모달 (공통 · 항상 존재) -->
   <div id="img-modal" style="display:none;position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.9);align-items:center;justify-content:center;overflow:hidden;touch-action:none">
     <div id="img-modal-close" onclick="closeImageModal()" style="position:absolute;top:16px;right:16px;width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:10;color:white;font-size:18px">✕</div>
+    <div id="img-prev" onclick="event.stopPropagation();imgNav(-1)" style="display:none;position:absolute;left:14px;top:50%;transform:translateY(-50%);width:46px;height:46px;border-radius:50%;background:rgba(255,255,255,.18);align-items:center;justify-content:center;cursor:pointer;z-index:10;color:white;font-size:24px">‹</div>
+    <div id="img-next" onclick="event.stopPropagation();imgNav(1)" style="display:none;position:absolute;right:14px;top:50%;transform:translateY(-50%);width:46px;height:46px;border-radius:50%;background:rgba(255,255,255,.18);align-items:center;justify-content:center;cursor:pointer;z-index:10;color:white;font-size:24px">›</div>
     <img id="img-modal-src" style="max-width:95vw;max-height:95vh;border-radius:8px;object-fit:contain;transform-origin:center center;transition:transform .1s;cursor:grab;user-select:none"/>
-    <div style="position:absolute;bottom:16px;left:50%;transform:translateX(-50%);color:rgba(255,255,255,.5);font-size:12px">핀치로 확대 · 더블탭으로 확대/축소</div>
+    <div id="img-modal-count" style="position:absolute;bottom:16px;left:50%;transform:translateX(-50%);color:rgba(255,255,255,.6);font-size:12px">핀치로 확대 · 더블탭으로 확대/축소</div>
   </div>
 
   <div id="mobile-nav" style="display:none">
@@ -2169,7 +2171,7 @@ function msgHtml(m, prev, readMap={}) {
       if (f.type === 'file') {
         if (f.isImage) {
           bubbleContent = `<div style="max-width:260px;line-height:0;border-radius:12px;overflow:hidden">
-            <img src="${f.thumbUrl||f.directUrl}" alt="${f.name}" style="width:100%;display:block;cursor:pointer;border-radius:12px" onclick="openImageModal('${f.viewUrl}')" onerror="this.src='${f.directUrl}';this.onerror=null"/>
+            <img class="chat-img" data-img="${f.viewUrl}" src="${f.thumbUrl||f.directUrl}" alt="${f.name}" style="width:100%;display:block;cursor:pointer;border-radius:12px" onclick="openImageModal('${f.viewUrl}')" onerror="this.src='${f.directUrl}';this.onerror=null"/>
             <div style="line-height:1.4;padding:4px 2px 0;font-size:11px;text-align:right"><span onclick="openImageModal('${f.viewUrl}')" style="color:var(--accent);cursor:pointer">크게 보기 ↗</span></div>
           </div>`;
         } else if (f.isVideo) {
@@ -2194,7 +2196,7 @@ function msgHtml(m, prev, readMap={}) {
         if (imgs.length) {
           const cols = imgs.length === 2 ? 2 : 3;
           const w = imgs.length === 2 ? 188 : 282;
-          g += `<div style="display:grid;grid-template-columns:repeat(${cols},1fr);gap:4px;max-width:${w}px">${imgs.map(x => `<img src="${x.thumbUrl||x.directUrl}" alt="${x.name}" onclick="openImageModal('${x.viewUrl}')" onerror="this.src='${x.directUrl}';this.onerror=null" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;display:block;cursor:pointer"/>`).join('')}</div>`;
+          g += `<div style="display:grid;grid-template-columns:repeat(${cols},1fr);gap:4px;max-width:${w}px">${imgs.map(x => `<img class="chat-img" data-img="${x.viewUrl}" src="${x.thumbUrl||x.directUrl}" alt="${x.name}" onclick="openImageModal('${x.viewUrl}')" onerror="this.src='${x.directUrl}';this.onerror=null" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;display:block;cursor:pointer"/>`).join('')}</div>`;
         }
         if (others.length) {
           g += `<div style="display:flex;flex-direction:column;gap:4px;margin-top:${imgs.length?'5px':'0'}">${others.map(x => {
@@ -2781,9 +2783,38 @@ async function renderHome() {
     </div>
   </div>`;}
 
-function openImageModal(url) {
+let imgGallery = [], imgIndex = -1;
+function openImageModal(url, forceIndex) {
   const modal = document.getElementById('img-modal');
   const img = document.getElementById('img-modal-src');
+
+  // 채널 안의 모든 사진을 모아 좌우로 넘길 수 있게 (DOM 순서 = 시간순)
+  const all = [...document.querySelectorAll('.chat-img')].map(e => e.dataset.img).filter(Boolean);
+  if (typeof forceIndex === 'number' && all[forceIndex] !== undefined) {
+    imgGallery = all; imgIndex = forceIndex; url = all[forceIndex];
+  } else {
+    const idx = all.indexOf(url);
+    if (idx >= 0) { imgGallery = all; imgIndex = idx; }
+    else { imgGallery = [url]; imgIndex = 0; }
+  }
+  const hasNav = imgGallery.length > 1;
+  document.getElementById('img-prev').style.display = hasNav ? 'flex' : 'none';
+  document.getElementById('img-next').style.display = hasNav ? 'flex' : 'none';
+  const cnt = document.getElementById('img-modal-count');
+  if (cnt) cnt.textContent = hasNav ? `${imgIndex+1} / ${imgGallery.length}` : '핀치·휠로 확대 · 더블탭 확대/축소';
+
+  // 키보드 좌우/ESC (한 번만 바인딩)
+  if (!window._imgKeyBound) {
+    window._imgKeyBound = true;
+    document.addEventListener('keydown', (e) => {
+      const m = document.getElementById('img-modal');
+      if (!m || m.style.display === 'none') return;
+      if (e.key === 'ArrowLeft') { imgNav(-1); }
+      else if (e.key === 'ArrowRight') { imgNav(1); }
+      else if (e.key === 'Escape') { closeImageModal(); }
+    });
+  }
+
   img.src = url;
   modal.style.display = 'flex';
 
@@ -2862,6 +2893,12 @@ function openImageModal(url) {
   // 초기화
   scale=1; tx=0; ty=0;
   img.style.transform = '';
+}
+
+function imgNav(dir) {
+  if (imgGallery.length < 2) return;
+  const ni = (imgIndex + dir + imgGallery.length) % imgGallery.length;
+  openImageModal(imgGallery[ni], ni);
 }
 
 function closeImageModal() {
