@@ -864,6 +864,19 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
       <div id="leave-main" style="flex:1;overflow-y:auto;padding:24px 28px"></div>
     </div>
 
+    <!-- 생기부 홈 대시보드 (학생) -->
+    <div id="gishome-view" style="display:none;flex-direction:column;height:100%;background:var(--bg)">
+      <div style="position:relative;height:56px;padding:0 24px;display:flex;align-items:center;gap:10px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0">
+        <div style="width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#2a5298,#1d3a5f);display:flex;align-items:center;justify-content:center;font-size:16px">🌱</div>
+        <div>
+          <div style="font-size:15px;font-weight:700;color:var(--ink)">생기부 홈</div>
+          <div style="font-size:11px;color:var(--ink3)">나의 성장 기록을 한눈에 확인해요</div>
+        </div>
+        <div id="subnav-gishome" class="subnav-center"></div>
+      </div>
+      <div id="gishome-main" style="flex:1;overflow-y:auto;padding:24px 28px"></div>
+    </div>
+
     <!-- 독후감 / 활동후기 뷰 -->
     <div id="writing-view" style="display:none;flex-direction:column;height:100%;background:var(--bg)">
       <div style="position:relative;height:56px;padding:0 24px;display:flex;align-items:center;gap:10px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0">
@@ -1666,6 +1679,7 @@ function setMode(m) {
   document.getElementById('allowance-view').style.display = m==='allowance' ? 'flex' : 'none';
   document.getElementById('mytt-view').style.display = m==='mytt' ? 'flex' : 'none';
   document.getElementById('leave-view').style.display = m==='leave' ? 'flex' : 'none';
+  document.getElementById('gishome-view').style.display = m==='gishome' ? 'flex' : 'none';
   document.getElementById('writing-view').style.display = (m==='bookreport'||m==='review') ? 'flex' : 'none';
   document.getElementById('admin-view').style.display = m==='admin' ? 'flex' : 'none';
   document.getElementById('school-view').style.display = (canAccessSchool() && m==='school') ? 'flex' : 'none';
@@ -1677,12 +1691,12 @@ function setMode(m) {
 
   const sbTcsBtn = document.getElementById('sb-tcs');
   if (sbTcsBtn) {
-    const tcsActive = isTeacher() ? (m==='tcs' || m==='mock' || m==='reading') : (m==='profile' || m==='reading' || m==='allowance' || m==='bookreport' || m==='review' || m==='leave' || m==='mytt');
+    const tcsActive = isTeacher() ? (m==='tcs' || m==='mock' || m==='reading') : (m==='gishome' || m==='profile' || m==='reading' || m==='allowance' || m==='bookreport' || m==='review' || m==='leave' || m==='mytt');
     sbTcsBtn.classList.toggle('active', tcsActive);
   }
 
   const panel = document.getElementById('panel');
-  if (m === 'home' || m === 'calendar' || m === 'admin' || m === 'tcs' || m === 'mock' || m === 'reading' || m === 'profile' || m === 'school' || m === 'allowance' || m === 'mytt' || m === 'leave' || m === 'bookreport' || m === 'review') {
+  if (m === 'home' || m === 'calendar' || m === 'admin' || m === 'tcs' || m === 'mock' || m === 'reading' || m === 'profile' || m === 'school' || m === 'allowance' || m === 'mytt' || m === 'leave' || m === 'bookreport' || m === 'review' || m === 'gishome') {
     panel.style.display = 'none';
   } else {
     panel.style.display = 'flex';
@@ -1693,7 +1707,8 @@ function setMode(m) {
   if (m==='chat') { renderPanel(); sessionStorage.removeItem('last_channel_id'); }
   if (m==='calendar') { loadCalendar(); }
   if (m==='admin') { if(isCommunityAdmin()) initAdminPage(); else setMode('home'); return; }
-  if (m==='tcs') { if(isTeacher()){ tcsSubMode='record'; initTcsPage(); } else setMode('profile'); return; }
+  if (m==='tcs') { if(isTeacher()){ tcsSubMode='record'; initTcsPage(); } else setMode('gishome'); return; }
+  if (m==='gishome') { if(isTeacher()){ setMode('tcs'); return; } initGisHome(); }
   if (m==='mock') { if(isTeacher()){ tcsSubMode='mock'; initTcsPage(); } else setMode('home'); return; }
   if (m==='reading') { if(isTeacher()){ tcsSubMode='reading'; initTcsPage(); } else initReadingPage(); return; }
   if (m==='school') { if(canAccessSchool()){ initSchoolPage(); } else setMode('home'); return; }
@@ -1704,7 +1719,7 @@ function setMode(m) {
   if (m==='review') { writingKind='activity'; initWritingPage(); }
   if (m==='profile') { renderProfilePage(); }
   sessionStorage.setItem('last_mode', m);
-  document.getElementById('panel-title').textContent = {chat:'채팅',prayer:'기도제목',home:'홈',calendar:'일정',admin:'관리자',tcs:'생기부',mock:'모의고사 분석',reading:'Triple School',school:'학사관리',allowance:'용돈기입장',mytt:'내 시간표',leave:'출결 신청',bookreport:'독후감',review:'활동 후기',profile:'내 프로필'}[m] || m;
+  document.getElementById('panel-title').textContent = {chat:'채팅',prayer:'기도제목',home:'홈',calendar:'일정',admin:'관리자',tcs:'생기부',mock:'모의고사 분석',reading:'Triple School',school:'학사관리',allowance:'용돈기입장',mytt:'내 시간표',leave:'출결 신청',bookreport:'독후감',review:'활동 후기',profile:'내 프로필',gishome:'생기부 홈'}[m] || m;
 }
 
 // ── 채널 패널 렌더 ──
@@ -4814,7 +4829,7 @@ function tcsSubnavHtml(active) {
       const on = active === m;
       return `<button onclick="setMode('${m}')" style="height:30px;padding:0 13px;border:none;border-radius:8px;font:600 12px var(--font);cursor:pointer;background:${on ? '#1d3a5f' : 'transparent'};color:${on ? '#fff' : 'var(--ink2)'}">${label}</button>`;
     };
-    tabs = tab('profile', '개인정보') + tab('reading', 'Triple School')
+    tabs = tab('gishome', '🏠 홈') + tab('profile', '개인정보') + tab('reading', 'Triple School')
          + tab('bookreport', '독후감') + tab('review', '활동후기') + tab('mytt', '시간표') + tab('allowance', '용돈') + tab('leave', '출결신청');
   }
   return `<div style="display:inline-flex;gap:2px;background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:3px">${tabs}</div>`;
@@ -7627,6 +7642,183 @@ function leavePeriodText(r) {
 function leaveStatusBadge(st) {
   const s = LEAVE_STATUS[st] || LEAVE_STATUS.pending;
   return `<span style="font-size:10.5px;font-weight:700;color:${s.color};background:${s.bg};padding:2px 9px;border-radius:99px">${s.label}</span>`;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  학생 생기부 홈 대시보드 — 나의 성장 기록을 한눈에
+// ═══════════════════════════════════════════════════════════════════
+let gisData = null;
+
+async function initGisHome() {
+  const sn = document.getElementById('subnav-gishome');
+  if (sn) sn.innerHTML = tcsSubnavHtml('gishome');
+  const main = document.getElementById('gishome-main');
+  if (main) main.innerHTML = '<div style="text-align:center;padding:60px;color:var(--ink3);font-size:13px">불러오는 중...</div>';
+
+  const out = { writings: [], readingLogs: [], tt: [], leaves: [] };
+  // 각 쿼리를 개별적으로 감싸 일부 테이블이 없어도 대시보드는 뜨게
+  try {
+    const { data } = await sb.from('student_writings').select('*')
+      .eq('member_id', ME.id).order('date', { ascending:false }).order('created_at', { ascending:false });
+    out.writings = data || [];
+  } catch(_) {}
+  try {
+    const { data } = await sb.from('reading_logs')
+      .select('read_date,book_id,report,reading_books(title,author)').eq('student_id', ME.id);
+    out.readingLogs = data || [];
+  } catch(_) {}
+  try {
+    const { data } = await sb.from('student_timetables').select('*').eq('member_id', ME.id).order('start_time');
+    out.tt = data || [];
+  } catch(_) {}
+  try {
+    const { data } = await sb.from('leave_requests').select('*').eq('student_id', ME.id).order('created_at', { ascending:false });
+    out.leaves = data || [];
+  } catch(_) {}
+
+  gisData = out;
+  renderGisHome();
+}
+
+function renderGisHome() {
+  const main = document.getElementById('gishome-main'); if (!main || !gisData) return;
+  const d = gisData;
+  const now = new Date();
+  const ym = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  const yr = `${now.getFullYear()}`;
+  const inMonth = s => (s||'').slice(0,7) === ym;
+  const inYear  = s => (s||'').slice(0,4) === yr;
+
+  // ── 통계 집계 ──
+  const books = d.writings.filter(w => w.kind === 'book');
+  const acts  = d.writings.filter(w => w.kind === 'activity');
+  const bookMonth = books.filter(w => inMonth(w.date)).length;
+  const bookYear  = books.filter(w => inYear(w.date)).length;
+  const tsBooks   = [...new Set(d.readingLogs.filter(r => (r.report||'').trim()).map(r => r.book_id))].length;
+  const leaveMonth = d.leaves.filter(l => inMonth(l.start_date || l.date || l.created_at)).length;
+  const leavePending = d.leaves.filter(l => (l.status||'pending') === 'pending').length;
+
+  // ── 인사말(시간대) ──
+  const h = now.getHours();
+  const greet = h < 12 ? '좋은 아침이에요' : (h < 18 ? '오늘도 힘내요' : '오늘 하루도 수고했어요');
+  const dateStr = `${now.getFullYear()}년 ${now.getMonth()+1}월 ${now.getDate()}일 ${['일','월','화','수','목','금','토'][now.getDay()]}요일`;
+
+  // ── 오늘의 시간표 ──
+  const todayDay = ((now.getDay()+6)%7)+1;  // 1=월 … 7=일
+  const terms = [...new Set(d.tt.map(e => e.term || ttDefaultTerm()))].sort().reverse();
+  const curTerm = terms[0] || ttDefaultTerm();
+  const todayTT = d.tt.filter(e => (e.term || ttDefaultTerm()) === curTerm && e.day === todayDay)
+    .sort((a,b) => (a.start_time||'').localeCompare(b.start_time||''));
+
+  // ── 최근 기록 (독후감·활동후기 통합) ──
+  const recent = [...d.writings]
+    .sort((a,b) => (b.date||b.created_at||'').localeCompare(a.date||a.created_at||''))
+    .slice(0, 5);
+
+  // ── 통계 카드 ──
+  const statCard = (icon, label, main, sub, grad) => `
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:16px 18px;position:relative;overflow:hidden">
+      <div style="position:absolute;top:-8px;right:-6px;font-size:46px;opacity:.08">${icon}</div>
+      <div style="font-size:11.5px;font-weight:700;color:var(--ink3);letter-spacing:.02em">${label}</div>
+      <div style="font-size:28px;font-weight:800;background:${grad};-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;line-height:1.15;margin-top:4px">${main}</div>
+      <div style="font-size:11px;color:var(--ink3);margin-top:2px">${sub}</div>
+    </div>`;
+
+  // ── 빠른 이동 카드 ──
+  const quick = (mode, icon, title, desc, grad) => `
+    <button onclick="setMode('${mode}')" style="text-align:left;background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:16px;cursor:pointer;display:flex;align-items:center;gap:13px;transition:all .15s;font-family:var(--font)"
+      onmouseover="this.style.borderColor='#2a5298';this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 18px rgba(29,58,95,.10)'"
+      onmouseout="this.style.borderColor='var(--border)';this.style.transform='none';this.style.boxShadow='none'">
+      <div style="width:44px;height:44px;border-radius:13px;background:${grad};display:flex;align-items:center;justify-content:center;font-size:21px;flex-shrink:0">${icon}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:14px;font-weight:700;color:var(--ink)">${title}</div>
+        <div style="font-size:11.5px;color:var(--ink3);margin-top:1px">${desc}</div>
+      </div>
+      <div style="color:var(--ink3);font-size:18px">›</div>
+    </button>`;
+
+  const kindMeta = k => k === 'book'
+    ? { icon:'📖', tag:'독후감', color:'#1d3a5f', bg:'var(--asoft)' }
+    : { icon:'✍️', tag:'활동후기', color:'#b45309', bg:'#fef3c7' };
+
+  main.innerHTML = `
+  <div style="max-width:1120px;margin:0 auto">
+
+    <!-- 인사 헤더 -->
+    <div style="background:linear-gradient(135deg,#1d3a5f,#2a5298);border-radius:22px;padding:26px 28px;margin-bottom:20px;color:white;position:relative;overflow:hidden">
+      <div style="position:absolute;right:-20px;bottom:-30px;font-size:130px;opacity:.10">🌱</div>
+      <div style="font-size:12.5px;color:rgba(255,255,255,.75);font-weight:600">${dateStr}</div>
+      <div style="font-size:23px;font-weight:800;margin-top:5px">${escHtml(ME.name||'')}님, ${greet}!</div>
+      <div style="font-size:13px;color:rgba(255,255,255,.85);margin-top:6px;line-height:1.6">지금까지 <b style="color:#ffe08a">독후감 ${books.length}편</b> · <b style="color:#ffe08a">활동후기 ${acts.length}편</b>을 기록했어요.<br>꾸준히 쌓아온 기록이 나만의 생활기록부가 됩니다. ✨</div>
+    </div>
+
+    <!-- 통계 카드 -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin-bottom:22px">
+      ${statCard('📚','독후감', books.length+'편', `이번 달 ${bookMonth}편 · 올해 ${bookYear}편`, 'linear-gradient(135deg,#1d3a5f,#2a5298)')}
+      ${statCard('✍️','활동 후기', acts.length+'편', `올해 ${acts.filter(w=>inYear(w.date)).length}편 작성`, 'linear-gradient(135deg,#b45309,#d9a441)')}
+      ${statCard('📖','Triple School', tsBooks+'권', '필독서 독후 기록', 'linear-gradient(135deg,#6F8A5C,#4C7363)')}
+      ${statCard('📝','출결 신청', d.leaves.length+'건', leavePending>0?`승인 대기 ${leavePending}건`:`이번 달 ${leaveMonth}건`, 'linear-gradient(135deg,#5A7C8B,#1d3a5f)')}
+    </div>
+
+    <!-- 본문 2열 (데스크탑) -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:18px;align-items:start">
+
+      <!-- 왼쪽: 빠른 이동 -->
+      <div>
+        <div style="font-size:13px;font-weight:800;color:var(--ink2);margin-bottom:11px;padding-left:2px">바로가기</div>
+        <div style="display:flex;flex-direction:column;gap:11px">
+          ${quick('bookreport','📖','독후감 쓰기','읽은 만큼 이어서 기록해요','linear-gradient(135deg,#e3edf9,#c9ddf2)')}
+          ${quick('review','✍️','활동 후기','선교·봉사·체험 후기를 남겨요','linear-gradient(135deg,#fdf0d5,#f7e0a8)')}
+          ${quick('reading','📚','Triple School','필독서 진행 현황을 봐요','linear-gradient(135deg,#e4efe0,#cfe2c6)')}
+          ${quick('mytt','🗓️','내 시간표','수업·개인 일정을 관리해요','linear-gradient(135deg,#e2ecf0,#c9dde5)')}
+          ${quick('allowance','💰','용돈 기입장','용돈 수입·지출을 정리해요','linear-gradient(135deg,#f3ead9,#e8d6b3)')}
+          ${quick('leave','📝','출결 신청','결석·조퇴 등을 신청해요','linear-gradient(135deg,#e7e9ef,#d4d8e4)')}
+          ${quick('profile','👤','개인정보','내 프로필을 확인·수정해요','linear-gradient(135deg,#eee7f3,#ddd0ea)')}
+        </div>
+      </div>
+
+      <!-- 오른쪽: 오늘의 시간표 + 최근 기록 -->
+      <div style="display:flex;flex-direction:column;gap:18px">
+
+        <!-- 오늘의 시간표 -->
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:17px 18px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+            <div style="font-size:13px;font-weight:800;color:var(--ink2)">🗓️ 오늘의 시간표</div>
+            <button onclick="setMode('mytt')" style="border:none;background:transparent;color:var(--accent);font:600 11.5px var(--font);cursor:pointer">전체 보기 ›</button>
+          </div>
+          ${todayTT.length ? todayTT.map(e => {
+            const kind = ttKindForColor(e.color);
+            const c = e.color || '#2a5298';
+            return `<div style="display:flex;align-items:center;gap:11px;padding:9px 0;border-bottom:1px solid var(--border)">
+              <div style="width:4px;height:34px;border-radius:99px;background:${c};flex-shrink:0"></div>
+              <div style="width:96px;flex-shrink:0;font-size:12px;font-weight:700;color:var(--ink2)">${ttFmt(e.start_time)}~${ttFmt(e.end_time)}</div>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:13.5px;font-weight:700;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(e.subject||'(제목 없음)')}</div>
+                ${e.place?`<div style="font-size:11px;color:var(--ink3)">📍 ${escHtml(e.place)}</div>`:''}
+              </div>
+            </div>`;
+          }).join('') : `<div style="text-align:center;padding:22px 10px;color:var(--ink3);font-size:12.5px">오늘(${['일','월','화','수','목','금','토'][now.getDay()]}) 등록된 수업이 없어요.<br><span style="font-size:11px">시간표에서 수업을 추가해 보세요.</span></div>`}
+        </div>
+
+        <!-- 최근 기록 -->
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:17px 18px">
+          <div style="font-size:13px;font-weight:800;color:var(--ink2);margin-bottom:12px">🕘 최근 기록</div>
+          ${recent.length ? recent.map(w => {
+            const meta = kindMeta(w.kind);
+            return `<div onclick="setMode('${w.kind==='book'?'bookreport':'review'}')" style="display:flex;align-items:center;gap:11px;padding:9px 0;border-bottom:1px solid var(--border);cursor:pointer">
+              <div style="width:34px;height:34px;border-radius:10px;background:${meta.bg};display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">${meta.icon}</div>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:13.5px;font-weight:700;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(w.title||'(제목 없음)')}</div>
+                <div style="font-size:11px;color:var(--ink3)"><span style="color:${meta.color};font-weight:700">${meta.tag}</span> · ${w.date||''}</div>
+              </div>
+              <div style="color:var(--ink3);font-size:16px">›</div>
+            </div>`;
+          }).join('') : `<div style="text-align:center;padding:22px 10px;color:var(--ink3);font-size:12.5px">아직 남긴 기록이 없어요.<br><span style="font-size:11px">첫 독후감이나 활동후기를 남겨 보세요!</span></div>`}
+        </div>
+
+      </div>
+    </div>
+  </div>`;
 }
 
 // ── 학생: 출결 신청 화면 ──
