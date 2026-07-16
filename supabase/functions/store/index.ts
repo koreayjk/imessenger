@@ -24,30 +24,47 @@ async function sha256(s: string): Promise<string> {
 
 const admin = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
 
+const CURRENCIES = ["원", "$", "₱"];
+const normCurrency = (c: unknown) => (CURRENCIES.includes(String(c)) ? String(c) : "원");
+
 // 비밀번호 검증 (매점 관리 동작 공통)
 async function verifyPass(community_id: string, password: string) {
   if (!community_id) return { ok: false, msg: "공동체가 필요합니다" };
-  const { data } = await admin.from("store_settings").select("pass_hash, store_name").eq("community_id", community_id).single();
+  const { data } = await admin.from("store_settings").select("pass_hash, store_name, currency").eq("community_id", community_id).single();
   if (!data || !data.pass_hash) return { ok: false, msg: "매점이 아직 설정되지 않았어요 (관리자가 비밀번호를 먼저 등록하세요)", code: "unset" };
   const h = await sha256(String(password || ""));
   if (h !== data.pass_hash) return { ok: false, msg: "비밀번호가 올바르지 않습니다", code: "badpass" };
-  return { ok: true, store_name: data.store_name };
+  return { ok: true, store_name: data.store_name, currency: normCurrency(data.currency) };
 }
 
-// 로그인한 사용자가 해당 공동체 관리자인지 (set_password 용)
-async function requireAdmin(req: Request, community_id: string) {
+// 호출자 정보 (JWT) 조회
+async function getCaller(req: Request) {
   const authHeader = req.headers.get("Authorization") || "";
   const userClient = createClient(SUPABASE_URL, ANON_KEY, {
     global: { headers: { Authorization: authHeader } }, auth: { persistSession: false },
   });
   const { data: { user } } = await userClient.auth.getUser();
-  if (!user) return { ok: false, msg: "로그인이 필요합니다" };
+  if (!user) return null;
   const { data: me } = await admin.from("members").select("community_role, community_id").eq("id", user.id).single();
-  if (!me) return { ok: false, msg: "권한 확인 실패" };
+  return me ? { id: user.id, ...me } : null;
+}
+
+// 로그인한 사용자가 해당 공동체 관리자인지 (set_password 용)
+async function requireAdmin(req: Request, community_id: string) {
+  const me = await getCaller(req);
+  if (!me) return { ok: false, msg: "로그인이 필요합니다" };
   const isSuper = me.community_role === "super_admin";
   const isAdmin = ["community_admin", "admin_officer"].includes(me.community_role) && me.community_id === community_id;
   if (!isSuper && !isAdmin) return { ok: false, msg: "매점 비밀번호는 공동체 관리자만 설정할 수 있어요" };
   return { ok: true };
+}
+
+// 해당 공동체 구성원(또는 총관리자)인지 — 매점 현황/설정 조회용
+async function requireMember(req: Request, community_id: string) {
+  const me = await getCaller(req);
+  if (!me) return { ok: false, msg: "로그인이 필요합니다" };
+  if (me.community_role === "super_admin" || me.community_id === community_id) return { ok: true, role: me.community_role };
+  return { ok: false, msg: "권한이 없습니다" };
 }
 
 const itemsSummary = (items: { name: string; qty: number }[]) =>
@@ -67,17 +84,18 @@ Deno.serve(async (req) => {
       const pw = String(b.password || "");
       if (pw.length < 4) return json({ error: "비밀번호는 4자 이상이어야 해요" }, 200);
       const pass_hash = await sha256(pw);
-      const { error } = await admin.from("store_settings")
-        .upsert({ community_id: cid, pass_hash, store_name: b.store_name || null, updated_at: new Date().toISOString() });
+      const row: Record<string, unknown> = { community_id: cid, pass_hash, store_name: b.store_name || null, updated_at: new Date().toISOString() };
+      if (b.currency !== undefined) row.currency = normCurrency(b.currency);
+      const { error } = await admin.from("store_settings").upsert(row);
       if (error) return json({ error: error.message }, 200);
       return json({ ok: true });
     }
-    // 매점 설정 여부만 확인 (관리자 화면용)
+    // 매점 설정 여부·통화 확인 (교사·간사·관리자 등 공동체 구성원)
     if (action === "status") {
-      const gate = await requireAdmin(req, cid);
+      const gate = await requireMember(req, cid);
       if (!gate.ok) return json({ error: gate.msg }, 200);
-      const { data } = await admin.from("store_settings").select("store_name, updated_at").eq("community_id", cid).single();
-      return json({ ok: true, configured: !!data, store_name: data?.store_name || null });
+      const { data } = await admin.from("store_settings").select("pass_hash, store_name, currency").eq("community_id", cid).single();
+      return json({ ok: true, configured: !!(data && data.pass_hash), store_name: data?.store_name || null, currency: normCurrency(data?.currency) });
     }
 
     // ── 이하 매점 관리 동작: 공동체 비밀번호 인증 필요 ──
@@ -85,7 +103,17 @@ Deno.serve(async (req) => {
     if (!v.ok) return json({ error: v.msg, code: v.code }, 200);
 
     if (action === "login") {
-      return json({ ok: true, store_name: v.store_name });
+      return json({ ok: true, store_name: v.store_name, currency: v.currency });
+    }
+
+    // 매점 설정 변경(가게 이름·통화) — 비밀번호는 여기서 바꾸지 않음
+    if (action === "save_settings") {
+      const row: Record<string, unknown> = { updated_at: new Date().toISOString() };
+      if (b.store_name !== undefined) row.store_name = b.store_name || null;
+      if (b.currency !== undefined) row.currency = normCurrency(b.currency);
+      const { error } = await admin.from("store_settings").update(row).eq("community_id", cid);
+      if (error) return json({ error: error.message }, 200);
+      return json({ ok: true, currency: normCurrency(b.currency ?? v.currency), store_name: b.store_name ?? v.store_name });
     }
 
     if (action === "products") {
@@ -127,10 +155,14 @@ Deno.serve(async (req) => {
     // 매점 이용 가능한 학생 목록
     if (action === "members") {
       const { data } = await admin.from("members")
-        .select("id, name, grade, community_role, status")
+        .select("id, name, grade, role, community_role, status")
         .eq("community_id", cid).order("name");
-      const students = (data || []).filter((m) => m.status !== "removed" && (m.community_role === "student"));
-      return json({ ok: true, members: students });
+      // 학생뿐 아니라 그 공동체에 등록(승인)된 모든 구성원이 매점을 이용할 수 있음
+      const roleOrder: Record<string, number> = { student: 0, staff: 1, teacher: 2, admin_officer: 3, community_admin: 4, super_admin: 5 };
+      const people = (data || [])
+        .filter((m) => m.status !== "removed" && m.status !== "pending")
+        .sort((a, b) => (roleOrder[a.community_role] ?? 9) - (roleOrder[b.community_role] ?? 9) || String(a.name).localeCompare(String(b.name), "ko"));
+      return json({ ok: true, members: people });
     }
 
     // ── 판매: 재고차감 + 영수증 저장 + (회원이면) 용돈 지출 자동 기록 ──
@@ -186,7 +218,7 @@ Deno.serve(async (req) => {
         const today = new Date().toISOString().slice(0, 10);
         const { data: ae } = await admin.from("allowance_entries").insert({
           member_id: memberId, community_id: memberCommunity, date: today,
-          type: "expense", category: "매점", memo: itemsSummary(lines), amount: total, currency: "원",
+          type: "expense", category: "매점", memo: itemsSummary(lines), amount: total, currency: v.currency,
         }).select().single();
         if (ae) {
           allowanceEntryId = ae.id;

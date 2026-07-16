@@ -111,6 +111,7 @@
       <div class="navi" data-page="stock" onclick="go('stock')"><span class="ic">📦</span><span class="t">재고관리</span></div>
       <div class="navi" data-page="expense" onclick="go('expense')"><span class="ic">💸</span><span class="t">지출</span></div>
       <div class="navi" data-page="stats" onclick="go('stats')"><span class="ic">📈</span><span class="t">통계</span></div>
+      <div class="navi" data-page="settings" onclick="go('settings')"><span class="ic">⚙️</span><span class="t">설정</span></div>
       <div style="flex:1"></div>
       <div class="navi" onclick="logout()"><span class="ic">🚪</span><span class="t">나가기</span></div>
     </nav>
@@ -126,12 +127,14 @@ const SUPABASE_URL = 'https://bbfvnmlrdtzmcwfadjqw.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJiZnZubWxyZHR6bWN3ZmFkanF3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1Njg1OTIsImV4cCI6MjA5ODE0NDU5Mn0.nJbRfTkcjVxsb_BO6sAP_0lOxQ--wTFXVN9tBH1IPNA';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-let CID = '', PW = '', COMM_NAME = '', STORE_NAME = '';
+let CID = '', PW = '', COMM_NAME = '', STORE_NAME = '', CURRENCY = '원';
 let products = [], members = [], cart = [];
 let curPage = 'dash';
 
 const esc = s => (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const won = n => (Number(n)||0).toLocaleString('ko-KR') + '원';
+// 통화별 금액 표기: 원은 뒤에(1,000원), $·₱ 는 앞에($1,000)
+const won = n => { const v=(Number(n)||0).toLocaleString('en-US',{maximumFractionDigits:2}); return CURRENCY==='원' ? v+'원' : CURRENCY+v; };
+const curUnit = () => CURRENCY;
 function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'),2200); }
 function openModal(html){ document.getElementById('modal').innerHTML=html; document.getElementById('modal-bg').classList.add('show'); }
 function closeModal(){ document.getElementById('modal-bg').classList.remove('show'); }
@@ -167,6 +170,7 @@ async function doLogin(){
     const r = await call('login');
     COMM_NAME = sel.options[sel.selectedIndex].text;
     STORE_NAME = r.store_name || (COMM_NAME + ' 매점');
+    CURRENCY = r.currency || '원';
     localStorage.setItem('store_last_cid', cid);
     document.getElementById('gate').style.display='none';
     document.getElementById('app').style.display='block';
@@ -190,6 +194,44 @@ function go(page){
   else if(page==='stock') renderStock();
   else if(page==='expense') renderExpense();
   else if(page==='stats') renderStats();
+  else if(page==='settings') renderSettings();
+}
+
+// ───── 설정 (매점 이름 · 통화) ─────
+const CUR_OPTS = [{v:'원',label:'원 (₩)',ex:'1,000원'},{v:'$',label:'달러 ($)',ex:'$1,000'},{v:'₱',label:'페소 (₱)',ex:'₱1,000'}];
+function renderSettings(){
+  const m=document.getElementById('main');
+  m.innerHTML=`
+    <div class="head"><div class="h1">⚙️ 설정<div class="sub">매점 이름과 통화를 설정해요</div></div></div>
+    <div class="card" style="max-width:480px;padding:22px">
+      <div class="fld"><label>매점 이름</label><input id="set-name" class="inp" value="${esc(STORE_NAME)}" placeholder="예: IMUSA 매점"/></div>
+      <div class="fld"><label>통화 (금액 단위)</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap" id="set-cur">
+          ${CUR_OPTS.map(c=>`<button class="chip ${CURRENCY===c.v?'on':''}" style="flex:1;justify-content:center;height:44px;flex-direction:column;gap:1px" data-v="${c.v}" onclick="pickCur('${c.v}')">
+            <span style="font-weight:800">${c.label}</span><span style="font-size:10.5px;color:var(--ink3)">${c.ex}</span></button>`).join('')}
+        </div>
+        <div style="font-size:11.5px;color:var(--ink3);margin-top:8px">※ 통화를 바꾸면 상품 가격·매출·용돈 차감이 모두 이 단위로 표시돼요. 이미 기록된 금액의 숫자는 그대로 유지됩니다.</div>
+      </div>
+      <div id="set-err" style="display:none;color:var(--bad);font-size:12.5px;font-weight:600;margin-bottom:10px"></div>
+      <button class="btn" style="width:100%;margin-top:6px" id="set-save" onclick="saveSettings()">저장</button>
+      <div style="font-size:11.5px;color:var(--ink3);margin-top:14px;text-align:center">비밀번호 변경은 TCS 관리자 화면 → 매점에서 할 수 있어요</div>
+    </div>`;
+}
+let _pendCur = null;
+function pickCur(v){ _pendCur=v; document.querySelectorAll('#set-cur .chip').forEach(b=>b.classList.toggle('on', b.dataset.v===v)); }
+async function saveSettings(){
+  const name=document.getElementById('set-name').value.trim();
+  const cur=_pendCur||CURRENCY;
+  const btn=document.getElementById('set-save'); const err=document.getElementById('set-err'); err.style.display='none';
+  btn.disabled=true; btn.textContent='저장 중…';
+  try{
+    const r=await call('save_settings',{ store_name:name, currency:cur });
+    STORE_NAME = r.store_name || name; CURRENCY = r.currency || cur; _pendCur=null;
+    document.getElementById('brand-name').textContent = STORE_NAME;
+    toast('설정이 저장됐어요 ✅');
+    renderSettings();
+  }catch(e){ err.textContent=e.message||'저장 실패'; err.style.display='block'; }
+  finally{ btn.disabled=false; btn.textContent='저장'; }
 }
 
 // ───── 대시보드 ─────
@@ -231,7 +273,7 @@ function drawSell(){
   const cats=[...new Set(products.filter(p=>p.active).map(p=>p.category||'기타'))];
   const active=products.filter(p=>p.active);
   m.innerHTML=`
-    <div class="head"><div class="h1">🛒 판매<div class="sub">상품을 눌러 담고, 학생을 선택해 결제하세요</div></div></div>
+    <div class="head"><div class="h1">🛒 판매<div class="sub">상품을 눌러 담고, 구성원을 선택해 결제하세요</div></div></div>
     <div class="pos">
       <div>
         <div class="prodgrid" id="prodgrid">
@@ -263,7 +305,9 @@ let sellMember='', sellPay='allowance';
 function drawCart(){
   const el=document.getElementById('cart'); if(!el) return;
   const total=cart.reduce((s,c)=>s+c.price*c.qty,0);
-  const stuOpts = members.map(s=>`<option value="${s.id}" ${sellMember===s.id?'selected':''}>${esc(s.name)}${s.grade?' ('+esc(s.grade)+')':''}</option>`).join('');
+  const roleLabel = {super_admin:'총관리자',community_admin:'관리자',admin_officer:'행정',teacher:'교사',staff:'간사',student:'학생',member:'멤버'};
+  const memHint = s => s.grade ? ' ('+esc(s.grade)+')' : (s.community_role && s.community_role!=='student' ? ' ('+(roleLabel[s.community_role]||'')+')' : '');
+  const stuOpts = members.map(s=>`<option value="${s.id}" ${sellMember===s.id?'selected':''}>${esc(s.name)}${memHint(s)}</option>`).join('');
   el.innerHTML=`
     <div style="font-weight:800;font-size:15px;margin-bottom:12px">🧾 장바구니</div>
     ${cart.length? cart.map(c=>`
@@ -280,9 +324,9 @@ function drawCart(){
         <button class="chip ${sellPay==='cash'?'on':''}" style="flex:1;justify-content:center;height:38px" onclick="sellPay='cash';drawCart()">💵 현금</button>
       </div>
     </div>
-    <div class="fld"><label>학생 ${sellPay==='allowance'?'(필수 · 용돈에서 자동 차감)':'(선택)'}</label>
+    <div class="fld"><label>구매자 ${sellPay==='allowance'?'(필수 · 용돈에서 자동 차감)':'(선택)'}</label>
       <select class="inp" id="sell-member" onchange="sellMember=this.value">
-        <option value="">${sellPay==='cash'?'선택 안 함 (현금)':'학생 선택'}</option>${stuOpts}
+        <option value="">${sellPay==='cash'?'선택 안 함 (현금)':'구성원 선택'}</option>${stuOpts}
       </select>
     </div>
     <button class="btn" style="width:100%;margin-top:6px" ${cart.length?'':'disabled'} onclick="checkout()">✅ 결제하기</button>
@@ -290,7 +334,7 @@ function drawCart(){
 }
 async function checkout(){
   if(!cart.length) return;
-  if(sellPay==='allowance' && !sellMember){ toast('용돈 차감은 학생을 선택하세요'); return; }
+  if(sellPay==='allowance' && !sellMember){ toast('용돈 차감은 구성원을 선택하세요'); return; }
   const total=cart.reduce((s,c)=>s+c.price*c.qty,0);
   const buyer = sellMember ? (members.find(s=>s.id===sellMember)?.name||'') : '현금';
   if(!confirm(`${buyer} · ${won(total)} 결제할까요?${sellPay==='allowance'?'\n(학생 용돈에서 자동 차감됩니다)':''}`)) return;
@@ -337,8 +381,8 @@ function editProduct(p){
     <div class="fld"><label>상품명 *</label><input id="p-name" class="inp" value="${esc(p.name||'')}" placeholder="예: 초코파이"/></div>
     <div class="fld"><label>분류</label><input id="p-cat" class="inp" value="${esc(p.category||'')}" placeholder="예: 과자 / 음료"/></div>
     <div style="display:flex;gap:10px">
-      <div class="fld" style="flex:1"><label>판매가 (원)</label><input id="p-price" class="inp" type="number" value="${p.price!=null?p.price:''}" placeholder="500"/></div>
-      <div class="fld" style="flex:1"><label>원가 (원)</label><input id="p-cost" class="inp" type="number" value="${p.cost!=null?p.cost:''}" placeholder="0"/></div>
+      <div class="fld" style="flex:1"><label>판매가 (${curUnit()})</label><input id="p-price" class="inp" type="number" value="${p.price!=null?p.price:''}" placeholder="500"/></div>
+      <div class="fld" style="flex:1"><label>원가 (${curUnit()})</label><input id="p-cost" class="inp" type="number" value="${p.cost!=null?p.cost:''}" placeholder="0"/></div>
     </div>
     <div style="display:flex;gap:10px">
       <div class="fld" style="flex:1"><label>재고 수량</label><input id="p-stock" class="inp" type="number" value="${p.stock!=null?p.stock:''}" placeholder="0"/></div>
@@ -394,7 +438,7 @@ function editExpense(){
     <div class="fld"><label>날짜</label><input id="e-date" class="inp" type="date" value="${today}"/></div>
     <div class="fld"><label>분류</label><input id="e-cat" class="inp" placeholder="예: 물품매입 / 비품"/></div>
     <div class="fld"><label>내용</label><input id="e-memo" class="inp" placeholder="예: 음료 3박스 매입"/></div>
-    <div class="fld"><label>금액 (원)</label><input id="e-amt" class="inp" type="number" placeholder="0"/></div>
+    <div class="fld"><label>금액 (${curUnit()})</label><input id="e-amt" class="inp" type="number" placeholder="0"/></div>
     <div style="display:flex;gap:8px"><button class="btn ghost" style="flex:1" onclick="closeModal()">취소</button>
       <button class="btn" style="flex:1" onclick="saveExpense()">저장</button></div>`);
 }

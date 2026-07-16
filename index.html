@@ -7865,13 +7865,12 @@ async function initStorePage() {
   } catch(e) {
     if (schoolTableMissing(e)) { main.innerHTML = storeSetupHtml(); return; }
   }
-  // 매점 설정 여부 (관리자만 확인 가능)
-  if (isCommunityAdmin()) {
-    try {
-      const { data } = await sb.functions.invoke(STORE_FN, { body: { action:'status', community_id: CID() } });
-      if (data && data.ok) { out.configured = data.configured; out.storeName = data.store_name; }
-    } catch(_) {}
-  }
+  // 매점 설정 여부·통화 확인 (공동체 구성원)
+  out.currency = '원';
+  try {
+    const { data } = await sb.functions.invoke(STORE_FN, { body: { action:'status', community_id: CID() } });
+    if (data && data.ok) { out.configured = data.configured; out.storeName = data.store_name; out.currency = data.currency || '원'; }
+  } catch(_) {}
   storeData = out;
   renderStorePage();
 }
@@ -7890,7 +7889,8 @@ function renderStorePage() {
   const now = new Date();
   const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const weekStart = new Date(now.getTime() - 6*864e5);
-  const won = n => (Number(n)||0).toLocaleString('ko-KR') + '원';
+  const cur = d.currency || '원';
+  const won = n => { const v=(Number(n)||0).toLocaleString('en-US',{maximumFractionDigits:2}); return cur==='원' ? v+'원' : cur+v; };
 
   let daySum=0, weekSum=0, monthSum=0;
   const perStu = new Map();
@@ -7969,6 +7969,10 @@ function openStorePassSetup() {
       <div style="font-size:12.5px;color:var(--ink3);margin-bottom:16px">이 공동체 매점 관리 페이지 접속용 비밀번호예요. 매점 담당자에게만 알려주세요.</div>
       <div style="margin-bottom:12px"><label style="font-size:12px;font-weight:700;color:var(--ink3);display:block;margin-bottom:6px">매점 이름 (선택)</label>
         <input id="store-name-inp" value="${escAttr((storeData&&storeData.storeName)||'')}" placeholder="예: IMUSA 매점" style="width:100%;height:42px;padding:0 13px;border:1.5px solid var(--border);border-radius:11px;background:var(--s2);font:14px var(--font);color:var(--ink);outline:none"/></div>
+      <div style="margin-bottom:12px"><label style="font-size:12px;font-weight:700;color:var(--ink3);display:block;margin-bottom:6px">통화 (금액 단위)</label>
+        <div style="display:flex;gap:8px" id="store-cur-pick">
+          ${[{v:'원',l:'원 (₩)'},{v:'$',l:'달러 ($)'},{v:'₱',l:'페소 (₱)'}].map(c=>`<button type="button" data-v="${c.v}" onclick="pickStoreCur('${c.v}')" style="flex:1;height:40px;border-radius:10px;border:1.5px solid ${((storeData&&storeData.currency)||'원')===c.v?'var(--accent)':'var(--border)'};background:${((storeData&&storeData.currency)||'원')===c.v?'var(--asoft)':'var(--surface)'};color:${((storeData&&storeData.currency)||'원')===c.v?'var(--adeep)':'var(--ink2)'};font:700 12.5px var(--font);cursor:pointer">${c.l}</button>`).join('')}
+        </div></div>
       <div style="margin-bottom:16px"><label style="font-size:12px;font-weight:700;color:var(--ink3);display:block;margin-bottom:6px">비밀번호 (4자 이상)</label>
         <input id="store-pass-inp" type="password" placeholder="••••••" style="width:100%;height:42px;padding:0 13px;border:1.5px solid var(--border);border-radius:11px;background:var(--s2);font:14px var(--font);color:var(--ink);outline:none"/></div>
       <div id="store-pass-err" style="display:none;color:#b91c1c;font-size:12.5px;font-weight:600;margin-bottom:10px"></div>
@@ -7978,7 +7982,19 @@ function openStorePassSetup() {
       </div>
     </div>`;
   document.body.appendChild(wrap);
+  _storeCurPick = (storeData && storeData.currency) || '원';
   setTimeout(()=>document.getElementById('store-pass-inp')?.focus(), 50);
+}
+
+let _storeCurPick = '원';
+function pickStoreCur(v) {
+  _storeCurPick = v;
+  document.querySelectorAll('#store-cur-pick button').forEach(b => {
+    const on = b.dataset.v === v;
+    b.style.borderColor = on ? 'var(--accent)' : 'var(--border)';
+    b.style.background = on ? 'var(--asoft)' : 'var(--surface)';
+    b.style.color = on ? 'var(--adeep)' : 'var(--ink2)';
+  });
 }
 
 async function saveStorePass() {
@@ -7990,7 +8006,7 @@ async function saveStorePass() {
   if (!pw || pw.length < 4) { err.textContent = '비밀번호는 4자 이상이어야 해요'; err.style.display='block'; return; }
   btn.disabled = true; btn.textContent = '저장 중…';
   try {
-    const { data, error } = await sb.functions.invoke(STORE_FN, { body: { action:'set_password', community_id: CID(), password: pw, store_name: name || null } });
+    const { data, error } = await sb.functions.invoke(STORE_FN, { body: { action:'set_password', community_id: CID(), password: pw, store_name: name || null, currency: _storeCurPick } });
     if (error) throw new Error(error.message);
     if (data && data.error) throw new Error(data.error);
     document.getElementById('store-pass-modal')?.remove();
