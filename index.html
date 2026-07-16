@@ -6706,14 +6706,39 @@ function renderTodos() {
     </div>`).join('');
 }
 
-function showTodoForm() {
+async function showTodoForm() {
   const form = document.getElementById('todo-form');
   form.style.display = form.style.display==='none' ? 'block' : 'none';
-  if (form.style.display !== 'none') {
-    const sel = document.getElementById('todo-assignee');
-    sel.innerHTML = '<option value="">담당자 선택</option>' +
-      Object.values(members).map(m => `<option value="${m.id}" data-name="${m.name}">${m.name}</option>`).join('');
-    document.getElementById('todo-input').focus();
+  if (form.style.display === 'none') return;
+  document.getElementById('todo-input').focus();
+  const sel = document.getElementById('todo-assignee');
+  sel.innerHTML = '<option value="">담당자 선택</option>';
+
+  // 담당자 후보: 이 채널 참여자를 위로, 그다음 공동체 구성원
+  let pool = Object.values(members).filter(m => m.community_role !== 'store_bot');
+  if (!pool.length) {
+    // 전역 목록이 비어 있으면 직접 로드
+    try {
+      const { data: mm } = await sb.from('members').select('id,name,status,community_role').eq('community_id', CID());
+      pool = (mm || []).filter(m => m.status !== 'removed' && m.community_role !== 'store_bot');
+    } catch(_) {}
+  }
+  let chIds = [];
+  try {
+    const { data: cm } = await sb.from('channel_members').select('member_id').eq('channel_id', currentChannel.id);
+    chIds = (cm || []).map(x => x.member_id);
+  } catch(_) {}
+  const byId = {}; pool.forEach(m => { byId[m.id] = m; });
+  const chMembers = chIds.map(id => byId[id]).filter(Boolean);
+  const others = pool.filter(m => !chIds.includes(m.id));
+  const ordered = chMembers.length ? [...chMembers, ...others] : pool;
+
+  const opt = m => `<option value="${m.id}" data-name="${escAttr(m.name)}">${escHtml(m.name)}</option>`;
+  if (chMembers.length && others.length) {
+    sel.innerHTML += `<optgroup label="이 채널 참여자">${chMembers.map(opt).join('')}</optgroup>`
+                   + `<optgroup label="다른 구성원">${others.map(opt).join('')}</optgroup>`;
+  } else {
+    sel.innerHTML += ordered.map(opt).join('');
   }
 }
 
