@@ -70,6 +70,82 @@ async function requireMember(req: Request, community_id: string) {
 const itemsSummary = (items: { name: string; qty: number }[]) =>
   items.map((i) => `${i.name}${i.qty > 1 ? "×" + i.qty : ""}`).join(", ");
 
+const fmtMoney = (n: number, currency: string) => {
+  const v = (Number(n) || 0).toLocaleString("en-US", { maximumFractionDigits: 2 });
+  return currency === "원" ? v + "원" : currency + v;
+};
+
+// 영수증 텍스트(채팅 pre-wrap 로 보기 좋게)
+function buildReceipt(storeName: string, lines: { name: string; qty: number; price: number }[], total: number, currency: string, buyerName: string, payMethod: string) {
+  const now = new Date();
+  const p2 = (x: number) => String(x).padStart(2, "0");
+  const dt = `${now.getFullYear()}-${p2(now.getMonth() + 1)}-${p2(now.getDate())} ${p2(now.getHours())}:${p2(now.getMinutes())}`;
+  const count = lines.reduce((s, l) => s + l.qty, 0);
+  const itemLines = lines.map((l) => `• ${l.name} ×${l.qty} — ${fmtMoney(l.price * l.qty, currency)}`).join("\n");
+  const pay = payMethod === "cash" ? "현금" : "용돈 차감";
+  return [
+    `🏪 ${storeName}`,
+    `━━━━━━━━━━━━━`,
+    `🧾 영수증 · ${dt}`,
+    ``,
+    itemLines,
+    ``,
+    `────────────`,
+    `합계 ${count}개 · ${fmtMoney(total, currency)}`,
+    `결제: ${pay}`,
+    `구매자: ${buyerName || ""}`,
+    `━━━━━━━━━━━━━`,
+    `이용해 주셔서 감사합니다 🙏`,
+  ].join("\n");
+}
+
+// 공동체별 '매점' 발신자(members 행) 확보 — 없으면 생성(숨김 처리)
+async function ensureStoreBot(cid: string, storeName: string): Promise<string | null> {
+  const { data: st } = await admin.from("store_settings").select("bot_member_id").eq("community_id", cid).single();
+  if (st?.bot_member_id) {
+    await admin.from("members").update({ name: storeName }).eq("id", st.bot_member_id);
+    return st.bot_member_id;
+  }
+  const email = `store.${cid}@imstore.local`;
+  let uid: string | null = null;
+  const { data: created } = await admin.auth.admin.createUser({ email, password: crypto.randomUUID(), email_confirm: true, user_metadata: { store: true } });
+  if (created?.user) uid = created.user.id;
+  else {
+    const { data: existing } = await admin.from("members").select("id").eq("email", email).maybeSingle();
+    uid = existing?.id || null;
+  }
+  if (!uid) return null;
+  // status='removed' 로 일반 구성원 목록에는 숨기되, 발신자(members)로는 존재
+  await admin.from("members").upsert({
+    id: uid, name: storeName, initials: "🏪", color: "#1d3a5f",
+    role: "매점", community_role: "store_bot", email, status: "removed", community_id: cid,
+  });
+  await admin.from("store_settings").update({ bot_member_id: uid }).eq("community_id", cid);
+  return uid;
+}
+
+// 매점↔구매자 1:1(DM) 채널 확보 — 없으면 생성
+async function ensureReceiptDM(cid: string, botId: string, buyerId: string, storeName: string): Promise<string | null> {
+  const { data: rows } = await admin.from("channel_members").select("channel_id, member_id").in("member_id", [botId, buyerId]);
+  const map = new Map<string, Set<string>>();
+  for (const r of rows || []) {
+    const s = map.get(r.channel_id) || new Set<string>();
+    s.add(r.member_id); map.set(r.channel_id, s);
+  }
+  for (const [chId, set] of map) {
+    if (set.has(botId) && set.has(buyerId)) {
+      const { data: ch } = await admin.from("channels").select("id, kind").eq("id", chId).single();
+      if (ch && ch.kind === "dm") return chId;
+    }
+  }
+  const { data: ch } = await admin.from("channels").insert({
+    name: `${storeName} 영수증`, emoji: "🏪", description: "매점 결제 내역", pinned: false, kind: "dm", community_id: cid,
+  }).select().single();
+  if (!ch) return null;
+  await admin.from("channel_members").insert([{ channel_id: ch.id, member_id: botId }, { channel_id: ch.id, member_id: buyerId }]);
+  return ch.id;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   try {
@@ -160,7 +236,7 @@ Deno.serve(async (req) => {
       // 학생뿐 아니라 그 공동체에 등록(승인)된 모든 구성원이 매점을 이용할 수 있음
       const roleOrder: Record<string, number> = { student: 0, staff: 1, teacher: 2, admin_officer: 3, community_admin: 4, super_admin: 5 };
       const people = (data || [])
-        .filter((m) => m.status !== "removed" && m.status !== "pending")
+        .filter((m) => m.status !== "removed" && m.status !== "pending" && m.community_role !== "store_bot")
         .sort((a, b) => (roleOrder[a.community_role] ?? 9) - (roleOrder[b.community_role] ?? 9) || String(a.name).localeCompare(String(b.name), "ko"));
       return json({ ok: true, members: people });
     }
@@ -226,7 +302,24 @@ Deno.serve(async (req) => {
         }
       }
 
-      return json({ ok: true, sale_id: sale.id, total, allowance_entry_id: allowanceEntryId });
+      // 영수증을 구매자 개인 채팅(매점 발신자)으로 발송 — 구성원 결제 시
+      let receiptSent = false;
+      if (memberId) {
+        try {
+          const storeName = v.store_name || "매점";
+          const botId = await ensureStoreBot(cid, storeName);
+          if (botId) {
+            const chId = await ensureReceiptDM(cid, botId, memberId, storeName);
+            if (chId) {
+              const text = buildReceipt(storeName, lines, total, v.currency, buyerName || "", payMethod);
+              await admin.from("messages").insert({ channel_id: chId, sender_id: botId, sender_name: storeName, text, kind: "text" });
+              receiptSent = true;
+            }
+          }
+        } catch (_) { /* 영수증 실패는 판매를 막지 않음 */ }
+      }
+
+      return json({ ok: true, sale_id: sale.id, total, allowance_entry_id: allowanceEntryId, receipt: receiptSent });
     }
 
     // 판매 취소: 재고 복구 + 용돈 지출 삭제 + voided 처리

@@ -369,10 +369,10 @@ async function checkout(){
   if(sellPay==='allowance' && !sellMember){ toast('용돈 차감은 구성원을 선택하세요'); return; }
   const total=cart.reduce((s,c)=>s+c.price*c.qty,0);
   const buyer = sellMember ? (members.find(s=>s.id===sellMember)?.name||'') : '현금';
-  if(!confirm(`${buyer} · ${won(total)} 결제할까요?${sellPay==='allowance'?'\n(학생 용돈에서 자동 차감됩니다)':''}`)) return;
+  if(!confirm(`${buyer} · ${won(total)} 결제할까요?${sellPay==='allowance'?'\n(용돈에서 자동 차감됩니다)':''}`)) return;
   try{
-    await call('sale', { member_id: sellMember||null, items: cart.map(c=>({product_id:c.product_id,qty:c.qty})), pay_method: sellPay });
-    toast('결제 완료 ✅');
+    const r = await call('sale', { member_id: sellMember||null, items: cart.map(c=>({product_id:c.product_id,qty:c.qty})), pay_method: sellPay });
+    toast(r && r.receipt ? '결제 완료 · 영수증 발송 ✅' : '결제 완료 ✅');
     cart=[]; sellMember='';
     products=(await call('products')).products;
     drawSell();

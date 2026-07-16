@@ -10,11 +10,13 @@ create table if not exists public.store_settings (
   community_id uuid primary key references public.communities(id) on delete cascade,
   pass_hash    text,
   store_name   text,
-  currency     text default '원',   -- '원' | '$' | '₱'
-  updated_at   timestamptz default now()
+  currency       text default '원',   -- '원' | '$' | '₱'
+  bot_member_id  uuid,                 -- 영수증을 보내는 '매점' 발신자(members) id
+  updated_at     timestamptz default now()
 );
--- 이미 있던 경우 통화 컬럼 보강
+-- 이미 있던 경우 컬럼 보강
 alter table public.store_settings add column if not exists currency text default '원';
+alter table public.store_settings add column if not exists bot_member_id uuid;
 alter table public.store_settings enable row level security;
 -- 정책 없음 = authenticated/anon 모두 접근 불가 (service_role 만 가능)
 
