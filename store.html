@@ -1,0 +1,449 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"/>
+<title>TCS 매점 관리</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css"/>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#eef2f7;--surface:#fff;--s2:#f5f8fc;--border:#e2e8f2;--ink:#16203a;--ink2:#3c4a63;--ink3:#8695ad;
+    --accent:#2a5298;--adeep:#1d3a5f;--asoft:#e7f0fb;--good:#15803d;--bad:#b91c1c;--warn:#b45309;
+    --font:'Pretendard',system-ui,-apple-system,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;font-family:var(--font);background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased}
+  button{font-family:var(--font)}
+  input,select{font-family:var(--font)}
+  .btn{height:42px;padding:0 18px;border:none;border-radius:12px;background:linear-gradient(135deg,#1d3a5f,#2a5298);color:#fff;font-weight:700;font-size:14px;cursor:pointer}
+  .btn.ghost{background:var(--surface);color:var(--ink2);border:1.5px solid var(--border)}
+  .btn.sm{height:34px;padding:0 12px;font-size:12.5px;border-radius:9px}
+  .inp{height:44px;width:100%;padding:0 14px;border:1.5px solid var(--border);border-radius:12px;background:var(--s2);font-size:15px;color:var(--ink);outline:none}
+  .inp:focus{border-color:var(--accent);background:#fff}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:16px}
+
+  /* 로그인 게이트 */
+  #gate{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:20px;
+    background:radial-gradient(1200px 600px at 30% -10%,#28477a,#12213c)}
+  #gate .box{width:100%;max-width:400px;background:#fff;border-radius:22px;padding:30px 26px;box-shadow:0 30px 80px rgba(0,0,0,.35)}
+
+  /* 앱 레이아웃 */
+  #app{display:none;height:100%}
+  .layout{display:flex;height:100%}
+  .side{width:230px;flex-shrink:0;background:linear-gradient(180deg,#1b3559,#12233d);color:#fff;display:flex;flex-direction:column;padding:16px 12px}
+  .side .brand{padding:8px 10px 16px;border-bottom:1px solid rgba(255,255,255,.12);margin-bottom:12px}
+  .navi{display:flex;align-items:center;gap:11px;height:46px;padding:0 13px;border-radius:12px;color:rgba(255,255,255,.72);font-weight:600;font-size:14px;cursor:pointer;margin-bottom:3px}
+  .navi:hover{background:rgba(255,255,255,.08);color:#fff}
+  .navi.on{background:rgba(255,255,255,.16);color:#fff}
+  .navi .ic{font-size:18px;width:22px;text-align:center}
+  .main{flex:1;overflow-y:auto;padding:26px 30px}
+  .head{display:flex;align-items:center;justify-content:space-between;margin-bottom:22px;flex-wrap:wrap;gap:12px}
+  .h1{font-size:22px;font-weight:800}
+  .h1 .sub{font-size:12.5px;color:var(--ink3);font-weight:600;margin-top:3px}
+  .grid-stat{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px}
+  .stat{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:16px 18px}
+  .stat .lb{font-size:12px;color:var(--ink3);font-weight:700}
+  .stat .vl{font-size:26px;font-weight:800;margin-top:5px;color:var(--adeep)}
+  table{width:100%;border-collapse:collapse}
+  th{font-size:12px;color:var(--ink3);text-align:left;padding:9px 10px;border-bottom:1.5px solid var(--border);font-weight:700;white-space:nowrap}
+  td{font-size:13.5px;padding:11px 10px;border-bottom:1px solid var(--border)}
+  .tag{display:inline-block;font-size:11px;font-weight:700;padding:2px 9px;border-radius:99px;background:var(--asoft);color:var(--adeep)}
+  .chip{display:inline-flex;align-items:center;gap:5px;height:30px;padding:0 12px;border-radius:99px;border:1.5px solid var(--border);background:#fff;cursor:pointer;font-size:12.5px;font-weight:600;color:var(--ink2)}
+  .chip.on{border-color:var(--accent);background:var(--asoft);color:var(--adeep)}
+  .toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:#16203a;color:#fff;padding:11px 20px;border-radius:12px;font-size:13.5px;font-weight:600;opacity:0;transition:opacity .2s;z-index:9999;pointer-events:none;box-shadow:0 12px 30px rgba(0,0,0,.25)}
+  .toast.show{opacity:1}
+  .modal-bg{position:fixed;inset:0;background:rgba(15,23,42,.55);display:none;align-items:center;justify-content:center;z-index:800;padding:20px}
+  .modal-bg.show{display:flex}
+  .modal{background:#fff;border-radius:20px;padding:24px;width:100%;max-width:440px;max-height:90vh;overflow:auto}
+  .fld{margin-bottom:13px}
+  .fld label{display:block;font-size:12px;font-weight:700;color:var(--ink3);margin-bottom:6px}
+
+  /* 판매 화면 */
+  .pos{display:grid;grid-template-columns:1fr 340px;gap:18px;align-items:start}
+  .prodgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:11px}
+  .prodcard{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:13px 12px;cursor:pointer;text-align:left;transition:all .12s}
+  .prodcard:hover{border-color:var(--accent);transform:translateY(-2px);box-shadow:0 6px 16px rgba(29,58,95,.10)}
+  .prodcard:disabled{opacity:.45;cursor:not-allowed;transform:none;box-shadow:none}
+  .cart{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:16px;position:sticky;top:0}
+  @media(max-width:860px){ .pos{grid-template-columns:1fr} .side{width:74px} .side .navi span.t{display:none} .side .brand .bt{display:none} .main{padding:18px 14px} }
+</style>
+</head>
+<body>
+
+<!-- ────── 로그인 게이트 ────── -->
+<div id="gate">
+  <div class="box">
+    <div style="text-align:center;margin-bottom:20px">
+      <div style="width:56px;height:56px;border-radius:16px;background:linear-gradient(135deg,#1d3a5f,#2a5298);display:flex;align-items:center;justify-content:center;font-size:27px;margin:0 auto 12px">🏪</div>
+      <div style="font-size:19px;font-weight:800">TCS 매점 관리</div>
+      <div style="font-size:12.5px;color:var(--ink3);margin-top:4px">공동체를 선택하고 매점 비밀번호를 입력하세요</div>
+    </div>
+    <div class="fld">
+      <label>공동체</label>
+      <select id="g-community" class="inp"><option value="">불러오는 중…</option></select>
+    </div>
+    <div class="fld">
+      <label>매점 비밀번호</label>
+      <input id="g-pass" class="inp" type="password" placeholder="••••••" onkeydown="if(event.key==='Enter')doLogin()"/>
+    </div>
+    <div id="g-err" style="display:none;color:var(--bad);font-size:12.5px;font-weight:600;margin:2px 0 12px"></div>
+    <button class="btn" style="width:100%;margin-top:6px" onclick="doLogin()" id="g-btn">들어가기</button>
+    <div style="text-align:center;margin-top:14px;font-size:11.5px;color:var(--ink3)">비밀번호는 TCS 관리자 → 매점 설정에서 등록해요</div>
+  </div>
+</div>
+
+<!-- ────── 매점 앱 ────── -->
+<div id="app">
+  <div class="layout">
+    <nav class="side">
+      <div class="brand">
+        <div style="display:flex;align-items:center;gap:9px">
+          <div style="width:34px;height:34px;border-radius:10px;background:rgba(255,255,255,.16);display:flex;align-items:center;justify-content:center;font-size:18px">🏪</div>
+          <div class="bt">
+            <div style="font-weight:800;font-size:14.5px" id="brand-name">매점</div>
+            <div style="font-size:11px;color:rgba(255,255,255,.55)" id="brand-comm"></div>
+          </div>
+        </div>
+      </div>
+      <div class="navi on" data-page="dash" onclick="go('dash')"><span class="ic">📊</span><span class="t">대시보드</span></div>
+      <div class="navi" data-page="sell" onclick="go('sell')"><span class="ic">🛒</span><span class="t">판매</span></div>
+      <div class="navi" data-page="stock" onclick="go('stock')"><span class="ic">📦</span><span class="t">재고관리</span></div>
+      <div class="navi" data-page="expense" onclick="go('expense')"><span class="ic">💸</span><span class="t">지출</span></div>
+      <div class="navi" data-page="stats" onclick="go('stats')"><span class="ic">📈</span><span class="t">통계</span></div>
+      <div style="flex:1"></div>
+      <div class="navi" onclick="logout()"><span class="ic">🚪</span><span class="t">나가기</span></div>
+    </nav>
+    <div class="main" id="main"></div>
+  </div>
+</div>
+
+<div class="modal-bg" id="modal-bg"><div class="modal" id="modal"></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+const SUPABASE_URL = 'https://bbfvnmlrdtzmcwfadjqw.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJiZnZubWxyZHR6bWN3ZmFkanF3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1Njg1OTIsImV4cCI6MjA5ODE0NDU5Mn0.nJbRfTkcjVxsb_BO6sAP_0lOxQ--wTFXVN9tBH1IPNA';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let CID = '', PW = '', COMM_NAME = '', STORE_NAME = '';
+let products = [], members = [], cart = [];
+let curPage = 'dash';
+
+const esc = s => (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const won = n => (Number(n)||0).toLocaleString('ko-KR') + '원';
+function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'),2200); }
+function openModal(html){ document.getElementById('modal').innerHTML=html; document.getElementById('modal-bg').classList.add('show'); }
+function closeModal(){ document.getElementById('modal-bg').classList.remove('show'); }
+document.getElementById('modal-bg').addEventListener('click',e=>{ if(e.target.id==='modal-bg') closeModal(); });
+
+async function call(action, extra={}){
+  const { data, error } = await sb.functions.invoke('store', { body:{ action, community_id:CID, password:PW, ...extra }});
+  if (error) throw new Error(error.message||'네트워크 오류');
+  if (data && data.error) { const e=new Error(data.error); e.code=data.code; throw e; }
+  return data;
+}
+
+// ───── 공동체 목록 로드 ─────
+async function loadCommunities(){
+  const { data } = await sb.from('communities').select('id,name,description').order('name');
+  const sel = document.getElementById('g-community');
+  if (!data || !data.length){ sel.innerHTML = '<option value="">공동체 없음</option>'; return; }
+  sel.innerHTML = data.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
+  // 마지막 사용 공동체 복원
+  const last = localStorage.getItem('store_last_cid');
+  if (last && data.find(c=>c.id===last)) sel.value = last;
+}
+
+async function doLogin(){
+  const sel = document.getElementById('g-community');
+  const cid = sel.value; const pw = document.getElementById('g-pass').value;
+  const err = document.getElementById('g-err'); err.style.display='none';
+  if (!cid){ err.textContent='공동체를 선택하세요'; err.style.display='block'; return; }
+  if (!pw){ err.textContent='비밀번호를 입력하세요'; err.style.display='block'; return; }
+  const btn=document.getElementById('g-btn'); btn.disabled=true; btn.textContent='확인 중…';
+  try{
+    CID=cid; PW=pw;
+    const r = await call('login');
+    COMM_NAME = sel.options[sel.selectedIndex].text;
+    STORE_NAME = r.store_name || (COMM_NAME + ' 매점');
+    localStorage.setItem('store_last_cid', cid);
+    document.getElementById('gate').style.display='none';
+    document.getElementById('app').style.display='block';
+    document.getElementById('brand-name').textContent = STORE_NAME;
+    document.getElementById('brand-comm').textContent = COMM_NAME;
+    go('dash');
+  }catch(e){
+    CID=''; PW='';
+    err.textContent = e.message || '로그인 실패'; err.style.display='block';
+  }finally{ btn.disabled=false; btn.textContent='들어가기'; }
+}
+function logout(){ CID=''; PW=''; cart=[]; document.getElementById('app').style.display='none'; document.getElementById('gate').style.display='flex'; document.getElementById('g-pass').value=''; }
+
+// ───── 네비게이션 ─────
+function go(page){
+  curPage=page;
+  document.querySelectorAll('.navi').forEach(n=>n.classList.toggle('on', n.dataset.page===page));
+  const m=document.getElementById('main'); m.innerHTML='<div style="text-align:center;padding:60px;color:var(--ink3)">불러오는 중…</div>';
+  if(page==='dash') renderDash();
+  else if(page==='sell') renderSell();
+  else if(page==='stock') renderStock();
+  else if(page==='expense') renderExpense();
+  else if(page==='stats') renderStats();
+}
+
+// ───── 대시보드 ─────
+async function renderDash(){
+  let st;
+  try{ st=await call('stats'); }catch(e){ document.getElementById('main').innerHTML=errBox(e); return; }
+  const m=document.getElementById('main');
+  m.innerHTML = `
+    <div class="head"><div class="h1">📊 대시보드<div class="sub">${esc(STORE_NAME)}</div></div>
+      <button class="btn" onclick="go('sell')">🛒 판매 시작</button></div>
+    <div class="grid-stat" style="margin-bottom:16px">
+      <div class="stat"><div class="lb">오늘 매출</div><div class="vl">${won(st.summary.daySum)}</div></div>
+      <div class="stat"><div class="lb">이번 주 매출</div><div class="vl">${won(st.summary.weekSum)}</div></div>
+      <div class="stat"><div class="lb">이번 달 매출</div><div class="vl">${won(st.summary.monthSum)}</div></div>
+      <div class="stat"><div class="lb">이번 달 순이익 (매출−지출)</div><div class="vl" style="color:${st.summary.netMonth>=0?'var(--good)':'var(--bad)'}">${won(st.summary.netMonth)}</div></div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;align-items:start">
+      <div class="card" style="padding:16px 18px">
+        <div style="font-weight:800;margin-bottom:10px">⚠️ 재고 부족 (5개 이하)</div>
+        ${st.lowStock.length? st.lowStock.map(p=>`<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)"><span>${esc(p.name)}</span><b style="color:${(p.stock||0)===0?'var(--bad)':'var(--warn)'}">${p.stock||0}개</b></div>`).join('') : '<div style="color:var(--ink3);font-size:13px;padding:8px 0">부족한 상품이 없어요 👍</div>'}
+        <button class="btn ghost sm" style="margin-top:12px" onclick="go('stock')">재고 관리하기</button>
+      </div>
+      <div class="card" style="padding:16px 18px">
+        <div style="font-weight:800;margin-bottom:10px">🏆 이번 달 인기 상품</div>
+        ${st.products.length? st.products.slice(0,6).map((p,i)=>`<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)"><span>${i+1}. ${esc(p.name)}</span><b>${p.qty}개</b></div>`).join('') : '<div style="color:var(--ink3);font-size:13px;padding:8px 0">판매 기록이 아직 없어요</div>'}
+      </div>
+    </div>`;
+}
+const errBox = e => `<div class="card" style="padding:24px;text-align:center;color:var(--bad)">${esc(e.message||'오류')}${e.code==='unset'?'<br><span style="color:var(--ink3);font-size:12.5px">TCS 관리자 화면에서 매점 비밀번호를 먼저 설정하세요.</span>':''}</div>`;
+
+// ───── 판매(POS) ─────
+async function renderSell(){
+  try{ products=(await call('products')).products; members=(await call('members')).members; }
+  catch(e){ document.getElementById('main').innerHTML=errBox(e); return; }
+  drawSell();
+}
+function drawSell(){
+  const m=document.getElementById('main');
+  const cats=[...new Set(products.filter(p=>p.active).map(p=>p.category||'기타'))];
+  const active=products.filter(p=>p.active);
+  m.innerHTML=`
+    <div class="head"><div class="h1">🛒 판매<div class="sub">상품을 눌러 담고, 학생을 선택해 결제하세요</div></div></div>
+    <div class="pos">
+      <div>
+        <div class="prodgrid" id="prodgrid">
+          ${active.length? active.map(p=>`
+            <button class="prodcard" ${p.stock<=0?'disabled':''} onclick="addCart('${p.id}')">
+              <div style="font-size:11px;color:var(--ink3);font-weight:700">${esc(p.category||'')}</div>
+              <div style="font-weight:700;font-size:14px;margin:3px 0 6px;min-height:38px">${esc(p.name)}</div>
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <span style="font-weight:800;color:var(--adeep)">${won(p.price)}</span>
+                <span style="font-size:11px;color:${p.stock<=5?'var(--warn)':'var(--ink3)'}">${p.stock}개</span>
+              </div>
+            </button>`).join('') : '<div style="grid-column:1/-1;color:var(--ink3);padding:30px;text-align:center">등록된 상품이 없어요. <b>재고관리</b>에서 상품을 추가하세요.</div>'}
+        </div>
+      </div>
+      <div class="cart" id="cart"></div>
+    </div>`;
+  drawCart();
+}
+function addCart(id){
+  const p=products.find(x=>x.id===id); if(!p) return;
+  const line=cart.find(c=>c.product_id===id);
+  const inCart=line?line.qty:0;
+  if(inCart+1>p.stock){ toast('재고가 부족해요'); return; }
+  if(line) line.qty++; else cart.push({product_id:id,name:p.name,price:p.price,qty:1});
+  drawCart();
+}
+function cartQty(id,d){ const l=cart.find(c=>c.product_id===id); if(!l)return; l.qty+=d; if(l.qty<=0) cart=cart.filter(c=>c.product_id!==id); const p=products.find(x=>x.id===id); if(p&&l&&l.qty>p.stock){l.qty=p.stock;toast('재고 초과');} drawCart(); }
+let sellMember='', sellPay='allowance';
+function drawCart(){
+  const el=document.getElementById('cart'); if(!el) return;
+  const total=cart.reduce((s,c)=>s+c.price*c.qty,0);
+  const stuOpts = members.map(s=>`<option value="${s.id}" ${sellMember===s.id?'selected':''}>${esc(s.name)}${s.grade?' ('+esc(s.grade)+')':''}</option>`).join('');
+  el.innerHTML=`
+    <div style="font-weight:800;font-size:15px;margin-bottom:12px">🧾 장바구니</div>
+    ${cart.length? cart.map(c=>`
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">
+        <div style="flex:1;min-width:0"><div style="font-weight:700;font-size:13.5px">${esc(c.name)}</div><div style="font-size:11.5px;color:var(--ink3)">${won(c.price)}</div></div>
+        <button class="chip" style="width:28px;height:28px;padding:0;justify-content:center" onclick="cartQty('${c.product_id}',-1)">−</button>
+        <b style="width:20px;text-align:center">${c.qty}</b>
+        <button class="chip" style="width:28px;height:28px;padding:0;justify-content:center" onclick="cartQty('${c.product_id}',1)">+</button>
+      </div>`).join('') : '<div style="color:var(--ink3);font-size:13px;padding:16px 0;text-align:center">상품을 담아주세요</div>'}
+    <div style="display:flex;justify-content:space-between;margin:14px 0;font-size:17px;font-weight:800"><span>합계</span><span style="color:var(--adeep)">${won(total)}</span></div>
+    <div class="fld"><label>결제 방법</label>
+      <div style="display:flex;gap:8px">
+        <button class="chip ${sellPay==='allowance'?'on':''}" style="flex:1;justify-content:center;height:38px" onclick="sellPay='allowance';drawCart()">💳 용돈 차감</button>
+        <button class="chip ${sellPay==='cash'?'on':''}" style="flex:1;justify-content:center;height:38px" onclick="sellPay='cash';drawCart()">💵 현금</button>
+      </div>
+    </div>
+    <div class="fld"><label>학생 ${sellPay==='allowance'?'(필수 · 용돈에서 자동 차감)':'(선택)'}</label>
+      <select class="inp" id="sell-member" onchange="sellMember=this.value">
+        <option value="">${sellPay==='cash'?'선택 안 함 (현금)':'학생 선택'}</option>${stuOpts}
+      </select>
+    </div>
+    <button class="btn" style="width:100%;margin-top:6px" ${cart.length?'':'disabled'} onclick="checkout()">✅ 결제하기</button>
+    ${cart.length?`<button class="btn ghost sm" style="width:100%;margin-top:8px" onclick="cart=[];drawCart()">비우기</button>`:''}`;
+}
+async function checkout(){
+  if(!cart.length) return;
+  if(sellPay==='allowance' && !sellMember){ toast('용돈 차감은 학생을 선택하세요'); return; }
+  const total=cart.reduce((s,c)=>s+c.price*c.qty,0);
+  const buyer = sellMember ? (members.find(s=>s.id===sellMember)?.name||'') : '현금';
+  if(!confirm(`${buyer} · ${won(total)} 결제할까요?${sellPay==='allowance'?'\n(학생 용돈에서 자동 차감됩니다)':''}`)) return;
+  try{
+    await call('sale', { member_id: sellMember||null, items: cart.map(c=>({product_id:c.product_id,qty:c.qty})), pay_method: sellPay });
+    toast('결제 완료 ✅');
+    cart=[]; sellMember='';
+    products=(await call('products')).products;
+    drawSell();
+  }catch(e){ toast(e.message||'결제 실패'); }
+}
+
+// ───── 재고관리 ─────
+async function renderStock(){
+  try{ products=(await call('products')).products; }catch(e){ document.getElementById('main').innerHTML=errBox(e); return; }
+  const m=document.getElementById('main');
+  m.innerHTML=`
+    <div class="head"><div class="h1">📦 재고관리<div class="sub">상품 등록·수정 및 입고 처리</div></div>
+      <button class="btn" onclick="editProduct()">＋ 상품 추가</button></div>
+    <div class="card" style="overflow:auto">
+      <table>
+        <thead><tr><th>상품명</th><th>분류</th><th>판매가</th><th>원가</th><th>재고</th><th>상태</th><th></th></tr></thead>
+        <tbody>
+        ${products.length? products.map(p=>`<tr>
+          <td style="font-weight:700">${esc(p.name)}</td>
+          <td><span class="tag">${esc(p.category||'-')}</span></td>
+          <td>${won(p.price)}</td>
+          <td style="color:var(--ink3)">${won(p.cost)}</td>
+          <td><b style="color:${p.stock<=0?'var(--bad)':(p.stock<=5?'var(--warn)':'var(--ink)')}">${p.stock}</b>
+            <button class="chip sm" style="margin-left:6px;height:26px" onclick="restock('${p.id}')">＋입고</button></td>
+          <td>${p.active?'<span class="tag" style="background:#dcfce7;color:#15803d">판매중</span>':'<span class="tag" style="background:#f1f5f9;color:#64748b">중지</span>'}</td>
+          <td style="white-space:nowrap;text-align:right">
+            <button class="chip sm" onclick='editProduct(${JSON.stringify(p).replace(/'/g,"&#39;")})'>수정</button>
+            <button class="chip sm" style="color:var(--bad)" onclick="delProduct('${p.id}','${esc(p.name)}')">삭제</button></td>
+        </tr>`).join('') : '<tr><td colspan="7" style="text-align:center;color:var(--ink3);padding:30px">상품을 추가해보세요</td></tr>'}
+        </tbody>
+      </table>
+    </div>`;
+}
+function editProduct(p){
+  p=p||{};
+  openModal(`
+    <div style="font-size:17px;font-weight:800;margin-bottom:16px">${p.id?'상품 수정':'상품 추가'}</div>
+    <div class="fld"><label>상품명 *</label><input id="p-name" class="inp" value="${esc(p.name||'')}" placeholder="예: 초코파이"/></div>
+    <div class="fld"><label>분류</label><input id="p-cat" class="inp" value="${esc(p.category||'')}" placeholder="예: 과자 / 음료"/></div>
+    <div style="display:flex;gap:10px">
+      <div class="fld" style="flex:1"><label>판매가 (원)</label><input id="p-price" class="inp" type="number" value="${p.price!=null?p.price:''}" placeholder="500"/></div>
+      <div class="fld" style="flex:1"><label>원가 (원)</label><input id="p-cost" class="inp" type="number" value="${p.cost!=null?p.cost:''}" placeholder="0"/></div>
+    </div>
+    <div style="display:flex;gap:10px">
+      <div class="fld" style="flex:1"><label>재고 수량</label><input id="p-stock" class="inp" type="number" value="${p.stock!=null?p.stock:''}" placeholder="0"/></div>
+      <div class="fld" style="flex:1"><label>판매 상태</label>
+        <select id="p-active" class="inp"><option value="1" ${p.active!==false?'selected':''}>판매중</option><option value="0" ${p.active===false?'selected':''}>중지</option></select></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button class="btn ghost" style="flex:1" onclick="closeModal()">취소</button>
+      <button class="btn" style="flex:1" onclick="saveProduct('${p.id||''}')">저장</button>
+    </div>`);
+}
+async function saveProduct(id){
+  const product={ id:id||undefined, name:document.getElementById('p-name').value.trim(),
+    category:document.getElementById('p-cat').value.trim(), price:document.getElementById('p-price').value,
+    cost:document.getElementById('p-cost').value, stock:document.getElementById('p-stock').value,
+    active:document.getElementById('p-active').value==='1' };
+  if(!product.name){ toast('상품명을 입력하세요'); return; }
+  try{ await call('save_product',{product}); closeModal(); toast('저장 완료'); renderStock(); }
+  catch(e){ toast(e.message||'저장 실패'); }
+}
+async function delProduct(id,name){ if(!confirm(`'${name}' 상품을 삭제할까요?`))return; try{ await call('delete_product',{id}); toast('삭제됨'); renderStock(); }catch(e){ toast(e.message); } }
+function restock(id){
+  const p=products.find(x=>x.id===id);
+  openModal(`<div style="font-size:17px;font-weight:800;margin-bottom:6px">📥 입고</div>
+    <div style="color:var(--ink3);font-size:13px;margin-bottom:14px">${esc(p.name)} · 현재 ${p.stock}개</div>
+    <div class="fld"><label>추가 입고 수량</label><input id="rs-qty" class="inp" type="number" value="10" autofocus/></div>
+    <div style="display:flex;gap:8px"><button class="btn ghost" style="flex:1" onclick="closeModal()">취소</button>
+      <button class="btn" style="flex:1" onclick="doRestock('${id}')">입고</button></div>`);
+}
+async function doRestock(id){ const d=parseInt(document.getElementById('rs-qty').value)||0; try{ await call('adjust_stock',{id,delta:d}); closeModal(); toast('입고 완료'); renderStock(); }catch(e){ toast(e.message); } }
+
+// ───── 지출 ─────
+async function renderExpense(){
+  let exps;
+  try{ exps=(await call('expenses')).expenses; }catch(e){ document.getElementById('main').innerHTML=errBox(e); return; }
+  const m=document.getElementById('main');
+  const total=exps.reduce((s,e)=>s+(Number(e.amount)||0),0);
+  m.innerHTML=`
+    <div class="head"><div class="h1">💸 지출<div class="sub">물품 매입 등 매점 지출 기록</div></div>
+      <button class="btn" onclick="editExpense()">＋ 지출 추가</button></div>
+    <div class="grid-stat" style="margin-bottom:16px"><div class="stat"><div class="lb">전체 지출 (최근)</div><div class="vl" style="color:var(--bad)">${won(total)}</div></div></div>
+    <div class="card" style="overflow:auto"><table>
+      <thead><tr><th>날짜</th><th>분류</th><th>내용</th><th style="text-align:right">금액</th><th></th></tr></thead><tbody>
+      ${exps.length? exps.map(e=>`<tr>
+        <td>${e.date||''}</td><td><span class="tag">${esc(e.category||'-')}</span></td><td>${esc(e.memo||'')}</td>
+        <td style="text-align:right;font-weight:700;color:var(--bad)">${won(e.amount)}</td>
+        <td style="text-align:right"><button class="chip sm" style="color:var(--bad)" onclick="delExpense('${e.id}')">삭제</button></td></tr>`).join('') : '<tr><td colspan="5" style="text-align:center;color:var(--ink3);padding:30px">지출 기록이 없어요</td></tr>'}
+      </tbody></table></div>`;
+}
+function editExpense(){
+  const today=new Date().toISOString().slice(0,10);
+  openModal(`<div style="font-size:17px;font-weight:800;margin-bottom:16px">지출 추가</div>
+    <div class="fld"><label>날짜</label><input id="e-date" class="inp" type="date" value="${today}"/></div>
+    <div class="fld"><label>분류</label><input id="e-cat" class="inp" placeholder="예: 물품매입 / 비품"/></div>
+    <div class="fld"><label>내용</label><input id="e-memo" class="inp" placeholder="예: 음료 3박스 매입"/></div>
+    <div class="fld"><label>금액 (원)</label><input id="e-amt" class="inp" type="number" placeholder="0"/></div>
+    <div style="display:flex;gap:8px"><button class="btn ghost" style="flex:1" onclick="closeModal()">취소</button>
+      <button class="btn" style="flex:1" onclick="saveExpense()">저장</button></div>`);
+}
+async function saveExpense(){
+  const expense={ date:document.getElementById('e-date').value, category:document.getElementById('e-cat').value.trim(),
+    memo:document.getElementById('e-memo').value.trim(), amount:document.getElementById('e-amt').value };
+  if(!expense.amount){ toast('금액을 입력하세요'); return; }
+  try{ await call('save_expense',{expense}); closeModal(); toast('저장 완료'); renderExpense(); }catch(e){ toast(e.message); }
+}
+async function delExpense(id){ if(!confirm('삭제할까요?'))return; try{ await call('delete_expense',{id}); toast('삭제됨'); renderExpense(); }catch(e){ toast(e.message); } }
+
+// ───── 통계 ─────
+async function renderStats(){
+  let st;
+  try{ st=await call('stats'); }catch(e){ document.getElementById('main').innerHTML=errBox(e); return; }
+  const m=document.getElementById('main');
+  const maxQty=Math.max(1,...st.products.map(p=>p.qty));
+  m.innerHTML=`
+    <div class="head"><div class="h1">📈 통계<div class="sub">학생별 이용 현황 · 인기 상품 (이번 달 기준)</div></div></div>
+    <div class="grid-stat" style="margin-bottom:18px">
+      <div class="stat"><div class="lb">오늘</div><div class="vl">${won(st.summary.daySum)}</div></div>
+      <div class="stat"><div class="lb">이번 주</div><div class="vl">${won(st.summary.weekSum)}</div></div>
+      <div class="stat"><div class="lb">이번 달</div><div class="vl">${won(st.summary.monthSum)}</div></div>
+      <div class="stat"><div class="lb">이번 달 지출</div><div class="vl" style="color:var(--bad)">${won(st.summary.expMonth)}</div></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:16px;align-items:start">
+      <div class="card" style="padding:16px 18px;overflow:auto">
+        <div style="font-weight:800;margin-bottom:12px">🧑‍🎓 학생별 이용 현황</div>
+        <table><thead><tr><th>학생</th><th style="text-align:right">오늘</th><th style="text-align:right">이번주</th><th style="text-align:right">이번달</th><th style="text-align:right">횟수</th></tr></thead><tbody>
+        ${st.students.length? st.students.map(s=>`<tr>
+          <td style="font-weight:700">${esc(s.name)}</td>
+          <td style="text-align:right">${won(s.day)}</td>
+          <td style="text-align:right">${won(s.week)}</td>
+          <td style="text-align:right;font-weight:700;color:var(--adeep)">${won(s.month)}</td>
+          <td style="text-align:right;color:var(--ink3)">${s.count}회</td></tr>`).join('') : '<tr><td colspan="5" style="text-align:center;color:var(--ink3);padding:24px">이번 달 이용 기록이 없어요</td></tr>'}
+        </tbody></table>
+      </div>
+      <div class="card" style="padding:16px 18px">
+        <div style="font-weight:800;margin-bottom:12px">🏆 인기 상품 TOP 10</div>
+        ${st.products.length? st.products.map((p,i)=>`
+          <div style="margin-bottom:10px">
+            <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:4px"><span>${i+1}. ${esc(p.name)}</span><b>${p.qty}개</b></div>
+            <div style="height:8px;background:var(--s2);border-radius:99px;overflow:hidden"><div style="height:100%;width:${Math.round(p.qty/maxQty*100)}%;background:linear-gradient(90deg,#2a5298,#1d3a5f)"></div></div>
+          </div>`).join('') : '<div style="color:var(--ink3);font-size:13px">판매 기록이 없어요</div>'}
+      </div>
+    </div>`;
+}
+
+loadCommunities();
+</script>
+</body>
+</html>
