@@ -1954,7 +1954,8 @@ async function openChannel(id) {
     .on('postgres_changes', { event:'INSERT', schema:'public', table:'messages', filter:`channel_id=eq.${id}` },
       async (payload) => {
         appendMessage({...payload.new, reactions:[]}, {});
-        await markRead(payload.new.id);
+        // 내가 보낸 메시지는 '읽음'으로 표시하지 않음 (안 그러면 상대가 안 읽어도 '모두 읽음'이 됨)
+        if (payload.new.sender_id !== ME.id) await markRead(payload.new.id);
       })
     .on('postgres_changes', { event:'INSERT', schema:'public', table:'message_reads' },
       async () => { await refreshReadCounts(); })
@@ -2041,7 +2042,8 @@ async function refreshReadCounts() {
     const readEl = el.querySelector('.read-label');
     if (!readEl) return;
     const readers = readMap[id] || new Set();
-    const unread = Math.max(0, chMemberCount - readers.size);
+    const readerCount = [...readers].filter(x => x !== ME.id).length;   // 내(보낸 사람) 읽음 제외
+    const unread = Math.max(0, chMemberCount - readerCount);
     if (chMemberCount > 0 && unread === 0) {
       readEl.textContent = '모두 읽음 ✓';
       readEl.style.color = 'var(--sage)';
@@ -2148,8 +2150,9 @@ function msgHtml(m, prev, readMap={}) {
   let readLabel = '';
   if (isMine) {
     const readers = readMap[m.id] || new Set();
+    const readerCount = [...readers].filter(x => x !== m.sender_id).length;   // 보낸 사람 본인은 제외
     const chMemberCount = currentChannelMemberIds.size > 0 ? currentChannelMemberIds.size - 1 : Object.keys(members).length - 1;
-    const unread = Math.max(0, chMemberCount - readers.size);
+    const unread = Math.max(0, chMemberCount - readerCount);
     if (chMemberCount > 0 && unread === 0) {
       readLabel = `<div class="read-label" style="font-size:10px;color:var(--sage);margin-top:3px;text-align:right">모두 읽음 ✓</div>`;
     } else if (unread > 0) {
