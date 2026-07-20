@@ -9841,6 +9841,7 @@ async function renderS360Detail() {
   if (!s) { detail.innerHTML = '<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px">학생을 선택하세요</div>'; return; }
   detail.innerHTML = '<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px">불러오는 중...</div>';
   const d = await loadStudent360(s360Id);
+  s360AllowEntries = d.allowAll || [];
 
   const c = {present:0,late:0,early:0,absent:0,sick:0,excused:0};
   d.att.forEach(r=>{ if(c[r.status]!==undefined)c[r.status]++; });
@@ -9921,7 +9922,7 @@ async function renderS360Detail() {
     ${s360LogCard('observation', d.observation||[])}
     ${s360AssessmentCard()}
 
-    ${s360AllowCard(d.allowAll||[])}
+    <div id="s360-allow-wrap">${s360AllowCard(d.allowAll||[])}</div>
 
     ${s360LogCard('counseling', d.counseling)}
     ${s360LogCard('health', d.health)}
@@ -9941,6 +9942,27 @@ async function renderS360Detail() {
 let s360AllowType = 'expense';   // 교사 입력 폼 타입
 let s360AllowCur  = '원';         // 교사 입력 폼 통화
 let s360AllowShowAll = false;    // 전체 보기
+let s360AllowEntries = [];        // 현재 학생의 용돈 내역 캐시(재조회 없이 카드만 갱신)
+
+// 용돈 카드만 제자리 갱신 — 전체 재조회/스크롤 튐 방지
+function renderS360AllowCard() {
+  const wrap = document.getElementById('s360-allow-wrap');
+  if (wrap) wrap.innerHTML = s360AllowCard(s360AllowEntries);
+}
+// 교사 입력 폼 값(입력 중이던 금액·메모) 보존
+function s360AllowFormState() {
+  return {
+    date: document.getElementById('s360al-date')?.value,
+    amount: document.getElementById('s360al-amount')?.value,
+    memo: document.getElementById('s360al-memo')?.value,
+  };
+}
+function s360AllowFormRestore(st) {
+  if (!st) return;
+  const d = document.getElementById('s360al-date'); if (d && st.date) d.value = st.date;
+  const a = document.getElementById('s360al-amount'); if (a && st.amount) a.value = st.amount;
+  const m = document.getElementById('s360al-memo'); if (m && st.memo) m.value = st.memo;
+}
 
 function s360AllowCard(entries) {
   const curs = [...new Set(entries.map(e => e.currency || '원'))];
@@ -10009,9 +10031,19 @@ function s360AllowCard(entries) {
   </div>`;
 }
 
-function s360SetAllowType(t) { s360AllowType = t; renderS360Detail(); }
-function s360SetAllowCur(c) { s360AllowCur = c; renderS360Detail(); }
-function s360ToggleAllowAll() { s360AllowShowAll = !s360AllowShowAll; renderS360Detail(); }
+function s360SetAllowType(t) { const st=s360AllowFormState(); s360AllowType = t; renderS360AllowCard(); s360AllowFormRestore(st); }
+function s360SetAllowCur(c) { const st=s360AllowFormState(); s360AllowCur = c; renderS360AllowCard(); s360AllowFormRestore(st); }
+function s360ToggleAllowAll() { s360AllowShowAll = !s360AllowShowAll; renderS360AllowCard(); }
+
+// 용돈 내역만 다시 불러와 카드만 갱신(전체 화면 새로고침/스크롤 튐 없음)
+async function s360ReloadAllow() {
+  try {
+    const { data } = await sb.from('allowance_entries').select('*')
+      .eq('member_id', s360Id).order('date',{ascending:false}).order('created_at',{ascending:false});
+    s360AllowEntries = data || [];
+  } catch(_) {}
+  renderS360AllowCard();
+}
 
 async function teacherAddAllow() {
   const date = document.getElementById('s360al-date')?.value || attTodayStr();
@@ -10029,7 +10061,10 @@ async function teacherAddAllow() {
     showUploadToast('저장 실패: ' + error.message + ' (권한이면 최신 용돈기입장_DB설치.sql 재실행)'); return;
   }
   showUploadToast(s360AllowType==='income' ? '➕ 수입 기록됨' : '➖ 지출 기록됨');
-  renderS360Detail();
+  await s360ReloadAllow();
+  // 다음 입력을 위해 금액·메모만 비움 (날짜·타입·통화는 유지)
+  const a = document.getElementById('s360al-amount'); if (a) a.value = '';
+  const m = document.getElementById('s360al-memo'); if (m) { m.value = ''; m.focus(); }
 }
 
 async function teacherDeleteAllow(id) {
@@ -10037,12 +10072,11 @@ async function teacherDeleteAllow(id) {
   const { error } = await sb.from('allowance_entries').delete().eq('id', id);
   if (error) { showUploadToast('삭제 실패: ' + error.message); return; }
   showUploadToast('🗑 삭제됐어요');
-  renderS360Detail();
+  await s360ReloadAllow();
 }
 
 async function teacherEditAllow(id) {
-  const d = await loadStudent360(s360Id);
-  const e = (d.allowAll||[]).find(x=>x.id===id); if (!e) return;
+  const e = (s360AllowEntries||[]).find(x=>x.id===id); if (!e) return;
   const cur = e.currency || '원';
   const amtStr = prompt(`금액 수정 (${cur})`, e.amount);
   if (amtStr === null) return;
@@ -10053,7 +10087,7 @@ async function teacherEditAllow(id) {
   const { error } = await sb.from('allowance_entries').update({ amount, memo: memo.trim() }).eq('id', id);
   if (error) { showUploadToast('수정 실패: ' + error.message); return; }
   showUploadToast('✏️ 수정됐어요');
-  renderS360Detail();
+  await s360ReloadAllow();
 }
 
 // ── 생기부 종합의견 AI 초안 ─────────────────────────────────────────
@@ -10250,7 +10284,7 @@ async function openTcsForStudent(id) {
 // ════════════════════════════════════════════════════════════════════
 const ALLOW_CATS = {
   income:  ['용돈','세뱃돈','심부름','상금','저축이자','기타'],
-  expense: ['간식/군것질','학용품','도서','교통','취미/여가','선물','저축','헌금','기타'],
+  expense: ['간식/군것질','외식','학용품','도서','교통','취미/여가','선물','저축','헌금','매점','기타'],
 };
 let allowEntries = [];
 let allowType = 'expense';    // 입력 폼 타입: 'income' | 'expense'
