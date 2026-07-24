@@ -10086,6 +10086,13 @@ function s360AllowCard(entries) {
       <span style="font-size:11px;color:var(--ink3)">전체 ${entries.length}건</span>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">${bal}</div>
+    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:8px 10px;margin-bottom:12px">
+      <span style="font-size:11.5px;font-weight:700;color:var(--ink2)">📄 기간 PDF</span>
+      <input id="s360al-pdf-from" type="date" value="${(attTodayStr()).slice(0,8)}01" style="${inp}"/>
+      <span style="color:var(--ink3);font-size:12px">~</span>
+      <input id="s360al-pdf-to" type="date" value="${attTodayStr()}" style="${inp}"/>
+      <button onclick="printAllowancePdf()" style="height:34px;padding:0 14px;border:none;background:#1d3a5f;color:#fff;border-radius:8px;cursor:pointer;font:700 12px var(--font)">내보내기</button>
+    </div>
     ${form}
     <div style="font-size:11.5px;font-weight:700;color:var(--ink2);margin-bottom:2px">내역</div>
     ${entries.length ? rows : '<div style="font-size:12px;color:var(--ink3);padding:10px 0">아직 용돈 기록이 없어요.</div>'}
@@ -10150,6 +10157,84 @@ async function teacherEditAllow(id) {
   if (error) { showUploadToast('수정 실패: ' + error.message); return; }
   showUploadToast('✏️ 수정됐어요');
   await s360ReloadAllow();
+}
+
+// 선생님·관리자: 학생 용돈 내역을 기간별 PDF로 내보내기
+function printAllowancePdf() {
+  const from = document.getElementById('s360al-pdf-from')?.value;
+  const to   = document.getElementById('s360al-pdf-to')?.value;
+  if (!from || !to) { showUploadToast('기간을 선택하세요'); return; }
+  if (from > to) { showUploadToast('시작일이 종료일보다 늦어요'); return; }
+  const s = schoolStudents.find(x => x.id === s360Id);
+  const name = (s && s.name) || '학생';
+  const list = (s360AllowEntries || [])
+    .filter(e => (e.date || '') >= from && (e.date || '') <= to && e.delete_status !== 'requested')
+    .sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.created_at || '').localeCompare(b.created_at || ''));
+  if (!list.length) { showUploadToast('해당 기간에 내역이 없어요'); return; }
+
+  // 통화별 합계
+  const curs = [...new Set(list.map(e => e.currency || '원'))];
+  const sumCards = curs.map(cur => {
+    const inc = list.filter(e => e.type === 'income'  && (e.currency||'원') === cur).reduce((a,e)=>a+(Number(e.amount)||0), 0);
+    const exp = list.filter(e => e.type === 'expense' && (e.currency||'원') === cur).reduce((a,e)=>a+(Number(e.amount)||0), 0);
+    return `<div class="sumcard">
+      <div class="sc-cur">${cur === '$' ? '달러($)' : (cur === '₱' ? '페소(₱)' : '원(₩)')}</div>
+      <div class="sc-row"><span>수입</span><b style="color:#15803d">${allowMoney(inc,cur)}</b></div>
+      <div class="sc-row"><span>지출</span><b style="color:#c0392b">${allowMoney(exp,cur)}</b></div>
+      <div class="sc-row sc-bal"><span>잔액</span><b>${allowMoney(inc-exp,cur)}</b></div>
+    </div>`;
+  }).join('');
+
+  const rows = list.map(e => {
+    const income = e.type === 'income'; const cur = e.currency || '원';
+    const wd = allowWeekday(e.date);
+    return `<tr>
+      <td>${e.date||''}${wd?` (${wd})`:''}</td>
+      <td class="c" style="color:${income?'#15803d':'#c0392b'};font-weight:700">${income?'수입':'지출'}</td>
+      <td>${escHtml(e.category||'')}</td>
+      <td>${escHtml(e.memo||'')}</td>
+      <td class="r" style="color:${income?'#15803d':'#c0392b'};font-weight:700">${income?'+':'−'}${allowMoney(e.amount,cur)}</td>
+    </tr>`;
+  }).join('');
+
+  const gen = attTodayStr();
+  const win = window.open('', '_blank');
+  if (!win) { showUploadToast('팝업이 차단되었어요. 팝업 허용 후 다시 시도해주세요'); return; }
+  win.document.write(`<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"/>
+    <title>용돈 내역 — ${escHtml(name)} (${from}~${to})</title>
+    <style>
+      *{box-sizing:border-box;margin:0;padding:0}
+      body{font-family:'Malgun Gothic',Arial,sans-serif;color:#1a2332;padding:16mm 14mm}
+      @page{size:A4;margin:14mm}
+      @media print{ .noprint{display:none!important} }
+      h1{font-size:20px;margin-bottom:2px}
+      .sub{font-size:12px;color:#667;margin-bottom:16px}
+      .summary{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px}
+      .sumcard{flex:1;min-width:150px;border:1px solid #dbe2ec;border-radius:10px;padding:10px 12px}
+      .sc-cur{font-size:11px;color:#667;font-weight:700;margin-bottom:6px}
+      .sc-row{display:flex;justify-content:space-between;font-size:12.5px;padding:2px 0}
+      .sc-bal{border-top:1px solid #eef1f5;margin-top:4px;padding-top:5px;font-size:14px}
+      table{width:100%;border-collapse:collapse;font-size:12px}
+      th{background:#1d3a5f;color:#fff;text-align:left;padding:8px 9px;font-size:11.5px}
+      th.r,td.r{text-align:right}
+      th.c,td.c{text-align:center}
+      td{padding:7px 9px;border-bottom:1px solid #eef1f5}
+      tr:nth-child(even) td{background:#f7f9fc}
+      .foot{margin-top:14px;font-size:11px;color:#889;text-align:right}
+      .btn{position:fixed;top:12px;right:12px;padding:9px 16px;background:#1d3a5f;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer}
+    </style></head><body>
+    <button class="btn noprint" onclick="window.print()">🖨 인쇄 / PDF 저장</button>
+    <h1>🐷 용돈 사용 내역서</h1>
+    <div class="sub"><b>${escHtml(name)}</b> 학생 · 기간 ${from} ~ ${to} · 총 ${list.length}건</div>
+    <div class="summary">${sumCards}</div>
+    <table>
+      <thead><tr><th>날짜</th><th class="c">구분</th><th>분류</th><th>내용</th><th class="r">금액</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <div class="foot">발행일 ${gen} · TCS Total Care System</div>
+  </body></html>`);
+  win.document.close();
+  setTimeout(() => { try { win.print(); } catch(_){} }, 500);
 }
 
 // ── 생기부 종합의견 AI 초안 ─────────────────────────────────────────
