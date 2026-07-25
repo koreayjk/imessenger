@@ -8105,8 +8105,9 @@ function startApprCompose(id, builtin) {
 function renderApprCompose() {
   const main = document.getElementById('approval-main');
   const t = apprDraft.template;
-  const memList = Object.values(members).filter(m => m.id!==ME.id && m.community_role!=='store_bot' && m.status!=='removed');
-  const approverCands = memList.filter(m => m.community_role!=='student');
+  // 전자결재는 교직원 전용 — 학생은 결재자·공유자 대상에서 제외
+  const memList = Object.values(members).filter(m => m.id!==ME.id && m.community_role!=='store_bot' && m.community_role!=='student' && m.status!=='removed');
+  const approverCands = memList;
   const fieldsHtml = t.fields.map(f => `<div style="margin-bottom:12px"><label style="font-size:12px;font-weight:700;color:var(--ink3);display:block;margin-bottom:5px">${escHtml(f.label)}</label>${apprFieldHtml(f, '')}</div>`).join('');
   main.innerHTML = `<div style="max-width:1080px;margin:0 auto">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
@@ -8147,8 +8148,7 @@ function renderApprCompose() {
               <option value="group:admin_officer">👥 모든 행정담당</option>
               <option value="group:teacher">👥 모든 교사</option>
               <option value="group:staff">👥 모든 간사</option>
-              <option value="group:student">👥 모든 학생</option>
-              <option value="group:all">👥 전체 구성원</option>
+              <option value="group:all">👥 전체 교직원</option>
             </optgroup>
             <optgroup label="개별 선택">
               ${memList.map(m=>`<option value="${m.id}">${escHtml(m.name)}${m.community_role?` · ${roleKo(m.community_role)}`:''}</option>`).join('')}
@@ -8217,7 +8217,8 @@ function apprShareAdd(val){
   if(!val) return;
   if(val.indexOf('group:')===0){
     const g = val.slice(6);
-    const pool = Object.values(members).filter(m => m.id!==ME.id && m.community_role!=='store_bot' && m.status!=='removed');
+    // 전자결재는 교직원 전용 — 학생 제외
+    const pool = Object.values(members).filter(m => m.id!==ME.id && m.community_role!=='store_bot' && m.community_role!=='student' && m.status!=='removed');
     let sel;
     if(g==='all') sel = pool;
     else if(g==='admin') sel = pool.filter(m => ['super_admin','community_admin'].includes(m.community_role));
