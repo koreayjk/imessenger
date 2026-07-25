@@ -8142,7 +8142,17 @@ function renderApprCompose() {
           <div id="appr-shares" style="margin:8px 0">${apprSharesHtml()}</div>
           <select id="appr-add-share" onchange="apprShareAdd(this.value);this.value=''" style="${apprInp};height:38px">
             <option value="">＋ 공유자 추가</option>
-            ${memList.map(m=>`<option value="${m.id}">${escHtml(m.name)}${m.community_role?` · ${roleKo(m.community_role)}`:''}</option>`).join('')}
+            <optgroup label="그룹으로 추가">
+              <option value="group:admin">👥 모든 관리자</option>
+              <option value="group:admin_officer">👥 모든 행정담당</option>
+              <option value="group:teacher">👥 모든 교사</option>
+              <option value="group:staff">👥 모든 간사</option>
+              <option value="group:student">👥 모든 학생</option>
+              <option value="group:all">👥 전체 구성원</option>
+            </optgroup>
+            <optgroup label="개별 선택">
+              ${memList.map(m=>`<option value="${m.id}">${escHtml(m.name)}${m.community_role?` · ${roleKo(m.community_role)}`:''}</option>`).join('')}
+            </optgroup>
           </select>
         </div>
         <button onclick="submitApprDoc()" style="height:48px;border:none;border-radius:12px;background:linear-gradient(135deg,#1d3a5f,#2a5298);color:#fff;font:800 15px var(--font);cursor:pointer">📤 상신하기</button>
@@ -8197,9 +8207,31 @@ function apprLineRemove(i){ apprDraft.line.splice(i,1); document.getElementById(
 
 function apprSharesHtml(){
   if(!apprDraft.shares.length) return '<div style="font-size:12.5px;color:var(--ink3);padding:4px 0">공유자 없음 (선택)</div>';
-  return `<div style="display:flex;flex-wrap:wrap;gap:6px">${apprDraft.shares.map((s,i)=>`<span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:#1d3a5f;background:var(--asoft);padding:3px 6px 3px 10px;border-radius:99px">${escHtml(s.member_name)}<b onclick="apprShareRemove(${i})" style="cursor:pointer;color:#c0392b;font-size:13px">✕</b></span>`).join('')}</div>`;
+  return `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
+      <span style="font-size:11.5px;color:var(--ink3);font-weight:600">${apprDraft.shares.length}명</span>
+      <button onclick="apprDraft.shares=[];document.getElementById('appr-shares').innerHTML=apprSharesHtml()" style="border:none;background:transparent;color:#c0392b;font:600 11.5px var(--font);cursor:pointer">모두 지우기</button>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px">${apprDraft.shares.map((s,i)=>`<span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:#1d3a5f;background:var(--asoft);padding:3px 6px 3px 10px;border-radius:99px">${escHtml(s.member_name)}<b onclick="apprShareRemove(${i})" style="cursor:pointer;color:#c0392b;font-size:13px">✕</b></span>`).join('')}</div>`;
 }
-function apprShareAdd(id){ if(!id) return; if(apprDraft.shares.some(s=>s.member_id===id)) return; const m=members[id]; if(!m) return; apprDraft.shares.push({member_id:id, member_name:m.name}); document.getElementById('appr-shares').innerHTML=apprSharesHtml(); }
+function apprShareAdd(val){
+  if(!val) return;
+  if(val.indexOf('group:')===0){
+    const g = val.slice(6);
+    const pool = Object.values(members).filter(m => m.id!==ME.id && m.community_role!=='store_bot' && m.status!=='removed');
+    let sel;
+    if(g==='all') sel = pool;
+    else if(g==='admin') sel = pool.filter(m => ['super_admin','community_admin'].includes(m.community_role));
+    else sel = pool.filter(m => m.community_role===g);
+    let added=0;
+    sel.forEach(m => { if(!apprDraft.shares.some(s=>s.member_id===m.id)){ apprDraft.shares.push({member_id:m.id, member_name:m.name}); added++; } });
+    showUploadToast(added ? `${added}명이 공유자에 추가됐어요` : '추가할 대상이 없어요');
+  } else {
+    if(apprDraft.shares.some(s=>s.member_id===val)) return;
+    const m=members[val]; if(!m) return;
+    apprDraft.shares.push({member_id:val, member_name:m.name});
+  }
+  document.getElementById('appr-shares').innerHTML=apprSharesHtml();
+}
 function apprShareRemove(i){ apprDraft.shares.splice(i,1); document.getElementById('appr-shares').innerHTML=apprSharesHtml(); }
 
 async function apprUpload(file){
