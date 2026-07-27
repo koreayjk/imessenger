@@ -1957,7 +1957,7 @@ async function openChannel(id) {
   sessionStorage.setItem('last_mode', 'chat');
   renderPanel();
 
-  if (window.innerWidth <= 768) {
+  if (window.innerWidth <= 900) {
     document.getElementById('panel').classList.add('hidden');
     document.getElementById('mobile-nav').style.display = 'none';
     const backBtn = document.getElementById('mobile-chat-back');
@@ -3237,7 +3237,7 @@ async function doLogout() {
   document.getElementById('si-email').value = '';
   document.getElementById('si-pw').value = '';
   document.getElementById('si-msg').textContent = '';
-  if (window.innerWidth <= 768) {
+  if (window.innerWidth <= 900) {
     document.getElementById('panel').classList.remove('hidden');
   }
   switchTab('signin');
