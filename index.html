@@ -439,6 +439,11 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
     padding-bottom: 12px;
   }
 
+  /* 대화방 열림: 하단 탭바 숨기고 채팅이 전체 높이를 쓰게 */
+  body.in-chat #mobile-nav { display: none !important; }
+  body.in-chat #chat-view { padding-bottom: env(safe-area-inset-bottom); }
+  body.in-chat #composer { bottom: max(env(safe-area-inset-bottom), 8px); }
+
   /* 메시지 말풍선 넓게 */
   .msg-body { max-width: 80%; }
   .msg-row { padding: 3px 12px; }
@@ -1611,14 +1616,34 @@ function closeMobileChat() {
   sessionStorage.removeItem('last_channel_id');
   document.getElementById('chat-active').style.display = 'none';
   document.getElementById('empty').style.display = 'flex';
-  // 탭바 다시 보이기
-  document.getElementById('mobile-nav').style.display = 'flex';
+  // 하단 탭바 다시 보이기 (CSS가 처리)
+  document.body.classList.remove('in-chat');
   // 채널 목록 패널 보이기
   document.getElementById('panel').classList.remove('hidden');
   // 뒤로가기 버튼 숨기기
   const backBtn = document.getElementById('mobile-chat-back');
   if (backBtn) backBtn.style.display = 'none';
 }
+
+// ── 대화방에서 왼쪽→오른쪽으로 밀면 뒤로가기(채널 목록) ──
+(function initChatSwipeBack(){
+  let sx = 0, sy = 0, tracking = false;
+  document.addEventListener('touchstart', e => {
+    if (!document.body.classList.contains('in-chat')) { tracking = false; return; }
+    const t = e.touches[0];
+    // 화면 왼쪽 절반에서 시작한 터치만 뒤로가기 후보로
+    if (t.clientX <= window.innerWidth * 0.5) { sx = t.clientX; sy = t.clientY; tracking = true; }
+    else tracking = false;
+  }, { passive: true });
+  document.addEventListener('touchend', e => {
+    if (!tracking) return; tracking = false;
+    if (!document.body.classList.contains('in-chat')) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - sx, dy = Math.abs(t.clientY - sy);
+    // 오른쪽으로 충분히 + 수평 위주의 스와이프면 뒤로
+    if (dx > 70 && dx > dy * 2) closeMobileChat();
+  }, { passive: true });
+})();
 
 function showMobileProfile() {
   document.getElementById('chat-view').style.display = 'none';
@@ -1740,6 +1765,8 @@ async function init() {
 // ── 사이드바 모드 전환 ──
 function setMode(m) {
   mode = m;
+  // 화면 전환 시 대화방 전체화면 해제(하단 탭바 복귀) — 대화 열면 openChannel이 다시 설정
+  document.body.classList.remove('in-chat');
   ['chat','prayer','home','calendar','admin','school','allowance','store','approval'].forEach(x => {
     const el = document.getElementById('sb-'+x);
     if (!el) return;
@@ -1959,7 +1986,7 @@ async function openChannel(id) {
 
   if (window.innerWidth <= 900) {
     document.getElementById('panel').classList.add('hidden');
-    document.getElementById('mobile-nav').style.display = 'none';
+    document.body.classList.add('in-chat');   // 하단 탭바 숨김(CSS !important 대응) + 전체높이
     const backBtn = document.getElementById('mobile-chat-back');
     if (backBtn) backBtn.style.display = 'flex';
   }
