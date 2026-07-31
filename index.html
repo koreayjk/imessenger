@@ -7376,6 +7376,7 @@ async function submitDailyWord() {
 let calYear = new Date().getFullYear();
 let calMonth = new Date().getMonth();
 let calEvents = [];
+let calBirthdays = [];   // [{member_id, name, md:'MM-DD'}] — 프로필 생년월일에서 자동 생성
 let calSelectedDate = null;
 let editingEventId = null;
 let selectedEventColor = '#2a5298';
@@ -7405,7 +7406,24 @@ function selectEventCat(v) {
 async function loadCalendar() {
   const { data } = await sb.from('events').select('*').eq('community_id', CID()).order('start_date').order('start_time');
   calEvents = data || [];
+  try {
+    const { data: mem } = await sb.from('members').select('id,name,birth_date').eq('community_id', CID()).not('birth_date','is',null);
+    calBirthdays = (mem||[])
+      .filter(m => m.birth_date && m.name)
+      .map(m => ({ member_id:m.id, name:m.name, md:String(m.birth_date).slice(5,10) }))
+      .filter(b => /^\d{2}-\d{2}$/.test(b.md));
+  } catch(_) { calBirthdays = []; }
   renderCalendar();
+}
+
+// 특정 날짜(YYYY-MM-DD)의 생일 → 가짜 이벤트 배열 (2/29은 평년엔 말일로 보정)
+function birthdaysForDate(dateStr) {
+  const y = +dateStr.slice(0,4), m = +dateStr.slice(5,7), d = +dateStr.slice(8,10);
+  const dim = new Date(y, m, 0).getDate();
+  return calBirthdays.filter(b => {
+    const [bm,bd] = b.md.split('-').map(Number);
+    return bm === m && Math.min(bd, dim) === d;
+  }).map(b => ({ id:'bday-'+b.member_id, title:'🎂 '+b.name+' 생일', start_date:dateStr, isBirthday:true, color:'#E86AA6' }));
 }
 
 function renderCalendar() {
@@ -7447,6 +7465,14 @@ function renderCalendar() {
     if (!singleMap[key]) singleMap[key] = [];
     singleMap[key].push(e);
   });
+  // 생일 자동 표시 (전체 보기일 때) — 프로필 생년월일 기반
+  if (!calCatFilter && calBirthdays.length) {
+    for (let dd = 1; dd <= daysInMonth; dd++) {
+      const ds = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(dd).padStart(2,'0')}`;
+      const bd = birthdaysForDate(ds);
+      if (bd.length) { if (!singleMap[ds]) singleMap[ds] = []; singleMap[ds].push(...bd); }
+    }
+  }
 
   // 다일 이벤트: 주별로 분할 (주 경계에서 끊기)
   const multiLayout = []; // {event, startCell, endCell, row}
@@ -7527,7 +7553,12 @@ function renderCalendar() {
       // 단일 이벤트 (다일 이벤트가 차지하는 row 아래에 배치)
       const dayEvts = singleMap[dateStr] || [];
       const topOffset = (maxMultiRow + 1) * 22 + 30;
-      const evtTags = dayEvts.slice(0,2).map(e => `
+      const evtTags = dayEvts.slice(0,2).map(e => e.isBirthday ? `
+        <div onclick="event.stopPropagation();selectCalDate('${dateStr}')"
+          style="font-size:11px;font-weight:600;padding:1px 5px;border-radius:4px;
+          background:${e.color}1e;border-left:3px solid ${e.color};
+          white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;margin-bottom:2px;color:${e.color}"
+          title="${e.title}">${e.title}</div>` : `
         <div onclick="event.stopPropagation();editEvent('${e.id}')"
           style="font-size:11px;font-weight:500;padding:1px 5px;border-radius:4px;
           background:${e.color||'var(--accent)'}22;border-left:3px solid ${e.color||'var(--accent)'};
@@ -7590,7 +7621,7 @@ function showDayEvents(dateStr) {
   const dayEvents = calEvents.filter(e => {
     if (!e.end_date || e.end_date === e.start_date) return e.start_date === dateStr;
     return e.start_date <= dateStr && e.end_date >= dateStr;
-  });
+  }).concat(birthdaysForDate(dateStr));
   const d = new Date(dateStr);
   const wk = ['일','월','화','수','목','금','토'];
   const label = `${d.getMonth()+1}월 ${d.getDate()}일 ${wk[d.getDay()]}요일`;
@@ -7601,7 +7632,14 @@ function showDayEvents(dateStr) {
     return;
   }
   area.innerHTML = `<div style="font-size:13px;font-weight:600;color:var(--ink3);margin-bottom:10px">${label} · ${dayEvents.length}개</div>` +
-    dayEvents.map(e => `
+    dayEvents.map(e => e.isBirthday ? `
+    <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:14px;background:${e.color}12;margin-bottom:8px">
+      <div style="width:4px;height:40px;border-radius:2px;background:${e.color};flex-shrink:0"></div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:14px;font-weight:700;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${e.title}</div>
+        <div style="font-size:12px;color:${e.color};font-weight:600;margin-top:2px">생일 🎉</div>
+      </div>
+    </div>` : `
     <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:14px;background:var(--bg);margin-bottom:8px;cursor:pointer" onclick="editEvent('${e.id}')">
       <div style="width:4px;height:40px;border-radius:2px;background:${e.color||'var(--accent)'};flex-shrink:0"></div>
       <div style="flex:1;min-width:0">
@@ -9881,7 +9919,8 @@ async function renderFinBalances(kind) {
       <div style="font-size:15px;font-weight:800;color:var(--adeep);white-space:nowrap">${parts}</div>
       <span style="color:var(--ink3);font-size:18px">›</span></div>`;
   }).join('');
-  main.innerHTML = finTabBar() + `<div style="max-width:780px">
+  main.innerHTML = `<div style="max-width:1200px;margin:0 auto">
+    ${finTabBar()}
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
       <div style="font-size:16px;font-weight:800;color:var(--ink)">${kind==='deposit'?'🏦 예치금':'🐷 용돈'} 잔액</div>
       <span style="font-size:11.5px;color:var(--ink3)">학생을 누르면 상세 관리로 이동해요</span>
