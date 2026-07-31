@@ -9412,9 +9412,9 @@ function attFilter(list) {
   return list.filter(s => s.group_id === attGroupFilter);
 }
 function attGroupSelectHtml(onchange) {
-  const opts = `<option value="all" ${attGroupFilter==='all'?'selected':''}>전체 반</option>` +
+  const opts = `<option value="all" ${attGroupFilter==='all'?'selected':''}>전체 그룹</option>` +
     tcsGroups.map(g => `<option value="${g.id}" ${attGroupFilter===g.id?'selected':''}>${g.name}</option>`).join('') +
-    `<option value="none" ${attGroupFilter==='none'?'selected':''}>미배정</option>`;
+    `<option value="none" ${attGroupFilter==='none'?'selected':''}>미지정</option>`;
   return `<select onchange="${onchange}(this.value)" style="height:34px;padding:0 10px;border:1px solid var(--border);border-radius:9px;font:600 13px var(--font);color:var(--ink);background:var(--surface)">${opts}</select>`;
 }
 
@@ -9692,7 +9692,7 @@ function renderTimetableTeacher() {
   const main = document.getElementById('school-main');
   const teachers = [...new Set(ttAllRows.map(r => (r.teacher||'').trim()).filter(Boolean))].sort();
   if (!ttTeacher || !teachers.includes(ttTeacher)) ttTeacher = teachers[0] || '';
-  const gName = gid => gid ? ((tcsGroups.find(g => g.id === gid)||{}).name || '반') : '공통';
+  const gName = gid => gid ? ((tcsGroups.find(g => g.id === gid)||{}).name || '그룹') : '공통';
   const teacherOpts = teachers.length ? teachers.map(t => `<option value="${escAttr(t)}" ${t===ttTeacher?'selected':''}>${escHtml(t)}</option>`).join('')
     : '<option value="">교사 정보 없음</option>';
 
@@ -9728,7 +9728,7 @@ function renderTimetableTeacher() {
 
 function printTimetable(kind) {
   const z = n => String(n).padStart(2,'0');
-  const gName = gid => gid ? ((tcsGroups.find(g => g.id === gid)||{}).name || '반') : '공통';
+  const gName = gid => gid ? ((tcsGroups.find(g => g.id === gid)||{}).name || '그룹') : '공통';
   let title, cellAt;
   if (kind === 'teacher') {
     title = `${ttTeacher} 교사 시간표`;
@@ -9859,13 +9859,21 @@ async function fetchUsdKrw() {
 // 통화 전환 — 기존 금액을 현 환율로 자동 변환
 async function tuiSetCurrency(target) {
   if (target === tuiCur) return;
+  // 전체 학비 기록(모든 연도) + 학생별 월 학비 확보
+  const { data: allBills } = await sb.from('tuition_bills').select('id,amount,paid_amount,currency').eq('community_id', CID());
+  const students = schoolStudents.filter(s => s.tuition_monthly != null && Number(s.tuition_monthly) > 0);
+  const cnt = (allBills||[]).length + students.length;
+  // 변환할 금액이 없으면 환율 조회 없이 통화만 전환
+  if (cnt === 0) {
+    localStorage.setItem('tui_currency_' + CID(), target);
+    tuiCur = target;
+    showUploadToast(`통화를 ${target==='원'?'원(₩)':'달러($)'}로 설정했어요`);
+    renderTuition();
+    return;
+  }
   const rate = await fetchUsdKrw();
   if (!rate) { showUploadToast('환율을 가져오지 못했어요. 잠시 후 다시 시도해주세요'); return; }
   const conv = (n) => n==null ? null : (target==='원' ? Math.round((Number(n)||0)*rate) : Math.round((Number(n)||0)/rate*100)/100);
-  // 전체 학비 기록(모든 연도) + 학생별 월 학비 확보
-  const { data: allBills } = await sb.from('tuition_bills').select('id,amount,paid_amount,currency').eq('community_id', CID());
-  const students = schoolStudents.filter(s => s.tuition_monthly != null);
-  const cnt = (allBills||[]).length + students.length;
   const rateTxt = `1 $ ≈ ${Math.round(rate).toLocaleString('ko-KR')}원`;
   if (!confirm(`현재 환율(${rateTxt})로 학비 금액을 ${tuiCur==='$'?'달러→원':'원→달러'}으로 변환할까요?\n대상: ${cnt}건 (기록 + 학생별 월 학비)\n※ 되돌리려면 통화를 다시 바꿔야 해요.`)) return;
   showUploadToast('환율 변환 중...');
@@ -9969,9 +9977,9 @@ function renderTuition() {
     <td style="padding:7px 10px;text-align:right;font-size:12px;font-weight:800;color:var(--adeep);border:1px solid var(--border)">${tuiWon(monthTotals.reduce((a,b)=>a+b,0))}</td>
   </tr>`;
 
-  const groupOpts = `<option value="all">전체 반</option>` +
+  const groupOpts = `<option value="all">전체 그룹</option>` +
     tcsGroups.map(g => `<option value="${g.id}" ${tuiGroupFilter===g.id?'selected':''}>${g.name}</option>`).join('') +
-    `<option value="none" ${tuiGroupFilter==='none'?'selected':''}>미배정</option>`;
+    `<option value="none" ${tuiGroupFilter==='none'?'selected':''}>미지정</option>`;
   const headMonths = TUI_MONTHS.map(mo=>`<th style="padding:7px 2px;font-size:11px;font-weight:700;color:${(tuiYear===nowY&&mo===nowM)?'#1d3a5f':'var(--ink3)'};text-align:center;border:1px solid var(--border);background:${(tuiYear===nowY&&mo===nowM)?'#e7f0fb':'var(--s2)'}">${mo}월</th>`).join('');
 
   main.innerHTML = `<div style="max-width:1200px;margin:0 auto">
@@ -10122,7 +10130,7 @@ let nlForm = null;          // null | {id?, title, body, group_id, sent_date}
 function nlGroupName(gid) {
   if (!gid) return '전체';
   const g = tcsGroups.find(x => x.id === gid);
-  return g ? g.name : '반';
+  return g ? g.name : '그룹';
 }
 
 async function loadNewsletters() {
@@ -10591,6 +10599,24 @@ function s360TeacherNames(studentId) {
 }
 function s360GroupName(gid) { const g = tcsGroups.find(x => x.id === gid); return g ? g.name : ''; }
 
+// 학생 상세에서 그룹 배정(+ 새 그룹 즉시 생성)
+async function s360AssignGroup(sid, val) {
+  if (val === '__new__') {
+    const name = prompt('새 그룹 이름 (예: 중등부, A그룹)');
+    if (!name || !name.trim()) { renderS360Detail(); return; }
+    const { data, error } = await sb.from('student_groups').insert({ community_id: CID(), name: name.trim() }).select().single();
+    if (error) { showUploadToast('그룹 생성 실패: ' + error.message); renderS360Detail(); return; }
+    await loadStudentGroups();
+    val = data.id;
+  }
+  const gid = val || null;
+  const { error } = await sb.from('members').update({ group_id: gid }).eq('id', sid);
+  if (error) { showUploadToast('그룹 배정 실패: ' + error.message); return; }
+  const s = schoolStudents.find(x => x.id === sid); if (s) s.group_id = gid;
+  showUploadToast('그룹이 저장됐어요 ✅');
+  renderStudent360();
+}
+
 function s360List() {
   let list = schoolStudents;
   if (s360Filter === 'mine') list = list.filter(s => homeroomTeachers(s.id).includes(ME.id));
@@ -10660,9 +10686,9 @@ function renderS360List() {
   const box = document.getElementById('s360-list'); if (!box) return;
   const list = s360List();
   const fBtn = (v,label) => `<button onclick="setS360Filter('${v}')" style="flex:1;height:30px;border:none;border-radius:7px;font:600 12px var(--font);cursor:pointer;background:${s360Filter===v?'#1d3a5f':'transparent'};color:${s360Filter===v?'#fff':'var(--ink2)'}">${label}</button>`;
-  const groupOpts = `<option value="all">전체 반</option>` +
+  const groupOpts = `<option value="all">전체 그룹</option>` +
     tcsGroups.map(g=>`<option value="${g.id}" ${s360Group===g.id?'selected':''}>${g.name}</option>`).join('') +
-    `<option value="none" ${s360Group==='none'?'selected':''}>미배정</option>`;
+    `<option value="none" ${s360Group==='none'?'selected':''}>미지정</option>`;
   const rows = list.map(s => {
     const on = s.id===s360Id;
     const tn = s360TeacherNames(s.id);
@@ -10772,6 +10798,13 @@ async function renderS360Detail() {
           <div style="font-size:12.5px;color:var(--ink3)">${s.grade||'학년 미정'}${s360GroupName(s.group_id)?` · ${s360GroupName(s.group_id)}`:''}</div>
         </div>
         <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;justify-content:flex-end">
+          <span style="font-size:11.5px;font-weight:600;color:var(--ink2)">그룹</span>
+          <select onchange="s360AssignGroup('${s.id}',this.value)" style="height:30px;padding:0 8px;border:1px solid var(--border);border-radius:9px;font:600 12px var(--font);background:var(--surface);color:var(--ink2)">
+            <option value="" ${!s.group_id?'selected':''}>미지정</option>
+            ${tcsGroups.map(g=>`<option value="${g.id}" ${s.group_id===g.id?'selected':''}>${escHtml(g.name)}</option>`).join('')}
+            <option value="__new__">＋ 새 그룹 만들기…</option>
+          </select>
+          <span style="width:1px;height:18px;background:var(--border)"></span>
           <span style="font-size:11.5px;font-weight:600;color:var(--ink2)">담당교사</span>
           ${hrChips}
           ${hrAdd}
