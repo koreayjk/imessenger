@@ -9897,7 +9897,96 @@ function finGroupChips() {
   return `<div style="display:inline-flex;gap:5px;flex-wrap:wrap;align-items:center">${chip('all','전체')}${tcsGroups.map(g=>chip(g.id,g.name)).join('')}${chip('none','미지정')}</div>`;
 }
 function finOpenStudent(id) { s360Id = id; setSchoolSubMode('student'); }
+
+// ── 재정 허브: 용돈/예치금 학생별 인라인 기록 ──
+let finKind = 'allowance';   // 현재 잔액 탭 종류
+let finExpandId = null;      // 인라인 편집기가 펼쳐진 학생 id
+let finEntries = [];         // 펼친 학생의 내역 캐시
+let finAddType = 'expense';  // 폼 타입 (용돈: income/expense, 예치금: in/out)
+let finAddCur = '원';
+async function finLoadEntries() {
+  const table = finKind==='allowance' ? 'allowance_entries' : 'deposit_entries';
+  try { const { data } = await sb.from(table).select('*').eq('member_id', finExpandId).order('date',{ascending:false}).order('created_at',{ascending:false}); finEntries = data||[]; }
+  catch(_) { finEntries = []; }
+}
+async function finToggleStudent(id) {
+  if (finExpandId === id) { finExpandId = null; return renderTuitionHub(); }
+  finExpandId = id; finEntries = [];
+  const valid = finKind==='allowance' ? ['income','expense'] : ['in','out'];
+  if (!valid.includes(finAddType)) finAddType = finKind==='allowance' ? 'expense' : 'in';
+  await finLoadEntries();
+  renderTuitionHub();
+}
+function finSetType(t) { const d=finDraft(); finAddType = t; finRenderInline(); finDraftRestore(d); }
+function finSetCur(c)  { const d=finDraft(); finAddCur = c;  finRenderInline(); finDraftRestore(d); }
+function finDraft() { return { a:document.getElementById('fin-amount')?.value, m:document.getElementById('fin-memo')?.value, dt:document.getElementById('fin-date')?.value }; }
+function finDraftRestore(d) { if(!d) return; const A=document.getElementById('fin-amount'); if(A&&d.a)A.value=d.a; const M=document.getElementById('fin-memo'); if(M&&d.m)M.value=d.m; const D=document.getElementById('fin-date'); if(D&&d.dt)D.value=d.dt; }
+function finRenderInline() { const w = document.getElementById('fin-inline'); if (w) w.innerHTML = finInlineEditor(); }
+function finInlineEditor() {
+  const isAllow = finKind==='allowance';
+  const inp = 'height:33px;padding:0 9px;border:1px solid var(--border);border-radius:8px;font:600 12.5px var(--font);color:var(--ink);background:var(--surface)';
+  const tBtn = (t,label,color)=>`<button onclick="finSetType('${t}')" style="flex:1;height:33px;border:none;border-radius:8px;font:700 12px var(--font);cursor:pointer;background:${finAddType===t?color:'var(--surface)'};color:${finAddType===t?'#fff':'var(--ink2)'}">${label}</button>`;
+  const cBtn = (c,label)=>`<button onclick="finSetCur('${c}')" style="height:33px;padding:0 11px;border:1px solid ${finAddCur===c?'#1d3a5f':'var(--border)'};border-radius:8px;font:700 12px var(--font);cursor:pointer;background:${finAddCur===c?'#1d3a5f':'var(--surface)'};color:${finAddCur===c?'#fff':'var(--ink2)'}">${label}</button>`;
+  const catSel = isAllow ? `<select id="fin-cat" style="${inp}">${(ALLOW_CATS[finAddType]||[]).map(c=>`<option value="${c}">${c}</option>`).join('')}</select>` : '';
+  const form = `<div style="display:flex;gap:6px;margin-bottom:8px">${isAllow?tBtn('income','수입 ➕','#2a7a5a')+tBtn('expense','지출 ➖','#c0392b'):tBtn('in','입금 ＋','#2a7a5a')+tBtn('out','출금 －','#c0392b')}</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+      <input id="fin-date" type="date" value="${attTodayStr()}" style="${inp}"/>
+      ${catSel}
+      <div style="display:flex;gap:4px">${cBtn('원','₩')}${cBtn('$','$')}</div>
+      <input id="fin-amount" type="number" min="0" step="${finAddCur==='$'?'0.01':'100'}" placeholder="금액" style="${inp};width:100px"/>
+      <input id="fin-memo" placeholder="${isAllow?'내용 (예: 간식비)':'내용 (예: 부모님 입금)'}" style="${inp};flex:1;min-width:120px" onkeydown="if(event.key==='Enter')finAddEntry()"/>
+      <button onclick="finAddEntry()" style="height:33px;padding:0 16px;border:none;background:#1d3a5f;color:#fff;border-radius:8px;cursor:pointer;font:700 12.5px var(--font)">＋ 기록</button>
+    </div>`;
+  const rows = (finEntries||[]).slice(0,10).map(e => {
+    const cur = e.currency||'원';
+    const pos = isAllow ? e.type==='income' : e.type==='in';
+    const label = isAllow ? (e.category||'기타') : (e.type==='in'?'입금':'출금');
+    return `<div style="display:flex;align-items:center;gap:8px;padding:6px 2px;border-top:1px solid var(--border)">
+      <span style="font-size:13px">${pos?'📥':'📤'}</span>
+      <div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:600;color:var(--ink)">${escHtml(label)}${e.memo?` <span style="font-weight:400;color:var(--ink3)">· ${escHtml(e.memo)}</span>`:''}</div><div style="font-size:10px;color:var(--ink3)">${e.date||''}</div></div>
+      <span style="font-size:12.5px;font-weight:700;color:${pos?'#2a7a5a':'#c0392b'};white-space:nowrap">${pos?'+':'-'}${allowMoney(e.amount,cur)}</span>
+      <button onclick="finDelEntry('${e.id}')" title="삭제" style="border:none;background:transparent;cursor:pointer;color:#c0392b;font-size:12px">✕</button></div>`;
+  }).join('');
+  return `<div style="background:var(--s2);border:1px solid var(--border);border-radius:11px;padding:12px;margin:2px 0 10px">
+    <div style="font-size:11.5px;font-weight:700;color:var(--ink2);margin-bottom:8px">${isAllow?'🐷 용돈 기록':'🏦 입금 / 출금 기록'}</div>
+    ${form}
+    ${finEntries&&finEntries.length ? `<div style="font-size:11px;font-weight:700;color:var(--ink3);margin-top:4px">최근 내역</div>${rows}` : '<div style="font-size:11.5px;color:var(--ink3);padding:6px 0">아직 기록이 없어요.</div>'}
+  </div>`;
+}
+async function finAddEntry() {
+  const date = document.getElementById('fin-date')?.value || attTodayStr();
+  const amount = parseFloat(document.getElementById('fin-amount')?.value) || 0;
+  const memo = (document.getElementById('fin-memo')?.value || '').trim();
+  if (!(amount > 0)) { showUploadToast('금액을 입력하세요'); return; }
+  const s = schoolStudents.find(x=>x.id===finExpandId);
+  const cid = (s&&s.community_id)||CID();
+  let error;
+  if (finKind === 'allowance') {
+    const category = document.getElementById('fin-cat')?.value || '기타';
+    ({ error } = await sb.from('allowance_entries').insert({ member_id: finExpandId, community_id: cid, date, type: finAddType, category, memo, amount, currency: finAddCur }));
+  } else {
+    ({ error } = await sb.from('deposit_entries').insert({ member_id: finExpandId, community_id: cid, date, type: finAddType, amount, currency: finAddCur, memo, created_by: ME.id }));
+  }
+  if (error) {
+    if (schoolTableMissing(error)) { showUploadToast(`${finKind==='deposit'?'예치금_DB설치.sql':'용돈기입장_DB설치.sql'} 을 먼저 실행하세요`); return; }
+    showUploadToast('저장 실패: ' + error.message); return;
+  }
+  showUploadToast('기록됐어요');
+  await finLoadEntries();
+  renderTuitionHub();
+}
+async function finDelEntry(id) {
+  if (!confirm('이 기록을 삭제할까요?')) return;
+  const table = finKind==='allowance' ? 'allowance_entries' : 'deposit_entries';
+  const { error } = await sb.from(table).delete().eq('id', id);
+  if (error) { showUploadToast('삭제 실패: ' + error.message); return; }
+  showUploadToast('🗑 삭제됐어요');
+  await finLoadEntries();
+  renderTuitionHub();
+}
+
 async function renderFinBalances(kind) {
+  finKind = kind;
   const main = document.getElementById('school-main');
   main.innerHTML = finTabBar() + '<div style="text-align:center;padding:30px;color:var(--ink3);font-size:13px">불러오는 중...</div>';
   const table = kind==='allowance' ? 'allowance_entries' : 'deposit_entries';
@@ -9913,17 +10002,22 @@ async function renderFinBalances(kind) {
   const rows = students.map(s => {
     const b = balMap[s.id]||{};
     const parts = Object.keys(b).length ? Object.entries(b).map(([c,v])=>allowMoney(v,c)).join(' · ') : allowMoney(0,'원');
-    return `<div onclick="finOpenStudent('${s.id}')" style="display:flex;align-items:center;gap:12px;padding:11px 14px;border:1px solid var(--border);border-radius:11px;margin-bottom:8px;background:var(--surface);cursor:pointer" onmouseover="this.style.borderColor='#2a5298'" onmouseout="this.style.borderColor='var(--border)'">
-      <div style="width:34px;height:34px;border-radius:9px;background:${s.color||'#1d3a5f'};display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:700;flex-shrink:0">${s.initials||s.name?.[0]||'?'}</div>
-      <div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:700;color:var(--ink)">${escHtml(s.name)}</div><div style="font-size:11px;color:var(--ink3)">${s.grade||''}${s360GroupName(s.group_id)?` · ${s360GroupName(s.group_id)}`:''}</div></div>
-      <div style="font-size:15px;font-weight:800;color:var(--adeep);white-space:nowrap">${parts}</div>
-      <span style="color:var(--ink3);font-size:18px">›</span></div>`;
+    const open = finExpandId===s.id;
+    return `<div style="border:1px solid ${open?'#2a5298':'var(--border)'};border-radius:11px;margin-bottom:8px;background:var(--surface);overflow:hidden">
+      <div onclick="finToggleStudent('${s.id}')" style="display:flex;align-items:center;gap:12px;padding:11px 14px;cursor:pointer">
+        <div style="width:34px;height:34px;border-radius:9px;background:${s.color||'#1d3a5f'};display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:700;flex-shrink:0">${s.initials||s.name?.[0]||'?'}</div>
+        <div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:700;color:var(--ink)">${escHtml(s.name)}</div><div style="font-size:11px;color:var(--ink3)">${s.grade||''}${s360GroupName(s.group_id)?` · ${s360GroupName(s.group_id)}`:''}</div></div>
+        <div style="font-size:15px;font-weight:800;color:var(--adeep);white-space:nowrap">${parts}</div>
+        <span style="color:${open?'#2a5298':'var(--ink3)'};font-size:16px;transition:transform .1s;transform:rotate(${open?'90':'0'}deg)">›</span>
+      </div>
+      ${open ? `<div id="fin-inline" style="padding:0 14px 4px">${finInlineEditor()}</div>` : ''}
+    </div>`;
   }).join('');
   main.innerHTML = `<div style="max-width:1200px;margin:0 auto">
     ${finTabBar()}
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
       <div style="font-size:16px;font-weight:800;color:var(--ink)">${kind==='deposit'?'🏦 예치금':'🐷 용돈'} 잔액</div>
-      <span style="font-size:11.5px;color:var(--ink3)">학생을 누르면 상세 관리로 이동해요</span>
+      <span style="font-size:11.5px;color:var(--ink3)">학생을 누르면 바로 ${kind==='deposit'?'입금·출금':'수입·지출'}을 기록해요</span>
       <div style="flex:1"></div>${finGroupChips()}
     </div>
     ${students.length ? rows : '<div style="padding:30px;text-align:center;color:var(--ink3);font-size:13px">학생이 없어요</div>'}
