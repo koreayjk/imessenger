@@ -9831,7 +9831,7 @@ async function saveTimetable() {
 // ════════════════════════════════════════════════════════════════════
 let tuiBills = [];
 let tuiYear = new Date().getFullYear();
-let tuiGroupFilter = 'all';
+let tuiGroups = new Set();   // 선택된 그룹 id들 (+ 'none'=미지정). 비어있으면 전체
 let tuiCur = '원';   // 활성 통화 '원' | '$'
 const TUI_MONTHS = [1,2,3,4,5,6,7,8,9,10,11,12];
 function tuiNum(n) { return (Number(n)||0).toLocaleString('en-US', { maximumFractionDigits: tuiCur==='$'?2:0 }); }
@@ -9923,11 +9923,13 @@ function tuiPayMap() {
   return m;
 }
 function tuiRowStudents() {
-  let list = schoolStudents.filter(s => s.community_role === 'student' || s.role === '학생');
-  if (tuiGroupFilter === 'none') list = list.filter(s => !s.group_id);
-  else if (tuiGroupFilter !== 'all') list = list.filter(s => s.group_id === tuiGroupFilter);
+  // 학생 + 간사 모두 (schoolStudents 자체가 학생·간사 목록)
+  let list = schoolStudents.slice();
+  if (tuiGroups.size) list = list.filter(s => (s.group_id && tuiGroups.has(s.group_id)) || (!s.group_id && tuiGroups.has('none')));
   return list;
 }
+function tuiToggleGroup(gid) { if (tuiGroups.has(gid)) tuiGroups.delete(gid); else tuiGroups.add(gid); renderTuition(); }
+function tuiClearGroups() { tuiGroups.clear(); renderTuition(); }
 
 function renderTuition() {
   const main = document.getElementById('school-main');
@@ -9938,9 +9940,11 @@ function renderTuition() {
   // 요약
   const yearReceived = tuiBills.filter(b=>b.paid).reduce((a,b)=>a+(Number(b.paid_amount ?? b.amount)||0),0);
   const paidCount = tuiBills.filter(b=>b.paid).length;
-  // 이번 달(현재 연도일 때) 미납 인원
+  const expects = (s) => Number(s && s.tuition_monthly) > 0;   // 월 학비 설정된 사람만 미납 표시
+  const smap = {}; students.forEach(s => smap[s.id] = s);
+  // 이번 달(현재 연도일 때) 미납 인원 — 월 학비 설정된 사람 기준
   let curUnpaid = null;
-  if (tuiYear === nowY) curUnpaid = students.filter(s => !(payMap[s.id] && payMap[s.id][nowM] && payMap[s.id][nowM].paid)).length;
+  if (tuiYear === nowY) curUnpaid = students.filter(s => expects(s) && !(payMap[s.id] && payMap[s.id][nowM] && payMap[s.id][nowM].paid)).length;
 
   const isPast = (mo) => (tuiYear < nowY) || (tuiYear === nowY && mo <= nowM);
   const cell = (sid, mo) => {
@@ -9948,7 +9952,7 @@ function renderTuition() {
     const paid = b && b.paid;
     let bg='transparent', color='var(--ink3)', txt='';
     if (paid) { bg='#e8f5ee'; color='#15803d'; const d=(b.paid_date||'').slice(5).replace('-','/').replace(/^0/,''); txt=`✓${d?`<div style="font-size:8.5px;color:#2a7a5a">${d}</div>`:''}`; }
-    else if (isPast(mo)) { bg='#fdecea'; color='#c0392b'; txt='·'; }
+    else if (isPast(mo) && expects(smap[sid])) { bg='#fdecea'; color='#c0392b'; txt='·'; }
     return `<td onclick="openTuiCell('${sid}',${mo})" style="padding:0;text-align:center;border:1px solid var(--border);cursor:pointer;background:${bg};color:${color};font-weight:700;font-size:11.5px;height:38px;min-width:46px" title="${TUI_MONTHS.indexOf(mo)>=0?mo+'월':''}">${txt}</td>`;
   };
 
@@ -9977,9 +9981,12 @@ function renderTuition() {
     <td style="padding:7px 10px;text-align:right;font-size:12px;font-weight:800;color:var(--adeep);border:1px solid var(--border)">${tuiWon(monthTotals.reduce((a,b)=>a+b,0))}</td>
   </tr>`;
 
-  const groupOpts = `<option value="all">전체 그룹</option>` +
-    tcsGroups.map(g => `<option value="${g.id}" ${tuiGroupFilter===g.id?'selected':''}>${g.name}</option>`).join('') +
-    `<option value="none" ${tuiGroupFilter==='none'?'selected':''}>미지정</option>`;
+  const chip = (id, label) => {
+    const on = id==='all' ? tuiGroups.size===0 : tuiGroups.has(id);
+    const oc = id==='all' ? 'tuiClearGroups()' : `tuiToggleGroup('${id}')`;
+    return `<button onclick="${oc}" style="height:30px;padding:0 12px;border-radius:8px;cursor:pointer;font:700 12px var(--font);border:1.5px solid ${on?'#1d3a5f':'var(--border)'};background:${on?'#1d3a5f':'var(--surface)'};color:${on?'#fff':'var(--ink2)'}">${on&&id!=='all'?'✓ ':''}${escHtml(label)}</button>`;
+  };
+  const groupChips = `<div style="display:inline-flex;gap:5px;flex-wrap:wrap;align-items:center">${chip('all','전체')}${tcsGroups.map(g=>chip(g.id,g.name)).join('')}${chip('none','미지정')}</div>`;
   const headMonths = TUI_MONTHS.map(mo=>`<th style="padding:7px 2px;font-size:11px;font-weight:700;color:${(tuiYear===nowY&&mo===nowM)?'#1d3a5f':'var(--ink3)'};text-align:center;border:1px solid var(--border);background:${(tuiYear===nowY&&mo===nowM)?'#e7f0fb':'var(--s2)'}">${mo}월</th>`).join('');
 
   main.innerHTML = `<div style="max-width:1200px;margin:0 auto">
@@ -9994,7 +10001,7 @@ function renderTuition() {
           <span style="font-size:15px;font-weight:800;color:var(--ink);min-width:56px;text-align:center">${tuiYear}년</span>
           <button onclick="setTuiYear(1)" style="width:30px;height:30px;border:none;background:transparent;cursor:pointer;font-size:16px;color:var(--ink2)">▶</button>
         </div>
-        <select onchange="tuiGroupFilter=this.value;renderTuition()" style="height:36px;padding:0 10px;border:1px solid var(--border);border-radius:9px;font:600 13px var(--font);background:var(--surface);color:var(--ink)">${groupOpts}</select>
+        ${groupChips}
         <div style="display:inline-flex;gap:2px;background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:3px">
           ${[['원','₩ 원'],['$','$ 달러']].map(([v,l])=>`<button onclick="tuiSetCurrency('${v}')" style="height:30px;padding:0 12px;border:none;border-radius:7px;cursor:pointer;font:700 12px var(--font);background:${tuiCur===v?'#1d3a5f':'transparent'};color:${tuiCur===v?'#fff':'var(--ink2)'}">${l}</button>`).join('')}
         </div>
@@ -10086,9 +10093,10 @@ function printTuitionMatrix() {
   const students = tuiRowStudents();
   if (!students.length) { showUploadToast('학생이 없어요'); return; }
   const isPast = mo => (tuiYear<nowY)||(tuiYear===nowY&&mo<=nowM);
+  const smap = {}; students.forEach(s=>smap[s.id]=s);
   const cellTxt = (sid,mo) => { const b=payMap[sid]&&payMap[sid][mo];
     if (b&&b.paid) { const d=(b.paid_date||'').slice(5).replace('-','/').replace(/^0/,''); return `<td class="pd">✓<br><span class="dt">${d}</span></td>`; }
-    if (isPast(mo)) return `<td class="up">·</td>`;
+    if (isPast(mo) && Number(smap[sid]&&smap[sid].tuition_monthly)>0) return `<td class="up">·</td>`;
     return `<td></td>`; };
   const rows = students.map(s=>{
     const total = TUI_MONTHS.reduce((a,mo)=>{const b=payMap[s.id]&&payMap[s.id][mo];return a+(b&&b.paid?(Number(b.paid_amount??b.amount)||0):0);},0);
