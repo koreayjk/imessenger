@@ -5032,8 +5032,24 @@ async function deleteMockItem(i) {
 
 // ── Triple School 필독서 현황 ──
 const READING_CATEGORIES = ['Gospel School', 'Disciple School', 'Calling School'];
+const READING_CAT_ORDER = { 'Gospel School': 0, 'Disciple School': 1, 'Calling School': 2 };
 let readingBooks = [];
 let readingMyLogs = [];
+
+// step(1~4, 없으면 뒤로) → 카테고리(Gospel/Disciple/Calling) → sort → 제목 순 정렬 (컬럼 없어도 안전)
+function readingBookSort(a, b) {
+  const sa = a.step || 99, sb2 = b.step || 99; if (sa !== sb2) return sa - sb2;
+  const ca = READING_CAT_ORDER[a.category] ?? 9, cb = READING_CAT_ORDER[b.category] ?? 9; if (ca !== cb) return ca - cb;
+  const oa = a.sort != null ? a.sort : 0, ob = b.sort != null ? b.sort : 0; if (oa !== ob) return oa - ob;
+  return String(a.title || '').localeCompare(String(b.title || ''));
+}
+function sortReadingBooks(arr) { return (arr || []).slice().sort(readingBookSort); }
+// step 있으면 Step별, 없으면 하나로 묶어 반환: [{step, books}]
+function groupBooksByStep(list) {
+  const m = {};
+  list.forEach(b => { const st = b.step || 0; (m[st] = m[st] || []).push(b); });
+  return Object.keys(m).map(Number).sort((a, b) => (a === 0 ? 99 : a) - (b === 0 ? 99 : b)).map(st => ({ step: st, books: m[st] }));
+}
 
 // TCS 내부 하위 탭 — 역할별로 다름
 function tcsSubnavHtml(active) {
@@ -5118,7 +5134,7 @@ async function initReadingPage() {
   try {
     const { data: books, error: bErr } = await sb.from('reading_books').select('*').order('category').order('sort').order('title');
     if (bErr) { renderReadingSetupNeeded(bErr); return; }
-    readingBooks = books || [];
+    readingBooks = sortReadingBooks(books || []);
 
     if (isTeacher()) {
       if (sub) sub.textContent = '전체 현황 · 책 관리';
@@ -5163,7 +5179,7 @@ function readingBookRow(b, log) {
     <div style="width:20px;height:20px;border-radius:50%;background:${done ? '#2a5298' : 'var(--border)'};display:flex;align-items:center;justify-content:center;flex-shrink:0">${done ? '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>' : ''}</div>
     <div style="flex:1;min-width:0">
       <div style="font-size:13.5px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${b.title}</div>
-      ${b.author ? `<div style="font-size:11px;color:var(--ink3)">${b.author}</div>` : ''}
+      ${(b.author || b.publisher) ? `<div style="font-size:11px;color:var(--ink3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${[b.author, b.publisher].filter(Boolean).join(' · ')}</div>` : ''}
     </div>
     ${done ? `<div style="font-size:10.5px;color:#1d4ed8;text-align:right;flex-shrink:0">${log.read_date || ''}${log.include_in_record ? ' 📋' : ''}</div>` : `<div style="font-size:11px;color:var(--ink3);flex-shrink:0">기록 →</div>`}
   </div>`;
@@ -5186,18 +5202,17 @@ function renderReadingList() {
   const read = books.filter(b => readMap[b.id]);
 
   const renderGroup = (arr) => {
-    if (cat === 'all') {
-      const { ordered } = groupBooksByCategory();
-      let h = '';
-      ordered.forEach(c => {
-        const sub = arr.filter(b => b.category === c);
-        if (!sub.length) return;
-        h += `<div style="font-size:12px;font-weight:700;color:var(--adeep);margin:10px 0 6px">${c}</div>`;
-        h += sub.map(b => readingBookRow(b, readMap[b.id])).join('');
+    if (cat !== 'all') return arr.map(b => readingBookRow(b, readMap[b.id])).join('');
+    let h = '';
+    groupBooksByStep(arr).forEach(({ step, books }) => {
+      if (step) h += `<div style="font-size:13px;font-weight:800;color:var(--ink);margin:16px 0 6px;padding-bottom:5px;border-bottom:2px solid var(--adeep)">📘 Step ${step}</div>`;
+      const cats = {}; books.forEach(b => { (cats[b.category] = cats[b.category] || []).push(b); });
+      [...READING_CATEGORIES.filter(c => cats[c]), ...Object.keys(cats).filter(c => !READING_CATEGORIES.includes(c))].forEach(c => {
+        h += `<div style="font-size:11.5px;font-weight:700;color:var(--adeep);margin:9px 0 5px">${READING_CAT_SHORT[c] || c}</div>`;
+        h += cats[c].map(b => readingBookRow(b, readMap[b.id])).join('');
       });
-      return h;
-    }
-    return arr.map(b => readingBookRow(b, readMap[b.id])).join('');
+    });
+    return h;
   };
 
   const showUnread = readingShowUnread || !!q;
@@ -5262,7 +5277,7 @@ function openReadingLog(bookId) {
       <div style="font-size:16px;font-weight:700;color:var(--ink)">${book.title}</div>
     </div>
     <div class="adm-card">
-      <div style="font-size:12px;color:var(--ink3);margin-bottom:14px">${book.category}${book.author ? ' · ' + book.author : ''}</div>
+      <div style="font-size:12px;color:var(--ink3);margin-bottom:14px">${book.step ? 'Step ' + book.step + ' · ' : ''}${READING_CAT_SHORT[book.category] || book.category}${book.author ? ' · ' + book.author : ''}${book.publisher ? ' · ' + book.publisher : ''}</div>
       <label style="font-size:12px;font-weight:600;color:var(--ink3);display:block;margin-bottom:6px">읽은 날짜</label>
       <input id="rd-date" type="date" value="${log?.read_date || today}" style="${inputCss};margin-bottom:14px"/>
       <label style="font-size:12px;font-weight:600;color:var(--ink3);display:block;margin-bottom:6px">독후감 (간단히)</label>
@@ -5343,21 +5358,28 @@ async function renderReadingAdmin() {
   // 책 관리 (교사·관리자)
   let manageHtml = '';
   if (canManage) {
-    const { cats, ordered } = groupBooksByCategory();
-    const bookList = ordered.map(cat => `
-      <div style="font-size:12px;font-weight:700;color:var(--adeep);margin:12px 0 6px">${cat} (${cats[cat].length})</div>
-      ${cats[cat].map(b => `<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;border:1px solid var(--border);border-radius:9px;margin-bottom:6px">
-        <div style="flex:1;font-size:13px;color:var(--ink)">${b.title}${b.author ? `<span style="font-size:11px;color:var(--ink3)"> · ${b.author}</span>` : ''}</div>
-        <button onclick="deleteReadingBook('${b.id}')" style="width:26px;height:26px;border-radius:7px;border:1.5px solid var(--border);background:white;color:#ef4444;font-size:14px;cursor:pointer">×</button>
-      </div>`).join('')}`).join('');
-    const catOpts = READING_CATEGORIES.map(c => `<option value="${c}">${c}</option>`).join('');
+    const bookList = groupBooksByStep(readingBooks).map(({ step, books }) => {
+      const cats = {}; books.forEach(b => { (cats[b.category] = cats[b.category] || []).push(b); });
+      const catOrder = [...READING_CATEGORIES.filter(c => cats[c]), ...Object.keys(cats).filter(c => !READING_CATEGORIES.includes(c))];
+      const inner = catOrder.map(cat => `
+        <div style="font-size:11.5px;font-weight:700;color:var(--adeep);margin:9px 0 5px">${READING_CAT_SHORT[cat] || cat} (${cats[cat].length})</div>
+        ${cats[cat].map(b => `<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;border:1px solid var(--border);border-radius:9px;margin-bottom:6px">
+          <div style="flex:1;min-width:0;font-size:13px;color:var(--ink)">${b.title}${(b.author || b.publisher) ? `<span style="font-size:11px;color:var(--ink3)"> · ${[b.author, b.publisher].filter(Boolean).join(' · ')}</span>` : ''}</div>
+          <button onclick="deleteReadingBook('${b.id}')" style="width:26px;height:26px;border-radius:7px;border:1.5px solid var(--border);background:white;color:#ef4444;font-size:14px;cursor:pointer;flex-shrink:0">×</button>
+        </div>`).join('')}`).join('');
+      return `${step ? `<div style="font-size:13px;font-weight:800;color:var(--ink);margin:16px 0 4px;padding-bottom:5px;border-bottom:2px solid var(--adeep)">📘 Step ${step}</div>` : `<div style="font-size:13px;font-weight:800;color:var(--ink);margin:16px 0 4px">직접 추가한 책</div>`}${inner}`;
+    }).join('');
+    const catOpts = READING_CATEGORIES.map(c => `<option value="${c}">${READING_CAT_SHORT[c] || c}</option>`).join('');
+    const stepOpts = `<option value="">Step 없음</option>` + [1,2,3,4].map(n => `<option value="${n}">Step ${n}</option>`).join('');
     manageHtml = `
       <div style="font-size:14px;font-weight:700;color:var(--adeep);margin:0 0 10px">📚 책 관리 <span style="font-size:11px;font-weight:500;color:var(--ink3)">(전 공동체 공통 목록)</span></div>
       <div class="adm-card" style="margin-bottom:24px">
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+          <select id="rb-step" style="height:38px;padding:0 10px;border-radius:9px;border:1.5px solid var(--border);background:white;font:13px var(--font);cursor:pointer">${stepOpts}</select>
           <select id="rb-cat" style="height:38px;padding:0 10px;border-radius:9px;border:1.5px solid var(--border);background:white;font:13px var(--font);cursor:pointer">${catOpts}</select>
-          <input id="rb-title" type="text" placeholder="책 제목" style="flex:1;min-width:160px;height:38px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--s2);font:13px var(--font);outline:none"/>
-          <input id="rb-author" type="text" placeholder="저자 (선택)" style="width:130px;height:38px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--s2);font:13px var(--font);outline:none"/>
+          <input id="rb-title" type="text" placeholder="책 제목" style="flex:1;min-width:150px;height:38px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--s2);font:13px var(--font);outline:none"/>
+          <input id="rb-author" type="text" placeholder="저자 (선택)" style="width:120px;height:38px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--s2);font:13px var(--font);outline:none"/>
+          <input id="rb-publisher" type="text" placeholder="출판사 (선택)" style="width:120px;height:38px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--s2);font:13px var(--font);outline:none"/>
           <button onclick="addReadingBook()" style="height:38px;padding:0 16px;border-radius:9px;border:none;background:#1d3a5f;color:white;font:600 13px var(--font);cursor:pointer">추가</button>
         </div>
         ${bookList || '<div style="font-size:13px;color:var(--ink3)">아직 등록된 책이 없어요</div>'}
@@ -5387,7 +5409,7 @@ async function renderTcsReadingUnified() {
         main.innerHTML = `<div style="max-width:560px;margin:30px auto;text-align:center"><div style="font-size:40px;margin-bottom:12px">🗄️</div><div style="font-size:16px;font-weight:700;margin-bottom:8px">데이터베이스 설정이 필요해요</div><div style="font-size:13px;color:var(--ink3);line-height:1.8">제공해드린 <b>필독서_DB설치.sql</b>을 Supabase → SQL Editor에서 실행해주세요.</div><div style="font-size:11px;color:#b91c1c;margin-top:14px">${bErr.message || ''}</div></div>`;
         return;
       }
-      readingBooks = books || [];
+      readingBooks = sortReadingBooks(books || []);
     }
   } catch (e) {
     main.innerHTML = `<div style="text-align:center;padding:40px;color:#b91c1c">필독서 데이터를 불러오지 못했어요</div>`;
@@ -5416,14 +5438,19 @@ async function renderTcsReadingUnified() {
     ${l.report ? `<div style="margin-top:6px;font-size:12.5px;color:var(--ink2);line-height:1.6;white-space:pre-wrap">${(l.report || '').replace(/</g, '&lt;')}</div>` : '<div style="margin-top:4px;font-size:12px;color:var(--ink3)">독후감 없음</div>'}
   </div>`; }).join('') : '<div style="font-size:13px;color:var(--ink3);padding:12px 0">아직 읽은 책 기록이 없어요</div>';
 
-  const { cats, ordered } = groupBooksByCategory();
-  const bookList = ordered.map(cat => `
-    <div style="font-size:12px;font-weight:700;color:var(--adeep);margin:12px 0 6px">${cat} (${cats[cat].length})</div>
-    ${cats[cat].map(b => `<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;border:1px solid var(--border);border-radius:9px;margin-bottom:6px">
-      <div style="flex:1;font-size:13px;color:var(--ink)">${b.title}${b.author ? `<span style="font-size:11px;color:var(--ink3)"> · ${b.author}</span>` : ''}</div>
-      <button onclick="deleteReadingBook('${b.id}')" style="width:26px;height:26px;border-radius:7px;border:1.5px solid var(--border);background:white;color:#ef4444;font-size:14px;cursor:pointer">×</button>
-    </div>`).join('')}`).join('');
-  const catOpts = READING_CATEGORIES.map(c => `<option value="${c}">${c}</option>`).join('');
+  const bookList = groupBooksByStep(readingBooks).map(({ step, books }) => {
+    const cats = {}; books.forEach(b => { (cats[b.category] = cats[b.category] || []).push(b); });
+    const catOrder = [...READING_CATEGORIES.filter(c => cats[c]), ...Object.keys(cats).filter(c => !READING_CATEGORIES.includes(c))];
+    const inner = catOrder.map(cat => `
+      <div style="font-size:11.5px;font-weight:700;color:var(--adeep);margin:9px 0 5px">${READING_CAT_SHORT[cat] || cat} (${cats[cat].length})</div>
+      ${cats[cat].map(b => `<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;border:1px solid var(--border);border-radius:9px;margin-bottom:6px">
+        <div style="flex:1;min-width:0;font-size:13px;color:var(--ink)">${b.title}${(b.author || b.publisher) ? `<span style="font-size:11px;color:var(--ink3)"> · ${[b.author, b.publisher].filter(Boolean).join(' · ')}</span>` : ''}</div>
+        <button onclick="deleteReadingBook('${b.id}')" style="width:26px;height:26px;border-radius:7px;border:1.5px solid var(--border);background:white;color:#ef4444;font-size:14px;cursor:pointer;flex-shrink:0">×</button>
+      </div>`).join('')}`).join('');
+    return `${step ? `<div style="font-size:13px;font-weight:800;color:var(--ink);margin:16px 0 4px;padding-bottom:5px;border-bottom:2px solid var(--adeep)">📘 Step ${step}</div>` : `<div style="font-size:13px;font-weight:800;color:var(--ink);margin:16px 0 4px">직접 추가한 책</div>`}${inner}`;
+  }).join('');
+  const catOpts = READING_CATEGORIES.map(c => `<option value="${c}">${READING_CAT_SHORT[c] || c}</option>`).join('');
+  const stepOpts = `<option value="">Step 없음</option>` + [1,2,3,4].map(n => `<option value="${n}">Step ${n}</option>`).join('');
 
   const popular = [...readingBooks].sort((a, b) => (byBook[b.id] || 0) - (byBook[a.id] || 0)).slice(0, 10);
   const popularRows = popular.length ? popular.map(b => `<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border)"><div style="flex:1;font-size:13px;color:var(--ink)">${b.title} <span style="font-size:11px;color:var(--ink3)">${READING_CAT_SHORT[b.category] || b.category}</span></div><div style="font-size:12px;font-weight:600;color:#1d4ed8">${byBook[b.id] || 0}명</div></div>`).join('') : '<div style="font-size:13px;color:var(--ink3);padding:12px 0">데이터 없음</div>';
@@ -5439,9 +5466,11 @@ async function renderTcsReadingUnified() {
     <div style="font-size:14px;font-weight:700;color:var(--adeep);margin:0 0 10px">📚 책 관리 <span style="font-size:11px;font-weight:500;color:var(--ink3)">(전 공동체 공통 목록)</span></div>
     <div class="adm-card" style="margin-bottom:22px">
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+        <select id="rb-step" style="height:38px;padding:0 10px;border-radius:9px;border:1.5px solid var(--border);background:white;font:13px var(--font);cursor:pointer">${stepOpts}</select>
         <select id="rb-cat" style="height:38px;padding:0 10px;border-radius:9px;border:1.5px solid var(--border);background:white;font:13px var(--font);cursor:pointer">${catOpts}</select>
-        <input id="rb-title" type="text" placeholder="책 제목" style="flex:1;min-width:160px;height:38px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--s2);font:13px var(--font);outline:none"/>
-        <input id="rb-author" type="text" placeholder="저자 (선택)" style="width:130px;height:38px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--s2);font:13px var(--font);outline:none"/>
+        <input id="rb-title" type="text" placeholder="책 제목" style="flex:1;min-width:150px;height:38px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--s2);font:13px var(--font);outline:none"/>
+        <input id="rb-author" type="text" placeholder="저자 (선택)" style="width:120px;height:38px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--s2);font:13px var(--font);outline:none"/>
+        <input id="rb-publisher" type="text" placeholder="출판사 (선택)" style="width:120px;height:38px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--s2);font:13px var(--font);outline:none"/>
         <button onclick="addReadingBook()" style="height:38px;padding:0 16px;border-radius:9px;border:none;background:#1d3a5f;color:white;font:600 13px var(--font);cursor:pointer">추가</button>
       </div>
       ${bookList || '<div style="font-size:13px;color:var(--ink3)">아직 등록된 책이 없어요</div>'}
@@ -5454,7 +5483,7 @@ async function renderTcsReadingUnified() {
 
 // 책 추가/삭제 후 화면 갱신 (교사 TCS-Triple School / 학생 reading-view 모두 대응)
 async function refreshReadingAfterBookChange() {
-  try { const { data: books } = await sb.from('reading_books').select('*').order('category').order('sort').order('title'); readingBooks = books || []; } catch (e) {}
+  try { const { data: books } = await sb.from('reading_books').select('*').order('category').order('sort').order('title'); readingBooks = sortReadingBooks(books || []); } catch (e) {}
   const tcsView = document.getElementById('tcs-view');
   const tcsVisible = tcsView && tcsView.style.display !== 'none';
   if (isTeacher() && tcsVisible && tcsSubMode === 'reading') renderTcsReadingUnified();
@@ -5465,9 +5494,14 @@ async function addReadingBook() {
   const cat = document.getElementById('rb-cat').value;
   const title = document.getElementById('rb-title').value.trim();
   const author = document.getElementById('rb-author').value.trim();
+  const publisher = (document.getElementById('rb-publisher')?.value || '').trim();
+  const stepVal = document.getElementById('rb-step')?.value;
   if (!title) { showUploadToast('책 제목을 입력하세요'); return; }
-  const { error } = await sb.from('reading_books').insert({ category: cat, title, author });
-  if (error) { showUploadToast('추가 실패 😥 ' + error.message); return; }
+  const row = { category: cat, title, author };
+  if (publisher) row.publisher = publisher;
+  if (stepVal) row.step = Number(stepVal);
+  const { error } = await sb.from('reading_books').insert(row);
+  if (error) { showUploadToast('추가 실패 😥 ' + error.message + ' (트리플스쿨_도서목록.sql 실행 필요할 수 있어요)'); return; }
   showUploadToast('✅ 책이 추가됐어요');
   refreshReadingAfterBookChange();
 }
