@@ -15,11 +15,17 @@ create table if not exists public.tuition_bills (
   paid_date     date,                     -- 납부일
   paid_amount   numeric,                  -- 실 납부액
   method        text,                     -- 납부 방법 (현금/계좌/카드)
+  currency      text default '원',        -- '원' | '$'
   note          text,
   created_by    uuid,
   created_at    timestamptz default now(),
   updated_at    timestamptz default now()
 );
+-- 이미 있던 경우 통화 컬럼 보강
+alter table public.tuition_bills add column if not exists currency text default '원';
+
+-- 학생별 월 학비(개인 금액) — members 테이블에 저장
+alter table public.members add column if not exists tuition_monthly numeric;
 
 create index if not exists idx_tuition_comm_period
   on public.tuition_bills (community_id, period);
