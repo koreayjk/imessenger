@@ -5155,7 +5155,7 @@ function renderReadingSetupNeeded(err) {
   page.innerHTML = `<div style="max-width:560px;margin:40px auto;text-align:center">
     <div style="font-size:40px;margin-bottom:12px">🗄️</div>
     <div style="font-size:16px;font-weight:700;margin-bottom:8px">데이터베이스 설정이 필요해요</div>
-    <div style="font-size:13px;color:var(--ink3);line-height:1.8">Triple School 필독서 기능을 쓰려면 Supabase에서 테이블을 한 번 만들어야 합니다.<br>제공해드린 <b>필독서_DB설치.sql</b> 내용을 Supabase → SQL Editor에 붙여넣고 실행해주세요.</div>
+    <div style="font-size:13px;color:var(--ink3);line-height:1.8">Triple School 필독서 기능을 쓰려면 Supabase에서 테이블을 한 번 만들어야 합니다.<br>제공해드린 <b>db/필독서_DB설치.sql</b> 내용을 Supabase → SQL Editor에 붙여넣고 실행해주세요.</div>
     <div style="font-size:11px;color:#b91c1c;margin-top:14px">${err?.message || ''}</div>
   </div>`;
 }
@@ -5406,7 +5406,7 @@ async function renderTcsReadingUnified() {
     if (!readingBooks.length) {
       const { data: books, error: bErr } = await sb.from('reading_books').select('*').order('category').order('sort').order('title');
       if (bErr) {
-        main.innerHTML = `<div style="max-width:560px;margin:30px auto;text-align:center"><div style="font-size:40px;margin-bottom:12px">🗄️</div><div style="font-size:16px;font-weight:700;margin-bottom:8px">데이터베이스 설정이 필요해요</div><div style="font-size:13px;color:var(--ink3);line-height:1.8">제공해드린 <b>필독서_DB설치.sql</b>을 Supabase → SQL Editor에서 실행해주세요.</div><div style="font-size:11px;color:#b91c1c;margin-top:14px">${bErr.message || ''}</div></div>`;
+        main.innerHTML = `<div style="max-width:560px;margin:30px auto;text-align:center"><div style="font-size:40px;margin-bottom:12px">🗄️</div><div style="font-size:16px;font-weight:700;margin-bottom:8px">데이터베이스 설정이 필요해요</div><div style="font-size:13px;color:var(--ink3);line-height:1.8">제공해드린 <b>db/필독서_DB설치.sql</b>을 Supabase → SQL Editor에서 실행해주세요.</div><div style="font-size:11px;color:#b91c1c;margin-top:14px">${bErr.message || ''}</div></div>`;
         return;
       }
       readingBooks = sortReadingBooks(books || []);
@@ -5501,7 +5501,7 @@ async function addReadingBook() {
   if (publisher) row.publisher = publisher;
   if (stepVal) row.step = Number(stepVal);
   const { error } = await sb.from('reading_books').insert(row);
-  if (error) { showUploadToast('추가 실패 😥 ' + error.message + ' (트리플스쿨_도서목록.sql 실행 필요할 수 있어요)'); return; }
+  if (error) { showUploadToast('추가 실패 😥 ' + error.message + ' (db/트리플스쿨_도서목록.sql 실행 필요할 수 있어요)'); return; }
   showUploadToast('✅ 책이 추가됐어요');
   refreshReadingAfterBookChange();
 }
@@ -8216,7 +8216,7 @@ function apprSetupHtml() {
   return `<div style="max-width:560px;margin:40px auto;text-align:center">
     <div style="font-size:40px;margin-bottom:12px">📋</div>
     <div style="font-size:16px;font-weight:700;margin-bottom:8px">전자결재 DB 설정이 필요해요</div>
-    <div style="font-size:13px;color:var(--ink3);line-height:1.8">제공해드린 <b>서류결재_DB설치.sql</b> 을 Supabase → SQL Editor에서 실행해주세요.</div>
+    <div style="font-size:13px;color:var(--ink3);line-height:1.8">제공해드린 <b>db/서류결재_DB설치.sql</b> 을 Supabase → SQL Editor에서 실행해주세요.</div>
   </div>`;
 }
 
@@ -8433,7 +8433,7 @@ async function submitApprDoc(){
   const history = [{ ts:new Date().toISOString(), actor_id:ME.id, actor_name:ME.name, action:'상신', comment:'' }];
   const row = { community_id:CID(), template_id:t.dbId||null, template_name:t.name, title, form_data, attachments:apprDraft.attachments, line, shares, history, participant_ids, status:'pending', current_step:0, submitter_id:ME.id, submitter_name:ME.name };
   const { error } = await sb.from('approval_docs').insert(row);
-  if(error){ if(schoolTableMissing(error)){ showUploadToast('결재 테이블이 없어요. 서류결재_DB설치.sql 실행 필요'); return; } showUploadToast('상신 실패: '+error.message); return; }
+  if(error){ if(schoolTableMissing(error)){ showUploadToast('결재 테이블이 없어요. db/서류결재_DB설치.sql 실행 필요'); return; } showUploadToast('상신 실패: '+error.message); return; }
   showUploadToast('✅ 상신되었어요');
   apprDraft=null; apprSubMode='sent'; renderApprSubnav(); renderApprMain();
 }
@@ -8712,7 +8712,7 @@ async function saveApprTemplate(){
     if(apprTplBuild.itemsOn) row.items={ enabled:true, columns:[{key:'name',label:'내용',type:'text'},{key:'purpose',label:'사용 목적',type:'text'},{key:'amount',label:'금액',type:'number'}], sumKey:'amount', sumLabel:'합계' };
   }
   const { error } = await sb.from('approval_templates').insert(row);
-  if(error){ if(schoolTableMissing(error)){ fail('결재 테이블이 없어요. 서류결재_DB설치.sql 실행 필요'); return; } fail('저장 실패: '+error.message); return; }
+  if(error){ if(schoolTableMissing(error)){ fail('결재 테이블이 없어요. db/서류결재_DB설치.sql 실행 필요'); return; } fail('저장 실패: '+error.message); return; }
   document.getElementById('appr-tpl-modal')?.remove();
   showUploadToast('✅ 양식이 추가됐어요');
   initApprovalPage();
@@ -8760,7 +8760,7 @@ function storeSetupHtml() {
   return `<div style="max-width:580px;margin:40px auto;text-align:center">
     <div style="font-size:40px;margin-bottom:12px">🏪</div>
     <div style="font-size:16px;font-weight:700;margin-bottom:8px">매점 데이터베이스 설정이 필요해요</div>
-    <div style="font-size:13px;color:var(--ink3);line-height:1.8">제공해드린 <b>매점_DB설치.sql</b> 을 Supabase → SQL Editor에 붙여넣고 실행한 뒤,<br>Edge Function <b>store</b> 를 배포해주세요.</div>
+    <div style="font-size:13px;color:var(--ink3);line-height:1.8">제공해드린 <b>db/매점_DB설치.sql</b> 을 Supabase → SQL Editor에 붙여넣고 실행한 뒤,<br>Edge Function <b>store</b> 를 배포해주세요.</div>
   </div>`;
 }
 
@@ -8922,7 +8922,7 @@ function leaveSetupHtml() {
   return `<div style="max-width:560px;margin:40px auto;text-align:center">
     <div style="font-size:40px;margin-bottom:12px">📝</div>
     <div style="font-size:16px;font-weight:700;margin-bottom:8px">데이터베이스 설정이 필요해요</div>
-    <div style="font-size:13px;color:var(--ink3);line-height:1.8">출결 신청을 쓰려면 <b>학사_전자결재_출결신청_DB설치.sql</b> 을 Supabase → SQL Editor에서 실행해주세요.</div>
+    <div style="font-size:13px;color:var(--ink3);line-height:1.8">출결 신청을 쓰려면 <b>db/학사_전자결재_출결신청_DB설치.sql</b> 을 Supabase → SQL Editor에서 실행해주세요.</div>
   </div>`;
 }
 
@@ -9003,7 +9003,7 @@ async function renderApprovalHub() {
     if (error) throw error;
     rows = data || [];
   } catch(e) {
-    if (schoolTableMissing(e)) return schoolSetupNeeded(e, '학사_전자결재_출결신청_DB설치.sql');
+    if (schoolTableMissing(e)) return schoolSetupNeeded(e, 'db/학사_전자결재_출결신청_DB설치.sql');
     main.innerHTML = `<div style="color:#b91c1c;padding:30px;text-align:center;font-size:13px">불러오기 실패: ${e.message||e}</div>`;
     return;
   }
@@ -9150,7 +9150,7 @@ function ttGridHtml(entries, editable) {
 }
 
 function myTTSetupHtml() {
-  return `<div style="max-width:560px;margin:40px auto;text-align:center"><div style="font-size:40px;margin-bottom:12px">🗓</div><div style="font-size:16px;font-weight:700;margin-bottom:8px">데이터베이스 설정이 필요해요</div><div style="font-size:13px;color:var(--ink3);line-height:1.8"><b>학사_다중담당_개인시간표_DB설치.sql</b> 을 Supabase → SQL Editor에서 실행해주세요.</div></div>`;
+  return `<div style="max-width:560px;margin:40px auto;text-align:center"><div style="font-size:40px;margin-bottom:12px">🗓</div><div style="font-size:16px;font-weight:700;margin-bottom:8px">데이터베이스 설정이 필요해요</div><div style="font-size:13px;color:var(--ink3);line-height:1.8"><b>db/학사_다중담당_개인시간표_DB설치.sql</b> 을 Supabase → SQL Editor에서 실행해주세요.</div></div>`;
 }
 
 async function initMyTimetable() {
@@ -9534,7 +9534,7 @@ function renderAttSetupNeeded(err) {
   document.getElementById('school-main').innerHTML = `<div style="max-width:560px;margin:40px auto;text-align:center">
     <div style="font-size:40px;margin-bottom:12px">🗄️</div>
     <div style="font-size:16px;font-weight:700;margin-bottom:8px">데이터베이스 설정이 필요해요</div>
-    <div style="font-size:13px;color:var(--ink3);line-height:1.8">전자출석부를 쓰려면 Supabase에서 테이블을 한 번 만들어야 합니다.<br>제공해드린 <b>학사_출석부_DB설치.sql</b> 내용을 Supabase → SQL Editor에 붙여넣고 실행해주세요.</div>
+    <div style="font-size:13px;color:var(--ink3);line-height:1.8">전자출석부를 쓰려면 Supabase에서 테이블을 한 번 만들어야 합니다.<br>제공해드린 <b>db/학사_출석부_DB설치.sql</b> 내용을 Supabase → SQL Editor에 붙여넣고 실행해주세요.</div>
     <div style="font-size:11px;color:#b91c1c;margin-top:14px">${err?.message || ''}</div>
   </div>`;
 }
@@ -9776,7 +9776,7 @@ async function renderTimetableHub() {
   main.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink3);font-size:13px">불러오는 중...</div>';
   try { if (ttView === 'teacher') await loadTimetableAll(); else await loadTimetable(); }
   catch(e) {
-    if (schoolTableMissing(e)) return schoolSetupNeeded(e, '학사_시간표_DB설치.sql');
+    if (schoolTableMissing(e)) return schoolSetupNeeded(e, 'db/학사_시간표_DB설치.sql');
     main.innerHTML = `<div style="color:#b91c1c;padding:30px;text-align:center;font-size:13px">불러오기 실패: ${e.message||e}</div>`;
     return;
   }
@@ -9915,7 +9915,7 @@ async function saveTimetable() {
   let dq = sb.from('timetables').delete().eq('community_id', CID());
   dq = ttGroup ? dq.eq('group_id', ttGroup) : dq.is('group_id', null);
   const { error: delErr } = await dq;
-  if (delErr) { if (schoolTableMissing(delErr)) return schoolSetupNeeded(delErr, '학사_시간표_DB설치.sql'); showUploadToast('저장 실패: ' + delErr.message); return; }
+  if (delErr) { if (schoolTableMissing(delErr)) return schoolSetupNeeded(delErr, 'db/학사_시간표_DB설치.sql'); showUploadToast('저장 실패: ' + delErr.message); return; }
   if (rows.length) {
     const { error } = await sb.from('timetables').insert(rows);
     if (error) { showUploadToast('저장 실패: ' + error.message); return; }
@@ -10013,7 +10013,7 @@ async function finAddEntry() {
     ({ error } = await sb.from('deposit_entries').insert({ member_id: finExpandId, community_id: cid, date, type: finAddType, amount, currency: finAddCur, memo, created_by: ME.id }));
   }
   if (error) {
-    if (schoolTableMissing(error)) { showUploadToast(`${finKind==='deposit'?'예치금_DB설치.sql':'용돈기입장_DB설치.sql'} 을 먼저 실행하세요`); return; }
+    if (schoolTableMissing(error)) { showUploadToast(`${finKind==='deposit'?'db/예치금_DB설치.sql':'db/용돈기입장_DB설치.sql'} 을 먼저 실행하세요`); return; }
     showUploadToast('저장 실패: ' + error.message); return;
   }
   showUploadToast('기록됐어요');
@@ -10038,7 +10038,7 @@ async function renderFinBalances(kind) {
   let data = [];
   try { const r = await sb.from(table).select('member_id,type,amount,currency').eq('community_id', CID()); if (r.error) throw r.error; data = r.data||[]; }
   catch(e) {
-    if (schoolTableMissing(e)) { main.innerHTML = finTabBar() + `<div style="max-width:560px;margin:30px auto;text-align:center"><div style="font-size:40px">${kind==='deposit'?'🏦':'🐷'}</div><div style="font-size:15px;font-weight:700;margin:10px 0 6px">DB 설정이 필요해요</div><div style="font-size:13px;color:var(--ink3)">Supabase에서 <b>${kind==='deposit'?'예치금_DB설치.sql':'용돈기입장_DB설치.sql'}</b> 을 실행하세요.</div></div>`; return; }
+    if (schoolTableMissing(e)) { main.innerHTML = finTabBar() + `<div style="max-width:560px;margin:30px auto;text-align:center"><div style="font-size:40px">${kind==='deposit'?'🏦':'🐷'}</div><div style="font-size:15px;font-weight:700;margin:10px 0 6px">DB 설정이 필요해요</div><div style="font-size:13px;color:var(--ink3)">Supabase에서 <b>${kind==='deposit'?'db/예치금_DB설치.sql':'db/용돈기입장_DB설치.sql'}</b> 을 실행하세요.</div></div>`; return; }
     main.innerHTML = finTabBar() + `<div style="color:#b91c1c;padding:20px;text-align:center;font-size:13px">불러오기 실패: ${e.message||e}</div>`; return;
   }
   const balMap = {};
@@ -10142,7 +10142,7 @@ async function renderTuitionHub() {
   main.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink3);font-size:13px">불러오는 중...</div>';
   try { await loadTuition(); }
   catch(e) {
-    if (schoolTableMissing(e)) return schoolSetupNeeded(e, '학사_학비_DB설치.sql');
+    if (schoolTableMissing(e)) return schoolSetupNeeded(e, 'db/학사_학비_DB설치.sql');
     main.innerHTML = `<div style="color:#b91c1c;padding:30px;text-align:center;font-size:13px">불러오기 실패: ${e.message||e}</div>`;
     return;
   }
@@ -10312,7 +10312,7 @@ async function saveTuiCell(sid, mo, existingId) {
   let error;
   if (existingId) ({ error } = await sb.from('tuition_bills').update(row).eq('id', existingId));
   else { row.created_by = ME.id; ({ error } = await sb.from('tuition_bills').insert(row)); }
-  if (error) { if (schoolTableMissing(error)) return schoolSetupNeeded(error, '학사_학비_DB설치.sql'); err.textContent='저장 실패: '+error.message; err.style.display='block'; return; }
+  if (error) { if (schoolTableMissing(error)) return schoolSetupNeeded(error, 'db/학사_학비_DB설치.sql'); err.textContent='저장 실패: '+error.message; err.style.display='block'; return; }
   document.getElementById('tui-cell-modal')?.remove();
   showUploadToast('✅ 납부 기록됨');
   await renderTuitionHub();
@@ -10392,7 +10392,7 @@ async function renderNewsletterHub() {
   main.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink3);font-size:13px">불러오는 중...</div>';
   try { await loadNewsletters(); }
   catch(e) {
-    if (schoolTableMissing(e)) return schoolSetupNeeded(e, '학사_가정통신문_DB설치.sql');
+    if (schoolTableMissing(e)) return schoolSetupNeeded(e, 'db/학사_가정통신문_DB설치.sql');
     main.innerHTML = `<div style="color:#b91c1c;padding:30px;text-align:center;font-size:13px">불러오기 실패: ${e.message||e}</div>`;
     return;
   }
@@ -10483,7 +10483,7 @@ async function saveNewsletter() {
     row.created_by = ME.id; row.author_name = ME.name;
     ({ error } = await sb.from('newsletters').insert(row));
   }
-  if (error) { if (schoolTableMissing(error)) return schoolSetupNeeded(error, '학사_가정통신문_DB설치.sql'); showUploadToast('저장 실패: ' + error.message); return; }
+  if (error) { if (schoolTableMissing(error)) return schoolSetupNeeded(error, 'db/학사_가정통신문_DB설치.sql'); showUploadToast('저장 실패: ' + error.message); return; }
   showUploadToast('✅ 가정통신문 저장 완료');
   nlForm = null;
   await renderNewsletterHub();
@@ -10518,7 +10518,7 @@ function nlShareLink(id) { return location.origin + location.pathname + '#nl=' +
 async function shareNewsletter(id) {
   const { error } = await sb.from('newsletters').update({ is_public:true, updated_at:new Date().toISOString() }).eq('id', id);
   if (error) {
-    if (/column .*is_public.* does not exist|is_public/.test(error.message||'')) { showUploadToast('공유 기능 DB가 필요해요 → 학사_가정통신문_공유_DB설치.sql 실행'); return; }
+    if (/column .*is_public.* does not exist|is_public/.test(error.message||'')) { showUploadToast('공유 기능 DB가 필요해요 → db/학사_가정통신문_공유_DB설치.sql 실행'); return; }
     showUploadToast('공유 설정 실패: ' + error.message); return;
   }
   const n = nlList.find(x => x.id === id); if (n) n.is_public = true;
@@ -10714,17 +10714,17 @@ function printCertificate() {
 //  학사 — 상담·생활지도 / 보건·건강 (학생별 기록 로그, 공용 엔진)
 // ════════════════════════════════════════════════════════════════════
 const LOG_SPECS = {
-  observation: { table:'observation_logs', file:'학사_관찰기록_DB설치.sql', icon:'📝', title:'관찰 누가기록',
+  observation: { table:'observation_logs', file:'db/학사_관찰기록_DB설치.sql', icon:'📝', title:'관찰 누가기록',
     desc:'평소 <b>지켜본 모습</b>을 한 줄씩 — 생기부 종합의견의 재료가 됩니다. (개입 없이 관찰한 것)',
     cats:['학습','태도','인성','교우관계','특기·재능','칭찬','기타'],
     catColor:{ '학습':'#2a5298','태도':'#b8860b','인성':'#2a7a5a','교우관계':'#8e44ad','특기·재능':'#e67e22','칭찬':'#2a9d8f','기타':'#7f8c8d' },
     titlePh:'한 줄 요약 (예: 발표 적극적)', bodyPh:'관찰한 모습을 간단히 적어보세요' },
-  counseling: { table:'counseling_logs', file:'학사_상담_DB설치.sql', icon:'💬', title:'상담·생활지도 기록',
+  counseling: { table:'counseling_logs', file:'db/학사_상담_DB설치.sql', icon:'💬', title:'상담·생활지도 기록',
     desc:'면담·상담하거나 <b>생활지도한 일</b>을 기록해요. (선생님이 개입·지도한 내용)',
     cats:['상담','생활지도','주의','기타'],
     catColor:{ '상담':'#2a5298','생활지도':'#b8860b','주의':'#c0392b','기타':'#7f8c8d' },
     titlePh:'제목 (예: 진로 상담)', bodyPh:'상담/지도 내용을 입력하세요' },
-  health: { table:'health_logs', file:'학사_보건_DB설치.sql', icon:'🏥', title:'보건·건강 기록',
+  health: { table:'health_logs', file:'db/학사_보건_DB설치.sql', icon:'🏥', title:'보건·건강 기록',
     desc:'보건실 방문·투약·병결 등 건강 관련 기록을 남깁니다.',
     cats:['보건실 방문','투약','병결','예방접종','기타'],
     catColor:{ '보건실 방문':'#2a5298','투약':'#8e44ad','병결':'#c0392b','예방접종':'#2a7a5a','기타':'#7f8c8d' },
@@ -11286,7 +11286,7 @@ async function teacherAddDep() {
   if (!(amount > 0)) { showUploadToast('금액을 입력하세요'); return; }
   const s = schoolStudents.find(x=>x.id===s360Id);
   const { error } = await sb.from('deposit_entries').insert({ member_id: s360Id, community_id: (s&&s.community_id)||CID(), date, type: s360DepType, amount, currency: s360DepCur, memo, created_by: ME.id });
-  if (error) { if (schoolTableMissing(error)) { showUploadToast('예치금 테이블이 없어요. 예치금_DB설치.sql 을 먼저 실행하세요'); return; } showUploadToast('저장 실패: '+error.message); return; }
+  if (error) { if (schoolTableMissing(error)) { showUploadToast('예치금 테이블이 없어요. db/예치금_DB설치.sql 을 먼저 실행하세요'); return; } showUploadToast('저장 실패: '+error.message); return; }
   showUploadToast(s360DepType==='in' ? '📥 입금 기록됨' : '📤 출금 기록됨');
   await s360ReloadDep();
   const A=document.getElementById('s360dep-amount'); if(A)A.value='';
@@ -11331,8 +11331,8 @@ async function teacherAddAllow() {
     date, type: s360AllowType, category, memo, amount, currency: s360AllowCur,
   });
   if (error) {
-    if (schoolTableMissing(error)) { showUploadToast('용돈 테이블이 없어요. 용돈기입장_DB설치.sql 을 먼저 실행해주세요'); return; }
-    showUploadToast('저장 실패: ' + error.message + ' (권한이면 최신 용돈기입장_DB설치.sql 재실행)'); return;
+    if (schoolTableMissing(error)) { showUploadToast('용돈 테이블이 없어요. db/용돈기입장_DB설치.sql 을 먼저 실행해주세요'); return; }
+    showUploadToast('저장 실패: ' + error.message + ' (권한이면 최신 db/용돈기입장_DB설치.sql 재실행)'); return;
   }
   showUploadToast(s360AllowType==='income' ? '➕ 수입 기록됨' : '➖ 지출 기록됨');
   await s360ReloadAllow();
@@ -11571,7 +11571,7 @@ async function addHomeroom(studentId, teacherId) {
   if (!teacherId) return;
   const { error } = await sb.from('student_homerooms').insert({ community_id: CID(), student_id: studentId, teacher_id: teacherId });
   if (error) {
-    if (schoolTableMissing(error)) { showUploadToast('다중담당 테이블이 없어요. 학사_다중담당_개인시간표_DB설치.sql 을 실행해주세요'); return; }
+    if (schoolTableMissing(error)) { showUploadToast('다중담당 테이블이 없어요. db/학사_다중담당_개인시간표_DB설치.sql 을 실행해주세요'); return; }
     if (!/duplicate|unique/i.test(error.message||'')) { showUploadToast('추가 실패: ' + error.message); return; }
   }
   const arr = homeroomMap[studentId] = homeroomMap[studentId] || [];
@@ -11730,7 +11730,7 @@ function renderAllowSetup(err) {
   document.getElementById('allowance-main').innerHTML = `<div style="max-width:560px;margin:40px auto;text-align:center">
     <div style="font-size:40px;margin-bottom:12px">🐷</div>
     <div style="font-size:16px;font-weight:700;margin-bottom:8px">데이터베이스 설정이 필요해요</div>
-    <div style="font-size:13px;color:var(--ink3);line-height:1.8">용돈기입장을 쓰려면 Supabase에서 테이블을 한 번 만들어야 합니다.<br>제공해드린 <b>용돈기입장_DB설치.sql</b> 을 Supabase → SQL Editor에 붙여넣고 실행해주세요.</div>
+    <div style="font-size:13px;color:var(--ink3);line-height:1.8">용돈기입장을 쓰려면 Supabase에서 테이블을 한 번 만들어야 합니다.<br>제공해드린 <b>db/용돈기입장_DB설치.sql</b> 을 Supabase → SQL Editor에 붙여넣고 실행해주세요.</div>
     <div style="font-size:11px;color:#b91c1c;margin-top:14px">${err?.message || ''}</div>
   </div>`;
 }
@@ -12073,7 +12073,7 @@ function writingSetupHtml() {
   return `<div style="max-width:560px;margin:40px auto;text-align:center">
     <div style="font-size:40px;margin-bottom:12px">🗄️</div>
     <div style="font-size:16px;font-weight:700;margin-bottom:8px">데이터베이스 설정이 필요해요</div>
-    <div style="font-size:13px;color:var(--ink3);line-height:1.8">제공해드린 <b>학생기록_독후감_활동후기_DB설치.sql</b> 을 Supabase → SQL Editor에 붙여넣고 실행해주세요.</div>
+    <div style="font-size:13px;color:var(--ink3);line-height:1.8">제공해드린 <b>db/학생기록_독후감_활동후기_DB설치.sql</b> 을 Supabase → SQL Editor에 붙여넣고 실행해주세요.</div>
   </div>`;
 }
 
@@ -12365,7 +12365,7 @@ async function addBookNote(writingId) {
     writing_id: writingId, member_id: ME.id, community_id: CID(), date, pages: pages || null, content,
   }).select().single();
   if (error) {
-    if (schoolTableMissing(error)) { showUploadToast('이어쓰기 테이블이 없어요. 독후감_이어쓰기_DB설치.sql 을 실행해주세요'); return; }
+    if (schoolTableMissing(error)) { showUploadToast('이어쓰기 테이블이 없어요. db/독후감_이어쓰기_DB설치.sql 을 실행해주세요'); return; }
     showUploadToast('추가 실패: ' + error.message); return;
   }
   if (data) bookNotes.push(data);
