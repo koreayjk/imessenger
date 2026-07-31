@@ -9830,15 +9830,16 @@ async function saveTimetable() {
 //  학사 — 학비/납부 관리
 // ════════════════════════════════════════════════════════════════════
 let tuiBills = [];
+let tuiYear = new Date().getFullYear();
 let tuiGroupFilter = 'all';
-let tuiPaidFilter = 'all';     // 'all' | 'unpaid' | 'paid'
-let tuiMonthFilter = '';       // 'YYYY-MM' or ''(전체)
 function tuiWon(n) { return (Number(n)||0).toLocaleString('ko-KR') + '원'; }
-function tuiStudentMap() { const m = {}; schoolStudents.forEach(s => m[s.id] = s); return m; }
+function tuiMonthlyDefault() { return parseInt(localStorage.getItem('tui_monthly_' + CID())) || 0; }
+function setTuiMonthlyDefaultVal(v) { localStorage.setItem('tui_monthly_' + CID(), String(parseInt(v)||0)); }
+const TUI_MONTHS = [1,2,3,4,5,6,7,8,9,10,11,12];
 
 async function loadTuition() {
   const { data, error } = await sb.from('tuition_bills').select('*')
-    .eq('community_id', CID()).order('created_at', { ascending:false });
+    .eq('community_id', CID()).gte('period', `${tuiYear}-01`).lte('period', `${tuiYear}-12`);
   if (error) throw error;
   tuiBills = data || [];
 }
@@ -9855,136 +9856,208 @@ async function renderTuitionHub() {
   renderTuition();
 }
 
-function tuiFiltered() {
-  const smap = tuiStudentMap();
-  return tuiBills.filter(b => {
-    if (tuiPaidFilter === 'paid' && !b.paid) return false;
-    if (tuiPaidFilter === 'unpaid' && b.paid) return false;
-    if (tuiMonthFilter && (b.period || '') !== tuiMonthFilter) return false;
-    if (tuiGroupFilter !== 'all') {
-      const s = smap[b.student_id];
-      const gid = s ? s.group_id : null;
-      if (tuiGroupFilter === 'none' ? gid : gid !== tuiGroupFilter) return false;
-    }
-    return true;
+// (student_id, month) → 납부 기록(있으면)
+function tuiPayMap() {
+  const m = {};
+  tuiBills.forEach(b => {
+    const mo = parseInt((b.period||'').slice(5,7)); if (!mo) return;
+    if (!m[b.student_id]) m[b.student_id] = {};
+    const cur = m[b.student_id][mo];
+    if (!cur || (b.paid && !cur.paid)) m[b.student_id][mo] = b;
   });
+  return m;
+}
+function tuiRowStudents() {
+  let list = schoolStudents.filter(s => s.community_role === 'student' || s.role === '학생');
+  if (tuiGroupFilter === 'none') list = list.filter(s => !s.group_id);
+  else if (tuiGroupFilter !== 'all') list = list.filter(s => s.group_id === tuiGroupFilter);
+  return list;
 }
 
 function renderTuition() {
   const main = document.getElementById('school-main');
-  const smap = tuiStudentMap();
-  const list = tuiFiltered();
+  const now = new Date(); const nowY = now.getFullYear(), nowM = now.getMonth()+1;
+  const payMap = tuiPayMap();
+  const students = tuiRowStudents();
 
-  const billed = list.reduce((a,b) => a + (Number(b.amount)||0), 0);
-  const paidSum = list.filter(b=>b.paid).reduce((a,b) => a + (Number(b.paid_amount ?? b.amount)||0), 0);
-  const unpaidSum = list.filter(b=>!b.paid).reduce((a,b) => a + (Number(b.amount)||0), 0);
+  // 요약
+  const yearReceived = tuiBills.filter(b=>b.paid).reduce((a,b)=>a+(Number(b.paid_amount ?? b.amount)||0),0);
+  const paidCount = tuiBills.filter(b=>b.paid).length;
+  // 이번 달(현재 연도일 때) 미납 인원
+  let curUnpaid = null;
+  if (tuiYear === nowY) curUnpaid = students.filter(s => !(payMap[s.id] && payMap[s.id][nowM] && payMap[s.id][nowM].paid)).length;
+
+  const isPast = (mo) => (tuiYear < nowY) || (tuiYear === nowY && mo <= nowM);
+  const cell = (sid, mo) => {
+    const b = payMap[sid] && payMap[sid][mo];
+    const paid = b && b.paid;
+    let bg='transparent', color='var(--ink3)', txt='';
+    if (paid) { bg='#e8f5ee'; color='#15803d'; const d=(b.paid_date||'').slice(5).replace('-','/').replace(/^0/,''); txt=`✓${d?`<div style="font-size:8.5px;color:#2a7a5a">${d}</div>`:''}`; }
+    else if (isPast(mo)) { bg='#fdecea'; color='#c0392b'; txt='·'; }
+    return `<td onclick="openTuiCell('${sid}',${mo})" style="padding:0;text-align:center;border:1px solid var(--border);cursor:pointer;background:${bg};color:${color};font-weight:700;font-size:11.5px;height:38px;min-width:46px" title="${TUI_MONTHS.indexOf(mo)>=0?mo+'월':''}">${txt}</td>`;
+  };
+
+  const rows = students.map(s => {
+    const rowTotal = TUI_MONTHS.reduce((a,mo)=>{ const b=payMap[s.id]&&payMap[s.id][mo]; return a+(b&&b.paid?(Number(b.paid_amount??b.amount)||0):0); },0);
+    const paidN = TUI_MONTHS.filter(mo=>{ const b=payMap[s.id]&&payMap[s.id][mo]; return b&&b.paid; }).length;
+    return `<tr>
+      <td style="position:sticky;left:0;z-index:1;background:var(--surface);padding:7px 10px;font-size:12.5px;font-weight:700;color:var(--ink);white-space:nowrap;border:1px solid var(--border)">${escHtml(s.name)}<div style="font-size:10px;color:var(--ink3);font-weight:500">${paidN}/12</div></td>
+      ${TUI_MONTHS.map(mo=>cell(s.id,mo)).join('')}
+      <td style="padding:7px 10px;text-align:right;font-size:12px;font-weight:700;color:var(--adeep);white-space:nowrap;border:1px solid var(--border);background:var(--s2)">${tuiWon(rowTotal)}</td>
+    </tr>`;
+  }).join('');
+
+  // 월 합계
+  const monthTotals = TUI_MONTHS.map(mo => students.reduce((a,s)=>{ const b=payMap[s.id]&&payMap[s.id][mo]; return a+(b&&b.paid?(Number(b.paid_amount??b.amount)||0):0); },0));
+  const footer = `<tr style="background:var(--s2)">
+    <td style="position:sticky;left:0;background:var(--s2);padding:7px 10px;font-size:11.5px;font-weight:700;color:var(--ink2);border:1px solid var(--border)">월 합계</td>
+    ${monthTotals.map(t=>`<td style="padding:5px 4px;text-align:center;font-size:10px;font-weight:600;color:var(--ink2);border:1px solid var(--border)">${t?tuiWon(t).replace('원',''):'-'}</td>`).join('')}
+    <td style="padding:7px 10px;text-align:right;font-size:12px;font-weight:800;color:var(--adeep);border:1px solid var(--border)">${tuiWon(monthTotals.reduce((a,b)=>a+b,0))}</td>
+  </tr>`;
 
   const groupOpts = `<option value="all">전체 반</option>` +
     tcsGroups.map(g => `<option value="${g.id}" ${tuiGroupFilter===g.id?'selected':''}>${g.name}</option>`).join('') +
     `<option value="none" ${tuiGroupFilter==='none'?'selected':''}>미배정</option>`;
-  const newGroupOpts = `<option value="all">전체 학생</option>` +
-    tcsGroups.map(g => `<option value="${g.id}">${g.name}</option>`).join('');
-  const paidBtn = (v,label) => `<button onclick="setTuiPaid('${v}')" style="height:32px;padding:0 12px;border:none;border-radius:8px;font:600 12px var(--font);cursor:pointer;background:${tuiPaidFilter===v?'#1d3a5f':'transparent'};color:${tuiPaidFilter===v?'#fff':'var(--ink2)'}">${label}</button>`;
+  const headMonths = TUI_MONTHS.map(mo=>`<th style="padding:7px 2px;font-size:11px;font-weight:700;color:${(tuiYear===nowY&&mo===nowM)?'#1d3a5f':'var(--ink3)'};text-align:center;border:1px solid var(--border);background:${(tuiYear===nowY&&mo===nowM)?'#e7f0fb':'var(--s2)'}">${mo}월</th>`).join('');
 
-  const rows = list.map(b => {
-    const s = smap[b.student_id];
-    const due = b.due_date ? b.due_date : '-';
-    const overdue = !b.paid && b.due_date && b.due_date < attTodayStr();
-    return `<tr style="border-bottom:1px solid var(--border)">
-      <td style="padding:9px 10px;font-size:13px;font-weight:600;color:var(--ink);white-space:nowrap">${s ? s.name : '(삭제된 학생)'}</td>
-      <td style="padding:9px 10px;font-size:13px;color:var(--ink2)">${b.title||''}${b.period?` <span style="color:var(--ink3);font-size:11px">${b.period}</span>`:''}</td>
-      <td style="padding:9px 10px;font-size:13px;text-align:right;font-weight:600;color:var(--ink);white-space:nowrap">${tuiWon(b.amount)}</td>
-      <td style="padding:9px 10px;font-size:12px;text-align:center;color:${overdue?'#c0392b':'var(--ink3)'};white-space:nowrap">${due}${overdue?' ⚠':''}</td>
-      <td style="padding:9px 10px;text-align:center">
-        <button onclick="toggleTuitionPaid('${b.id}',${b.paid?'false':'true'})"
-          style="height:28px;padding:0 12px;border-radius:8px;cursor:pointer;font:700 11px var(--font);border:1.5px solid ${b.paid?'#2a7a5a':'#c0392b'};background:${b.paid?'#e8f5ee':'#fdecea'};color:${b.paid?'#2a7a5a':'#c0392b'}">${b.paid?'납부완료':'미납'}</button>
-      </td>
-      <td style="padding:9px 6px;text-align:center"><button onclick="deleteTuitionBill('${b.id}')" title="삭제" style="border:none;background:transparent;cursor:pointer;color:var(--ink3);font-size:15px">✕</button></td>
-    </tr>`;
-  }).join('');
-
-  const headCells = ['학생','항목','금액','납부기한','상태','']
-    .map((h,i) => `<th style="padding:9px 10px;font-size:11px;color:var(--ink3);font-weight:700;text-align:${i===2?'right':i===0||i===1?'left':'center'};white-space:nowrap">${h}</th>`).join('');
-
-  const thisMonth = (attMonth || attTodayStr().slice(0,7));
-  main.innerHTML = `<div style="max-width:960px;margin:0 auto">
-    <!-- 일괄 청구 만들기 -->
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:16px">
-      <div style="font-size:13px;font-weight:700;color:var(--ink);margin-bottom:10px">＋ 일괄 청구 만들기</div>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <select id="tui-new-group" style="height:34px;padding:0 10px;border:1px solid var(--border);border-radius:9px;font:600 13px var(--font);background:var(--surface);color:var(--ink)">${newGroupOpts}</select>
-        <input id="tui-new-title" value="${thisMonth} 수업료" placeholder="항목명" style="height:34px;padding:0 10px;border:1px solid var(--border);border-radius:9px;font:600 13px var(--font);color:var(--ink);min-width:160px"/>
-        <input id="tui-new-period" type="month" value="${thisMonth}" title="청구 월" style="height:34px;padding:0 10px;border:1px solid var(--border);border-radius:9px;font:600 13px var(--font);color:var(--ink)"/>
-        <input id="tui-new-amount" type="number" min="0" step="1000" placeholder="금액(원)" style="height:34px;padding:0 10px;border:1px solid var(--border);border-radius:9px;font:600 13px var(--font);color:var(--ink);width:130px"/>
-        <input id="tui-new-due" type="date" title="납부기한" style="height:34px;padding:0 10px;border:1px solid var(--border);border-radius:9px;font:600 13px var(--font);color:var(--ink)"/>
-        <button onclick="createTuitionBills()" style="height:34px;padding:0 16px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 12px var(--font)">청구 생성</button>
+  main.innerHTML = `<div style="max-width:1200px;margin:0 auto">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+      <div>
+        <div style="font-size:18px;font-weight:800;color:var(--ink)">💰 학비 납부 현황판</div>
+        <div style="font-size:12px;color:var(--ink3);margin-top:2px">칸을 눌러 그 달 학비 납부를 기록해요. 초록 ✓=납부, 빨강=미납</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <div style="display:inline-flex;align-items:center;gap:4px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:3px 4px">
+          <button onclick="setTuiYear(-1)" style="width:30px;height:30px;border:none;background:transparent;cursor:pointer;font-size:16px;color:var(--ink2)">◀</button>
+          <span style="font-size:15px;font-weight:800;color:var(--ink);min-width:56px;text-align:center">${tuiYear}년</span>
+          <button onclick="setTuiYear(1)" style="width:30px;height:30px;border:none;background:transparent;cursor:pointer;font-size:16px;color:var(--ink2)">▶</button>
+        </div>
+        <select onchange="tuiGroupFilter=this.value;renderTuition()" style="height:36px;padding:0 10px;border:1px solid var(--border);border-radius:9px;font:600 13px var(--font);background:var(--surface);color:var(--ink)">${groupOpts}</select>
+        <div style="display:inline-flex;align-items:center;gap:5px;background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:0 10px;height:36px">
+          <span style="font-size:11px;color:var(--ink3);font-weight:600">기본 월 학비</span>
+          <input id="tui-monthly" type="number" min="0" step="1000" value="${tuiMonthlyDefault()||''}" placeholder="0" onchange="setTuiMonthlyDefaultVal(this.value)" style="width:84px;height:26px;border:1px solid var(--border);border-radius:7px;padding:0 8px;font:600 12.5px var(--font);text-align:right"/>
+          <span style="font-size:11px;color:var(--ink3)">원</span>
+        </div>
+        <button onclick="printTuitionMatrix()" style="height:36px;padding:0 15px;border:none;background:linear-gradient(135deg,#1d3a5f,#2a5298);color:#fff;border-radius:9px;cursor:pointer;font:700 12.5px var(--font)">📄 PDF (가로)</button>
       </div>
     </div>
-    <!-- 필터 + 요약 -->
-    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
-      <div style="display:inline-flex;gap:2px;background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:3px">${paidBtn('all','전체')}${paidBtn('unpaid','미납')}${paidBtn('paid','완료')}</div>
-      <input type="month" value="${tuiMonthFilter}" onchange="setTuiMonth(this.value)" title="청구월 필터(비우면 전체)" style="height:34px;padding:0 10px;border:1px solid var(--border);border-radius:9px;font:600 13px var(--font);color:var(--ink)"/>
-      ${tuiMonthFilter?`<button onclick="setTuiMonth('')" style="height:34px;padding:0 10px;border:1px solid var(--border);background:var(--surface);border-radius:9px;cursor:pointer;font:600 12px var(--font);color:var(--ink3)">월 해제</button>`:''}
-      <select onchange="setTuiGroup(this.value)" style="height:34px;padding:0 10px;border:1px solid var(--border);border-radius:9px;font:600 13px var(--font);background:var(--surface);color:var(--ink)">${groupOpts}</select>
-    </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">
-      <div style="flex:1;min-width:140px;background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:11px 14px"><div style="font-size:11px;color:var(--ink3)">청구 총액</div><div style="font-size:17px;font-weight:700;color:var(--ink)">${tuiWon(billed)}</div></div>
-      <div style="flex:1;min-width:140px;background:#e8f5ee;border:1px solid #bfe3cf;border-radius:10px;padding:11px 14px"><div style="font-size:11px;color:#2a7a5a">수납 완료</div><div style="font-size:17px;font-weight:700;color:#2a7a5a">${tuiWon(paidSum)}</div></div>
-      <div style="flex:1;min-width:140px;background:#fdecea;border:1px solid #f3c0bb;border-radius:10px;padding:11px 14px"><div style="font-size:11px;color:#c0392b">미납액</div><div style="font-size:17px;font-weight:700;color:#c0392b">${tuiWon(unpaidSum)}</div></div>
+      <div style="flex:1;min-width:150px;background:#e8f5ee;border:1px solid #bfe3cf;border-radius:10px;padding:11px 14px"><div style="font-size:11px;color:#2a7a5a">${tuiYear}년 수납 총액</div><div style="font-size:18px;font-weight:800;color:#2a7a5a">${tuiWon(yearReceived)}</div></div>
+      <div style="flex:1;min-width:150px;background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:11px 14px"><div style="font-size:11px;color:var(--ink3)">납부 건수</div><div style="font-size:18px;font-weight:800;color:var(--ink)">${paidCount}건</div></div>
+      ${curUnpaid!==null?`<div style="flex:1;min-width:150px;background:#fdecea;border:1px solid #f3c0bb;border-radius:10px;padding:11px 14px"><div style="font-size:11px;color:#c0392b">이번 달(${nowM}월) 미납</div><div style="font-size:18px;font-weight:800;color:#c0392b">${curUnpaid}명</div></div>`:''}
     </div>
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow-x:auto">
-      <table style="width:100%;border-collapse:collapse;min-width:620px">
-        <thead><tr style="border-bottom:1.5px solid var(--border);background:var(--s2)">${headCells}</tr></thead>
-        <tbody>${list.length ? rows : `<tr><td colspan="6" style="padding:40px;text-align:center;color:var(--ink3);font-size:13px">청구 내역이 없어요. 위에서 일괄 청구를 만들어보세요.</td></tr>`}</tbody>
+    ${students.length ? `<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow-x:auto">
+      <table style="border-collapse:collapse;width:100%;min-width:820px">
+        <thead><tr>
+          <th style="position:sticky;left:0;z-index:2;background:var(--s2);padding:7px 10px;font-size:11.5px;font-weight:700;color:var(--ink2);text-align:left;border:1px solid var(--border)">학생</th>
+          ${headMonths}
+          <th style="padding:7px 8px;font-size:11px;font-weight:700;color:var(--ink3);text-align:right;border:1px solid var(--border);background:var(--s2)">합계</th>
+        </tr></thead>
+        <tbody>${rows}${footer}</tbody>
       </table>
-    </div>
+    </div>` : '<div style="padding:50px;text-align:center;color:var(--ink3);font-size:13px">등록된 학생이 없어요. 관리자에서 학생을 먼저 승인해주세요.</div>'}
   </div>`;
 }
 
-function setTuiPaid(v) { tuiPaidFilter = v; renderTuition(); }
-function setTuiGroup(v) { tuiGroupFilter = v; renderTuition(); }
-function setTuiMonth(v) { tuiMonthFilter = v || ''; renderTuition(); }
+function setTuiYear(delta) { tuiYear += delta; renderTuitionHub(); }
 
-async function createTuitionBills() {
-  const group = document.getElementById('tui-new-group').value;
-  const title = document.getElementById('tui-new-title').value.trim();
-  const period = document.getElementById('tui-new-period').value || '';
-  const amount = parseInt(document.getElementById('tui-new-amount').value) || 0;
-  const due = document.getElementById('tui-new-due').value || null;
-  if (!title) { showUploadToast('항목명을 입력하세요'); return; }
-  if (amount <= 0) { showUploadToast('금액을 입력하세요'); return; }
-  const targets = group === 'all' ? schoolStudents : schoolStudents.filter(s => s.group_id === group);
-  if (!targets.length) { showUploadToast('대상 학생이 없어요'); return; }
-  if (!confirm(`${targets.length}명에게 "${title}" ${tuiWon(amount)} 청구를 생성할까요?`)) return;
-  const rows = targets.map(s => ({
-    community_id: CID(), student_id: s.id, title, period, amount,
-    due_date: due, paid: false, created_by: ME.id,
-  }));
-  const { error } = await sb.from('tuition_bills').insert(rows);
-  if (error) { if (schoolTableMissing(error)) return schoolSetupNeeded(error, '학사_학비_DB설치.sql'); showUploadToast('생성 실패: ' + error.message); return; }
-  showUploadToast(`✅ ${rows.length}건 청구 생성 완료`);
-  document.getElementById('tui-new-amount').value = '';
+// 셀 클릭 → 그 달 납부 기록/수정
+function openTuiCell(sid, mo) {
+  const s = schoolStudents.find(x=>x.id===sid); if (!s) return;
+  const mm = String(mo).padStart(2,'0');
+  const existing = tuiBills.find(b => b.student_id===sid && parseInt((b.period||'').slice(5,7))===mo && b.paid)
+                || tuiBills.find(b => b.student_id===sid && parseInt((b.period||'').slice(5,7))===mo);
+  const amount = existing ? (existing.paid_amount ?? existing.amount ?? tuiMonthlyDefault()) : tuiMonthlyDefault();
+  const date = existing && existing.paid_date ? existing.paid_date : attTodayStr();
+  const method = existing && existing.method ? existing.method : '계좌';
+  const inp = 'width:100%;height:42px;padding:0 12px;border:1.5px solid var(--border);border-radius:11px;background:var(--s2);font:14px var(--font);color:var(--ink);outline:none';
+  const wrap = document.createElement('div');
+  wrap.id = 'tui-cell-modal';
+  wrap.style.cssText = 'position:fixed;inset:0;z-index:500;background:rgba(15,23,42,.5);display:flex;align-items:center;justify-content:center;padding:20px';
+  wrap.onclick = e => { if (e.target===wrap) wrap.remove(); };
+  wrap.innerHTML = `<div style="background:var(--surface);border-radius:18px;padding:22px;width:100%;max-width:380px" onclick="event.stopPropagation()">
+    <div style="font-size:17px;font-weight:800;color:var(--ink)">${escHtml(s.name)} · ${tuiYear}년 ${mo}월 학비</div>
+    <div style="font-size:12px;color:var(--ink3);margin:3px 0 16px">${existing&&existing.paid?'✅ 이미 납부됨 — 수정하거나 미납으로 되돌릴 수 있어요':'납부 내역을 기록해요'}</div>
+    <div style="margin-bottom:11px"><label style="font-size:12px;font-weight:700;color:var(--ink3);display:block;margin-bottom:5px">납부 금액 (원)</label><input id="tui-c-amount" type="number" min="0" step="1000" value="${amount||''}" placeholder="0" style="${inp};text-align:right"/></div>
+    <div style="display:flex;gap:10px;margin-bottom:11px">
+      <div style="flex:1"><label style="font-size:12px;font-weight:700;color:var(--ink3);display:block;margin-bottom:5px">납부일</label><input id="tui-c-date" type="date" value="${date}" style="${inp}"/></div>
+      <div style="flex:1"><label style="font-size:12px;font-weight:700;color:var(--ink3);display:block;margin-bottom:5px">방법</label><select id="tui-c-method" style="${inp}">${['계좌','현금','카드','기타'].map(x=>`<option ${method===x?'selected':''}>${x}</option>`).join('')}</select></div>
+    </div>
+    <div id="tui-c-err" style="display:none;color:#b91c1c;font-size:12.5px;font-weight:600;margin-bottom:8px"></div>
+    <div style="display:flex;gap:8px;margin-top:6px">
+      ${existing&&existing.paid?`<button onclick="unmarkTuiCell('${existing.id}')" style="height:44px;padding:0 14px;border:1.5px solid #c0392b;background:#fff;color:#c0392b;border-radius:11px;font:700 13px var(--font);cursor:pointer">미납 처리</button>`:''}
+      <button onclick="document.getElementById('tui-cell-modal').remove()" style="flex:1;height:44px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:11px;font:700 13px var(--font);cursor:pointer">닫기</button>
+      <button onclick="saveTuiCell('${sid}',${mo},'${existing?existing.id:''}')" style="flex:1.4;height:44px;border:none;background:linear-gradient(135deg,#15803d,#0f6a31);color:#fff;border-radius:11px;font:800 14px var(--font);cursor:pointer">✓ 납부 저장</button>
+    </div>
+  </div>`;
+  document.body.appendChild(wrap);
+  setTimeout(()=>document.getElementById('tui-c-amount')?.focus(), 50);
+}
+
+async function saveTuiCell(sid, mo, existingId) {
+  const amount = parseInt(document.getElementById('tui-c-amount').value) || 0;
+  const paid_date = document.getElementById('tui-c-date').value || attTodayStr();
+  const method = document.getElementById('tui-c-method').value;
+  const err = document.getElementById('tui-c-err');
+  if (amount <= 0) { err.textContent = '납부 금액을 입력하세요'; err.style.display='block'; return; }
+  const mm = String(mo).padStart(2,'0');
+  const row = { community_id: CID(), student_id: sid, title: `${tuiYear}-${mm} 학비`, period: `${tuiYear}-${mm}`,
+    amount, paid: true, paid_date, paid_amount: amount, method, updated_at: new Date().toISOString() };
+  let error;
+  if (existingId) ({ error } = await sb.from('tuition_bills').update(row).eq('id', existingId));
+  else { row.created_by = ME.id; ({ error } = await sb.from('tuition_bills').insert(row)); }
+  if (error) { if (schoolTableMissing(error)) return schoolSetupNeeded(error, '학사_학비_DB설치.sql'); err.textContent='저장 실패: '+error.message; err.style.display='block'; return; }
+  document.getElementById('tui-cell-modal')?.remove();
+  showUploadToast('✅ 납부 기록됨');
+  await renderTuitionHub();
+}
+async function unmarkTuiCell(id) {
+  const { error } = await sb.from('tuition_bills').delete().eq('id', id);
+  if (error) { showUploadToast('처리 실패: '+error.message); return; }
+  document.getElementById('tui-cell-modal')?.remove();
+  showUploadToast('미납으로 되돌렸어요');
   await renderTuitionHub();
 }
 
-async function toggleTuitionPaid(id, nowPaid) {
-  const b = tuiBills.find(x => x.id === id); if (!b) return;
-  const wantPaid = nowPaid === true || nowPaid === 'true';
-  const upd = wantPaid
-    ? { paid:true, paid_date: attTodayStr(), paid_amount: b.amount, updated_at:new Date().toISOString() }
-    : { paid:false, paid_date:null, paid_amount:null, updated_at:new Date().toISOString() };
-  const { error } = await sb.from('tuition_bills').update(upd).eq('id', id);
-  if (error) { showUploadToast('변경 실패: ' + error.message); return; }
-  Object.assign(b, upd);
-  renderTuition();
-}
-
-async function deleteTuitionBill(id) {
-  if (!confirm('이 청구를 삭제할까요?')) return;
-  const { error } = await sb.from('tuition_bills').delete().eq('id', id);
-  if (error) { showUploadToast('삭제 실패: ' + error.message); return; }
-  tuiBills = tuiBills.filter(b => b.id !== id);
-  renderTuition();
+// 학비 현황판 → 가로 PDF
+function printTuitionMatrix() {
+  const now = new Date(); const nowY=now.getFullYear(), nowM=now.getMonth()+1;
+  const payMap = tuiPayMap();
+  const students = tuiRowStudents();
+  if (!students.length) { showUploadToast('학생이 없어요'); return; }
+  const isPast = mo => (tuiYear<nowY)||(tuiYear===nowY&&mo<=nowM);
+  const cellTxt = (sid,mo) => { const b=payMap[sid]&&payMap[sid][mo];
+    if (b&&b.paid) { const d=(b.paid_date||'').slice(5).replace('-','/').replace(/^0/,''); return `<td class="pd">✓<br><span class="dt">${d}</span></td>`; }
+    if (isPast(mo)) return `<td class="up">·</td>`;
+    return `<td></td>`; };
+  const rows = students.map(s=>{
+    const total = TUI_MONTHS.reduce((a,mo)=>{const b=payMap[s.id]&&payMap[s.id][mo];return a+(b&&b.paid?(Number(b.paid_amount??b.amount)||0):0);},0);
+    return `<tr><td class="nm">${escHtml(s.name)}</td>${TUI_MONTHS.map(mo=>cellTxt(s.id,mo)).join('')}<td class="tot">${tuiWon(total)}</td></tr>`;
+  }).join('');
+  const monthTotals = TUI_MONTHS.map(mo=>students.reduce((a,s)=>{const b=payMap[s.id]&&payMap[s.id][mo];return a+(b&&b.paid?(Number(b.paid_amount??b.amount)||0):0);},0));
+  const footer = `<tr class="ft"><td class="nm">월 합계</td>${monthTotals.map(t=>`<td>${t?tuiWon(t).replace('원',''):''}</td>`).join('')}<td class="tot">${tuiWon(monthTotals.reduce((a,b)=>a+b,0))}</td></tr>`;
+  const win = window.open('','_blank'); if(!win){ showUploadToast('팝업 허용 필요'); return; }
+  win.document.write(`<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"/><title>${tuiYear}년 학비 납부 현황</title><style>
+    *{box-sizing:border-box;margin:0;padding:0}body{font-family:'Malgun Gothic',Arial,sans-serif;color:#1a2332;padding:10mm}@page{size:A4 landscape;margin:10mm}@media print{.btn{display:none}}
+    h1{font-size:19px;margin-bottom:3px}.sub{font-size:11px;color:#667;margin-bottom:10px}
+    table{width:100%;border-collapse:collapse;table-layout:fixed}
+    th,td{border:1px solid #c3ccd8;padding:4px 3px;font-size:10.5px;text-align:center}
+    th{background:#1d3a5f;color:#fff}th.nm,td.nm{text-align:left;width:78px;font-weight:700}
+    td.nm{background:#f5f8fc}th.tot,td.tot{width:74px;text-align:right;font-weight:700;background:#f5f8fc}
+    td.pd{background:#e8f5ee;color:#15803d;font-weight:700}td.pd .dt{font-size:8px;color:#2a7a5a}
+    td.up{background:#fdecea;color:#c0392b}
+    tr.ft td{background:#eef2f7;font-weight:700;font-size:9.5px}
+    .btn{position:fixed;top:10px;right:10px;padding:8px 15px;background:#1d3a5f;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer}
+    .legend{font-size:10px;color:#667;margin-top:8px}
+  </style></head><body>
+    <button class="btn" onclick="window.print()">🖨 인쇄 / PDF</button>
+    <h1>${tuiYear}년 학비 납부 현황</h1>
+    <div class="sub">발행일 ${attTodayStr()} · 초록 ✓ = 납부 완료, 빨강 · = 미납</div>
+    <table><thead><tr><th class="nm">학생</th>${TUI_MONTHS.map(mo=>`<th>${mo}월</th>`).join('')}<th class="tot">합계</th></tr></thead>
+    <tbody>${rows}${footer}</tbody></table>
+    <div class="legend">칸: ✓(납부일) = 납부 완료 · 빈칸 = 해당 없음(미래 달)</div>
+  </body></html>`);
+  win.document.close(); setTimeout(()=>{try{win.print()}catch(_){}} , 500);
 }
 
 // ════════════════════════════════════════════════════════════════════
