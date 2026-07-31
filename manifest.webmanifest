@@ -1,0 +1,13 @@
+{
+  "name": "TCS — Total Care System",
+  "short_name": "TCS",
+  "start_url": "https://koreayjk.github.io/imessenger/",
+  "scope": "https://koreayjk.github.io/imessenger/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1d3a5f",
+  "icons": [
+    { "src": "https://koreayjk.github.io/imessenger/tcs_icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "https://koreayjk.github.io/imessenger/tcs_icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}
