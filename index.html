@@ -9951,9 +9951,9 @@ function renderTuition() {
     const b = payMap[sid] && payMap[sid][mo];
     const paid = b && b.paid;
     let bg='transparent', color='var(--ink3)', txt='';
-    if (paid) { bg='#e8f5ee'; color='#15803d'; const d=(b.paid_date||'').slice(5).replace('-','/').replace(/^0/,''); txt=`✓${d?`<div style="font-size:8.5px;color:#2a7a5a">${d}</div>`:''}`; }
+    if (paid) { bg='#e8f5ee'; color='#15803d'; const d=(b.paid_date||'').slice(5).replace('-','/').replace(/^0/,''); const amt=tuiNum(b.paid_amount ?? b.amount); txt=`<div style="font-size:10.5px;font-weight:800;line-height:1.15">${amt}</div>${d?`<div style="font-size:8px;color:#2a7a5a;font-weight:600">${d}</div>`:''}`; }
     else if (isPast(mo) && expects(smap[sid])) { bg='#fdecea'; color='#c0392b'; txt='·'; }
-    return `<td onclick="openTuiCell('${sid}',${mo})" style="padding:0;text-align:center;border:1px solid var(--border);cursor:pointer;background:${bg};color:${color};font-weight:700;font-size:11.5px;height:38px;min-width:46px" title="${TUI_MONTHS.indexOf(mo)>=0?mo+'월':''}">${txt}</td>`;
+    return `<td onclick="openTuiCell('${sid}',${mo})" style="padding:2px 4px;text-align:center;border:1px solid var(--border);cursor:pointer;background:${bg};color:${color};font-weight:700;font-size:11.5px;height:38px;min-width:60px" title="${TUI_MONTHS.indexOf(mo)>=0?mo+'월':''}">${txt}</td>`;
   };
 
   const rows = students.map(s => {
@@ -9993,7 +9993,7 @@ function renderTuition() {
     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px">
       <div>
         <div style="font-size:18px;font-weight:800;color:var(--ink)">💰 학비 납부 현황판</div>
-        <div style="font-size:12px;color:var(--ink3);margin-top:2px">칸을 눌러 그 달 학비 납부를 기록해요. 초록 ✓=납부, 빨강=미납</div>
+        <div style="font-size:12px;color:var(--ink3);margin-top:2px">칸을 눌러 그 달 학비 납부를 기록해요. 초록=납부(금액), 빨강=미납</div>
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <div style="display:inline-flex;align-items:center;gap:4px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:3px 4px">
@@ -10014,7 +10014,7 @@ function renderTuition() {
       ${curUnpaid!==null?`<div style="flex:1;min-width:150px;background:#fdecea;border:1px solid #f3c0bb;border-radius:10px;padding:11px 14px"><div style="font-size:11px;color:#c0392b">이번 달(${nowM}월) 미납</div><div style="font-size:18px;font-weight:800;color:#c0392b">${curUnpaid}명</div></div>`:''}
     </div>
     ${students.length ? `<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow-x:auto">
-      <table style="border-collapse:collapse;width:100%;min-width:820px">
+      <table style="border-collapse:collapse;width:100%;min-width:980px">
         <thead><tr>
           <th style="position:sticky;left:0;z-index:2;background:var(--s2);padding:7px 10px;font-size:11.5px;font-weight:700;color:var(--ink2);text-align:left;border:1px solid var(--border)">학생</th>
           ${headMonths}
@@ -10095,7 +10095,7 @@ function printTuitionMatrix() {
   const isPast = mo => (tuiYear<nowY)||(tuiYear===nowY&&mo<=nowM);
   const smap = {}; students.forEach(s=>smap[s.id]=s);
   const cellTxt = (sid,mo) => { const b=payMap[sid]&&payMap[sid][mo];
-    if (b&&b.paid) { const d=(b.paid_date||'').slice(5).replace('-','/').replace(/^0/,''); return `<td class="pd">✓<br><span class="dt">${d}</span></td>`; }
+    if (b&&b.paid) { const d=(b.paid_date||'').slice(5).replace('-','/').replace(/^0/,''); return `<td class="pd">${tuiNum(b.paid_amount ?? b.amount)}<br><span class="dt">${d}</span></td>`; }
     if (isPast(mo) && Number(smap[sid]&&smap[sid].tuition_monthly)>0) return `<td class="up">·</td>`;
     return `<td></td>`; };
   const rows = students.map(s=>{
