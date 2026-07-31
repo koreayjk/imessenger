@@ -482,7 +482,18 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
 @media (max-width: 900px) {
   #mobile-chat-back { display: flex !important; }
   #todo-btn span { display: none; }
+  /* 학사 학생 목록/상세: 모바일에선 한 컬럼(마스터-디테일) */
+  #s360-split { flex-direction: column !important; gap: 12px !important; }
+  #s360-split > #s360-list { width: 100% !important; position: static !important; }
+  #s360-split > #s360-detail { width: 100% !important; }
+  #s360-split:not(.show-detail) > #s360-detail { display: none; }
+  #s360-split.show-detail > #s360-list { display: none; }
+  #s360-split.show-detail > .s360-mobile-back { display: inline-flex !important; }
+  #s360-split > #s360-list > div:last-child { max-height: none !important; }
+  /* 재정 허브 그룹 필터가 좁은 화면에서 줄바꿈되도록 */
+  #school-main { padding: 16px 14px !important; }
 }
+.s360-mobile-back { display: none; }
 @media (min-width: 901px) {
   #mobile-nav { display: none; }
   #mobile-back { display: none; }
@@ -10853,7 +10864,8 @@ async function renderStudent360() {
   const list = s360List();
   if (!s360Id || !schoolStudents.find(s=>s.id===s360Id)) s360Id = (list[0]||schoolStudents[0]).id;
   if (list.length && !list.find(s=>s.id===s360Id)) s360Id = list[0].id;
-  main.innerHTML = `<div style="display:flex;gap:18px;align-items:flex-start">
+  main.innerHTML = `<div id="s360-split" style="display:flex;gap:18px;align-items:flex-start">
+    <button class="s360-mobile-back" onclick="s360BackToList()" style="align-items:center;gap:6px;height:36px;padding:0 14px;border:1px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:9px;cursor:pointer;font:700 13px var(--font);margin-bottom:2px">‹ 학생 목록</button>
     <div id="s360-list" style="width:228px;flex-shrink:0;position:sticky;top:0"></div>
     <div id="s360-detail" style="flex:1;min-width:0"><div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px">불러오는 중...</div></div>
   </div>`;
@@ -11503,7 +11515,15 @@ function s360TcsTab(which) {
   }
 }
 
-function selectS360(id) { s360Id = id; renderS360List(); renderS360Right(); }
+function s360IsMobile() { return window.matchMedia && window.matchMedia('(max-width:900px)').matches; }
+function selectS360(id) {
+  s360Id = id; renderS360List(); renderS360Right();
+  if (s360IsMobile()) {
+    const sp = document.getElementById('s360-split'); if (sp) sp.classList.add('show-detail');
+    const m = document.getElementById('school-main'); if (m) m.scrollTop = 0;
+  }
+}
+function s360BackToList() { const sp = document.getElementById('s360-split'); if (sp) sp.classList.remove('show-detail'); }
 function setS360Filter(v) { s360Filter = v; renderStudent360(); }
 function setS360Group(v) { s360Group = v; renderStudent360(); }
 
