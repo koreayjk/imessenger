@@ -6428,6 +6428,8 @@ async function renderAdminMembers() {
       </div>
     </div>
 
+    ${rolePermGuideHtml()}
+
     ${storageHtml}
 
     ${bulkStudentCardHtml()}
@@ -6461,6 +6463,59 @@ async function renderAdminMembers() {
         <button class="adm-btn danger" onclick="deleteMember('${m.id}','${m.name}')">삭제</button>
       </div>`).join('')}
     </div>` : ''}`;
+}
+
+// ── 역할·권한 안내표 ──
+let rolesGuideOpen = false;
+function toggleRolesGuide() { rolesGuideOpen = !rolesGuideOpen; renderMembers(); }
+const ROLE_COLS = [
+  { k:'student',        label:'학생' },
+  { k:'staff',          label:'간사' },
+  { k:'teacher',        label:'교사' },
+  { k:'admin_officer',  label:'행정담당' },
+  { k:'community_admin',label:'관리자' },
+  { k:'super_admin',    label:'총관리' },
+];
+const ROLE_CAPS = [
+  { name:'채팅 · 일정 · 홈 · 기도제목', roles:['student','staff','teacher','admin_officer','community_admin','super_admin'] },
+  { name:'내 생기부 · 트리플스쿨 독서(본인 기록)', roles:['student','staff'] },
+  { name:'학사관리 — 학생·출석부·시간표·생기부 작성', roles:['staff','teacher','admin_officer','community_admin','super_admin'] },
+  { name:'매점 관리 · 전자결재', roles:['staff','teacher','admin_officer','community_admin','super_admin'] },
+  { name:'재정(학비·용돈·예치금) · 가정통신문 · 증명서', roles:['admin_officer','community_admin','super_admin'] },
+  { name:'멤버/역할 관리 · 채널 · 공지', roles:['community_admin','super_admin'] },
+  { name:'학생 일괄 등록', roles:['community_admin','super_admin'] },
+  { name:'공동체 전환', roles:['super_admin'] },
+  { name:'총관리자 권한 부여 · 총관리자 계정 변경', roles:['super_admin'] },
+];
+function rolePermGuideHtml() {
+  const head = ROLE_COLS.map(c => `<th style="padding:8px 6px;font-size:11px;font-weight:700;color:var(--ink2);text-align:center;white-space:nowrap;border-bottom:2px solid var(--border)">${c.label}</th>`).join('');
+  const rows = ROLE_CAPS.map((cap, i) => {
+    const cells = ROLE_COLS.map(c => {
+      const on = cap.roles.includes(c.k);
+      return `<td style="padding:9px 6px;text-align:center;border-bottom:1px solid var(--border);background:${i%2?'transparent':'var(--s2)'}">${on ? '<span style="color:#15803d;font-weight:800">✓</span>' : '<span style="color:var(--border)">·</span>'}</td>`;
+    }).join('');
+    return `<tr><td style="padding:9px 10px;font-size:12px;color:var(--ink);border-bottom:1px solid var(--border);background:${i%2?'transparent':'var(--s2)'};min-width:220px">${cap.name}</td>${cells}</tr>`;
+  }).join('');
+  return `<div class="adm-card" style="margin-bottom:20px;padding:0;overflow:hidden">
+    <div onclick="toggleRolesGuide()" style="display:flex;align-items:center;gap:8px;padding:14px 18px;cursor:pointer">
+      <div style="font-size:14px;font-weight:700">🔑 역할별 권한 안내</div>
+      <span style="font-size:11px;color:var(--ink3)">누가 무엇을 할 수 있는지</span>
+      <div style="flex:1"></div>
+      <span style="font-size:12px;color:var(--ink3)">${rolesGuideOpen ? '▲ 접기' : '▼ 펼치기'}</span>
+    </div>
+    ${rolesGuideOpen ? `<div style="padding:0 14px 14px">
+      <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+        <table style="border-collapse:collapse;width:100%;min-width:560px">
+          <thead><tr><th style="padding:8px 10px;font-size:11px;font-weight:700;color:var(--ink2);text-align:left;border-bottom:2px solid var(--border)">기능</th>${head}</tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      <div style="font-size:11px;color:var(--ink3);line-height:1.7;margin-top:10px">
+        · <b>총관리자</b>는 모든 권한 + 공동체 전환 · 총관리자 계정은 총관리자만 변경할 수 있어요(보호됨).<br>
+        · <b>관리자</b>는 공동체 운영 전반, <b>행정담당</b>은 재정·문서·학사, <b>교사</b>는 학사·생기부 작성, <b>간사</b>는 학사 보조 + 본인 학습기록, <b>학생</b>은 본인 학습·조회 중심이에요.
+      </div>
+    </div>` : ''}
+  </div>`;
 }
 
 // ── 학생 일괄 등록 (관리자가 계정 대신 생성) ──
