@@ -6317,9 +6317,11 @@ async function rejectInCommunity(id, cid, cname) {
 }
 
 async function changeMemberCommunityRole(memberId, role) {
+  // 총관리자 권한은 총관리자만 부여 가능 (UI 우회·실수 방지)
+  if (role === 'super_admin' && !isSuperAdmin()) { showUploadToast('총관리자 권한은 총관리자만 부여할 수 있어요'); renderMembers(); return; }
   const koMap = { super_admin:'총관리자', community_admin:'관리자', admin_officer:'행정담당자', teacher:'교사', staff:'간사', student:'학생' };
   const { error } = await sb.from('members').update({ community_role: role, role: koMap[role] || role }).eq('id', memberId);
-  if (error) showUploadToast('변경 실패');
+  if (error) showUploadToast('변경 실패: ' + error.message + (/policy|denied|permission/i.test(error.message) ? ' (총관리자 보호 정책)' : ''));
   else showUploadToast('✅ 역할이 변경됐어요');
 }
 
@@ -6398,7 +6400,9 @@ async function renderAdminMembers() {
           <button class="adm-btn sage" onclick="approveMember('${m.id}')">✅ 승인</button>
           <button class="adm-btn danger" onclick="rejectMember('${m.id}')">❌ 거절</button>
         ` : `
-          <select onchange="changeMemberCommunityRole('${m.id}',this.value)"
+          ${(m.community_role === 'super_admin' && !isSuperAdmin())
+            ? `<span style="font-size:11px;font-weight:700;padding:6px 12px;border-radius:99px;background:#1d3a5f18;color:#1d3a5f">총관리자 🔒</span>`
+            : `<select onchange="changeMemberCommunityRole('${m.id}',this.value)"
             style="height:30px;padding:0 10px;border-radius:9px;border:1.5px solid var(--border);font:12px var(--font);background:white;cursor:pointer;outline:none">
             <option value="student"          ${m.community_role==='student'?'selected':''}>학생</option>
             <option value="staff"            ${m.community_role==='staff'?'selected':''}>간사</option>
@@ -6406,7 +6410,7 @@ async function renderAdminMembers() {
             <option value="admin_officer"    ${m.community_role==='admin_officer'?'selected':''}>행정담당자</option>
             <option value="community_admin"  ${m.community_role==='community_admin'?'selected':''}>관리자</option>
             ${isSuperAdmin()?`<option value="super_admin" ${m.community_role==='super_admin'?'selected':''}>총관리자</option>`:''}
-          </select>
+          </select>`}
           ${m.community_role !== 'super_admin' ? `<button class="adm-btn danger" onclick="deleteMember('${m.id}','${m.name}')">탈퇴</button>` : '<span style="font-size:11px;color:var(--ink3)">총관리자</span>'}
         `}
       </div>
