@@ -500,6 +500,9 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
   #school-main { padding: 16px 14px !important; }
 }
 .s360-mobile-back { display: none; }
+@keyframes tcsspin { to { transform: rotate(360deg); } }
+#splash { position: fixed; inset: 0; z-index: 99999; background: var(--bg,#eef2f7); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; transition: opacity .25s ease; }
+#splash .ring { width: 34px; height: 34px; border-radius: 50%; border: 3px solid #d7dfea; border-top-color: #1d3a5f; animation: tcsspin .8s linear infinite; }
 @media (min-width: 901px) {
   #mobile-nav { display: none; }
   #mobile-back { display: none; }
@@ -519,6 +522,11 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
 <body>
 
 <!-- 인증 화면 -->
+<div id="splash">
+  <img src="https://koreayjk.github.io/imessenger/tcs_icon-192.png" alt="TCS" style="width:72px;height:72px;border-radius:18px"/>
+  <div class="ring"></div>
+</div>
+
 <div id="auth-screen">
   <div class="auth-wrap">
     <!-- 왼쪽 브랜드 -->
@@ -2218,7 +2226,13 @@ function renderMessages(msgs, readMap={}) {
   });
 
   area.innerHTML = html;
-  area.scrollTop = area.scrollHeight;
+  // 열자마자 최신 메시지(맨 아래)로 — 이미지가 늦게 로드돼 높이가 늘어나도 다시 바닥으로
+  const toBottom = () => { area.scrollTop = area.scrollHeight; };
+  toBottom();
+  requestAnimationFrame(toBottom);
+  setTimeout(toBottom, 60);
+  setTimeout(toBottom, 250);
+  area.querySelectorAll('img').forEach(img => { if (!img.complete) img.addEventListener('load', toBottom, { once:true }); });
   area.onmouseover = null;
   area.onmouseout = null;
 }
@@ -7216,10 +7230,13 @@ function showUploadToast(msg) {
 
 // window.onload
 window.addEventListener('load', async () => {
+  // 세션 확인이 끝날 때까지 스플래시 유지 → 로그인 화면 깜빡임 방지
+  const hideSplash = () => { const s = document.getElementById('splash'); if (s) { s.style.opacity = '0'; setTimeout(() => s.remove(), 260); } };
+  setTimeout(hideSplash, 8000);   // 세션 확인이 지나치게 느릴 때 안전장치
 
   // 공개 가정통신문 보기 링크 (#nl=<id>) — 로그인 불필요
   const nlMatch = (location.hash || '').match(/#nl=([0-9a-fA-F-]{36})/);
-  if (nlMatch) { renderPublicNewsletter(nlMatch[1]); return; }
+  if (nlMatch) { hideSplash(); renderPublicNewsletter(nlMatch[1]); return; }
 
   // 기존 세션 복원
   try {
@@ -7252,6 +7269,7 @@ window.addEventListener('load', async () => {
       }
     }
   } catch(e) {}
+  finally { hideSplash(); }
 });
 
 // ── IMUSA 실시간 점수 구독 ──
@@ -10019,13 +10037,21 @@ async function finLoadEntries() {
   try { const { data } = await sb.from(table).select('*').eq('member_id', finExpandId).order('date',{ascending:false}).order('created_at',{ascending:false}); finEntries = data||[]; }
   catch(_) { finEntries = []; }
 }
+// 재정 화면 재렌더 시 현재 스크롤 위치 유지 (학생 펼침·기록 후에도 그 자리 그대로)
+async function finRerenderKeepScroll() {
+  const m = document.getElementById('school-main');
+  const keep = m ? m.scrollTop : 0;
+  await renderTuitionHub();
+  const m2 = document.getElementById('school-main');
+  if (m2) { m2.scrollTop = keep; requestAnimationFrame(() => { m2.scrollTop = keep; }); }
+}
 async function finToggleStudent(id) {
-  if (finExpandId === id) { finExpandId = null; return renderTuitionHub(); }
+  if (finExpandId === id) { finExpandId = null; return finRerenderKeepScroll(); }
   finExpandId = id; finEntries = [];
   const valid = finKind==='allowance' ? ['income','expense'] : ['in','out'];
   if (!valid.includes(finAddType)) finAddType = finKind==='allowance' ? 'expense' : 'in';
   await finLoadEntries();
-  renderTuitionHub();
+  await finRerenderKeepScroll();
 }
 function finSetType(t) { const d=finDraft(); finAddType = t; finRenderInline(); finDraftRestore(d); }
 function finSetCur(c)  { const d=finDraft(); finAddCur = c;  finRenderInline(); finDraftRestore(d); }
@@ -10083,7 +10109,7 @@ async function finAddEntry() {
   }
   showUploadToast('기록됐어요');
   await finLoadEntries();
-  renderTuitionHub();
+  finRerenderKeepScroll();
 }
 async function finDelEntry(id) {
   if (!confirm('이 기록을 삭제할까요?')) return;
@@ -10092,7 +10118,7 @@ async function finDelEntry(id) {
   if (error) { showUploadToast('삭제 실패: ' + error.message); return; }
   showUploadToast('🗑 삭제됐어요');
   await finLoadEntries();
-  renderTuitionHub();
+  finRerenderKeepScroll();
 }
 
 async function renderFinBalances(kind) {
