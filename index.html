@@ -5057,6 +5057,7 @@ const READING_CATEGORIES = ['Gospel School', 'Disciple School', 'Calling School'
 const READING_CAT_ORDER = { 'Gospel School': 0, 'Disciple School': 1, 'Calling School': 2 };
 let readingBooks = [];
 let readingMyLogs = [];
+let readingNotes = [];   // 현재 여는 책의 '읽으며 쌓은 기록'(이어쓰기)
 
 // step(1~4, 없으면 뒤로) → 카테고리(Gospel/Disciple/Calling) → sort → 제목 순 정렬 (컬럼 없어도 안전)
 function readingBookSort(a, b) {
@@ -5287,30 +5288,98 @@ function renderReadingStudent() {
   if (f.q) { const si = document.getElementById('reading-search'); if (si) { si.focus(); si.setSelectionRange(si.value.length, si.value.length); } }
 }
 
-function openReadingLog(bookId) {
+async function openReadingLog(bookId) {
+  const page = document.getElementById('reading-page');
+  page.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink3);font-size:13px">불러오는 중...</div>';
+  readingNotes = [];
+  try {
+    const { data } = await sb.from('reading_notes').select('*').eq('member_id', ME.id).eq('book_id', bookId)
+      .order('date', { ascending: true }).order('created_at', { ascending: true });
+    readingNotes = data || [];
+  } catch(_) { readingNotes = []; }
+  renderReadingLog(bookId);
+}
+function renderReadingLog(bookId) {
   const book = readingBooks.find(b => b.id === bookId);
   const log = readingMyLogs.find(l => l.book_id === bookId);
   const today = new Date().toISOString().slice(0, 10);
   const inputCss = 'width:100%;padding:10px 13px;border-radius:10px;border:1.5px solid var(--border);background:var(--s2);font:14px var(--font);color:var(--ink);outline:none';
+  const inp = 'height:32px;padding:0 9px;border:1px solid var(--border);border-radius:8px;font:600 12px var(--font);background:var(--surface);color:var(--ink)';
   const page = document.getElementById('reading-page');
+  if (!book) { initReadingPage(); return; }
+
+  const noteItems = readingNotes.map(n => `
+    <div style="border-left:3px solid var(--accent);padding:5px 0 6px 12px;margin-bottom:13px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
+        <span style="font-size:11px;color:var(--ink3)">${n.date||''}${n.pages?` · ${escHtml(n.pages)}쪽`:''}</span>
+        <div style="flex:1"></div>
+        <button onclick="deleteReadingNote('${n.id}','${bookId}')" title="삭제" style="border:none;background:transparent;cursor:pointer;color:var(--ink3);font-size:12px">✕</button>
+      </div>
+      <div style="font-family:'Noto Serif KR',serif;font-size:14.5px;color:var(--ink);line-height:1.9;white-space:pre-wrap">${escHtml(n.content)}</div>
+    </div>`).join('');
+  const addForm = `
+    <div style="background:var(--s2);border-radius:11px;padding:12px;margin-top:4px">
+      <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap">
+        <input id="rn-date" type="date" value="${today}" style="${inp}"/>
+        <input id="rn-pages" placeholder="쪽수(선택) 예: 51~80" style="${inp};flex:1;min-width:120px"/>
+      </div>
+      <textarea id="rn-content" placeholder="오늘 읽은 부분의 줄거리·생각·느낀 점을 적어보세요" style="width:100%;min-height:72px;padding:9px;border:1px solid var(--border);border-radius:8px;font:400 13.5px var(--font);color:var(--ink);line-height:1.6;resize:vertical"></textarea>
+      <div style="display:flex;justify-content:flex-end;margin-top:7px"><button onclick="addReadingNote('${bookId}')" style="height:32px;padding:0 14px;border:none;background:#1d3a5f;color:#fff;border-radius:8px;cursor:pointer;font:700 12px var(--font)">＋ 메모 추가</button></div>
+    </div>`;
+
   page.innerHTML = `<div style="max-width:640px">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
       <button onclick="initReadingPage()" style="height:32px;padding:0 12px;border-radius:8px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:500 12px var(--font);cursor:pointer">← 목록</button>
       <div style="font-size:16px;font-weight:700;color:var(--ink)">${book.title}</div>
     </div>
     <div class="adm-card">
-      <div style="font-size:12px;color:var(--ink3);margin-bottom:14px">${book.step ? 'Step ' + book.step + ' · ' : ''}${READING_CAT_SHORT[book.category] || book.category}${book.author ? ' · ' + book.author : ''}${book.publisher ? ' · ' + book.publisher : ''}</div>
-      <label style="font-size:12px;font-weight:600;color:var(--ink3);display:block;margin-bottom:6px">읽은 날짜</label>
-      <input id="rd-date" type="date" value="${log?.read_date || today}" style="${inputCss};margin-bottom:14px"/>
-      <label style="font-size:12px;font-weight:600;color:var(--ink3);display:block;margin-bottom:6px">독후감 (간단히)</label>
-      <textarea id="rd-report" rows="6" placeholder="이 책에서 배운 점, 느낀 점을 자유롭게 적어보세요" style="${inputCss};resize:vertical;line-height:1.6;margin-bottom:14px">${log?.report || ''}</textarea>
-      <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink);cursor:pointer;margin-bottom:16px">
-        <input id="rd-include" type="checkbox" ${log?.include_in_record ? 'checked' : ''} style="width:17px;height:17px"/> 학생종합기록부(PDF)에 포함하기
-      </label>
-      <button onclick="saveReadingLog('${bookId}')" style="width:100%;height:42px;border-radius:11px;border:none;background:#1d3a5f;color:white;font:700 14px var(--font);cursor:pointer;margin-bottom:${log ? '10px' : '0'}">💾 읽음으로 저장</button>
-      ${log ? `<button onclick="deleteReadingLog('${bookId}')" style="width:100%;height:38px;border-radius:10px;border:1.5px solid var(--border);background:white;color:#ef4444;font:600 13px var(--font);cursor:pointer">읽음 취소</button>` : ''}
+      <div style="font-size:12px;color:var(--ink3);margin-bottom:16px">${book.step ? 'Step ' + book.step + ' · ' : ''}${READING_CAT_SHORT[book.category] || book.category}${book.author ? ' · ' + book.author : ''}${book.publisher ? ' · ' + book.publisher : ''}</div>
+
+      <div style="border-top:2px solid var(--border);padding-top:16px;margin-bottom:16px">
+        <div style="font-size:12.5px;font-weight:800;color:var(--ink);margin-bottom:4px">📖 읽으며 쌓은 기록 <span style="color:var(--ink3);font-weight:600">(${readingNotes.length})</span></div>
+        <div style="font-size:11px;color:var(--ink3);margin-bottom:12px">읽은 날마다 메모를 남기면 순서대로 쌓여요.</div>
+        ${readingNotes.length ? noteItems : '<div style="font-size:12.5px;color:var(--ink3);padding:2px 0 12px">아직 메모가 없어요. 아래에서 읽은 만큼 적어보세요 👇</div>'}
+        ${addForm}
+      </div>
+
+      <div style="border-top:2px solid var(--border);padding-top:16px">
+        <div style="font-size:12.5px;font-weight:800;color:var(--ink);margin-bottom:3px">✍️ 최종 독후감 <span style="color:var(--ink3);font-weight:600;font-size:11px">· 다 읽은 뒤 마무리</span></div>
+        <div style="font-size:11px;color:var(--ink3);margin-bottom:12px">쌓은 메모를 바탕으로 이 책의 소감을 정리하고 '읽음'으로 저장하세요. (PDF엔 이 마무리만 담겨요)</div>
+        <label style="font-size:12px;font-weight:600;color:var(--ink3);display:block;margin-bottom:6px">완독한 날짜</label>
+        <input id="rd-date" type="date" value="${log?.read_date || today}" style="${inputCss};margin-bottom:14px"/>
+        <textarea id="rd-report" rows="6" placeholder="이 책에서 배운 점, 느낀 점을 자유롭게 정리해 보세요" style="${inputCss};resize:vertical;line-height:1.6;margin-bottom:14px">${escHtml(log?.report || '')}</textarea>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink);cursor:pointer;margin-bottom:16px">
+          <input id="rd-include" type="checkbox" ${log?.include_in_record ? 'checked' : ''} style="width:17px;height:17px"/> 학생종합기록부(PDF)에 포함하기
+        </label>
+        <button onclick="saveReadingLog('${bookId}')" style="width:100%;height:42px;border-radius:11px;border:none;background:#1d3a5f;color:white;font:700 14px var(--font);cursor:pointer;margin-bottom:${log ? '10px' : '0'}">💾 읽음으로 저장</button>
+        ${log ? `<button onclick="deleteReadingLog('${bookId}')" style="width:100%;height:38px;border-radius:10px;border:1.5px solid var(--border);background:white;color:#ef4444;font:600 13px var(--font);cursor:pointer">읽음 취소</button>` : ''}
+      </div>
     </div>
   </div>`;
+}
+async function addReadingNote(bookId) {
+  const date = document.getElementById('rn-date')?.value || new Date().toISOString().slice(0,10);
+  const pages = (document.getElementById('rn-pages')?.value || '').trim();
+  const content = (document.getElementById('rn-content')?.value || '').trim();
+  if (!content) { showUploadToast('메모 내용을 입력하세요'); return; }
+  const { data, error } = await sb.from('reading_notes').insert({
+    book_id: bookId, member_id: ME.id, community_id: CID(), date, pages: pages || null, content,
+  }).select().single();
+  if (error) {
+    if (schoolTableMissing(error)) { showUploadToast('이어쓰기 테이블이 없어요. db/트리플스쿨_이어쓰기_DB설치.sql 을 실행해주세요'); return; }
+    showUploadToast('추가 실패: ' + error.message); return;
+  }
+  if (data) readingNotes.push(data);
+  readingNotes.sort((a,b)=> (a.date||'').localeCompare(b.date||'') || (a.created_at||'').localeCompare(b.created_at||''));
+  showUploadToast('✅ 메모가 쌓였어요');
+  renderReadingLog(bookId);
+}
+async function deleteReadingNote(id, bookId) {
+  if (!confirm('이 메모를 삭제할까요?')) return;
+  const { error } = await sb.from('reading_notes').delete().eq('id', id);
+  if (error) { showUploadToast('삭제 실패: ' + error.message); return; }
+  readingNotes = readingNotes.filter(n => n.id !== id);
+  renderReadingLog(bookId);
 }
 
 async function saveReadingLog(bookId) {
@@ -5324,13 +5393,15 @@ async function saveReadingLog(bookId) {
   }, { onConflict: 'student_id,book_id' });
   if (error) { showUploadToast('저장 실패 😥 ' + error.message); return; }
   showUploadToast('✅ 저장됐어요!');
-  initReadingPage();
+  try { const { data: logs } = await sb.from('reading_logs').select('*').eq('student_id', ME.id); readingMyLogs = logs || []; } catch(_) {}
+  openReadingLog(bookId);
 }
 async function deleteReadingLog(bookId) {
   const { error } = await sb.from('reading_logs').delete().eq('student_id', ME.id).eq('book_id', bookId);
   if (error) { showUploadToast('취소 실패 😥'); return; }
   showUploadToast('읽음 취소됨');
-  initReadingPage();
+  try { const { data: logs } = await sb.from('reading_logs').select('*').eq('student_id', ME.id); readingMyLogs = logs || []; } catch(_) {}
+  openReadingLog(bookId);
 }
 
 // ── 관리자/교사 화면: 전체 현황 + 책 관리 ──
