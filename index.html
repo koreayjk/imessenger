@@ -158,7 +158,9 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
   overflow: hidden;
 }
 #tcs-view > div:first-child, #mock-view > div:first-child, #reading-view > div:first-child, #profile-view > div:first-child { position: relative; }
-.subnav-center { position: absolute; left: 50%; top: 0; height: 100%; display: flex; align-items: center; transform: translateX(-50%); }
+.subnav-center { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+.subnav-center::-webkit-scrollbar { display: none; }
+.subnav-center > * { margin-left: auto; margin-right: auto; flex-shrink: 0; }
 
 /* 빈 화면 */
 #empty {
@@ -5077,13 +5079,13 @@ function tcsSubnavHtml(active) {
   if (isTeacher()) {
     const tt = (m, label) => {
       const on = tcsSubMode === m;
-      return `<button onclick="setTcsSubMode('${m}')" style="height:30px;padding:0 13px;border:none;border-radius:8px;font:600 12px var(--font);cursor:pointer;background:${on ? '#1d3a5f' : 'transparent'};color:${on ? '#fff' : 'var(--ink2)'}">${label}</button>`;
+      return `<button onclick="setTcsSubMode('${m}')" style="height:30px;padding:0 13px;border:none;border-radius:8px;font:600 12px var(--font);cursor:pointer;white-space:nowrap;flex-shrink:0;background:${on ? '#1d3a5f' : 'transparent'};color:${on ? '#fff' : 'var(--ink2)'}">${label}</button>`;
     };
     tabs = tt('record', '기록부') + tt('mock', '모의고사') + tt('reading', 'Triple School');
   } else {
     const tab = (m, label) => {
       const on = active === m;
-      return `<button onclick="setMode('${m}')" style="height:30px;padding:0 13px;border:none;border-radius:8px;font:600 12px var(--font);cursor:pointer;background:${on ? '#1d3a5f' : 'transparent'};color:${on ? '#fff' : 'var(--ink2)'}">${label}</button>`;
+      return `<button onclick="setMode('${m}')" style="height:30px;padding:0 13px;border:none;border-radius:8px;font:600 12px var(--font);cursor:pointer;white-space:nowrap;flex-shrink:0;background:${on ? '#1d3a5f' : 'transparent'};color:${on ? '#fff' : 'var(--ink2)'}">${label}</button>`;
     };
     tabs = tab('gishome', '🏠 홈') + tab('profile', '개인정보') + tab('reading', 'Triple School')
          + tab('bookreport', '독후감') + tab('review', '활동후기') + tab('mytt', '시간표') + tab('allowance', '용돈') + tab('deposit', '예치금') + tab('leave', '출결신청');
