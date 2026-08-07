@@ -2186,7 +2186,7 @@ async function refreshReadCounts() {
 function renderMessages(msgs, readMap={}) {
   const area = document.getElementById('msg-area');
   if (!msgs.length) {
-    area.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--ink3);gap:10px">
+    area.innerHTML = `<div class="msg-empty" style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--ink3);gap:10px">
       <div style="font-size:40px">${currentChannel.emoji||'💬'}</div>
       <div style="font-size:15px;font-weight:600;color:var(--ink)">${currentChannel.name} 채널에 오신 것을 환영해요!</div>
       <div style="font-size:13px">첫 번째 메시지를 보내보세요</div>
@@ -2253,7 +2253,7 @@ function appendMessage(m, readMap={}) {
   }
 
   // 빈 채팅창이면 날짜 구분선 추가
-  if (area.querySelector('div[style*="flex-direction:column"]')) {
+  if (area.querySelector('.msg-empty')) {
     area.innerHTML = `<div class="date-divider">${dateLabel(m.created_at)}</div>`;
   } else {
     // 마지막 메시지와 날짜 다르면 구분선 추가
