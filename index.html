@@ -502,6 +502,9 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
   #school-main { padding: 16px 14px !important; }
 }
 .s360-mobile-back { display: none; }
+.mention { color:#1d4ed8; font-weight:700; background:rgba(29,78,216,.10); border-radius:5px; padding:0 3px; }
+.mention-me { background:rgba(240,180,41,.18); }
+.mrow-active { background:var(--s2); }
 @keyframes tcsspin { to { transform: rotate(360deg); } }
 #splash { position: fixed; inset: 0; z-index: 99999; background: var(--bg,#eef2f7); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; transition: opacity .25s ease; }
 #splash .ring { width: 34px; height: 34px; border-radius: 50%; border: 3px solid #d7dfea; border-top-color: #1d3a5f; animation: tcsspin .8s linear infinite; }
@@ -777,7 +780,9 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
           <div id="todo-list" style="padding:0 20px 14px"></div>
         </div>
         <div id="msg-area"></div>
-        <div id="composer">
+        <div id="composer" style="position:relative">
+          <!-- @멘션 자동완성 -->
+          <div id="mentionBox" style="display:none;position:absolute;left:12px;right:12px;bottom:calc(100% + 6px);max-height:220px;overflow-y:auto;background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:0 10px 34px rgba(0,0,0,.16);z-index:60;padding:6px"></div>
           <!-- 드래그 파일 미리보기 -->
           <div id="file-preview-bar" style="display:none;padding:8px 12px;border-top:1px solid var(--border);background:var(--s2);gap:8px;flex-wrap:wrap;align-items:center">
             <div id="file-preview-list" style="display:flex;gap:8px;flex-wrap:wrap;flex:1"></div>
@@ -787,9 +792,9 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
             <div class="icon-btn">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--ink3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
             </div>
-            <textarea id="msgInput" placeholder="메시지 보내기 (Enter · 이미지 붙여넣기 가능)" rows="1"
-              onkeydown="if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();sendMsg()} "
-              oninput="updateSendBtn();autoResizeInput(this)"
+            <textarea id="msgInput" placeholder="메시지 보내기 (Enter · @로 멤버 언급 · 이미지 붙여넣기 가능)" rows="1"
+              onkeydown="onComposerKeydown(event)"
+              oninput="updateSendBtn();autoResizeInput(this);handleMentionInput(this)"
               onpaste="handlePasteImage(event)"
               style="flex:1;border:0;outline:0;background:transparent;font:14px var(--font);color:var(--ink);resize:none;line-height:1.5;max-height:120px;overflow-y:auto;padding:0"></textarea>
             <div class="icon-btn" onclick="openFileChooser()" title="파일 첨부">
@@ -1302,6 +1307,10 @@ function subscribeGlobalMessages() {
       if (myChannelIds.has(msg.channel_id)) {
         unreadCounts[msg.channel_id] = (unreadCounts[msg.channel_id] || 0) + 1;
         updateUnreadBadges();
+        if (msgMentionsMe(msg)) {
+          const ch = channels.find(c => c.id === msg.channel_id);
+          showUploadToast('💬 ' + (msg.sender_name || '누군가') + '님이 ' + (ch ? ch.name : '다른 채널') + '에서 회원님을 언급했어요');
+        }
       }
     })
     .subscribe();
@@ -2139,6 +2148,9 @@ async function openChannel(id) {
     .on('postgres_changes', { event:'INSERT', schema:'public', table:'messages', filter:`channel_id=eq.${id}` },
       async (payload) => {
         appendMessage({...payload.new, reactions:[]}, {});
+        if (payload.new.sender_id !== ME.id && msgMentionsMe(payload.new)) {
+          showUploadToast('💬 ' + (payload.new.sender_name || '누군가') + '님이 회원님을 언급했어요');
+        }
         // 내가 보낸 메시지는 '읽음'으로 표시하지 않음 (안 그러면 상대가 안 읽어도 '모두 읽음'이 됨)
         if (payload.new.sender_id !== ME.id) await markRead(payload.new.id);
       })
@@ -2333,6 +2345,7 @@ function appendMessage(m, readMap={}) {
 
 function msgHtml(m, prev, readMap={}) {
   const isMine = m.sender_id === ME.id;
+  const memHi = !isMine && msgMentionsMe(m);   // 나를 언급한 메시지 강조
   const sender = members[m.sender_id] || { name: m.sender_name||'알 수 없음', initials: (m.sender_name||'?')[0], color:'#999' };
   const sameAsPrev = prev && prev.sender_id === m.sender_id;
   const avStyle = `background:${sender.color}`;
@@ -2395,7 +2408,7 @@ function msgHtml(m, prev, readMap={}) {
     </div>` : '';
 
   // 파일 메시지
-  let bubbleContent = linkify(m.text);
+  let bubbleContent = renderMessageText(m.text);
   if (m.kind === 'file') {
     try {
       const f = JSON.parse(m.text);
@@ -2448,7 +2461,7 @@ function msgHtml(m, prev, readMap={}) {
       <div class="msg-body">
         ${!sameAsPrev ? `<div class="msg-meta"><span class="name">${sender.name}</span><span class="time">${fmtTime(m.created_at)}</span></div>` : ''}
         ${replyQuote}
-        <div class="bubble">${bubbleContent}</div>
+        <div class="bubble"${memHi?' style="box-shadow:inset 3px 0 0 #F0B429;background:rgba(240,180,41,.12)"':''}>${bubbleContent}</div>
         ${reactions}
         ${readLabel}
       </div>
@@ -2460,7 +2473,7 @@ function msgHtml(m, prev, readMap={}) {
     <div class="msg-body">
       ${!sameAsPrev ? `<div class="msg-meta"><span class="name">${sender.name}</span><span class="time">${fmtTime(m.created_at)}</span></div>` : ''}
       ${replyQuote}
-      <div class="bubble">${bubbleContent}</div>
+      <div class="bubble"${memHi?' style="box-shadow:inset 3px 0 0 #F0B429;background:rgba(240,180,41,.12)"':''}>${bubbleContent}</div>
       ${reactions}
     </div>
   </div>`;
@@ -2588,6 +2601,95 @@ function linkify(s) {
   );
 }
 
+// ── @멘션 ──
+function mentionCandidates() {
+  const inCh = currentChannelMemberIds && currentChannelMemberIds.size;
+  return Object.values(members)
+    .filter(m => m && m.id !== (ME && ME.id) && (!inCh || currentChannelMemberIds.has(m.id)));
+}
+// 텍스트에서 언급된 멤버 id 배열 추출 (긴 이름 우선 매칭)
+function parseMentions(text) {
+  if (!text) return [];
+  const ids = [];
+  const cands = mentionCandidates().slice().sort((a,b)=>(b.name||'').length-(a.name||'').length);
+  cands.forEach(m => { if (m.name && text.includes('@' + m.name)) ids.push(m.id); });
+  // @전체/@all/@everyone → 채널 전원
+  if (/@(전체|everyone|all)\b/i.test(text)) mentionCandidates().forEach(m => ids.push(m.id));
+  return [...new Set(ids)];
+}
+// 메시지 텍스트 렌더 (링크 + @멘션 하이라이트)
+function renderMessageText(s) {
+  let html = linkify(s);
+  const names = mentionCandidates().map(m=>m.name).filter(Boolean).sort((a,b)=>b.length-a.length);
+  names.forEach(n => {
+    const escName = escHtml(n);
+    const re = new RegExp('@' + escName.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'), 'g');
+    const cls = (ME && n === ME.name) ? 'mention mention-me' : 'mention';
+    html = html.replace(re, `<span class="${cls}">@${escName}</span>`);
+  });
+  html = html.replace(/@(전체|everyone|all)\b/gi, '<span class="mention">@$1</span>');
+  return html;
+}
+function msgMentionsMe(msg) {
+  if (!msg || !ME) return false;
+  if (Array.isArray(msg.mentions) && msg.mentions.includes(ME.id)) return true;
+  if (typeof msg.text === 'string' && /@(전체|everyone|all)\b/i.test(msg.text)) return true;
+  if (typeof msg.text === 'string' && ME.name && msg.text.includes('@' + ME.name)) return true;
+  return false;
+}
+
+let _mention = { active:false, start:-1, sel:0, list:[] };
+function handleMentionInput(el) {
+  const before = el.value.slice(0, el.selectionStart);
+  const m = before.match(/(?:^|\s)@([^\s@]{0,20})$/);
+  if (!m) { closeMentionBox(); return; }
+  const q = (m[1] || '').toLowerCase();
+  _mention.start = el.selectionStart - m[1].length - 1; // '@' 위치
+  let list = mentionCandidates().filter(x => !q || (x.name||'').toLowerCase().includes(q));
+  list = list.slice(0, 8);
+  // @전체 옵션
+  const all = { id:'__all__', name:'전체', initials:'@', color:'#DE911D', _all:true };
+  if (!q || '전체'.includes(q) || 'all'.includes(q) || 'everyone'.includes(q)) list.unshift(all);
+  if (!list.length) { closeMentionBox(); return; }
+  _mention.active = true; _mention.sel = 0; _mention.list = list;
+  renderMentionBox();
+}
+function renderMentionBox() {
+  const box = document.getElementById('mentionBox'); if (!box) return;
+  box.innerHTML = _mention.list.map((m,i) => `
+    <div class="mrow ${i===_mention.sel?'mrow-active':''}" onmousedown="event.preventDefault();pickMention(${i})" onmouseover="_mention.sel=${i};highlightMentionRows()"
+      style="display:flex;align-items:center;gap:9px;padding:7px 9px;border-radius:9px;cursor:pointer">
+      <div style="width:26px;height:26px;border-radius:8px;background:${m.color||'#999'};color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${m._all?'@':(m.initials||m.name[0])}</div>
+      <div style="font-size:13px;font-weight:600;color:var(--ink)">${escHtml(m.name)}${m._all?' <span style="font-size:11px;font-weight:400;color:var(--ink3)">(채널 전원 알림)</span>':''}</div>
+    </div>`).join('');
+  box.style.display = 'block';
+}
+function highlightMentionRows() {
+  const box = document.getElementById('mentionBox'); if (!box) return;
+  [...box.querySelectorAll('.mrow')].forEach((r,i)=>r.classList.toggle('mrow-active', i===_mention.sel));
+}
+function closeMentionBox() { _mention.active = false; _mention.list = []; const box = document.getElementById('mentionBox'); if (box) box.style.display='none'; }
+function pickMention(i) {
+  const el = document.getElementById('msgInput'); if (!el) return;
+  const m = _mention.list[i]; if (!m) return;
+  const insert = '@' + m.name + ' ';
+  const after = el.value.slice(el.selectionStart);
+  el.value = el.value.slice(0, _mention.start) + insert + after;
+  const pos = _mention.start + insert.length;
+  el.setSelectionRange(pos, pos);
+  closeMentionBox();
+  updateSendBtn(); autoResizeInput(el); el.focus();
+}
+function onComposerKeydown(event) {
+  if (_mention.active) {
+    if (event.key === 'ArrowDown') { event.preventDefault(); _mention.sel = (_mention.sel+1) % _mention.list.length; highlightMentionRows(); return; }
+    if (event.key === 'ArrowUp')   { event.preventDefault(); _mention.sel = (_mention.sel-1+_mention.list.length) % _mention.list.length; highlightMentionRows(); return; }
+    if (event.key === 'Enter' || event.key === 'Tab') { event.preventDefault(); pickMention(_mention.sel); return; }
+    if (event.key === 'Escape') { event.preventDefault(); closeMentionBox(); return; }
+  }
+  if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); sendMsg(); }
+}
+
 // ── 메시지 전송 ──
 function autoResizeInput(el) {
   el.style.height = 'auto';
@@ -2648,7 +2750,13 @@ async function sendMsg() {
       msgData.reply_to_name = replyingTo.name;
       cancelReply();
     }
-    const { data: ins } = await sb.from('messages').insert(msgData).select().single();
+    const mids = parseMentions(text);
+    if (mids.length) msgData.mentions = mids;
+    let { data: ins, error: insErr } = await sb.from('messages').insert(msgData).select().single();
+    if (insErr && msgData.mentions && /mention|column|schema/i.test(insErr.message||'')) {
+      delete msgData.mentions;   // mentions 컬럼 없으면(멘션_DB설치 전) 없이 저장
+      ({ data: ins } = await sb.from('messages').insert(msgData).select().single());
+    }
     if (ins) appendMessage({ ...ins, reactions: [] }, {});  // 내 화면에 즉시 표시 (realtime 중복은 id로 무시)
   } else {
     inp.value = '';
