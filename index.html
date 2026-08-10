@@ -671,6 +671,10 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>
       <span>Triple School</span>
     </div>
+    <div class="sb-btn" id="sb-improve" onclick="setMode('improve')" title="개선창">
+      <span style="font-size:21px">💡</span>
+      <span>개선창</span>
+    </div>
     <div class="sb-btn" id="sb-switch-community" onclick="showCommunitySwitcher()" title="공동체 전환" style="display:none">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
       <span>공동체</span>
@@ -930,6 +934,18 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
         <div id="subnav-gishome" class="subnav-center"></div>
       </div>
       <div id="gishome-main" style="flex:1;overflow-y:auto;padding:24px 28px"></div>
+    </div>
+
+    <!-- 개선 제안 게시판 (전역 · 모든 사용자) -->
+    <div id="improve-view" style="display:none;flex-direction:column;height:100%;background:var(--bg)">
+      <div style="height:56px;padding:0 24px;display:flex;align-items:center;gap:10px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0">
+        <div style="width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#F0B429,#DE911D);display:flex;align-items:center;justify-content:center;font-size:16px">💡</div>
+        <div>
+          <div style="font-size:15px;font-weight:700;color:var(--ink)">개선창</div>
+          <div style="font-size:11px;color:var(--ink3)">모두가 함께 보는 TCS 개선 제안 게시판</div>
+        </div>
+      </div>
+      <div id="improve-main" style="flex:1;overflow-y:auto;padding:24px 28px"></div>
     </div>
 
     <!-- 매점 현황 (교사·관리자) -->
@@ -1681,6 +1697,7 @@ function moreMenuItems() {
   }
   if (isSuperAdmin()) items.push({ icon:'🔄', label:'공동체', act:"showCommunitySwitcher()" });
   if (isCommunityAdmin()) items.push({ icon:'⚙️', label:'관리', act:"setMode('admin')" });
+  items.push({ icon:'💡', label:'개선창', act:"setMode('improve')" });
   items.push({ icon:'👤', label:'내 프로필', act:"setMode('profile')" });
   items.push({ icon:'🚪', label:'로그아웃', act:"doLogout()", danger:true });
   return items;
@@ -1845,7 +1862,7 @@ function setMode(m) {
   mode = m;
   // 화면 전환 시 대화방 전체화면 해제(하단 탭바 복귀) — 대화 열면 openChannel이 다시 설정
   document.body.classList.remove('in-chat');
-  ['chat','prayer','home','calendar','admin','school','allowance','store','approval'].forEach(x => {
+  ['chat','prayer','home','calendar','admin','school','allowance','store','approval','improve'].forEach(x => {
     const el = document.getElementById('sb-'+x);
     if (!el) return;
     el.classList.toggle('active', x===m);
@@ -1864,6 +1881,7 @@ function setMode(m) {
   document.getElementById('leave-view').style.display = m==='leave' ? 'flex' : 'none';
   document.getElementById('gishome-view').style.display = m==='gishome' ? 'flex' : 'none';
   document.getElementById('store-view').style.display = m==='store' ? 'flex' : 'none';
+  document.getElementById('improve-view').style.display = m==='improve' ? 'flex' : 'none';
   document.getElementById('approval-view').style.display = m==='approval' ? 'flex' : 'none';
   document.getElementById('writing-view').style.display = (m==='bookreport'||m==='review') ? 'flex' : 'none';
   document.getElementById('admin-view').style.display = m==='admin' ? 'flex' : 'none';
@@ -1881,7 +1899,7 @@ function setMode(m) {
   }
 
   const panel = document.getElementById('panel');
-  if (m === 'home' || m === 'calendar' || m === 'admin' || m === 'tcs' || m === 'mock' || m === 'reading' || m === 'profile' || m === 'school' || m === 'allowance' || m === 'deposit' || m === 'mytt' || m === 'leave' || m === 'bookreport' || m === 'review' || m === 'gishome' || m === 'store' || m === 'approval') {
+  if (m === 'home' || m === 'calendar' || m === 'admin' || m === 'tcs' || m === 'mock' || m === 'reading' || m === 'profile' || m === 'school' || m === 'allowance' || m === 'deposit' || m === 'mytt' || m === 'leave' || m === 'bookreport' || m === 'review' || m === 'gishome' || m === 'store' || m === 'approval' || m === 'improve') {
     panel.style.display = 'none';
   } else {
     panel.style.display = 'flex';
@@ -1899,6 +1917,7 @@ function setMode(m) {
   if (m==='school') { if(canAccessSchool()){ initSchoolPage(); } else setMode('home'); return; }
   if (m==='store') { if(canAccessSchool()){ initStorePage(); } else setMode('home'); return; }
   if (m==='approval') { if(canAccessSchool()){ initApprovalPage(); } else setMode('home'); return; }
+  if (m==='improve') { initImprovePage(); }
   if (m==='allowance') { initAllowancePage(); }
   if (m==='deposit') { initDepositPage(); }
   if (m==='mytt') { initMyTimetable(); }
@@ -1907,7 +1926,7 @@ function setMode(m) {
   if (m==='review') { writingKind='activity'; initWritingPage(); }
   if (m==='profile') { renderProfilePage(); }
   sessionStorage.setItem('last_mode', m);
-  document.getElementById('panel-title').textContent = {chat:'채팅',prayer:'기도제목',home:'홈',calendar:'일정',admin:'관리자',tcs:'생기부',mock:'모의고사 분석',reading:'Triple School',school:'학사관리',allowance:'용돈기입장',deposit:'예치금',mytt:'내 시간표',leave:'출결 신청',bookreport:'독후감',review:'활동 후기',profile:'내 프로필',gishome:'생기부 홈',store:'매점 현황',approval:'전자결재'}[m] || m;
+  document.getElementById('panel-title').textContent = {chat:'채팅',prayer:'기도제목',home:'홈',calendar:'일정',admin:'관리자',tcs:'생기부',mock:'모의고사 분석',reading:'Triple School',school:'학사관리',allowance:'용돈기입장',deposit:'예치금',mytt:'내 시간표',leave:'출결 신청',bookreport:'독후감',review:'활동 후기',profile:'내 프로필',gishome:'생기부 홈',store:'매점 현황',approval:'전자결재',improve:'개선창'}[m] || m;
 }
 
 // ── 채널 패널 렌더 ──
@@ -11902,6 +11921,147 @@ function allowMoney(n, cur) {
 function allowCurrencies() {
   const set = [...new Set(allowEntries.map(e => e.currency || '원'))];
   return set.length ? set : ['원'];
+}
+
+// ── 개선창 (전역 개선 제안 게시판) ──
+const IMPROVE_STATUS = {
+  pending:  { label:'검토중',   color:'#6b7280', bg:'#6b72801f' },
+  planned:  { label:'진행예정', color:'#1d4ed8', bg:'#1d4ed81f' },
+  exists:   { label:'이미있음', color:'#b45309', bg:'#b453091f' },
+  done:     { label:'구현완료', color:'#15803d', bg:'#15803d1f' },
+  rejected: { label:'불가능',   color:'#b91c1c', bg:'#b91c1c1f' },
+};
+const IMPROVE_ORDER = ['pending','planned','exists','done','rejected'];
+let improveItems = [];
+let improveComments = {};
+let improveFilter = 'all';
+let myCommunityName = null;
+
+async function initImprovePage() {
+  const page = document.getElementById('improve-main');
+  page.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink3);font-size:13px">불러오는 중...</div>';
+  try {
+    const { data: items, error } = await sb.from('improvements').select('*').order('created_at', { ascending:false });
+    if (error) throw error;
+    improveItems = items || [];
+    improveComments = {};
+    const ids = improveItems.map(i=>i.id);
+    if (ids.length) {
+      const { data: cs } = await sb.from('improvement_comments').select('*').in('improvement_id', ids).order('created_at', { ascending:true });
+      (cs||[]).forEach(c => { (improveComments[c.improvement_id] = improveComments[c.improvement_id] || []).push(c); });
+    }
+    if (myCommunityName === null) { try { const { data: c } = await sb.from('communities').select('name').eq('id', CID()).single(); myCommunityName = (c && c.name) || ''; } catch(_) { myCommunityName = ''; } }
+  } catch(e) {
+    if (schoolTableMissing(e)) {
+      page.innerHTML = '<div style="max-width:520px;margin:40px auto;text-align:center"><div style="font-size:40px">💡</div><div style="font-size:15px;font-weight:700;margin:10px 0 6px">개선창을 준비 중이에요</div><div style="font-size:13px;color:var(--ink3);line-height:1.7">Supabase에서 <b>db/개선창_DB설치.sql</b> 을 실행하면 켜집니다.</div></div>';
+      return;
+    }
+    page.innerHTML = `<div style="color:#b91c1c;padding:30px;text-align:center;font-size:13px">불러오기 실패: ${e.message||e}</div>`;
+    return;
+  }
+  renderImprove();
+}
+function improveStatusBadge(st) {
+  const s = IMPROVE_STATUS[st] || IMPROVE_STATUS.pending;
+  return `<span style="font-size:11px;font-weight:700;padding:3px 9px;border-radius:99px;background:${s.bg};color:${s.color};white-space:nowrap">${s.label}</span>`;
+}
+function renderImprove() {
+  const page = document.getElementById('improve-main');
+  const admin = isSuperAdmin();
+  const counts = { all: improveItems.length };
+  IMPROVE_ORDER.forEach(k => counts[k] = improveItems.filter(i=>(i.status||'pending')===k).length);
+  const chip = (k, label) => `<button onclick="setImproveFilter('${k}')" style="height:30px;padding:0 12px;border-radius:99px;cursor:pointer;font:700 12px var(--font);white-space:nowrap;border:1.5px solid ${improveFilter===k?'#1d3a5f':'var(--border)'};background:${improveFilter===k?'#1d3a5f':'var(--surface)'};color:${improveFilter===k?'#fff':'var(--ink2)'}">${label} ${counts[k]||0}</button>`;
+  const filters = `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">${chip('all','전체')}${IMPROVE_ORDER.map(k=>chip(k, IMPROVE_STATUS[k].label)).join('')}</div>`;
+  const inp = 'width:100%;padding:11px 13px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);color:var(--ink);background:var(--surface);outline:none;box-sizing:border-box';
+  const form = `<div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin-bottom:18px">
+    <div style="font-size:13px;font-weight:800;color:var(--ink);margin-bottom:10px">✏️ 개선 아이디어 올리기</div>
+    <input id="imp-title" placeholder="제목 (예: 채팅에서 사진 여러 장 한 번에)" style="${inp};margin-bottom:8px"/>
+    <textarea id="imp-content" rows="3" placeholder="어떤 점이 불편한지, 어떻게 개선되면 좋을지 적어주세요" style="${inp};resize:vertical;line-height:1.6;margin-bottom:10px"></textarea>
+    <div style="display:flex;justify-content:flex-end"><button onclick="postImprovement()" style="height:38px;padding:0 18px;border:none;background:#1d3a5f;color:#fff;border-radius:10px;cursor:pointer;font:700 13px var(--font)">＋ 올리기</button></div>
+  </div>`;
+  const list = improveItems.filter(i => improveFilter==='all' || (i.status||'pending')===improveFilter);
+  const cards = list.map(it => {
+    const mine = it.author_id === ME.id;
+    const cs = improveComments[it.id] || [];
+    const stBtns = admin ? `<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:10px">${IMPROVE_ORDER.map(k => {
+      const on = (it.status||'pending')===k; const s = IMPROVE_STATUS[k];
+      return `<button onclick="setImproveStatus('${it.id}','${k}')" style="height:28px;padding:0 10px;border-radius:8px;cursor:pointer;font:700 11px var(--font);border:1.5px solid ${on?s.color:'var(--border)'};background:${on?s.color:'var(--surface)'};color:${on?'#fff':'var(--ink2)'}">${s.label}</button>`;
+    }).join('')}</div>` : '';
+    const commentItems = cs.map(c => `
+      <div style="display:flex;gap:8px;padding:7px 0;border-top:1px solid var(--border)">
+        <div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:700;color:${c.is_admin?'#DE911D':'var(--ink2)'}">${escHtml(c.author_name||'')}${c.is_admin?' 🛠':''} <span style="font-weight:400;color:var(--ink3);font-size:10.5px">${(c.created_at||'').slice(0,10)}</span></div><div style="font-size:12.5px;color:var(--ink);line-height:1.6;white-space:pre-wrap">${escHtml(c.content||'')}</div></div>
+        ${(c.author_id===ME.id||admin)?`<button onclick="deleteImproveComment('${c.id}','${it.id}')" style="border:none;background:transparent;cursor:pointer;color:var(--ink3);font-size:12px;flex-shrink:0">✕</button>`:''}
+      </div>`).join('');
+    return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:15px 17px;margin-bottom:12px">
+      <div style="display:flex;align-items:flex-start;gap:10px">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">${improveStatusBadge(it.status||'pending')}<span style="font-size:15px;font-weight:800;color:var(--ink)">${escHtml(it.title||'')}</span></div>
+          <div style="font-size:11px;color:var(--ink3)">${escHtml(it.author_name||'')}${it.community_name?` · ${escHtml(it.community_name)}`:''} · ${(it.created_at||'').slice(0,10)}</div>
+        </div>
+        ${(mine||admin)?`<button onclick="deleteImprovement('${it.id}')" title="삭제" style="border:none;background:transparent;cursor:pointer;color:#c0392b;font-size:13px;flex-shrink:0">✕</button>`:''}
+      </div>
+      ${it.content?`<div style="font-size:13.5px;color:var(--ink);line-height:1.7;white-space:pre-wrap;margin-top:8px">${escHtml(it.content)}</div>`:''}
+      ${stBtns}
+      <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:8px">
+        ${cs.length?commentItems:''}
+        <div style="display:flex;gap:6px;margin-top:8px">
+          <input id="impc-${it.id}" placeholder="${admin?'모세쌤 코멘트 남기기...':'댓글 달기...'}" style="flex:1;height:34px;padding:0 11px;border:1px solid var(--border);border-radius:8px;font:400 12.5px var(--font);background:var(--s2);color:var(--ink);outline:none" onkeydown="if(event.key==='Enter')addImproveComment('${it.id}')"/>
+          <button onclick="addImproveComment('${it.id}')" style="height:34px;padding:0 13px;border:none;background:#1d3a5f;color:#fff;border-radius:8px;cursor:pointer;font:700 12px var(--font)">등록</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+  page.innerHTML = `<div style="max-width:760px;margin:0 auto">
+    ${form}
+    ${filters}
+    ${list.length ? cards : '<div style="text-align:center;color:var(--ink3);font-size:13px;padding:30px">아직 올라온 제안이 없어요. 첫 아이디어를 올려보세요!</div>'}
+  </div>`;
+}
+function setImproveFilter(k) { improveFilter = k; renderImprove(); }
+async function postImprovement() {
+  const title = (document.getElementById('imp-title')?.value || '').trim();
+  const content = (document.getElementById('imp-content')?.value || '').trim();
+  if (!title) { showUploadToast('제목을 입력하세요'); return; }
+  const { error } = await sb.from('improvements').insert({
+    author_id: ME.id, author_name: ME.name, community_name: myCommunityName || null, title, content, status: 'pending',
+  });
+  if (error) {
+    if (schoolTableMissing(error)) { showUploadToast('개선창 테이블이 없어요. db/개선창_DB설치.sql 실행'); return; }
+    showUploadToast('올리기 실패: ' + error.message); return;
+  }
+  showUploadToast('✅ 제안이 올라갔어요!');
+  initImprovePage();
+}
+async function setImproveStatus(id, status) {
+  const { error } = await sb.from('improvements').update({ status }).eq('id', id);
+  if (error) { showUploadToast('상태 변경 실패: ' + error.message + (/policy|denied|permission/i.test(error.message)?' (권한 없음)':'')); return; }
+  const it = improveItems.find(x=>x.id===id); if (it) it.status = status;
+  showUploadToast('상태: ' + ((IMPROVE_STATUS[status]||{}).label||''));
+  renderImprove();
+}
+async function addImproveComment(id) {
+  const el = document.getElementById('impc-'+id);
+  const content = (el?.value || '').trim();
+  if (!content) return;
+  const { data, error } = await sb.from('improvement_comments').insert({
+    improvement_id: id, author_id: ME.id, author_name: ME.name, is_admin: isSuperAdmin(), content,
+  }).select().single();
+  if (error) { showUploadToast('댓글 실패: ' + error.message); return; }
+  if (data) (improveComments[id] = improveComments[id]||[]).push(data);
+  renderImprove();
+}
+async function deleteImproveComment(cid, id) {
+  const { error } = await sb.from('improvement_comments').delete().eq('id', cid);
+  if (error) { showUploadToast('삭제 실패: ' + error.message); return; }
+  improveComments[id] = (improveComments[id]||[]).filter(c=>c.id!==cid);
+  renderImprove();
+}
+async function deleteImprovement(id) {
+  if (!confirm('이 제안을 삭제할까요?')) return;
+  const { error } = await sb.from('improvements').delete().eq('id', id);
+  if (error) { showUploadToast('삭제 실패: ' + error.message); return; }
+  improveItems = improveItems.filter(i=>i.id!==id);
+  renderImprove();
 }
 
 async function initAllowancePage() {
