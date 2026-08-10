@@ -6471,11 +6471,8 @@ async function renderAdminMembers() {
   // 총관리자: 승인된 멤버 중에서는 교사/관리자만, pending/rejected는 전부 표시
   const pending  = list.filter(m => m.status === 'pending');
   const rejected = list.filter(m => m.status === 'rejected');
-  const approved = list.filter(m => (m.status === 'approved' || !m.status) &&
-    (isCommunityAdmin() && !isSuperAdmin()
-      ? true  // 공동체 관리자: 전체
-      : !['student','member'].includes(m.community_role)) // 총관리자: 교사/관리자급만
-  );
+  // 관리자·총관리자 모두 현재 공동체의 전체 멤버(학생 포함) 표시
+  const approved = list.filter(m => (m.status === 'approved' || !m.status));
 
   const roleLabel = { super_admin:'총관리자', community_admin:'관리자', teacher:'교사', staff:'간사', student:'학생', member:'멤버' };
   const roleColor = { super_admin:'#7c3aed', community_admin:'#1d4ed8', teacher:'#0369a1', staff:'#b45309', student:'#15803d', member:'#6b7280' };
@@ -6541,9 +6538,7 @@ async function renderAdminMembers() {
       </div>
     </div>`;
 
-  const titleNote = isSuperAdmin()
-    ? '교사 및 관리자급 멤버만 표시 · 학생은 각 공동체 관리자가 관리'
-    : `${ME.community_id ? '' : ''} 공동체 전체 멤버`;
+  const titleNote = '현재 공동체의 전체 멤버 (학생 포함)';
 
   area.innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
@@ -6569,7 +6564,7 @@ async function renderAdminMembers() {
 
     <div class="adm-card" style="padding:0;overflow:hidden;margin-bottom:16px">
       <div style="padding:12px 20px;font-size:12px;font-weight:600;color:var(--ink3);border-bottom:1px solid var(--bs)">
-        ${isSuperAdmin() ? `교사/관리자 ${approved.length}명` : `멤버 ${approved.length}명`}
+        멤버 ${approved.length}명
       </div>
       ${approved.length ? approved.map(m => memberRow(m, false)).join('') : `<div style="padding:24px;text-align:center;color:var(--ink3);font-size:13px">등록된 멤버가 없어요</div>`}
     </div>
