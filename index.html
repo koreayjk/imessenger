@@ -1810,7 +1810,7 @@ async function init() {
   const { data: chs } = await sb.from('channels').select('*')
     .eq('community_id', CID())
     .order('pinned', {ascending:false}).order('created_at');
-  channels = chs || [];
+  channels = sortChannels(chs || []);
 
   const { data: mems } = await sb.from('members').select('*')
     .eq('community_id', CID());
@@ -1836,7 +1836,7 @@ async function init() {
       const { data: newChs } = await sb.from('channels').select('*')
         .eq('community_id', CID())
         .order('pinned', {ascending:false}).order('created_at');
-      channels = newChs || [];
+      channels = sortChannels(newChs || []);
       if (isSuperAdmin()) {
         const { data: myDMs } = await sb.from('channel_members').select('channel_id').eq('member_id', ME.id);
         const myDMIds = new Set((myDMs||[]).map(m => m.channel_id));
@@ -1939,6 +1939,49 @@ function setMode(m) {
 }
 
 // ── 채널 패널 렌더 ──
+// 채널 정렬: 고정 먼저 → sort값(없으면 뒤로) → 생성순
+function chanOrderVal(c) { return (c.sort == null ? 1e9 : c.sort); }
+function sortChannels(arr) {
+  return (arr || []).slice().sort((a,b) => {
+    const pa = a.pinned?0:1, pb = b.pinned?0:1; if (pa!==pb) return pa-pb;
+    const sa = chanOrderVal(a), sb2 = chanOrderVal(b); if (sa!==sb2) return sa-sb2;
+    return String(a.created_at||'').localeCompare(String(b.created_at||''));
+  });
+}
+function canReorderChannels() { return isCommunityAdmin(); }
+// ── 토픽 드래그 순서 변경 ──
+let _dragCh = null;
+function chDragStart(e, id) { _dragCh = id; try { e.dataTransfer.effectAllowed='move'; e.dataTransfer.setData('text/plain', id); } catch(_){} e.currentTarget.style.opacity = '0.45'; }
+function chDragEnd(e) { e.currentTarget.style.opacity=''; document.querySelectorAll('#panel-body .ch-row').forEach(r=>{ r.style.boxShadow=''; }); _dragCh=null; }
+function chDragOver(e, id) {
+  if (!_dragCh || _dragCh===id) return;
+  e.preventDefault();
+  const r = e.currentTarget, rect = r.getBoundingClientRect();
+  const before = (e.clientY - rect.top) < rect.height/2;
+  r._before = before;
+  r.style.boxShadow = before ? 'inset 0 3px 0 var(--accent)' : 'inset 0 -3px 0 var(--accent)';
+}
+function chDragLeave(e) { e.currentTarget.style.boxShadow=''; }
+async function chDrop(e, targetId) {
+  e.preventDefault();
+  const r = e.currentTarget; const before = r._before; r.style.boxShadow='';
+  const dragId = _dragCh;
+  if (!dragId || dragId===targetId) return;
+  let topics = channels.filter(c => !c.pinned && c.kind!=='dm');
+  const di = topics.findIndex(c=>c.id===dragId); if (di<0) return;
+  const [moved] = topics.splice(di,1);
+  let ti = topics.findIndex(c=>c.id===targetId); if (ti<0) ti = topics.length;
+  topics.splice(before?ti:ti+1, 0, moved);
+  topics.forEach((c,i)=>{ c.sort = (i+1)*10; });
+  channels = sortChannels(channels);
+  renderPanel();
+  try {
+    const res = await Promise.all(topics.map(c => sb.from('channels').update({ sort:c.sort }).eq('id', c.id)));
+    const err = res.find(x=>x && x.error);
+    if (err) { if (schoolTableMissing(err.error)) showUploadToast('채널 순서 컬럼이 없어요. db/채널순서_DB설치.sql 실행'); else showUploadToast('순서 저장 실패: ' + err.error.message); }
+  } catch(_) { showUploadToast('순서 저장 실패'); }
+}
+
 function renderPanel() {
   const isAdmin = isSuperAdmin();
   const visibleChannels = isAdmin ? channels : channels.filter(c => myChannelIds.has(c.id));
@@ -2042,7 +2085,9 @@ function chRow(ch) {
   const active = currentChannel && currentChannel.id === ch.id;
   const isAdmin = ME && isSuperAdmin();
   const unread = (!active && unreadCounts[ch.id]) ? unreadCounts[ch.id] : 0;
-  return `<div class="ch-row${active?' active':''}" style="position:relative" onclick="openChannel('${ch.id}')"
+  const canDrag = canReorderChannels() && ch.kind !== 'dm' && !ch.pinned;
+  const dragAttrs = canDrag ? `draggable="true" ondragstart="chDragStart(event,'${ch.id}')" ondragover="chDragOver(event,'${ch.id}')" ondragleave="chDragLeave(event)" ondrop="chDrop(event,'${ch.id}')" ondragend="chDragEnd(event)"` : '';
+  return `<div class="ch-row${active?' active':''}" style="position:relative" onclick="openChannel('${ch.id}')" ${dragAttrs}
     onmouseenter="this.querySelector('.ch-edit-btn') && (this.querySelector('.ch-edit-btn').style.opacity='1')"
     onmouseleave="this.querySelector('.ch-edit-btn') && (this.querySelector('.ch-edit-btn').style.opacity='0')">
     <div class="ch-icon">${ch.emoji||'#'}</div>
