@@ -789,7 +789,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
             <div onclick="clearPendingFiles()" style="font-size:11px;color:var(--ink3);cursor:pointer;white-space:nowrap">✕ 모두 취소</div>
           </div>
           <div class="composer-box">
-            <div class="icon-btn">
+            <div class="icon-btn" onclick="openFileChooser()" title="사진·파일 첨부">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--ink3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
             </div>
             <textarea id="msgInput" placeholder="메시지 보내기 (Enter · @로 멤버 언급 · 이미지 붙여넣기 가능)" rows="1"
@@ -2614,7 +2614,7 @@ function parseMentions(text) {
   const cands = mentionCandidates().slice().sort((a,b)=>(b.name||'').length-(a.name||'').length);
   cands.forEach(m => { if (m.name && text.includes('@' + m.name)) ids.push(m.id); });
   // @전체/@all/@everyone → 채널 전원
-  if (/@(전체|everyone|all)\b/i.test(text)) mentionCandidates().forEach(m => ids.push(m.id));
+  if (/@(전체|everyone|all)(?![\w가-힣])/i.test(text)) mentionCandidates().forEach(m => ids.push(m.id));
   return [...new Set(ids)];
 }
 // 메시지 텍스트 렌더 (링크 + @멘션 하이라이트)
@@ -2627,13 +2627,13 @@ function renderMessageText(s) {
     const cls = (ME && n === ME.name) ? 'mention mention-me' : 'mention';
     html = html.replace(re, `<span class="${cls}">@${escName}</span>`);
   });
-  html = html.replace(/@(전체|everyone|all)\b/gi, '<span class="mention">@$1</span>');
+  html = html.replace(/@(전체|everyone|all)(?![\w가-힣])/gi, '<span class="mention">@$1</span>');
   return html;
 }
 function msgMentionsMe(msg) {
   if (!msg || !ME) return false;
   if (Array.isArray(msg.mentions) && msg.mentions.includes(ME.id)) return true;
-  if (typeof msg.text === 'string' && /@(전체|everyone|all)\b/i.test(msg.text)) return true;
+  if (typeof msg.text === 'string' && /@(전체|everyone|all)(?![\w가-힣])/i.test(msg.text)) return true;
   if (typeof msg.text === 'string' && ME.name && msg.text.includes('@' + ME.name)) return true;
   return false;
 }
