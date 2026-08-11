@@ -1198,7 +1198,12 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
       <div style="font-size:11.5px;color:var(--ink3);margin-bottom:5px">이모지 (선택)</div>
       <input id="edit-ch-emoji" placeholder="예: 🌿 📢 🤲" style="width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none;margin-bottom:10px"/>
       <div style="font-size:11.5px;color:var(--ink3);margin-bottom:5px">채널 설명 (선택)</div>
-      <input id="edit-ch-desc" placeholder="채널 설명" style="width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none;margin-bottom:18px"/>
+      <input id="edit-ch-desc" placeholder="채널 설명" style="width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none;margin-bottom:10px"/>
+      <div id="edit-ch-group-wrap" style="display:none">
+        <div style="font-size:11.5px;color:var(--ink3);margin-bottom:5px">그룹 (선택)</div>
+        <select id="edit-ch-group" style="width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none;margin-bottom:8px;background:var(--surface)"></select>
+      </div>
+      <div style="height:8px"></div>
       <div style="display:flex;gap:8px">
         <div onclick="document.getElementById('edit-channel-modal').style.display='none'" style="flex:1;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:var(--s3);color:var(--ink2);cursor:pointer;font-size:14px">취소</div>
         <div onclick="submitEditChannel()" style="flex:2;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:var(--accent);color:white;cursor:pointer;font-size:14px;font-weight:600">저장</div>
@@ -1306,6 +1311,9 @@ function subscribeGlobalMessages() {
       // 내가 속한 채널이면 배지 증가
       if (myChannelIds.has(msg.channel_id)) {
         unreadCounts[msg.channel_id] = (unreadCounts[msg.channel_id] || 0) + 1;
+        // 1:1 최신순: 해당 채널을 맨 위로
+        const bch = channels.find(c => c.id === msg.channel_id);
+        if (bch) { bch.last_message_at = msg.created_at || new Date().toISOString(); if (bch.kind === 'dm') renderPanel(); }
         updateUnreadBadges();
         if (msgMentionsMe(msg)) {
           const ch = channels.find(c => c.id === msg.channel_id);
@@ -1805,12 +1813,26 @@ function fmtTime(ts) {
 
 // ── 초기화 ──
 let myChannelIds = new Set();
+let channelGroups = [];
+let dmFavorites = new Set();
+let dmExpanded = false;
+let groupCollapsed = new Set();
+async function loadChannelGroups() {
+  try { const { data } = await sb.from('channel_groups').select('*').eq('community_id', CID()).order('sort').order('created_at'); channelGroups = data || []; }
+  catch(_) { channelGroups = []; }
+}
+async function loadDmFavorites() {
+  try { const { data } = await sb.from('channel_members').select('channel_id,favorite').eq('member_id', ME.id).eq('favorite', true); dmFavorites = new Set((data||[]).map(r=>r.channel_id)); }
+  catch(_) { dmFavorites = new Set(); }
+}
 
 async function init() {
   const { data: chs } = await sb.from('channels').select('*')
     .eq('community_id', CID())
     .order('pinned', {ascending:false}).order('created_at');
   channels = sortChannels(chs || []);
+  await loadChannelGroups();
+  await loadDmFavorites();
 
   const { data: mems } = await sb.from('members').select('*')
     .eq('community_id', CID());
@@ -1962,28 +1984,97 @@ function chDragOver(e, id) {
   r.style.boxShadow = before ? 'inset 0 3px 0 var(--accent)' : 'inset 0 -3px 0 var(--accent)';
 }
 function chDragLeave(e) { e.currentTarget.style.boxShadow=''; }
+// 토픽 드롭: 대상 토픽의 그룹으로 이동 + 그 그룹 안에서 위치 재정렬
 async function chDrop(e, targetId) {
   e.preventDefault();
   const r = e.currentTarget; const before = r._before; r.style.boxShadow='';
   const dragId = _dragCh;
   if (!dragId || dragId===targetId) return;
-  let topics = channels.filter(c => !c.pinned && c.kind!=='dm');
-  const di = topics.findIndex(c=>c.id===dragId); if (di<0) return;
-  const [moved] = topics.splice(di,1);
-  let ti = topics.findIndex(c=>c.id===targetId); if (ti<0) ti = topics.length;
-  topics.splice(before?ti:ti+1, 0, moved);
-  topics.forEach((c,i)=>{ c.sort = (i+1)*10; });
+  const moved = channels.find(c=>c.id===dragId), target = channels.find(c=>c.id===targetId);
+  if (!moved || !target || moved.pinned || moved.kind==='dm') return;
+  const gid = target.group_id || null;
+  moved.group_id = gid;
+  let list = channels.filter(c => !c.pinned && c.kind!=='dm' && (c.group_id||null)===gid);
+  const di = list.findIndex(c=>c.id===dragId); if (di>=0) list.splice(di,1);
+  let ti = list.findIndex(c=>c.id===targetId); if (ti<0) ti = list.length;
+  list.splice(before?ti:ti+1, 0, moved);
+  list.forEach((c,i)=>{ c.sort = (i+1)*10; });
   channels = sortChannels(channels);
   renderPanel();
   try {
-    const res = await Promise.all(topics.map(c => sb.from('channels').update({ sort:c.sort }).eq('id', c.id)));
+    const res = await Promise.all(list.map(c => sb.from('channels').update({ sort:c.sort, group_id:c.group_id||null }).eq('id', c.id)));
     const err = res.find(x=>x && x.error);
-    if (err) { if (schoolTableMissing(err.error)) showUploadToast('채널 순서 컬럼이 없어요. db/채널순서_DB설치.sql 실행'); else showUploadToast('순서 저장 실패: ' + err.error.message); }
+    if (err) { if (schoolTableMissing(err.error)) showUploadToast('DB 설치 필요: db/채널그룹_즐겨찾기_DB설치.sql'); else showUploadToast('순서 저장 실패: ' + err.error.message); }
   } catch(_) { showUploadToast('순서 저장 실패'); }
+}
+// 그룹 헤더로 드롭 → 그 그룹으로 이동(맨 뒤), '' 이면 그룹 해제
+function chGroupDragOver(e) { if (!_dragCh) return; e.preventDefault(); e.currentTarget.style.background='var(--asoft)'; }
+function chGroupDragLeave(e) { e.currentTarget.style.background=''; }
+async function chDropToGroup(e, groupId) {
+  e.preventDefault(); e.currentTarget.style.background='';
+  const id = _dragCh; if (!id) return;
+  const ch = channels.find(c=>c.id===id); if (!ch || ch.kind==='dm' || ch.pinned) return;
+  ch.group_id = groupId || null;
+  let list = channels.filter(c => !c.pinned && c.kind!=='dm' && (c.group_id||null)===(groupId||null));
+  list.forEach((c,i)=>{ c.sort = (i+1)*10; });
+  channels = sortChannels(channels);
+  renderPanel();
+  try { await Promise.all(list.map(c => sb.from('channels').update({ sort:c.sort, group_id:c.group_id||null }).eq('id', c.id))); }
+  catch(_) { showUploadToast('그룹 이동 저장 실패 (db/채널그룹_즐겨찾기_DB설치.sql 확인)'); }
+}
+// 그룹 만들기/이름수정/삭제
+async function createChannelGroup() {
+  const name = prompt('새 그룹 이름 (예: 사역팀)'); if (name===null) return; if (!name.trim()) return;
+  const sort = (channelGroups.length+1)*10;
+  const { data, error } = await sb.from('channel_groups').insert({ community_id: CID(), name: name.trim(), sort }).select().single();
+  if (error) { if (schoolTableMissing(error)) showUploadToast('DB 설치 필요: db/채널그룹_즐겨찾기_DB설치.sql'); else showUploadToast('그룹 생성 실패: '+error.message); return; }
+  if (data) channelGroups.push(data);
+  showUploadToast('✅ 그룹이 생겼어요. 토픽을 끌어다 넣어보세요');
+  renderPanel();
+}
+async function renameChannelGroup(id) {
+  const g = channelGroups.find(x=>x.id===id); if (!g) return;
+  const name = prompt('그룹 이름 수정', g.name||''); if (name===null) return;
+  const { error } = await sb.from('channel_groups').update({ name: name.trim() }).eq('id', id);
+  if (error) { showUploadToast('수정 실패: '+error.message); return; }
+  g.name = name.trim(); renderPanel();
+}
+async function deleteChannelGroup(id) {
+  if (!confirm('이 그룹을 삭제할까요? (안의 토픽은 그룹만 해제돼요)')) return;
+  await sb.from('channels').update({ group_id: null }).eq('group_id', id);
+  channels.forEach(c=>{ if (c.group_id===id) c.group_id=null; });
+  const { error } = await sb.from('channel_groups').delete().eq('id', id);
+  if (error) { showUploadToast('삭제 실패: '+error.message); return; }
+  channelGroups = channelGroups.filter(g=>g.id!==id);
+  renderPanel();
+}
+function toggleGroupCollapse(id) { if (groupCollapsed.has(id)) groupCollapsed.delete(id); else groupCollapsed.add(id); renderPanel(); }
+function groupHeaderHtml(g, count) {
+  const canEdit = canReorderChannels();
+  const collapsed = groupCollapsed.has(g.id);
+  return `<div class="section-label" style="display:flex;align-items:center;gap:6px" ondragover="chGroupDragOver(event)" ondragleave="chGroupDragLeave(event)" ondrop="chDropToGroup(event,'${g.id}')">
+    <span onclick="toggleGroupCollapse('${g.id}')" style="cursor:pointer;display:inline-flex;align-items:center;gap:5px">${collapsed?'▸':'▾'} ${escHtml(g.name||'그룹')} <span style="color:var(--ink3);font-weight:400">${count}</span></span>
+    <div style="flex:1"></div>
+    ${canEdit?`<span onclick="renameChannelGroup('${g.id}')" title="이름 수정" style="cursor:pointer;font-size:12px">✏️</span><span onclick="deleteChannelGroup('${g.id}')" title="그룹 삭제" style="cursor:pointer;font-size:12px;opacity:.7">🗑</span>`:''}
+  </div>`;
+}
+function sortDms(dms) {
+  return dms.slice().sort((a,b)=>{
+    const fa = dmFavorites.has(a.id)?0:1, fb = dmFavorites.has(b.id)?0:1; if (fa!==fb) return fa-fb;
+    return String(b.last_message_at||b.created_at||'').localeCompare(String(a.last_message_at||a.created_at||''));
+  });
+}
+async function toggleDmFavorite(id) {
+  const now = !dmFavorites.has(id);
+  if (now) dmFavorites.add(id); else dmFavorites.delete(id);
+  renderPanel();
+  const { error } = await sb.from('channel_members').update({ favorite: now }).eq('channel_id', id).eq('member_id', ME.id);
+  if (error && schoolTableMissing(error)) showUploadToast('DB 설치 필요: db/채널그룹_즐겨찾기_DB설치.sql');
 }
 
 function renderPanel() {
   const isAdmin = isSuperAdmin();
+  const canEdit = canReorderChannels();
   const visibleChannels = isAdmin ? channels : channels.filter(c => myChannelIds.has(c.id));
   const pinned = visibleChannels.filter(c => c.pinned && c.kind !== 'dm');
   const topics = visibleChannels.filter(c => !c.pinned && c.kind !== 'dm');
@@ -1993,17 +2084,32 @@ function renderPanel() {
     html += `<div class="section-label"><span>📌 고정</span></div>`;
     pinned.forEach(ch => html += chRow(ch));
   }
-  if (topics.length) {
-    html += `<div class="section-label"><span>토픽</span></div>`;
-    topics.forEach(ch => html += chRow(ch));
+  // 그룹별 토픽
+  const groupIds = new Set(channelGroups.map(g=>g.id));
+  channelGroups.forEach(g => {
+    const gtopics = topics.filter(c => c.group_id === g.id);
+    if (!gtopics.length && !canEdit) return;   // 관리자에겐 빈 그룹도(드롭 대상) 보임
+    html += groupHeaderHtml(g, gtopics.length);
+    if (!groupCollapsed.has(g.id)) gtopics.forEach(ch => html += chRow(ch));
+  });
+  // 그룹 없는 토픽
+  const ungrouped = topics.filter(c => !c.group_id || !groupIds.has(c.group_id));
+  if (ungrouped.length || canEdit) {
+    html += `<div class="section-label" style="display:flex;align-items:center;gap:6px" ondragover="chGroupDragOver(event)" ondragleave="chGroupDragLeave(event)" ondrop="chDropToGroup(event,'')">
+      <span>토픽</span><div style="flex:1"></div>${canEdit?`<span onclick="createChannelGroup()" title="그룹 추가" style="cursor:pointer;color:var(--accent);font-weight:700;font-size:12px">＋ 그룹</span>`:''}</div>`;
+    ungrouped.forEach(ch => html += chRow(ch));
   }
+  // 1:1 대화 — 즐겨찾기 먼저 → 최신순, 10개까지 + 더보기
   if (dms.length) {
+    const sorted = sortDms(dms);
+    const shown = dmExpanded ? sorted : sorted.slice(0, 10);
     html += `<div class="section-label"><span>💬 1:1 대화</span></div>`;
-    dms.forEach(ch => html += chRow(ch));
+    shown.forEach(ch => html += chRow(ch));
+    if (sorted.length > 10) {
+      html += `<div onclick="dmExpanded=!dmExpanded;renderPanel()" style="text-align:center;padding:9px;font-size:12px;color:var(--accent);cursor:pointer;font-weight:700">${dmExpanded?'접기 ▲':`더보기 (${sorted.length-10}명) ▼`}</div>`;
+    }
   }
-  if (!pinned.length && !topics.length && !dms.length) {
-    html = `<div style="padding:24px;text-align:center;color:var(--ink3);font-size:13px">초대된 채널이 없어요</div>`;
-  }
+  if (!html) html = `<div style="padding:24px;text-align:center;color:var(--ink3);font-size:13px">초대된 채널이 없어요</div>`;
   document.getElementById('panel-body').innerHTML = html;
 }
 
@@ -2096,6 +2202,7 @@ function chRow(ch) {
       <div class="ch-preview">${ch.description||''}</div>
     </div>
     ${unread ? `<div style="min-width:20px;height:20px;border-radius:10px;padding:0 5px;background:#E53935;color:white;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">${unread > 99 ? '99+' : unread}</div>` : ''}
+    ${ch.kind==='dm' ? `<div onclick="event.stopPropagation();toggleDmFavorite('${ch.id}')" title="즐겨찾기" style="cursor:pointer;font-size:15px;line-height:1;flex-shrink:0;color:${dmFavorites.has(ch.id)?'#F5B301':'var(--ink3)'}">${dmFavorites.has(ch.id)?'★':'☆'}</div>` : ''}
     ${isAdmin ? `<div class="ch-edit-btn" onclick="event.stopPropagation();showEditChannel('${ch.id}')"
       style="opacity:0;transition:opacity .15s;width:26px;height:26px;border-radius:7px;
       background:rgba(0,0,0,.07);display:flex;align-items:center;justify-content:center;
@@ -2808,6 +2915,14 @@ async function sendMsg() {
     inp.style.height = 'auto';
     inp.focus();
     updateSendBtn();
+  }
+  // 1:1 최신순용 마지막 활동시각 갱신
+  if (currentChannel) {
+    const nowIso = new Date().toISOString();
+    currentChannel.last_message_at = nowIso;
+    const ch = channels.find(c => c.id === currentChannel.id); if (ch) ch.last_message_at = nowIso;
+    sb.from('channels').update({ last_message_at: nowIso }).eq('id', currentChannel.id).then(()=>{}, ()=>{});
+    if (currentChannel.kind === 'dm') renderPanel();
   }
   isSending = false;
 }
@@ -7366,6 +7481,15 @@ function showEditChannel(id) {
   document.getElementById('edit-ch-name').value = ch.name;
   document.getElementById('edit-ch-emoji').value = ch.emoji || '';
   document.getElementById('edit-ch-desc').value = ch.description || '';
+  const gWrap = document.getElementById('edit-ch-group-wrap');
+  const gSel = document.getElementById('edit-ch-group');
+  if (gWrap && gSel) {
+    if (ch.kind === 'dm' || !canReorderChannels()) { gWrap.style.display = 'none'; }
+    else {
+      gWrap.style.display = 'block';
+      gSel.innerHTML = `<option value="">그룹 없음</option>` + channelGroups.map(g=>`<option value="${g.id}" ${ch.group_id===g.id?'selected':''}>${escHtml(g.name||'그룹')}</option>`).join('');
+    }
+  }
   document.getElementById('edit-channel-modal').style.display = 'flex';
 }
 
@@ -7374,12 +7498,17 @@ async function submitEditChannel() {
   if (!name) { document.getElementById('edit-ch-name').style.borderColor='var(--rose)'; return; }
   const emoji = document.getElementById('edit-ch-emoji').value.trim() || null;
   const description = document.getElementById('edit-ch-desc').value.trim() || '';
+  const gWrap = document.getElementById('edit-ch-group-wrap');
+  const upd = { name, emoji, description };
+  if (gWrap && gWrap.style.display !== 'none') upd.group_id = document.getElementById('edit-ch-group').value || null;
 
-  const { error } = await sb.from('channels').update({ name, emoji, description }).eq('id', editingChannelId);
+  const { error } = await sb.from('channels').update(upd).eq('id', editingChannelId);
   if (!error) {
     // 로컬 데이터 업데이트
     const ch = channels.find(c => c.id === editingChannelId);
-    if (ch) { ch.name = name; ch.emoji = emoji; ch.description = description; }
+    if (ch) { ch.name = name; ch.emoji = emoji; ch.description = description; if ('group_id' in upd) ch.group_id = upd.group_id; }
+    channels = sortChannels(channels);
+    renderPanel();
     // 현재 열린 채널이면 헤더도 업데이트
     if (currentChannel && currentChannel.id === editingChannelId) {
       currentChannel.name = name;
