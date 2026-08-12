@@ -1997,11 +1997,14 @@ function setMode(m) {
 }
 
 // ── 채널 패널 렌더 ──
-// 채널 정렬: 고정 먼저 → sort값(없으면 뒤로) → 생성순
+// 전체공지: 고정 섹션 맨 위에 항상 고정(이동 불가)
+function isAnnounceChannel(c) { return !!c && (c.name === '전체공지' || c.name === '전체 공지'); }
+// 채널 정렬: 고정 먼저(그 안에서 전체공지 최상단) → sort값(없으면 뒤로) → 생성순
 function chanOrderVal(c) { return (c.sort == null ? 1e9 : c.sort); }
 function sortChannels(arr) {
   return (arr || []).slice().sort((a,b) => {
     const pa = a.pinned?0:1, pb = b.pinned?0:1; if (pa!==pb) return pa-pb;
+    if (a.pinned && b.pinned) { const aa = isAnnounceChannel(a)?0:1, ab = isAnnounceChannel(b)?0:1; if (aa!==ab) return aa-ab; }
     const sa = chanOrderVal(a), sb2 = chanOrderVal(b); if (sa!==sb2) return sa-sb2;
     return String(a.created_at||'').localeCompare(String(b.created_at||''));
   });
@@ -2027,7 +2030,26 @@ async function chDrop(e, targetId) {
   const dragId = _dragCh;
   if (!dragId || dragId===targetId) return;
   const moved = channels.find(c=>c.id===dragId), target = channels.find(c=>c.id===targetId);
-  if (!moved || !target || moved.pinned || moved.kind==='dm') return;
+  if (!moved || !target || moved.kind==='dm') return;
+  if (!!moved.pinned !== !!target.pinned) return;   // 고정 ↔ 토픽 섞기 금지
+
+  // 고정 채널 재정렬 (전체공지는 항상 맨 위, 이동 불가)
+  if (moved.pinned) {
+    if (isAnnounceChannel(moved)) return;
+    let list = channels.filter(c => c.pinned && c.kind!=='dm' && !isAnnounceChannel(c));
+    const di = list.findIndex(c=>c.id===dragId); if (di>=0) list.splice(di,1);
+    let ti;
+    if (isAnnounceChannel(target)) ti = 0;   // 전체공지 위로는 못 감 → 바로 아래
+    else { ti = list.findIndex(c=>c.id===targetId); if (ti<0) ti = list.length; ti = before ? ti : ti+1; }
+    list.splice(ti, 0, moved);
+    list.forEach((c,i)=>{ c.sort = (i+1)*10; });
+    channels = sortChannels(channels);
+    renderPanel();
+    try { await Promise.all(list.map(c => sb.from('channels').update({ sort:c.sort }).eq('id', c.id))); }
+    catch(_) { showUploadToast('순서 저장 실패'); }
+    return;
+  }
+
   const gid = target.group_id || null;
   moved.group_id = gid;
   let list = channels.filter(c => !c.pinned && c.kind!=='dm' && (c.group_id||null)===gid);
@@ -2227,7 +2249,7 @@ function chRow(ch) {
   const active = currentChannel && currentChannel.id === ch.id;
   const isAdmin = ME && isSuperAdmin();
   const unread = (!active && unreadCounts[ch.id]) ? unreadCounts[ch.id] : 0;
-  const canDrag = canReorderChannels() && ch.kind !== 'dm' && !ch.pinned;
+  const canDrag = canReorderChannels() && ch.kind !== 'dm' && !isAnnounceChannel(ch);
   const dragAttrs = canDrag ? `draggable="true" ondragstart="chDragStart(event,'${ch.id}')" ondragover="chDragOver(event,'${ch.id}')" ondragleave="chDragLeave(event)" ondrop="chDrop(event,'${ch.id}')" ondragend="chDragEnd(event)"` : '';
   return `<div class="ch-row${active?' active':''}" style="position:relative" onclick="openChannel('${ch.id}')" ${dragAttrs}
     onmouseenter="this.querySelector('.ch-edit-btn') && (this.querySelector('.ch-edit-btn').style.opacity='1')"
