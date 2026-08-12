@@ -1808,6 +1808,18 @@ function fmtTime(ts) {
   const h = d.getHours(), m = String(d.getMinutes()).padStart(2,'0');
   return `${h<12?'오전':'오후'} ${h%12||12}:${m}`;
 }
+// 날짜 구분선 — 보는 사람의 '로컬 시간' 기준(시간 표시와 동일)으로 날짜를 나눔
+function msgDateStr(isoStr) {
+  const d = isoStr ? new Date(isoStr) : new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function msgDateLabel(isoStr) {
+  if (!isoStr) return '오늘';
+  const d = msgDateStr(isoStr);
+  if (d === msgDateStr()) return '오늘';
+  if (d === msgDateStr(new Date(Date.now() - 86400000))) return '어제';
+  return new Date(isoStr).toLocaleDateString('ko-KR', { year:'numeric', month:'long', day:'numeric', weekday:'short' });
+}
 
 
 
@@ -2417,34 +2429,15 @@ function renderMessages(msgs, readMap={}) {
     return;
   }
 
-  function toKST(isoStr) {
-    const d = isoStr ? new Date(isoStr) : new Date();
-    // UTC+9 기준 날짜 문자열
-    return new Date(d.getTime() + 9*60*60*1000).toISOString().slice(0,10);
-  }
-
-  const todayKST = toKST();
-  const yesterdayKST = toKST(new Date(Date.now() - 86400000).toISOString());
-
-  function dateLabel(isoStr) {
-    if (!isoStr) return '오늘';
-    const d = toKST(isoStr);
-    if (d === todayKST) return '오늘';
-    if (d === yesterdayKST) return '어제';
-    const date = new Date(isoStr);
-    return new Date(date.getTime() + 9*60*60*1000)
-      .toLocaleDateString('ko-KR', { year:'numeric', month:'long', day:'numeric', weekday:'short' });
-  }
-
   let html = '';
   let lastDateStr = '';
   msgs.forEach((m, i) => {
-    const dStr = toKST(m.created_at);
+    const dStr = msgDateStr(m.created_at);
     if (dStr !== lastDateStr) {
       lastDateStr = dStr;
-      html += `<div class="date-divider">${dateLabel(m.created_at)}</div>`;
+      html += `<div class="date-divider">${msgDateLabel(m.created_at)}</div>`;
     }
-    const prev = i > 0 && toKST(msgs[i-1].created_at) === dStr ? msgs[i-1] : null;
+    const prev = i > 0 && msgDateStr(msgs[i-1].created_at) === dStr ? msgs[i-1] : null;
     html += msgHtml(m, prev, readMap);
   });
 
@@ -2464,29 +2457,17 @@ function appendMessage(m, readMap={}) {
   const area = document.getElementById('msg-area');
   if (document.querySelector(`[data-id="${m.id}"]`)) return;
 
-  const todayKST2 = new Date(Date.now() + 9*60*60*1000).toISOString().slice(0,10);
-  const yesterdayKST2 = new Date(Date.now() - 86400000 + 9*60*60*1000).toISOString().slice(0,10);
-  function dateLabel(isoStr) {
-    if (!isoStr) return '오늘';
-    const d = new Date(new Date(isoStr).getTime() + 9*60*60*1000).toISOString().slice(0,10);
-    if (d === todayKST2) return '오늘';
-    if (d === yesterdayKST2) return '어제';
-    return new Date(new Date(isoStr).getTime() + 9*60*60*1000)
-      .toLocaleDateString('ko-KR', { year:'numeric', month:'long', day:'numeric', weekday:'short' });
-  }
-
   // 빈 채팅창이면 날짜 구분선 추가
   if (area.querySelector('.msg-empty')) {
-    area.innerHTML = `<div class="date-divider">${dateLabel(m.created_at)}</div>`;
+    area.innerHTML = `<div class="date-divider">${msgDateLabel(m.created_at)}</div>`;
   } else {
-    // 마지막 메시지와 날짜 다르면 구분선 추가
+    // 마지막 메시지와 날짜(로컬 기준) 다르면 구분선 추가
     const lastRow = area.querySelector('.msg-row:last-child');
-    const lastDateDiv = area.querySelector('.date-divider:last-of-type');
     const today = new Date().toDateString();
     const newDate = m.created_at ? new Date(m.created_at).toDateString() : today;
     const lastDate = lastRow?.dataset.date || today;
     if (newDate !== lastDate) {
-      area.insertAdjacentHTML('beforeend', `<div class="date-divider">${dateLabel(m.created_at)}</div>`);
+      area.insertAdjacentHTML('beforeend', `<div class="date-divider">${msgDateLabel(m.created_at)}</div>`);
     }
   }
   const prev = area.querySelector('.msg-row:last-child');
