@@ -753,6 +753,9 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
           <div class="header-action" onclick="toggleRightPanel()">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--ink3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="9" r="3.5"/><path d="M3 19c0-3 3-5 6-5s6 2 6 5"/><circle cx="17" cy="8" r="2.5"/><path d="M15 19c0-2 2-3.5 4-3.5"/></svg>
           </div>
+          <div class="header-action" onclick="leaveCurrentChannel()" title="채팅방 나가기">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#c0392b" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>
+          </div>
         </div>
         <!-- To-Do List 패널 -->
         <div id="todo-panel" style="display:none;border-bottom:1px solid var(--border);background:var(--s2);flex-shrink:0;max-height:320px;overflow-y:auto">
@@ -1732,6 +1735,27 @@ function closeMoreMenu() { const m = document.getElementById('more-menu'); if (m
 
 function closeMobilePanel() {
   document.getElementById('panel').classList.add('hidden');
+}
+
+async function leaveCurrentChannel() {
+  if (!currentChannel) return;
+  const isDm = currentChannel.kind === 'dm';
+  const chId = currentChannel.id, name = currentChannel.name;
+  if (!confirm(`'${name}' ${isDm?'대화':'채널'}에서 나갈까요?${isDm?'' : '\n(다시 들어가려면 관리자 초대가 필요할 수 있어요)'}`)) return;
+  const { error } = await sb.from('channel_members').delete().eq('channel_id', chId).eq('member_id', ME.id);
+  if (error) { showUploadToast('나가기 실패: ' + error.message); return; }
+  myChannelIds.delete(chId);
+  dmFavorites.delete(chId);
+  if (realtimeSub) { try { sb.removeChannel(realtimeSub); } catch(_){} realtimeSub = null; }
+  currentChannel = null;
+  sessionStorage.removeItem('last_channel_id');
+  document.getElementById('chat-active').style.display = 'none';
+  document.getElementById('empty').style.display = 'flex';
+  document.body.classList.remove('in-chat');
+  const backBtn = document.getElementById('mobile-chat-back'); if (backBtn) backBtn.style.display = 'none';
+  document.getElementById('panel').classList.remove('hidden');
+  renderPanel();
+  showUploadToast('나갔어요');
 }
 
 function closeMobileChat() {
@@ -3020,6 +3044,10 @@ async function openDMwith(memberId) {
     myChannelIds.add(data.id);
     channels.push(data);
     dmChannel = data;
+  } else if (!myChannelIds.has(dmChannel.id)) {
+    // 예전에 나갔던 대화 다시 열기 → 멤버십 복구(내역 유지)
+    await sb.from('channel_members').insert({ channel_id: dmChannel.id, member_id: ME.id }).then(()=>{}, ()=>{});
+    myChannelIds.add(dmChannel.id);
   }
 
   // 채팅 탭으로 이동 후 DM 채널 열기
