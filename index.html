@@ -7635,11 +7635,31 @@ function clearPendingFiles() {
   updateSendBtn();
 }
 
+// 이미지 업로드 전 자동 압축·리사이즈 (대역폭·용량 절감) — GIF/작은 파일/비이미지는 그대로
+async function compressImage(file, maxDim = 1600, quality = 0.82) {
+  try {
+    if (!file || !file.type || !file.type.startsWith('image/') || file.type === 'image/gif') return file;
+    if (file.size < 300 * 1024) return file;   // 이미 작으면 압축 이득 없음
+    const dataUrl = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); });
+    const img = await new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = dataUrl; });
+    let w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+    if (!w || !h) return file;
+    if (Math.max(w, h) > maxDim) { const s = maxDim / Math.max(w, h); w = Math.round(w * s); h = Math.round(h * s); }
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    c.getContext('2d').drawImage(img, 0, 0, w, h);
+    const blob = await new Promise(res => c.toBlob(res, 'image/jpeg', quality));
+    if (!blob || blob.size >= file.size) return file;   // 더 커지면 원본 유지
+    return new File([blob], file.name.replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' });
+  } catch(_) { return file; }
+}
+
 async function uploadFileGetMeta(file) {
+  file = await compressImage(file);   // 이미지면 압축본으로 업로드
   const ext = file.name.split('.').pop();
   const fileName = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}_${ME.id}.${ext}`;
   const path = `chat/${currentChannel.id}/${fileName}`;
-  const { error } = await sb.storage.from('messenger').upload(path, file, { cacheControl: '3600', upsert: false });
+  // 캐시 30일 — 채팅 이미지는 안 바뀌므로 재다운로드(대역폭)를 크게 줄임
+  const { error } = await sb.storage.from('messenger').upload(path, file, { cacheControl: '2592000', upsert: false });
   if (error) throw error;
   const { data: urlData } = sb.storage.from('messenger').getPublicUrl(path);
   const publicUrl = urlData.publicUrl;
