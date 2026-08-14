@@ -1341,15 +1341,16 @@ async function resyncRealtime(force) {
     if (force) { sb.realtime.disconnect(); sb.realtime.connect(); }
     else if (sb.realtime && (typeof sb.realtime.isConnected === 'function') && !sb.realtime.isConnected()) sb.realtime.connect();
   } catch(_) {}
-  // 2) unread 전역 구독 재설정 (끊긴 구독 되살림)
+  // 2) unread 전역 구독 재설정 (끊긴 구독 되살림) — 데이터 전송 없음(가벼움)
   try { subscribeGlobalMessages(); } catch(_) {}
-  // 3) 안읽음 배지 DB 기준으로 다시 계산
-  try { await loadUnreadCounts(); updateUnreadBadges(); } catch(_) {}
-  // 4) 열려 있는 채팅이면 메시지 다시 로드 + 재구독 (바로 최신 메시지 표시)
-  try {
-    const ca = document.getElementById('chat-active');
-    if (currentChannel && ca && ca.style.display !== 'none') await openChannel(currentChannel.id);
-  } catch(_) {}
+  // 무거운 재조회(안읽음 재계산 + 채널 전체 재로드)는 '오래 자리비움(force)'일 때만 → 대역폭 절약
+  if (force) {
+    try { await loadUnreadCounts(); updateUnreadBadges(); } catch(_) {}
+    try {
+      const ca = document.getElementById('chat-active');
+      if (currentChannel && ca && ca.style.display !== 'none') await openChannel(currentChannel.id);
+    } catch(_) {}
+  }
 }
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') { _hiddenSince = Date.now(); return; }
@@ -2179,20 +2180,19 @@ async function loadUnreadCounts() {
   const visibleIds = Array.from(myChannelIds);
   if (!visibleIds.length) return;
 
+  // 최근 45일 메시지만 대상으로(대역폭 절약) — 안읽음 배지는 최근 것만 필요
+  const since = new Date(Date.now() - 45*86400000).toISOString();
   // 내가 읽은 메시지 ID 목록
   const { data: reads } = await sb.from('message_reads').select('message_id').eq('member_id', ME.id);
   const readSet = new Set((reads||[]).map(r => r.message_id));
 
-  // 각 채널의 메시지 중 내가 안 읽은 것 (내가 보낸 것 제외)
-  const { data: msgs } = await sb.from('messages').select('id, channel_id, sender_id')
-    .in('channel_id', visibleIds);
+  // 각 채널의 메시지 중 내가 안 읽은 것 (내가 보낸 건 서버에서 제외, 컬럼 최소화)
+  const { data: msgs } = await sb.from('messages').select('id, channel_id')
+    .in('channel_id', visibleIds).neq('sender_id', ME.id).gte('created_at', since);
 
   unreadCounts = {};
   (msgs||[]).forEach(m => {
-    if (m.sender_id === ME.id) return; // 내가 보낸 건 제외
-    if (!readSet.has(m.id)) {
-      unreadCounts[m.channel_id] = (unreadCounts[m.channel_id] || 0) + 1;
-    }
+    if (!readSet.has(m.id)) unreadCounts[m.channel_id] = (unreadCounts[m.channel_id] || 0) + 1;
   });
 
   updateUnreadBadges();
