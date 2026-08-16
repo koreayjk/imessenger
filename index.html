@@ -2182,19 +2182,32 @@ async function loadUnreadCounts() {
 
   // 최근 45일 메시지만 대상으로(대역폭 절약) — 안읽음 배지는 최근 것만 필요
   const since = new Date(Date.now() - 45*86400000).toISOString();
-  // 내가 읽은 메시지 ID 목록
-  const { data: reads } = await sb.from('message_reads').select('message_id').eq('member_id', ME.id);
-  const readSet = new Set((reads||[]).map(r => r.message_id));
 
-  // 각 채널의 메시지 중 내가 안 읽은 것 (내가 보낸 건 서버에서 제외, 컬럼 최소화)
-  const { data: msgs } = await sb.from('messages').select('id, channel_id')
-    .in('channel_id', visibleIds).neq('sender_id', ME.id).gte('created_at', since);
+  // 채널별 '마지막 읽은 시각'(있으면 이 방식이 정확)
+  let lastRead = null;
+  try {
+    const { data: creads, error } = await sb.from('channel_reads').select('channel_id, last_read_at').eq('member_id', ME.id);
+    if (error) throw error;
+    lastRead = {}; (creads||[]).forEach(r => { lastRead[r.channel_id] = r.last_read_at; });
+  } catch(_) { lastRead = null; }   // 테이블 없으면 아래 message_reads 방식으로 폴백
 
   unreadCounts = {};
-  (msgs||[]).forEach(m => {
-    if (!readSet.has(m.id)) unreadCounts[m.channel_id] = (unreadCounts[m.channel_id] || 0) + 1;
-  });
-
+  if (lastRead) {
+    // 내 마지막 읽은 시각 이후 도착한(내가 안 보낸) 메시지 = 안읽음
+    const { data: msgs } = await sb.from('messages').select('channel_id, created_at')
+      .in('channel_id', visibleIds).neq('sender_id', ME.id).gte('created_at', since);
+    (msgs||[]).forEach(m => {
+      const lr = lastRead[m.channel_id];
+      if (!lr || m.created_at > lr) unreadCounts[m.channel_id] = (unreadCounts[m.channel_id] || 0) + 1;
+    });
+  } else {
+    // 폴백: 기존 message_reads 기반
+    const { data: reads } = await sb.from('message_reads').select('message_id').eq('member_id', ME.id);
+    const readSet = new Set((reads||[]).map(r => r.message_id));
+    const { data: msgs } = await sb.from('messages').select('id, channel_id')
+      .in('channel_id', visibleIds).neq('sender_id', ME.id).gte('created_at', since);
+    (msgs||[]).forEach(m => { if (!readSet.has(m.id)) unreadCounts[m.channel_id] = (unreadCounts[m.channel_id] || 0) + 1; });
+  }
   updateUnreadBadges();
 }
 
@@ -2318,13 +2331,15 @@ async function openChannel(id) {
   // 멤버 패널 업데이트 (DM이면 해당 멤버만)
   renderMembers();
 
-  // 채널 열면 읽지 않은 카운트 초기화
+  // 채널 열면 읽지 않은 카운트 초기화 + 채널별 '읽은 시각' 기록(안읽음 배지 정확화)
   unreadCounts[id] = 0;
   updateUnreadBadges();
+  markChannelRead(id);
 
-  // 메시지 + 읽음 데이터 함께 로드
-  const { data: msgs } = await sb.from('messages').select('*')
-    .eq('channel_id', id).order('created_at', {ascending:true}).limit(200);
+  // 메시지 로드 — 최신 200개를 가져와 오래된→최신 순으로 표시
+  const { data: msgsDesc } = await sb.from('messages').select('*')
+    .eq('channel_id', id).order('created_at', {ascending:false}).limit(200);
+  const msgs = (msgsDesc || []).slice().reverse();
 
   // 리액션 로드
   const msgIds = (msgs||[]).map(m=>m.id);
@@ -2362,7 +2377,7 @@ async function openChannel(id) {
           showUploadToast('💬 ' + (payload.new.sender_name || '누군가') + '님이 회원님을 언급했어요');
         }
         // 내가 보낸 메시지는 '읽음'으로 표시하지 않음 (안 그러면 상대가 안 읽어도 '모두 읽음'이 됨)
-        if (payload.new.sender_id !== ME.id) await markRead(payload.new.id);
+        if (payload.new.sender_id !== ME.id) { await markRead(payload.new.id); markChannelRead(id); }
       })
     .on('postgres_changes', { event:'INSERT', schema:'public', table:'message_reads' },
       async () => { await refreshReadCounts(); })
@@ -2422,6 +2437,15 @@ async function markRead(messageId) {
     { message_id: messageId, member_id: ME.id },
     { onConflict: 'message_id,member_id', ignoreDuplicates: true }
   );
+}
+// 채널별 '마지막 읽은 시각' 기록 — 안읽음 배지 정확화(메시지 수 무관)
+async function markChannelRead(channelId) {
+  try {
+    await sb.from('channel_reads').upsert(
+      { member_id: ME.id, channel_id: channelId, last_read_at: new Date().toISOString() },
+      { onConflict: 'member_id,channel_id' }
+    );
+  } catch(_) {}
 }
 
 // 읽음 숫자 새로고침 (내 메시지들만)
