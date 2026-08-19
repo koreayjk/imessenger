@@ -1493,6 +1493,9 @@ function applyI18n() {
     const el = document.querySelector('#' + id + ' span');
     if (el) el.textContent = APP_LANG === 'en' ? pair[1] : pair[0];
   });
+  // 입력창 placeholder
+  const mi = document.getElementById('msgInput'); if (mi) mi.placeholder = t('메시지 보내기 (Enter · @로 멤버 언급 · 이미지 붙여넣기 가능)', 'Message (Enter · @ to mention · paste image)');
+  const si = document.getElementById('searchInput'); if (si) si.placeholder = t('검색', 'Search');
 }
 
 // 총관리자 이메일 (DB 값이 바뀌어도 항상 총관리자로 보장 — 소유자 계정)
@@ -2188,7 +2191,7 @@ function renderPanel() {
   const dms = visibleChannels.filter(c => c.kind === 'dm');
   let html = '';
   if (pinned.length) {
-    html += `<div class="section-label"><span>📌 고정</span></div>`;
+    html += `<div class="section-label"><span>📌 ${t('고정','Pinned')}</span></div>`;
     pinned.forEach(ch => html += chRow(ch));
   }
   // 그룹별 토픽
@@ -2203,20 +2206,20 @@ function renderPanel() {
   const ungrouped = topics.filter(c => !c.group_id || !groupIds.has(c.group_id));
   if (ungrouped.length || canEdit) {
     html += `<div class="section-label" style="display:flex;align-items:center;gap:6px" ondragover="chGroupDragOver(event)" ondragleave="chGroupDragLeave(event)" ondrop="chDropToGroup(event,'')">
-      <span>토픽</span><div style="flex:1"></div>${canEdit?`<span onclick="createChannelGroup()" title="그룹 추가" style="cursor:pointer;color:var(--accent);font-weight:700;font-size:12px">＋ 그룹</span>`:''}</div>`;
+      <span>${t('토픽','Topics')}</span><div style="flex:1"></div>${canEdit?`<span onclick="createChannelGroup()" title="${t('그룹 추가','Add group')}" style="cursor:pointer;color:var(--accent);font-weight:700;font-size:12px">＋ ${t('그룹','Group')}</span>`:''}</div>`;
     ungrouped.forEach(ch => html += chRow(ch));
   }
   // 1:1 대화 — 즐겨찾기 먼저 → 최신순, 10개까지 + 더보기
   if (dms.length) {
     const sorted = sortDms(dms);
     const shown = dmExpanded ? sorted : sorted.slice(0, 10);
-    html += `<div class="section-label"><span>💬 1:1 대화</span></div>`;
+    html += `<div class="section-label"><span>💬 ${t('1:1 대화','Direct Messages')}</span></div>`;
     shown.forEach(ch => html += chRow(ch));
     if (sorted.length > 10) {
-      html += `<div onclick="dmExpanded=!dmExpanded;renderPanel()" style="text-align:center;padding:9px;font-size:12px;color:var(--accent);cursor:pointer;font-weight:700">${dmExpanded?'접기 ▲':`더보기 (${sorted.length-10}명) ▼`}</div>`;
+      html += `<div onclick="dmExpanded=!dmExpanded;renderPanel()" style="text-align:center;padding:9px;font-size:12px;color:var(--accent);cursor:pointer;font-weight:700">${dmExpanded?t('접기 ▲','Collapse ▲'):`${t('더보기','More')} (${sorted.length-10}) ▼`}</div>`;
     }
   }
-  if (!html) html = `<div style="padding:24px;text-align:center;color:var(--ink3);font-size:13px">초대된 채널이 없어요</div>`;
+  if (!html) html = `<div style="padding:24px;text-align:center;color:var(--ink3);font-size:13px">${t('초대된 채널이 없어요','No channels yet')}</div>`;
   document.getElementById('panel-body').innerHTML = html;
 }
 
@@ -2541,8 +2544,8 @@ function renderMessages(msgs, readMap={}) {
   if (!msgs.length) {
     area.innerHTML = `<div class="msg-empty" style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--ink3);gap:10px">
       <div style="font-size:40px">${currentChannel.emoji||'💬'}</div>
-      <div style="font-size:15px;font-weight:600;color:var(--ink)">${currentChannel.name} 채널에 오신 것을 환영해요!</div>
-      <div style="font-size:13px">첫 번째 메시지를 보내보세요</div>
+      <div style="font-size:15px;font-weight:600;color:var(--ink)">${APP_LANG==='en' ? `Welcome to ${currentChannel.name}!` : `${currentChannel.name} 채널에 오신 것을 환영해요!`}</div>
+      <div style="font-size:13px">${t('첫 번째 메시지를 보내보세요','Send the first message')}</div>
     </div>`;
     return;
   }
@@ -3279,8 +3282,8 @@ async function renderHome() {
   const nlHomeHtml = nlHome.length ? `
     <div style="background:var(--surface);border-radius:18px;padding:16px 20px;margin-bottom:20px;box-shadow:0 1px 4px rgba(29,58,95,.07)">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
-        <div style="font-size:14px;font-weight:700">✉️ 가정통신문</div>
-        <span style="font-size:11px;color:var(--ink3)">학교에서 가정으로 보내는 안내</span>
+        <div style="font-size:14px;font-weight:700">✉️ ${t('가정통신문','Newsletter')}</div>
+        <span style="font-size:11px;color:var(--ink3)">${t('학교에서 가정으로 보내는 안내','Notices from school to home')}</span>
       </div>
       <div style="display:flex;flex-direction:column;gap:10px">
         ${nlHome.map(n => `
@@ -3297,10 +3300,10 @@ async function renderHome() {
   // IMUSA 팀 점수 로드 (실시간은 별도 위젯으로 렌더 후 구독)
   let imusaHtml = `<div id="imusa-score-widget" style="background:var(--surface);border-radius:18px;padding:18px 20px;box-shadow:0 1px 4px rgba(29,58,95,.07)">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-      <div style="font-size:14px;font-weight:700">🏆 IMUSA 팀 점수</div>
-      <a href="https://imusa-team-building.web.app" target="_blank" style="font-size:11px;color:var(--accent);text-decoration:none;font-weight:600">자세히 →</a>
+      <div style="font-size:14px;font-weight:700">🏆 ${t('IMUSA 팀 점수','IMUSA Team Scores')}</div>
+      <a href="https://imusa-team-building.web.app" target="_blank" style="font-size:11px;color:var(--accent);text-decoration:none;font-weight:600">${t('자세히','Details')} →</a>
     </div>
-    <div id="imusa-score-inner" style="color:var(--ink3);font-size:13px;text-align:center;padding:8px">불러오는 중...</div>
+    <div id="imusa-score-inner" style="color:var(--ink3);font-size:13px;text-align:center;padding:8px">${t('불러오는 중...','Loading...')}</div>
   </div>`;
 
   area.innerHTML = `
@@ -3308,12 +3311,12 @@ async function renderHome() {
     <!-- 인사 -->
     <div style="margin-bottom:20px;display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px">
       <div>
-        <div style="font-size:13px;color:var(--ink3);margin-bottom:4px">${d.getMonth()+1}월 ${d.getDate()}일 ${wk[d.getDay()]}요일</div>
-        <div style="font-size:clamp(20px,2.5vw,26px);font-weight:700;letter-spacing:-.02em">샬롬, <span style="color:var(--adeep)">${ME.name}</span> 님 👋</div>
+        <div style="font-size:13px;color:var(--ink3);margin-bottom:4px">${APP_LANG==='en' ? d.toLocaleDateString('en-US',{month:'long',day:'numeric',weekday:'long'}) : (d.getMonth()+1)+'월 '+d.getDate()+'일 '+wk[d.getDay()]+'요일'}</div>
+        <div style="font-size:clamp(20px,2.5vw,26px);font-weight:700;letter-spacing:-.02em">${t('샬롬','Shalom')}, <span style="color:var(--adeep)">${ME.name}</span> 님 👋</div>
       </div>
       ${isAdmin ? `<div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button onclick="showDailyWordForm('${todayStr}')" style="height:34px;padding:0 14px;border-radius:10px;border:1.5px solid var(--accent);background:white;color:var(--accent);font:600 12px var(--font);cursor:pointer;white-space:nowrap">✏️ 묵상 등록</button>
-        <button onclick="showScheduleImageForm()" style="height:34px;padding:0 14px;border-radius:10px;border:1.5px solid var(--sage);background:white;color:var(--sage);font:600 12px var(--font);cursor:pointer;white-space:nowrap">📷 주간일정 등록</button>
+        <button onclick="showDailyWordForm('${todayStr}')" style="height:34px;padding:0 14px;border-radius:10px;border:1.5px solid var(--accent);background:white;color:var(--accent);font:600 12px var(--font);cursor:pointer;white-space:nowrap">✏️ ${t('묵상 등록','Add Devotion')}</button>
+        <button onclick="showScheduleImageForm()" style="height:34px;padding:0 14px;border-radius:10px;border:1.5px solid var(--sage);background:white;color:var(--sage);font:600 12px var(--font);cursor:pointer;white-space:nowrap">📷 ${t('주간일정 등록','Add Schedule')}</button>
       </div>` : ''}
     </div>
 
@@ -3323,8 +3326,8 @@ async function renderHome() {
       <!-- 맥체인 성경읽기 -->
       <div style="background:var(--surface);border-radius:18px;padding:18px 20px;box-shadow:0 1px 4px rgba(29,58,95,.07)">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-          <div style="font-size:14px;font-weight:700">📖 맥체인 성경읽기</div>
-          <span style="font-size:11px;color:var(--ink3)">오늘의 4구절</span>
+          <div style="font-size:14px;font-weight:700">📖 ${t('맥체인 성경읽기',"M'Cheyne Bible Reading")}</div>
+          <span style="font-size:11px;color:var(--ink3)">${t('오늘의 4구절',"Today's 4 verses")}</span>
         </div>
         <div style="display:flex;flex-direction:column;gap:7px">
           ${getMcCheyneToday().map((r,i) => `
@@ -3343,11 +3346,11 @@ async function renderHome() {
         <div style="border-radius:18px;background:linear-gradient(160deg,#1d3a5f,#2a5298);border:1px solid #1d3a5f;padding:20px 24px;position:relative;overflow:hidden;height:100%;box-sizing:border-box">
           <div style="position:absolute;top:-20px;right:-10px;font-size:80px;color:rgba(255,255,255,.06);line-height:1">"</div>
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
-            <div style="font-size:11px;font-weight:600;color:rgba(255,255,255,.7);letter-spacing:.05em">✦ 오늘의 묵상 — Tabletalk</div>
+            <div style="font-size:11px;font-weight:600;color:rgba(255,255,255,.7);letter-spacing:.05em">✦ ${t('오늘의 묵상','Devotion')} — Tabletalk</div>
             ${isAdmin ? `<div onclick="showDailyWordForm('${todayStr}')" style="font-size:11.5px;color:#c5d9ef;cursor:pointer;font-weight:600">수정</div>` : ''}
           </div>
           ${wordData.title ? `<div style="font-size:15px;font-weight:600;color:white;margin-bottom:12px">${wordData.title}</div>` : ''}
-          <a href="${wordData.url}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 14px;border-radius:9px;background:rgba(255,255,255,.2);color:white;font:600 12px var(--font);text-decoration:none">Tabletalk에서 읽기 →</a>
+          <a href="${wordData.url}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 14px;border-radius:9px;background:rgba(255,255,255,.2);color:white;font:600 12px var(--font);text-decoration:none">${t('Tabletalk에서 읽기','Read on Tabletalk')} →</a>
           ${wordData.scripture_text ? `
           <div style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,.15)">
             <div style="font-size:11px;color:rgba(255,255,255,.6);font-weight:600;margin-bottom:6px">📖 ${wordData.verse||''} (ESV)</div>
@@ -3355,9 +3358,9 @@ async function renderHome() {
           </div>` : wordData.verse ? `<div style="font-size:12px;font-weight:600;color:rgba(255,255,255,.7);margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,.15)">📖 ${wordData.verse}</div>` : ''}
         </div>` : `
         <div style="border-radius:18px;background:linear-gradient(160deg,#1d3a5f,#2a5298);border:1px solid #1d3a5f;padding:20px 24px;text-align:center;height:100%;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center">
-          <div style="font-size:11px;font-weight:600;color:rgba(255,255,255,.6);letter-spacing:.05em;margin-bottom:10px">✦ 오늘의 묵상</div>
-          <div style="font-size:14px;line-height:1.7;color:rgba(255,255,255,.7);font-style:italic">오늘의 묵상이 아직 등록되지 않았어요</div>
-          ${isAdmin ? `<button onclick="showDailyWordForm('${todayStr}')" style="margin-top:12px;height:32px;padding:0 14px;border-radius:9px;border:none;background:rgba(255,255,255,.2);color:white;font:600 12px var(--font);cursor:pointer">+ 지금 등록하기</button>` : ''}
+          <div style="font-size:11px;font-weight:600;color:rgba(255,255,255,.6);letter-spacing:.05em;margin-bottom:10px">✦ ${t('오늘의 묵상','Devotion')}</div>
+          <div style="font-size:14px;line-height:1.7;color:rgba(255,255,255,.7);font-style:italic">${t('오늘의 묵상이 아직 등록되지 않았어요',"Today's devotion hasn't been added yet")}</div>
+          ${isAdmin ? `<button onclick="showDailyWordForm('${todayStr}')" style="margin-top:12px;height:32px;padding:0 14px;border-radius:9px;border:none;background:rgba(255,255,255,.2);color:white;font:600 12px var(--font);cursor:pointer">+ ${t('지금 등록하기','Add now')}</button>` : ''}
         </div>`}
       </div>
 
@@ -3368,18 +3371,18 @@ async function renderHome() {
     <!-- 주간 일정표 -->
     <div style="background:var(--surface);border-radius:18px;overflow:hidden;box-shadow:0 1px 4px rgba(29,58,95,.07)">
       <div style="padding:14px 18px 12px;display:flex;align-items:center;justify-content:space-between">
-        <div style="font-size:14px;font-weight:700">📅 ${schedImg?.title || '주간 일정표'}</div>
-        ${isAdmin ? `<button onclick="showScheduleImageForm()" style="height:28px;padding:0 12px;border-radius:8px;border:1px solid var(--border);background:white;color:var(--ink2);font:500 12px var(--font);cursor:pointer">+ 새 일정 등록</button>` : ''}
+        <div style="font-size:14px;font-weight:700">📅 ${schedImg?.title || t('주간 일정표','Weekly Schedule')}</div>
+        ${isAdmin ? `<button onclick="showScheduleImageForm()" style="height:28px;padding:0 12px;border-radius:8px;border:1px solid var(--border);background:white;color:var(--ink2);font:500 12px var(--font);cursor:pointer">+ ${t('새 일정 등록','Add Schedule')}</button>` : ''}
       </div>
       ${schedImg ? `
-      <div onclick="openImageModal('${schedImg.image_url}','주간 일정표')" style="cursor:zoom-in">
+      <div onclick="openImageModal('${schedImg.image_url}',t('주간 일정표','Weekly Schedule'))" style="cursor:zoom-in">
         <img src="${schedImg.image_url}" style="width:100%;display:block;max-height:500px;object-fit:contain;background:var(--bg)"
           onerror="this.style.display='none';this.nextSibling.style.display='flex'"/>
-        <div style="display:none;height:200px;align-items:center;justify-content:center;color:var(--ink3);font-size:13px">이미지를 불러올 수 없어요</div>
+        <div style="display:none;height:200px;align-items:center;justify-content:center;color:var(--ink3);font-size:13px">${t('이미지를 불러올 수 없어요','Image failed to load')}</div>
       </div>` : `
       <div style="height:200px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--ink3);gap:10px;background:var(--bg)">
         <div style="font-size:40px">📋</div>
-        <div style="font-size:13px">${isAdmin ? '주간 일정표를 등록해주세요' : '주간 일정표가 아직 등록되지 않았어요'}</div>
+        <div style="font-size:13px">${isAdmin ? t('주간 일정표를 등록해주세요','Please add the weekly schedule') : t('주간 일정표가 아직 등록되지 않았어요','No weekly schedule yet')}</div>
         ${isAdmin ? `<button onclick="showScheduleImageForm()" style="height:32px;padding:0 16px;border-radius:9px;border:none;background:var(--sage);color:white;font:600 12px var(--font);cursor:pointer">📷 지금 등록하기</button>` : ''}
       </div>`}
     </div>
@@ -3540,7 +3543,7 @@ function showScheduleImageForm() {
 }
 
 function confirmScheduleTitle() {
-  pendingScheduleTitle = document.getElementById('sched-title-input')?.value.trim() || '주간 일정표';
+  pendingScheduleTitle = document.getElementById('sched-title-input')?.value.trim() || t('주간 일정표','Weekly Schedule');
   document.getElementById('sched-title-modal')?.remove();
   document.getElementById('schedFileInput').click();
 }
