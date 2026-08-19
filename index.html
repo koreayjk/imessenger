@@ -543,73 +543,77 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
           onerror="document.getElementById('auth-logo-img').style.display='none';document.getElementById('auth-logo-txt').style.display='block'"/>
         <div id="auth-logo-txt" style="display:none;font-size:56px;font-weight:900;color:white;letter-spacing:-2px;margin-bottom:16px;text-shadow:0 4px 20px rgba(0,0,0,.3)">TCS</div>
         <div style="font-size:13px;font-weight:600;color:rgba(255,255,255,.5);letter-spacing:3px;text-transform:uppercase;margin-bottom:6px">Total Care System</div>
-        <div class="tagline">학생 한 명 한 명을 온전히 품는<br>교육 공동체 통합 플랫폼</div>
+        <div class="tagline" data-ko-html="학생 한 명 한 명을 온전히 품는<br>교육 공동체 통합 플랫폼" data-en-html="An all-in-one platform for<br>education communities that care for every student">학생 한 명 한 명을 온전히 품는<br>교육 공동체 통합 플랫폼</div>
       </div>
       <div class="features">
-        <div class="feat"><div class="feat-icon">🏫</div>공동체별 독립 공간</div>
-        <div class="feat"><div class="feat-icon">📋</div>학생 종합 기록부 (TCS)</div>
-        <div class="feat"><div class="feat-icon">💬</div>교사·학생 실시간 메신저</div>
-        <div class="feat"><div class="feat-icon">📊</div>성적·활동·신앙 통합 관리</div>
+        <div class="feat"><div class="feat-icon">🏫</div><span data-ko="공동체별 독립 공간" data-en="Separate space per community">공동체별 독립 공간</span></div>
+        <div class="feat"><div class="feat-icon">📋</div><span data-ko="학생 종합 기록부 (TCS)" data-en="Student comprehensive records (TCS)">학생 종합 기록부 (TCS)</span></div>
+        <div class="feat"><div class="feat-icon">💬</div><span data-ko="교사·학생 실시간 메신저" data-en="Teacher–student live messenger">교사·학생 실시간 메신저</span></div>
+        <div class="feat"><div class="feat-icon">📊</div><span data-ko="성적·활동·신앙 통합 관리" data-en="Unified grades · activities · faith">성적·활동·신앙 통합 관리</span></div>
       </div>
     </div>
 
     <!-- 오른쪽 폼 -->
     <div class="auth-right">
+      <div style="display:flex;justify-content:flex-end;gap:6px;margin-bottom:10px">
+        <button type="button" onclick="setAuthLang('ko')" id="auth-lang-ko" style="font-size:12px;font-weight:600;padding:4px 10px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--ink2);cursor:pointer">한국어</button>
+        <button type="button" onclick="setAuthLang('en')" id="auth-lang-en" style="font-size:12px;font-weight:600;padding:4px 10px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--ink2);cursor:pointer">English</button>
+      </div>
       <div class="auth-tabs">
-        <div class="auth-tab active" id="tab-signin" onclick="switchTab('signin')">로그인</div>
-        <div class="auth-tab" id="tab-signup" onclick="switchTab('signup')">회원가입</div>
+        <div class="auth-tab active" id="tab-signin" onclick="switchTab('signin')" data-ko="로그인" data-en="Sign In">로그인</div>
+        <div class="auth-tab" id="tab-signup" onclick="switchTab('signup')" data-ko="회원가입" data-en="Sign Up">회원가입</div>
       </div>
 
       <!-- 로그인 폼 -->
       <div class="auth-form" id="form-signin">
-        <h2>다시 만나서 반가워요 🌿</h2>
-        <div class="sub">TCS 계정으로 로그인하세요</div>
-        <input class="auth-input" id="si-email" type="email" placeholder="이메일 주소" onkeydown="if(event.key==='Enter')doSignIn()"/>
-        <input class="auth-input" id="si-pw" type="password" placeholder="비밀번호" onkeydown="if(event.key==='Enter')doSignIn()"/>
-        <button class="auth-btn" onclick="doSignIn()" id="si-btn">로그인</button>
+        <h2 data-ko="다시 만나서 반가워요 🌿" data-en="Welcome back 🌿">다시 만나서 반가워요 🌿</h2>
+        <div class="sub" data-ko="TCS 계정으로 로그인하세요" data-en="Sign in with your TCS account">TCS 계정으로 로그인하세요</div>
+        <input class="auth-input" id="si-email" type="email" placeholder="이메일 주소" data-ko-ph="이메일 주소" data-en-ph="Email address" onkeydown="if(event.key==='Enter')doSignIn()"/>
+        <input class="auth-input" id="si-pw" type="password" placeholder="비밀번호" data-ko-ph="비밀번호" data-en-ph="Password" onkeydown="if(event.key==='Enter')doSignIn()"/>
+        <button class="auth-btn" onclick="doSignIn()" id="si-btn" data-ko="로그인" data-en="Sign In">로그인</button>
         <div class="auth-msg error" id="si-msg"></div>
         <div style="text-align:center;font-size:13px;color:var(--ink3);margin-top:4px">
-          계정이 없으신가요? <span onclick="switchTab('signup')" style="color:var(--adeep);font-weight:600;cursor:pointer">회원가입</span>
+          <span data-ko="계정이 없으신가요?" data-en="Don't have an account?">계정이 없으신가요?</span> <span onclick="switchTab('signup')" style="color:var(--adeep);font-weight:600;cursor:pointer" data-ko="회원가입" data-en="Sign up">회원가입</span>
         </div>
       </div>
 
       <!-- 회원가입 폼 -->
       <div class="auth-form" id="form-signup" style="display:none">
-        <h2>TCS 가입하기 ✨</h2>
-        <div class="sub">아래 정보를 입력해서 가입해주세요</div>
-        <input class="auth-input" id="su-email" type="email" placeholder="이메일 주소"/>
-        <input class="auth-input" id="su-pw" type="password" placeholder="비밀번호 (6자 이상)"/>
+        <h2 data-ko="TCS 가입하기 ✨" data-en="Join TCS ✨">TCS 가입하기 ✨</h2>
+        <div class="sub" data-ko="아래 정보를 입력해서 가입해주세요" data-en="Fill in the details below to sign up">아래 정보를 입력해서 가입해주세요</div>
+        <input class="auth-input" id="su-email" type="email" placeholder="이메일 주소" data-ko-ph="이메일 주소" data-en-ph="Email address"/>
+        <input class="auth-input" id="su-pw" type="password" placeholder="비밀번호 (6자 이상)" data-ko-ph="비밀번호 (6자 이상)" data-en-ph="Password (6+ characters)"/>
         <div class="field-row">
-          <input class="auth-input" id="su-nick" placeholder="이름 (실명)"/>
-          <input class="auth-input" id="su-birth" type="date" placeholder="생년월일" style="color:var(--ink2)"/>
+          <input class="auth-input" id="su-nick" placeholder="이름 (실명)" data-ko-ph="이름 (실명)" data-en-ph="Full name"/>
+          <input class="auth-input" id="su-birth" type="date" placeholder="생년월일" data-ko-ph="생년월일" data-en-ph="Date of birth" style="color:var(--ink2)"/>
         </div>
         <!-- 공동체 선택 -->
         <div style="margin-bottom:8px">
-          <div style="font-size:12px;color:var(--ink3);margin-bottom:6px;font-weight:500">소속 공동체 선택</div>
+          <div style="font-size:12px;color:var(--ink3);margin-bottom:6px;font-weight:500" data-ko="소속 공동체 선택" data-en="Select your community">소속 공동체 선택</div>
           <select class="auth-input" id="su-community" style="cursor:pointer">
-            <option value="">-- 공동체를 선택해주세요 --</option>
+            <option value="" data-ko="-- 공동체를 선택해주세요 --" data-en="-- Please select a community --">-- 공동체를 선택해주세요 --</option>
           </select>
         </div>
         <!-- 역할 선택 -->
         <div style="margin-bottom:14px">
-          <div style="font-size:12px;color:var(--ink3);margin-bottom:6px;font-weight:500">역할</div>
+          <div style="font-size:12px;color:var(--ink3);margin-bottom:6px;font-weight:500" data-ko="역할" data-en="Role">역할</div>
           <div style="display:flex;gap:8px">
             <label style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:10px 8px;border:1.5px solid var(--border);border-radius:10px;cursor:pointer;font-size:13px;transition:all .15s" id="role-teacher-label">
-              <input type="radio" name="su-role" value="teacher" id="role-teacher" style="width:auto"/> 👩‍🏫 교사
+              <input type="radio" name="su-role" value="teacher" id="role-teacher" style="width:auto"/> <span data-ko="👩‍🏫 교사" data-en="👩‍🏫 Teacher">👩‍🏫 교사</span>
             </label>
             <label style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:10px 8px;border:1.5px solid var(--border);border-radius:10px;cursor:pointer;font-size:13px;transition:all .15s" id="role-staff-label">
-              <input type="radio" name="su-role" value="staff" id="role-staff" style="width:auto"/> 🧑‍💼 간사
+              <input type="radio" name="su-role" value="staff" id="role-staff" style="width:auto"/> <span data-ko="🧑‍💼 간사" data-en="🧑‍💼 Staff">🧑‍💼 간사</span>
             </label>
             <label style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:10px 8px;border:1.5px solid var(--border);border-radius:10px;cursor:pointer;font-size:13px;transition:all .15s" id="role-student-label">
-              <input type="radio" name="su-role" value="student" id="role-student" style="width:auto" checked/> 🎓 학생
+              <input type="radio" name="su-role" value="student" id="role-student" style="width:auto" checked/> <span data-ko="🎓 학생" data-en="🎓 Student">🎓 학생</span>
             </label>
           </div>
-          <div style="font-size:11px;color:var(--ink3);margin-top:6px">※ 관리자·행정담당자 권한은 가입 후 관리자가 지정합니다.</div>
+          <div style="font-size:11px;color:var(--ink3);margin-top:6px" data-ko="※ 관리자·행정담당자 권한은 가입 후 관리자가 지정합니다." data-en="※ Admin / officer roles are assigned by an administrator after sign-up.">※ 관리자·행정담당자 권한은 가입 후 관리자가 지정합니다.</div>
         </div>
-        <button class="auth-btn" onclick="doSignUp()" id="su-btn">가입하기</button>
+        <button class="auth-btn" onclick="doSignUp()" id="su-btn" data-ko="가입하기" data-en="Sign Up">가입하기</button>
         <div class="auth-msg" id="su-msg"></div>
         <div style="text-align:center;font-size:13px;color:var(--ink3);margin-top:4px">
-          이미 계정이 있으신가요? <span onclick="switchTab('signin')" style="color:var(--adeep);font-weight:600;cursor:pointer">로그인</span>
+          <span data-ko="이미 계정이 있으신가요?" data-en="Already have an account?">이미 계정이 있으신가요?</span> <span onclick="switchTab('signin')" style="color:var(--adeep);font-weight:600;cursor:pointer" data-ko="로그인" data-en="Sign in">로그인</span>
         </div>
       </div>
     </div>
@@ -623,8 +627,8 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
       <img src="https://koreayjk.github.io/imessenger/tcs_logo.png" alt="TCS"
         style="width:72px;height:72px;object-fit:contain;margin-bottom:14px;opacity:.85"
         onerror="this.style.display='none'"/>
-      <div style="font-size:26px;font-weight:700;color:var(--adeep);margin-bottom:6px">공동체 선택</div>
-      <div style="font-size:14px;color:var(--ink3)">입장할 공동체를 선택해주세요</div>
+      <div style="font-size:26px;font-weight:700;color:var(--adeep);margin-bottom:6px" data-ko="공동체 선택" data-en="Select Community">공동체 선택</div>
+      <div style="font-size:14px;color:var(--ink3)" data-ko="입장할 공동체를 선택해주세요" data-en="Choose a community to enter">입장할 공동체를 선택해주세요</div>
     </div>
     <div id="community-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px;margin-bottom:24px"></div>
     <div id="community-select-msg" style="text-align:center;font-size:13px;color:var(--ink3)"></div>
@@ -1000,17 +1004,17 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
       <div style="height:56px;padding:0 20px;display:flex;align-items:center;gap:12px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0">
         <div style="width:36px;height:36px;border-radius:11px;background:#1d3a5f;display:flex;align-items:center;justify-content:center;font-size:18px">⚙️</div>
         <div style="flex:1">
-          <div style="font-size:15px;font-weight:700">관리자 페이지</div>
-          <div style="font-size:12px;color:var(--ink3)" id="admin-role-label">멤버·채널·공지·목표 관리</div>
+          <div style="font-size:15px;font-weight:700" data-ko="관리자 페이지" data-en="Admin Page">관리자 페이지</div>
+          <div style="font-size:12px;color:var(--ink3)" id="admin-role-label" data-ko="멤버·채널·공지·목표 관리" data-en="Manage members · channels · notices · goals">멤버·채널·공지·목표 관리</div>
         </div>
       </div>
       <div style="display:flex;gap:0;padding:0 20px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;overflow-x:auto">
-        <div id="adm-tab-communities" onclick="switchAdminTab('communities')" class="adm-tab" style="display:none;white-space:nowrap">🏛️ 공동체</div>
-        <div id="adm-tab-mysettings" onclick="switchAdminTab('mysettings')" class="adm-tab" style="display:none;white-space:nowrap">⚙️ 공동체 설정</div>
-        <div id="adm-tab-members" onclick="switchAdminTab('members')" class="adm-tab active-adm" style="white-space:nowrap">👥 멤버</div>
-        <div id="adm-tab-channels" onclick="switchAdminTab('channels')" class="adm-tab" style="white-space:nowrap">💬 채널</div>
-        <div id="adm-tab-notices" onclick="switchAdminTab('notices')" class="adm-tab" style="white-space:nowrap">📢 공지사항</div>
-        <div id="adm-tab-goals" onclick="switchAdminTab('goals')" class="adm-tab" style="white-space:nowrap">🎯 이달의 목표</div>
+        <div id="adm-tab-communities" onclick="switchAdminTab('communities')" class="adm-tab" style="display:none;white-space:nowrap" data-ko="🏛️ 공동체" data-en="🏛️ Communities">🏛️ 공동체</div>
+        <div id="adm-tab-mysettings" onclick="switchAdminTab('mysettings')" class="adm-tab" style="display:none;white-space:nowrap" data-ko="⚙️ 공동체 설정" data-en="⚙️ Community Settings">⚙️ 공동체 설정</div>
+        <div id="adm-tab-members" onclick="switchAdminTab('members')" class="adm-tab active-adm" style="white-space:nowrap" data-ko="👥 멤버" data-en="👥 Members">👥 멤버</div>
+        <div id="adm-tab-channels" onclick="switchAdminTab('channels')" class="adm-tab" style="white-space:nowrap" data-ko="💬 채널" data-en="💬 Channels">💬 채널</div>
+        <div id="adm-tab-notices" onclick="switchAdminTab('notices')" class="adm-tab" style="white-space:nowrap" data-ko="📢 공지사항" data-en="📢 Notices">📢 공지사항</div>
+        <div id="adm-tab-goals" onclick="switchAdminTab('goals')" class="adm-tab" style="white-space:nowrap" data-ko="🎯 이달의 목표" data-en="🎯 Monthly Goals">🎯 이달의 목표</div>
       </div>
       <div id="admin-content" style="flex:1;overflow-y:auto;padding:24px 28px"></div>
     </div>
@@ -1496,6 +1500,33 @@ function applyI18n() {
   // 입력창 placeholder
   const mi = document.getElementById('msgInput'); if (mi) mi.placeholder = t('메시지 보내기 (Enter · @로 멤버 언급 · 이미지 붙여넣기 가능)', 'Message (Enter · @ to mention · paste image)');
   const si = document.getElementById('searchInput'); if (si) si.placeholder = t('검색', 'Search');
+  // 정적 HTML 라벨: data-ko / data-en (텍스트), data-ko-ph / data-en-ph (placeholder), data-ko-html / data-en-html (innerHTML)
+  document.querySelectorAll('[data-ko]').forEach(el => {
+    const v = APP_LANG === 'en' ? (el.getAttribute('data-en') || el.getAttribute('data-ko')) : el.getAttribute('data-ko');
+    if (v != null) el.textContent = v;
+  });
+  document.querySelectorAll('[data-ko-html]').forEach(el => {
+    const v = APP_LANG === 'en' ? (el.getAttribute('data-en-html') || el.getAttribute('data-ko-html')) : el.getAttribute('data-ko-html');
+    if (v != null) el.innerHTML = v;
+  });
+  document.querySelectorAll('[data-ko-ph]').forEach(el => {
+    const v = APP_LANG === 'en' ? (el.getAttribute('data-en-ph') || el.getAttribute('data-ko-ph')) : el.getAttribute('data-ko-ph');
+    if (v != null) el.placeholder = v;
+  });
+}
+
+// 로그인 화면 언어 토글 (공동체 컨텍스트 없이 로컬 저장만)
+function setAuthLang(lang) {
+  APP_LANG = (lang === 'en') ? 'en' : 'ko';
+  localStorage.setItem('app_lang', APP_LANG);
+  applyI18n();
+  const ko = document.getElementById('auth-lang-ko'), en = document.getElementById('auth-lang-en');
+  if (ko && en) {
+    const on = 'background:var(--adeep);color:#fff;border-color:var(--adeep)';
+    const off = 'background:transparent;color:var(--ink2)';
+    ko.style.cssText = 'font-size:12px;font-weight:600;padding:4px 10px;border-radius:8px;border:1px solid var(--border);cursor:pointer;' + (APP_LANG === 'ko' ? on : off);
+    en.style.cssText = 'font-size:12px;font-weight:600;padding:4px 10px;border-radius:8px;border:1px solid var(--border);cursor:pointer;' + (APP_LANG === 'en' ? on : off);
+  }
 }
 
 // 총관리자 이메일 (DB 값이 바뀌어도 항상 총관리자로 보장 — 소유자 계정)
@@ -3843,13 +3874,15 @@ async function renderProfilePage() {
   const sn = document.getElementById('subnav-profile');
   if (sn) sn.innerHTML = isTeacher() ? '' : tcsSubnavHtml('profile');
   const area = document.getElementById('profile-content');
-  area.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink3)">불러오는 중...</div>';
+  area.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink3)">' + t('불러오는 중...','Loading...') + '</div>';
 
   // 최신 프로필 로드
   const { data: me } = await sb.from('members').select('*').eq('id', ME.id).single();
   if (me) Object.assign(ME, me);
 
-  const roleLabel = {super_admin:'총관리자', community_admin:'관리자', teacher:'교사', staff:'간사', student:'학생', member:'멤버'}[ME.community_role] || '멤버';
+  const roleLabel = APP_LANG === 'en'
+    ? ({super_admin:'Super Admin', community_admin:'Admin', teacher:'Teacher', staff:'Staff', student:'Student', member:'Member'}[ME.community_role] || 'Member')
+    : ({super_admin:'총관리자', community_admin:'관리자', teacher:'교사', staff:'간사', student:'학생', member:'멤버'}[ME.community_role] || '멤버');
   const roleColor = {super_admin:'#7c3aed', community_admin:'#1d4ed8', teacher:'#0369a1', staff:'#b45309', student:'#15803d', member:'#6b7280'}[ME.community_role] || '#6b7280';
   let myGroups = [];
   if (isStudent()) {
@@ -3870,7 +3903,7 @@ async function renderProfilePage() {
     <div style="margin-bottom:16px">
       <label style="font-size:12px;font-weight:600;color:var(--ink3);display:block;margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em">${label}</label>
       <select id="prof-${id}" style="width:100%;padding:11px 14px;border-radius:11px;border:1.5px solid var(--border);background:var(--s2);font:14px var(--font);color:var(--ink);outline:none;cursor:pointer;appearance:none">
-        <option value="">선택해주세요</option>
+        <option value="">${t('선택해주세요','Please select')}</option>
         ${options.map(o => `<option value="${o}" ${val===o?'selected':''}>${o}</option>`).join('')}
       </select>
     </div>`;
@@ -3890,21 +3923,21 @@ async function renderProfilePage() {
 
       <!-- 아바타 꾸미기 -->
       <div class="adm-card" style="margin-bottom:16px">
-        <div style="font-size:14px;font-weight:700;color:var(--adeep);margin-bottom:4px">🎨 내 아바타 꾸미기</div>
-        <div style="font-size:12px;color:var(--ink3);margin-bottom:14px">채팅과 목록에 보이는 내 아이콘이에요. 마음에 드는 이모지나 글자로 바꿔보세요!</div>
+        <div style="font-size:14px;font-weight:700;color:var(--adeep);margin-bottom:4px">🎨 ${t('내 아바타 꾸미기','Customize My Avatar')}</div>
+        <div style="font-size:12px;color:var(--ink3);margin-bottom:14px">${t('채팅과 목록에 보이는 내 아이콘이에요. 마음에 드는 이모지나 글자로 바꿔보세요!','This is the icon shown in chat and lists. Pick an emoji or letter you like!')}</div>
         <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;flex-wrap:wrap">
           <div style="width:60px;height:60px;border-radius:18px;background:${ME.color||'#1d3a5f'};display:flex;align-items:center;justify-content:center;font-size:30px;color:#fff;flex-shrink:0">${ME.initials||ME.name?.[0]||'?'}</div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-            <button onclick="saveMyAvatar((ME.name||'?')[0])" style="height:38px;padding:0 14px;border:1.5px solid var(--border);background:var(--surface);border-radius:10px;font:700 12.5px var(--font);color:var(--ink2);cursor:pointer">🔤 이름 첫 글자로</button>
-            <input id="avatar-custom" maxlength="4" placeholder="직접 입력" style="width:110px;height:38px;padding:0 12px;border:1.5px solid var(--border);border-radius:10px;font:15px var(--font);text-align:center;outline:none" onkeydown="if(event.key==='Enter')saveMyAvatar(this.value)"/>
-            <button onclick="saveMyAvatar(document.getElementById('avatar-custom').value)" style="height:38px;padding:0 14px;border:none;background:#1d3a5f;color:#fff;border-radius:10px;font:700 12.5px var(--font);cursor:pointer">적용</button>
+            <button onclick="saveMyAvatar((ME.name||'?')[0])" style="height:38px;padding:0 14px;border:1.5px solid var(--border);background:var(--surface);border-radius:10px;font:700 12.5px var(--font);color:var(--ink2);cursor:pointer">🔤 ${t('이름 첫 글자로','First letter')}</button>
+            <input id="avatar-custom" maxlength="4" placeholder="${t('직접 입력','Custom')}" style="width:110px;height:38px;padding:0 12px;border:1.5px solid var(--border);border-radius:10px;font:15px var(--font);text-align:center;outline:none" onkeydown="if(event.key==='Enter')saveMyAvatar(this.value)"/>
+            <button onclick="saveMyAvatar(document.getElementById('avatar-custom').value)" style="height:38px;padding:0 14px;border:none;background:#1d3a5f;color:#fff;border-radius:10px;font:700 12.5px var(--font);cursor:pointer">${t('적용','Apply')}</button>
           </div>
         </div>
-        <div style="font-size:12px;font-weight:700;color:var(--ink2);margin-bottom:8px">이모지 고르기</div>
+        <div style="font-size:12px;font-weight:700;color:var(--ink2);margin-bottom:8px">${t('이모지 고르기','Choose an emoji')}</div>
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(46px,1fr));gap:8px">
           ${AVATAR_EMOJIS.map(e => `<button onclick="saveMyAvatar('${e}')" style="height:46px;border:1.5px solid ${ME.initials===e?'#1d3a5f':'var(--border)'};background:${ME.initials===e?'var(--asoft)':'var(--surface)'};border-radius:12px;font-size:24px;cursor:pointer;transition:transform .08s" onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform=''">${e}</button>`).join('')}
         </div>
-        <div style="font-size:12px;font-weight:700;color:var(--ink2);margin:16px 0 8px">배경 색</div>
+        <div style="font-size:12px;font-weight:700;color:var(--ink2);margin:16px 0 8px">${t('배경 색','Background color')}</div>
         <div style="display:flex;gap:9px;flex-wrap:wrap">
           ${AVATAR_COLORS.map(c => `<button onclick="saveMyAvatarColor('${c}')" title="배경색" style="width:36px;height:36px;border-radius:11px;background:${c};border:3px solid ${ME.color===c?'#111':'transparent'};cursor:pointer;box-shadow:0 0 0 1px var(--border)"></button>`).join('')}
         </div>
@@ -3916,88 +3949,88 @@ async function renderProfilePage() {
       ${isStudent() && myGroups.length ? `
       <!-- 내 그룹 (학생 자가 선택) -->
       <div class="adm-card" style="margin-bottom:16px">
-        <div style="font-size:14px;font-weight:700;color:var(--adeep);margin-bottom:10px">👥 내 그룹</div>
+        <div style="font-size:14px;font-weight:700;color:var(--adeep);margin-bottom:10px">👥 ${t('내 그룹','My Group')}</div>
         <select id="prof-group" onchange="saveMyGroup(this.value)" style="width:100%;padding:11px 14px;border-radius:11px;border:1.5px solid var(--border);background:var(--s2);font:14px var(--font);color:var(--ink);outline:none;cursor:pointer">
-          <option value="">그룹 선택 안 함</option>
+          <option value="">${t('그룹 선택 안 함','No group')}</option>
           ${myGroups.map(g => `<option value="${g.id}" ${ME.group_id === g.id ? 'selected' : ''}>${g.name}</option>`).join('')}
         </select>
       </div>` : ''}
 
       <!-- 기본 정보 (모두 접근 가능) -->
       <div class="adm-card" style="margin-bottom:16px">
-        <div style="font-size:14px;font-weight:700;color:var(--adeep);margin-bottom:16px">👤 기본 정보</div>
+        <div style="font-size:14px;font-weight:700;color:var(--adeep);margin-bottom:16px">👤 ${t('기본 정보','Basic Info')}</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px">
-          <div>${inp('name', '이름', ME.name)}</div>
-          <div>${inp('family_name', '영문 성 (Family Name)', ME.family_name, 'text', '예: Kim')}</div>
+          <div>${inp('name', t('이름','Name'), ME.name)}</div>
+          <div>${inp('family_name', t('영문 성 (Family Name)','Family Name'), ME.family_name, 'text', t('예: Kim','e.g. Kim'))}</div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px">
-          <div>${sel('gender', '성별', ME.gender, ['남','여'])}</div>
-          <div>${inp('birth_date', '생년월일', ME.birth_date, 'date')}</div>
+          <div>${sel('gender', t('성별','Gender'), ME.gender, ['남','여'])}</div>
+          <div>${inp('birth_date', t('생년월일','Date of Birth'), ME.birth_date, 'date')}</div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px">
-          <div>${inp('nationality', '국적', ME.nationality||'대한민국', 'text', '대한민국')}</div>
-          <div>${inp('native_lang', '모국어', ME.native_lang||'한국어', 'text', '한국어')}</div>
+          <div>${inp('nationality', t('국적','Nationality'), ME.nationality||t('대한민국','Republic of Korea'), 'text', t('대한민국','Republic of Korea'))}</div>
+          <div>${inp('native_lang', t('모국어','Native Language'), ME.native_lang||t('한국어','Korean'), 'text', t('한국어','Korean'))}</div>
         </div>
       </div>
 
       <!-- 연락처 (모두 접근 가능) -->
       <div class="adm-card" style="margin-bottom:16px">
-        <div style="font-size:14px;font-weight:700;color:var(--adeep);margin-bottom:16px">📱 연락처</div>
-        ${inp('phone', '전화번호', ME.phone, 'tel', '010-0000-0000')}
-        ${inp('address', '주소', ME.address, 'text', '예: 서울시 강남구...')}
+        <div style="font-size:14px;font-weight:700;color:var(--adeep);margin-bottom:16px">📱 ${t('연락처','Contact')}</div>
+        ${inp('phone', t('전화번호','Phone'), ME.phone, 'tel', '010-0000-0000')}
+        ${inp('address', t('주소','Address'), ME.address, 'text', t('예: 서울시 강남구...','e.g. Seoul, Gangnam-gu...'))}
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px">
-          <div>${inp('guardian_name', '보호자 성명', ME.guardian_name, 'text')}</div>
-          <div>${inp('guardian_phone', '보호자 연락처', ME.guardian_phone, 'tel', '010-0000-0000')}</div>
+          <div>${inp('guardian_name', t('보호자 성명','Guardian Name'), ME.guardian_name, 'text')}</div>
+          <div>${inp('guardian_phone', t('보호자 연락처','Guardian Phone'), ME.guardian_phone, 'tel', '010-0000-0000')}</div>
         </div>
       </div>
 
       ${!isStudent() ? `
       <!-- 학교 정보 (교사/관리자만) -->
       <div class="adm-card" style="margin-bottom:16px">
-        <div style="font-size:14px;font-weight:700;color:var(--adeep);margin-bottom:16px">🏫 학교 정보</div>
-        ${inp('school_name', '학교명', ME.school_name, 'text', '예: IM선교회 대안학교')}
+        <div style="font-size:14px;font-weight:700;color:var(--adeep);margin-bottom:16px">🏫 ${t('학교 정보','School Info')}</div>
+        ${inp('school_name', t('학교명','School Name'), ME.school_name, 'text', t('예: IM선교회 대안학교','e.g. IM Mission School'))}
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px">
-          <div>${sel('grade', '현재 학년', ME.grade, ['K','1','2','3','4','5','6','G7 (중1)','G8 (중2)','G9 (중3)','G10 (고1)','G11 (고2)','G12 (고3)','졸업'])}</div>
-          <div>${inp('homeroom_teacher', '담임 선생님', ME.homeroom_teacher, 'text')}</div>
+          <div>${sel('grade', t('현재 학년','Current Grade'), ME.grade, ['K','1','2','3','4','5','6','G7 (중1)','G8 (중2)','G9 (중3)','G10 (고1)','G11 (고2)','G12 (고3)','졸업'])}</div>
+          <div>${inp('homeroom_teacher', t('담임 선생님','Homeroom Teacher'), ME.homeroom_teacher, 'text')}</div>
         </div>
-        ${inp('enroll_date', '입학일', ME.enroll_date, 'date')}
+        ${inp('enroll_date', t('입학일','Enrollment Date'), ME.enroll_date, 'date')}
       </div>
 
       <!-- 신앙 -->
       <div class="adm-card" style="margin-bottom:16px">
-        <div style="font-size:14px;font-weight:700;color:var(--adeep);margin-bottom:16px">✝️ 신앙</div>
-        ${inp('church', '소속 교회', ME.church, 'text', '예: ○○교회')}
+        <div style="font-size:14px;font-weight:700;color:var(--adeep);margin-bottom:16px">✝️ ${t('신앙','Faith')}</div>
+        ${inp('church', t('소속 교회','Church'), ME.church, 'text', t('예: ○○교회','e.g. ○○ Church'))}
       </div>
 
       <!-- 진로 -->
       <div class="adm-card" style="margin-bottom:16px">
-        <div style="font-size:14px;font-weight:700;color:var(--adeep);margin-bottom:16px">🎯 진로</div>
-        ${inp('career_goal', '진로 희망', ME.career_goal, 'text', '예: 선교사 / 교사 / 의사')}
+        <div style="font-size:14px;font-weight:700;color:var(--adeep);margin-bottom:16px">🎯 ${t('진로','Career')}</div>
+        ${inp('career_goal', t('진로 희망','Career Goal'), ME.career_goal, 'text', t('예: 선교사 / 교사 / 의사','e.g. Missionary / Teacher / Doctor'))}
       </div>
       ` : `
       <!-- 학생: 현재 학년은 본인 수정 가능, 학교명·담임은 교사 관리 -->
       <div class="adm-card" style="margin-bottom:16px">
-        <div style="font-size:14px;font-weight:700;color:var(--adeep);margin-bottom:16px">🏫 학교 정보</div>
-        ${sel('grade', '현재 학년', ME.grade, ['K','1','2','3','4','5','6','G7 (중1)','G8 (중2)','G9 (중3)','G10 (고1)','G11 (고2)','G12 (고3)','졸업'])}
-        <div style="font-size:11px;color:var(--ink3);margin:-8px 0 14px">학년은 직접 선택할 수 있어요. 담임 선생님이 확인 후 조정할 수도 있습니다.</div>
+        <div style="font-size:14px;font-weight:700;color:var(--adeep);margin-bottom:16px">🏫 ${t('학교 정보','School Info')}</div>
+        ${sel('grade', t('현재 학년','Current Grade'), ME.grade, ['K','1','2','3','4','5','6','G7 (중1)','G8 (중2)','G9 (중3)','G10 (고1)','G11 (고2)','G12 (고3)','졸업'])}
+        <div style="font-size:11px;color:var(--ink3);margin:-8px 0 14px">${t('학년은 직접 선택할 수 있어요. 담임 선생님이 확인 후 조정할 수도 있습니다.','You can set your grade yourself. Your homeroom teacher may adjust it after review.')}</div>
         <div style="display:flex;flex-wrap:wrap;gap:12px;padding-top:4px;border-top:1px dashed var(--border)">
           ${ME.school_name?`<div style="font-size:13px;color:var(--ink2)">🏫 ${ME.school_name}</div>`:''}
-          ${ME.homeroom_teacher?`<div style="font-size:13px;color:var(--ink2)">👩‍🏫 ${ME.homeroom_teacher} 선생님</div>`:''}
+          ${ME.homeroom_teacher?`<div style="font-size:13px;color:var(--ink2)">👩‍🏫 ${ME.homeroom_teacher} ${t('선생님','')}</div>`:''}
         </div>
-        ${!ME.school_name&&!ME.homeroom_teacher?`<div style="font-size:12px;color:var(--ink3);margin-top:8px">학교명·담임은 선생님이 등록해드릴 거예요</div>`:''}
+        ${!ME.school_name&&!ME.homeroom_teacher?`<div style="font-size:12px;color:var(--ink3);margin-top:8px">${t('학교명·담임은 선생님이 등록해드릴 거예요','Your teacher will register the school name and homeroom teacher')}</div>`:''}
       </div>
       `}
 
       <!-- 비밀번호 변경 (모두 접근 가능) -->
       <div class="adm-card" style="margin-bottom:16px">
-        <div style="font-size:14px;font-weight:700;color:var(--adeep);margin-bottom:16px">🔒 비밀번호 변경</div>
-        <input id="prof-pw1" type="password" placeholder="새 비밀번호 (6자 이상)"
+        <div style="font-size:14px;font-weight:700;color:var(--adeep);margin-bottom:16px">🔒 ${t('비밀번호 변경','Change Password')}</div>
+        <input id="prof-pw1" type="password" placeholder="${t('새 비밀번호 (6자 이상)','New password (6+ characters)')}"
           style="width:100%;padding:11px 14px;border-radius:11px;border:1.5px solid var(--border);background:var(--s2);font:14px var(--font);color:var(--ink);outline:none;margin-bottom:10px"/>
-        <input id="prof-pw2" type="password" placeholder="새 비밀번호 확인"
+        <input id="prof-pw2" type="password" placeholder="${t('새 비밀번호 확인','Confirm new password')}"
           style="width:100%;padding:11px 14px;border-radius:11px;border:1.5px solid var(--border);background:var(--s2);font:14px var(--font);color:var(--ink);outline:none;margin-bottom:12px"/>
         <button onclick="changeProfilePassword()"
           style="height:38px;padding:0 18px;border-radius:10px;border:1.5px solid var(--accent);background:white;color:var(--accent);font:600 13px var(--font);cursor:pointer">
-          비밀번호 변경
+          ${t('비밀번호 변경','Change Password')}
         </button>
       </div>
 
@@ -4006,12 +4039,12 @@ async function renderProfilePage() {
       <!-- 저장 버튼 -->
       <button onclick="saveProfile()"
         style="width:100%;height:46px;border-radius:13px;border:none;background:linear-gradient(135deg,#1d3a5f,#2a5298);color:white;font:600 15px var(--font);cursor:pointer;box-shadow:0 4px 14px rgba(29,58,95,.3);margin-bottom:12px">
-        ✅ 저장하기
+        ✅ ${t('저장하기','Save')}
       </button>
       <!-- 로그아웃 (특히 모바일에서 사이드바가 없어 여기서 접근) -->
       <button onclick="doLogout()"
         style="width:100%;height:46px;border-radius:13px;border:1.5px solid #FFD6D6;background:#FFF0F0;color:var(--rose);font:700 15px var(--font);cursor:pointer;margin-bottom:24px;display:flex;align-items:center;justify-content:center;gap:8px">
-        🚪 로그아웃
+        🚪 ${t('로그아웃','Log Out')}
       </button>
     </div>`;
 }
@@ -6877,7 +6910,9 @@ async function renderAdminMembers() {
   // 관리자·총관리자 모두 현재 공동체의 전체 멤버(학생 포함) 표시
   const approved = list.filter(m => (m.status === 'approved' || !m.status));
 
-  const roleLabel = { super_admin:'총관리자', community_admin:'관리자', teacher:'교사', staff:'간사', student:'학생', member:'멤버' };
+  const roleLabel = APP_LANG === 'en'
+    ? { super_admin:'Super Admin', community_admin:'Admin', teacher:'Teacher', staff:'Staff', student:'Student', member:'Member' }
+    : { super_admin:'총관리자', community_admin:'관리자', teacher:'교사', staff:'간사', student:'학생', member:'멤버' };
   const roleColor = { super_admin:'#7c3aed', community_admin:'#1d4ed8', teacher:'#0369a1', staff:'#b45309', student:'#15803d', member:'#6b7280' };
 
   // 스토리지 사용량 (총관리자만)
@@ -6898,14 +6933,14 @@ async function renderAdminMembers() {
       const totalMB = (totalBytes/1048576).toFixed(1);
       storageHtml = `
         <div class="adm-card" style="margin-bottom:20px">
-          <div style="font-size:14px;font-weight:700;margin-bottom:10px">💾 스토리지 사용량</div>
+          <div style="font-size:14px;font-weight:700;margin-bottom:10px">💾 ${t('스토리지 사용량','Storage Usage')}</div>
           <div style="display:flex;align-items:center;gap:12px">
             <div style="flex:1;background:var(--s3);border-radius:999px;height:10px;overflow:hidden">
               <div style="height:100%;background:var(--accent);border-radius:999px;width:${Math.min(100,totalBytes/1048576/102400*100).toFixed(2)}%"></div>
             </div>
             <div style="font-size:13px;font-weight:600;white-space:nowrap">${totalMB}MB / 100GB</div>
           </div>
-          <div style="font-size:11px;color:var(--ink3);margin-top:6px">파일 ${allFiles.length}개</div>
+          <div style="font-size:11px;color:var(--ink3);margin-top:6px">${t('파일 '+allFiles.length+'개', allFiles.length+' files')}</div>
         </div>`;
     } catch(e) {}
   }
@@ -6916,37 +6951,37 @@ async function renderAdminMembers() {
       <div style="flex:1;min-width:0">
         <div style="display:flex;align-items:center;gap:8px">
           <span style="font-size:14px;font-weight:600">${m.name}</span>
-          <span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:99px;background:${roleColor[m.community_role]||'#6b728022'}22;color:${roleColor[m.community_role]||'#6b7280'}">${roleLabel[m.community_role]||m.community_role||'멤버'}</span>
+          <span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:99px;background:${roleColor[m.community_role]||'#6b728022'}22;color:${roleColor[m.community_role]||'#6b7280'}">${roleLabel[m.community_role]||m.community_role||t('멤버','Member')}</span>
         </div>
         <div style="font-size:12px;color:var(--ink3);margin-top:2px">${m.email||''} ${m.birth_date?'· '+m.birth_date:''}</div>
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;flex-wrap:wrap">
         ${showApproval ? `
-          <button class="adm-btn sage" onclick="approveMember('${m.id}')">✅ 승인</button>
-          <button class="adm-btn danger" onclick="rejectMember('${m.id}')">❌ 거절</button>
+          <button class="adm-btn sage" onclick="approveMember('${m.id}')">✅ ${t('승인','Approve')}</button>
+          <button class="adm-btn danger" onclick="rejectMember('${m.id}')">❌ ${t('거절','Reject')}</button>
         ` : `
           ${(m.community_role === 'super_admin' && !isSuperAdmin())
-            ? `<span style="font-size:11px;font-weight:700;padding:6px 12px;border-radius:99px;background:#1d3a5f18;color:#1d3a5f">총관리자 🔒</span>`
+            ? `<span style="font-size:11px;font-weight:700;padding:6px 12px;border-radius:99px;background:#1d3a5f18;color:#1d3a5f">${t('총관리자','Super Admin')} 🔒</span>`
             : `<select onchange="changeMemberCommunityRole('${m.id}',this.value)"
             style="height:30px;padding:0 10px;border-radius:9px;border:1.5px solid var(--border);font:12px var(--font);background:white;cursor:pointer;outline:none">
-            <option value="student"          ${m.community_role==='student'?'selected':''}>학생</option>
-            <option value="staff"            ${m.community_role==='staff'?'selected':''}>간사</option>
-            <option value="teacher"          ${m.community_role==='teacher'?'selected':''}>교사</option>
-            <option value="admin_officer"    ${m.community_role==='admin_officer'?'selected':''}>행정담당자</option>
-            <option value="community_admin"  ${m.community_role==='community_admin'?'selected':''}>관리자</option>
-            ${isSuperAdmin()?`<option value="super_admin" ${m.community_role==='super_admin'?'selected':''}>총관리자</option>`:''}
+            <option value="student"          ${m.community_role==='student'?'selected':''}>${t('학생','Student')}</option>
+            <option value="staff"            ${m.community_role==='staff'?'selected':''}>${t('간사','Staff')}</option>
+            <option value="teacher"          ${m.community_role==='teacher'?'selected':''}>${t('교사','Teacher')}</option>
+            <option value="admin_officer"    ${m.community_role==='admin_officer'?'selected':''}>${t('행정담당자','Admin Officer')}</option>
+            <option value="community_admin"  ${m.community_role==='community_admin'?'selected':''}>${t('관리자','Admin')}</option>
+            ${isSuperAdmin()?`<option value="super_admin" ${m.community_role==='super_admin'?'selected':''}>${t('총관리자','Super Admin')}</option>`:''}
           </select>`}
-          ${m.community_role !== 'super_admin' ? `<button class="adm-btn danger" onclick="deleteMember('${m.id}','${m.name}')">탈퇴</button>` : '<span style="font-size:11px;color:var(--ink3)">총관리자</span>'}
+          ${m.community_role !== 'super_admin' ? `<button class="adm-btn danger" onclick="deleteMember('${m.id}','${m.name}')">${t('탈퇴','Remove')}</button>` : `<span style="font-size:11px;color:var(--ink3)">${t('총관리자','Super Admin')}</span>`}
         `}
       </div>
     </div>`;
 
-  const titleNote = '현재 공동체의 전체 멤버 (학생 포함)';
+  const titleNote = t('현재 공동체의 전체 멤버 (학생 포함)','All members in this community (including students)');
 
   area.innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
       <div>
-        <div style="font-size:18px;font-weight:700">👥 멤버 관리</div>
+        <div style="font-size:18px;font-weight:700">👥 ${t('멤버 관리','Member Management')}</div>
         <div style="font-size:12px;color:var(--ink3);margin-top:3px">${titleNote}</div>
       </div>
     </div>
@@ -6960,21 +6995,21 @@ async function renderAdminMembers() {
     ${pending.length ? `
     <div style="background:#FFF8E7;border:1.5px solid #F0D080;border-radius:16px;padding:16px 20px;margin-bottom:20px">
       <div style="font-size:14px;font-weight:700;color:#8B6914;margin-bottom:12px;display:flex;align-items:center;gap:8px">
-        ⏳ 승인 대기 중 <span style="background:#F0D080;color:#8B6914;padding:2px 8px;border-radius:999px;font-size:12px">${pending.length}명</span>
+        ⏳ ${t('승인 대기 중','Pending Approval')} <span style="background:#F0D080;color:#8B6914;padding:2px 8px;border-radius:999px;font-size:12px">${t(pending.length+'명', pending.length+'')}</span>
       </div>
       ${pending.map(m => memberRow(m, true)).join('')}
     </div>` : ''}
 
     <div class="adm-card" style="padding:0;overflow:hidden;margin-bottom:16px">
       <div style="padding:12px 20px;font-size:12px;font-weight:600;color:var(--ink3);border-bottom:1px solid var(--bs)">
-        멤버 ${approved.length}명
+        ${t('멤버 '+approved.length+'명', approved.length+' members')}
       </div>
-      ${approved.length ? approved.map(m => memberRow(m, false)).join('') : `<div style="padding:24px;text-align:center;color:var(--ink3);font-size:13px">등록된 멤버가 없어요</div>`}
+      ${approved.length ? approved.map(m => memberRow(m, false)).join('') : `<div style="padding:24px;text-align:center;color:var(--ink3);font-size:13px">${t('등록된 멤버가 없어요','No members registered')}</div>`}
     </div>
 
     ${rejected.length ? `
     <div class="adm-card" style="padding:0;overflow:hidden;opacity:.6">
-      <div style="padding:12px 20px;font-size:12px;font-weight:600;color:var(--ink3);border-bottom:1px solid var(--bs)">거절된 멤버 ${rejected.length}명</div>
+      <div style="padding:12px 20px;font-size:12px;font-weight:600;color:var(--ink3);border-bottom:1px solid var(--bs)">${t('거절된 멤버 '+rejected.length+'명', rejected.length+' rejected members')}</div>
       ${rejected.map(m => `
       <div class="adm-row" style="padding:14px 20px">
         <div style="width:38px;height:38px;border-radius:12px;background:${m.color||'#999'};color:white;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;flex-shrink:0">${m.initials||m.name[0]}</div>
@@ -6982,8 +7017,8 @@ async function renderAdminMembers() {
           <div style="font-size:14px;font-weight:600">${m.name}</div>
           <div style="font-size:12px;color:var(--ink3)">${m.email||''}</div>
         </div>
-        <button class="adm-btn sage" onclick="approveMember('${m.id}')">재승인</button>
-        <button class="adm-btn danger" onclick="deleteMember('${m.id}','${m.name}')">삭제</button>
+        <button class="adm-btn sage" onclick="approveMember('${m.id}')">${t('재승인','Re-approve')}</button>
+        <button class="adm-btn danger" onclick="deleteMember('${m.id}','${m.name}')">${t('삭제','Delete')}</button>
       </div>`).join('')}
     </div>` : ''}`;
 }
@@ -7776,6 +7811,7 @@ window.addEventListener('load', async () => {
   // 세션 확인이 끝날 때까지 스플래시 유지 → 로그인 화면 깜빡임 방지
   const hideSplash = () => { const s = document.getElementById('splash'); if (s) { s.style.opacity = '0'; setTimeout(() => s.remove(), 260); } };
   setTimeout(hideSplash, 8000);   // 세션 확인이 지나치게 느릴 때 안전장치
+  try { setAuthLang(APP_LANG); } catch(_) {}   // 로그인 화면 언어 적용 (localStorage 기준)
 
   // 공개 가정통신문 보기 링크 (#nl=<id>) — 로그인 불필요
   const nlMatch = (location.hash || '').match(/#nl=([0-9a-fA-F-]{36})/);
