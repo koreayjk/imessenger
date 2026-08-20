@@ -8587,19 +8587,25 @@ function renderSchoolComingSoon(tab) {
 // ════════════════════════════════════════════════════════════════════
 //  전자결재 — 출결 신청(학생) → 승인(담임/관리자) → 출석부 자동 반영
 // ════════════════════════════════════════════════════════════════════
+// label 은 DB(leave_requests.type)에 저장되는 키이므로 절대 변경 금지, en 은 화면 표시용
 const LEAVE_TYPES = [
-  { label:'결석',    att:'absent'  },
-  { label:'지각',    att:'late'    },
-  { label:'조퇴',    att:'early'   },
-  { label:'외출',    att:'excused' },
-  { label:'체험학습', att:'excused' },
-  { label:'병결',    att:'sick'    },
-  { label:'기타',    att:'excused' },
+  { label:'결석',    en:'Absent',        att:'absent'  },
+  { label:'지각',    en:'Late',          att:'late'    },
+  { label:'조퇴',    en:'Early leave',   att:'early'   },
+  { label:'외출',    en:'Out',           att:'excused' },
+  { label:'체험학습', en:'Field trip',    att:'excused' },
+  { label:'병결',    en:'Sick leave',    att:'sick'    },
+  { label:'기타',    en:'Other',         att:'excused' },
 ];
+// 저장된 한글 label → 현재 언어 표시 텍스트
+function leaveTypeLabel(label) {
+  const f = LEAVE_TYPES.find(x => x.label === label);
+  return (APP_LANG === 'en' && f) ? f.en : (label || '');
+}
 const LEAVE_STATUS = {
-  pending:  { label:'승인 대기', color:'#b8860b', bg:'#fdf6e3' },
-  approved: { label:'승인됨',    color:'#2a7a5a', bg:'#e8f5ee' },
-  rejected: { label:'반려됨',    color:'#c0392b', bg:'#fdecea' },
+  pending:  { label:'승인 대기', en:'Pending',  color:'#b8860b', bg:'#fdf6e3' },
+  approved: { label:'승인됨',    en:'Approved', color:'#2a7a5a', bg:'#e8f5ee' },
+  rejected: { label:'반려됨',    en:'Rejected', color:'#c0392b', bg:'#fdecea' },
 };
 let approvalFilter = 'pending';
 
@@ -8622,7 +8628,7 @@ function leavePeriodText(r) {
 }
 function leaveStatusBadge(st) {
   const s = LEAVE_STATUS[st] || LEAVE_STATUS.pending;
-  return `<span style="font-size:10.5px;font-weight:700;color:${s.color};background:${s.bg};padding:2px 9px;border-radius:99px">${s.label}</span>`;
+  return `<span style="font-size:10.5px;font-weight:700;color:${s.color};background:${s.bg};padding:2px 9px;border-radius:99px">${APP_LANG==='en'?s.en:s.label}</span>`;
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -9423,8 +9429,8 @@ async function initStorePage() {
 function storeSetupHtml() {
   return `<div style="max-width:580px;margin:40px auto;text-align:center">
     <div style="font-size:40px;margin-bottom:12px">🏪</div>
-    <div style="font-size:16px;font-weight:700;margin-bottom:8px">매점 데이터베이스 설정이 필요해요</div>
-    <div style="font-size:13px;color:var(--ink3);line-height:1.8">제공해드린 <b>db/매점_DB설치.sql</b> 을 Supabase → SQL Editor에 붙여넣고 실행한 뒤,<br>Edge Function <b>store</b> 를 배포해주세요.</div>
+    <div style="font-size:16px;font-weight:700;margin-bottom:8px">${t('매점 데이터베이스 설정이 필요해요','Store database setup required')}</div>
+    <div style="font-size:13px;color:var(--ink3);line-height:1.8">${t('제공해드린 <b>db/매점_DB설치.sql</b> 을 Supabase → SQL Editor에 붙여넣고 실행한 뒤,<br>Edge Function <b>store</b> 를 배포해주세요.','Paste the provided <b>db/매점_DB설치.sql</b> into Supabase → SQL Editor and run it,<br>then deploy the Edge Function <b>store</b>.')}</div>
   </div>`;
 }
 
@@ -9445,7 +9451,7 @@ function renderStorePage() {
     if (c >= weekStart) weekSum += t;
     if (c >= dayStart) daySum += t;
     const key = s.member_id || ('cash:'+(s.buyer_name||'현금'));
-    const cur = perStu.get(key) || { name: s.buyer_name||'현금', month:0, count:0 };
+    const cur = perStu.get(key) || { name: s.buyer_name||window.t('현금','Cash'), month:0, count:0 };
     cur.month += t; cur.count += 1; perStu.set(key, cur);
   });
   const students = [...perStu.values()].sort((a,b)=>b.month-a.month).slice(0,15);
@@ -9453,50 +9459,50 @@ function renderStorePage() {
   const activeCnt = d.products.filter(p=>p.active).length;
 
   const adminBar = isCommunityAdmin() ? `
-    <button onclick="openStorePassSetup()" style="height:38px;padding:0 15px;border-radius:10px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);font:700 12.5px var(--font);cursor:pointer">🔑 ${d.configured?'비밀번호 변경':'매점 비밀번호 설정'}</button>` : '';
+    <button onclick="openStorePassSetup()" style="height:38px;padding:0 15px;border-radius:10px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);font:700 12.5px var(--font);cursor:pointer">🔑 ${d.configured?t('비밀번호 변경','Change password'):t('매점 비밀번호 설정','Set store password')}</button>` : '';
 
   main.innerHTML = `
   <div style="max-width:1120px;margin:0 auto">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:20px">
       <div>
-        <div style="font-size:19px;font-weight:800;color:var(--ink)">🏪 ${escHtml(d.storeName || '매점 현황')}</div>
-        <div style="font-size:12.5px;color:var(--ink3);margin-top:2px">이번 달 기준 · 판매·재고는 매점 관리 페이지에서 처리해요</div>
+        <div style="font-size:19px;font-weight:800;color:var(--ink)">🏪 ${escHtml(d.storeName || t('매점 현황','Store overview'))}</div>
+        <div style="font-size:12.5px;color:var(--ink3);margin-top:2px">${t('이번 달 기준 · 판매·재고는 매점 관리 페이지에서 처리해요','This month · manage sales and stock on the store admin page')}</div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         ${adminBar}
-        <button onclick="window.open('store.html','_blank')" style="height:38px;padding:0 16px;border-radius:10px;border:none;background:linear-gradient(135deg,#1d3a5f,#2a5298);color:#fff;font:700 12.5px var(--font);cursor:pointer">매점 관리 열기 →</button>
+        <button onclick="window.open('store.html','_blank')" style="height:38px;padding:0 16px;border-radius:10px;border:none;background:linear-gradient(135deg,#1d3a5f,#2a5298);color:#fff;font:700 12.5px var(--font);cursor:pointer">${t('매점 관리 열기 →','Open store admin →')}</button>
       </div>
     </div>
 
-    ${isCommunityAdmin() && d.configured===false ? `<div style="background:#fef3c7;border:1px solid #fde68a;border-radius:12px;padding:13px 16px;margin-bottom:16px;font-size:13px;color:#92400e">⚠️ 아직 매점 비밀번호가 설정되지 않았어요. <b>🔑 매점 비밀번호 설정</b>을 눌러 등록하면 매점 관리 페이지에 접속할 수 있어요.</div>` : ''}
+    ${isCommunityAdmin() && d.configured===false ? `<div style="background:#fef3c7;border:1px solid #fde68a;border-radius:12px;padding:13px 16px;margin-bottom:16px;font-size:13px;color:#92400e">${t('⚠️ 아직 매점 비밀번호가 설정되지 않았어요. <b>🔑 매점 비밀번호 설정</b>을 눌러 등록하면 매점 관리 페이지에 접속할 수 있어요.','⚠️ No store password has been set yet. Tap <b>🔑 Set store password</b> to register one and access the store admin page.')}</div>` : ''}
 
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:22px">
-      <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:16px 18px"><div style="font-size:12px;color:var(--ink3);font-weight:700">오늘 매출</div><div style="font-size:24px;font-weight:800;color:var(--adeep);margin-top:5px">${won(daySum)}</div></div>
-      <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:16px 18px"><div style="font-size:12px;color:var(--ink3);font-weight:700">이번 주 매출</div><div style="font-size:24px;font-weight:800;color:var(--adeep);margin-top:5px">${won(weekSum)}</div></div>
-      <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:16px 18px"><div style="font-size:12px;color:var(--ink3);font-weight:700">이번 달 매출</div><div style="font-size:24px;font-weight:800;color:var(--adeep);margin-top:5px">${won(monthSum)}</div></div>
-      <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:16px 18px"><div style="font-size:12px;color:var(--ink3);font-weight:700">판매 상품 수</div><div style="font-size:24px;font-weight:800;color:var(--adeep);margin-top:5px">${activeCnt}종</div></div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:16px 18px"><div style="font-size:12px;color:var(--ink3);font-weight:700">${t('오늘 매출','Sales today')}</div><div style="font-size:24px;font-weight:800;color:var(--adeep);margin-top:5px">${won(daySum)}</div></div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:16px 18px"><div style="font-size:12px;color:var(--ink3);font-weight:700">${t('이번 주 매출','Sales this week')}</div><div style="font-size:24px;font-weight:800;color:var(--adeep);margin-top:5px">${won(weekSum)}</div></div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:16px 18px"><div style="font-size:12px;color:var(--ink3);font-weight:700">${t('이번 달 매출','Sales this month')}</div><div style="font-size:24px;font-weight:800;color:var(--adeep);margin-top:5px">${won(monthSum)}</div></div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:16px 18px"><div style="font-size:12px;color:var(--ink3);font-weight:700">${t('판매 상품 수','Products on sale')}</div><div style="font-size:24px;font-weight:800;color:var(--adeep);margin-top:5px">${activeCnt}${t('종',' types')}</div></div>
     </div>
 
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:18px;align-items:start">
       <!-- 재고현황 -->
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:17px 18px">
-        <div style="font-size:13px;font-weight:800;color:var(--ink2);margin-bottom:12px">📦 재고 현황 ${lowStock.length?`<span style="color:var(--warn);font-size:11.5px">· 부족 ${lowStock.length}종</span>`:''}</div>
+        <div style="font-size:13px;font-weight:800;color:var(--ink2);margin-bottom:12px">📦 ${t('재고 현황','Stock')} ${lowStock.length?`<span style="color:var(--warn);font-size:11.5px">· ${t('부족','Low')} ${lowStock.length}${t('종',' types')}</span>`:''}</div>
         ${d.products.length ? `<div style="overflow:auto"><table style="width:100%;border-collapse:collapse">
-          <thead><tr><th style="text-align:left;font-size:11.5px;color:var(--ink3);padding:6px 8px;border-bottom:1.5px solid var(--border)">상품</th><th style="text-align:left;font-size:11.5px;color:var(--ink3);padding:6px 8px;border-bottom:1.5px solid var(--border)">분류</th><th style="text-align:right;font-size:11.5px;color:var(--ink3);padding:6px 8px;border-bottom:1.5px solid var(--border)">판매가</th><th style="text-align:right;font-size:11.5px;color:var(--ink3);padding:6px 8px;border-bottom:1.5px solid var(--border)">재고</th></tr></thead>
+          <thead><tr><th style="text-align:left;font-size:11.5px;color:var(--ink3);padding:6px 8px;border-bottom:1.5px solid var(--border)">${t('상품','Product')}</th><th style="text-align:left;font-size:11.5px;color:var(--ink3);padding:6px 8px;border-bottom:1.5px solid var(--border)">${t('분류','Category')}</th><th style="text-align:right;font-size:11.5px;color:var(--ink3);padding:6px 8px;border-bottom:1.5px solid var(--border)">${t('판매가','Price')}</th><th style="text-align:right;font-size:11.5px;color:var(--ink3);padding:6px 8px;border-bottom:1.5px solid var(--border)">${t('재고','Stock')}</th></tr></thead>
           <tbody>${d.products.map(p=>`<tr>
             <td style="padding:8px;font-size:13px;font-weight:600;border-bottom:1px solid var(--border)">${escHtml(p.name)}</td>
             <td style="padding:8px;font-size:12px;color:var(--ink3);border-bottom:1px solid var(--border)">${escHtml(p.category||'-')}</td>
             <td style="padding:8px;font-size:13px;text-align:right;border-bottom:1px solid var(--border)">${won(p.price)}</td>
             <td style="padding:8px;font-size:13px;text-align:right;font-weight:700;color:${(p.stock||0)<=0?'#b91c1c':((p.stock||0)<=5?'var(--warn)':'var(--ink)')};border-bottom:1px solid var(--border)">${p.stock||0}</td></tr>`).join('')}</tbody>
-        </table></div>` : '<div style="color:var(--ink3);font-size:13px;padding:16px 0;text-align:center">등록된 상품이 없어요</div>'}
+        </table></div>` : `<div style="color:var(--ink3);font-size:13px;padding:16px 0;text-align:center">${t('등록된 상품이 없어요','No products registered')}</div>`}
       </div>
 
       <!-- 학생별 이용 현황 -->
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:17px 18px">
-        <div style="font-size:13px;font-weight:800;color:var(--ink2);margin-bottom:12px">🧑‍🎓 학생별 이번 달 이용</div>
+        <div style="font-size:13px;font-weight:800;color:var(--ink2);margin-bottom:12px">🧑‍🎓 ${t('학생별 이번 달 이용','Usage this month by student')}</div>
         ${students.length ? students.map(s=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
-          <div><div style="font-size:13.5px;font-weight:700;color:var(--ink)">${escHtml(s.name)}</div><div style="font-size:11px;color:var(--ink3)">${s.count}회 이용</div></div>
-          <div style="font-size:14px;font-weight:800;color:var(--adeep)">${won(s.month)}</div></div>`).join('') : '<div style="color:var(--ink3);font-size:13px;padding:16px 0;text-align:center">이번 달 이용 기록이 없어요</div>'}
+          <div><div style="font-size:13.5px;font-weight:700;color:var(--ink)">${escHtml(s.name)}</div><div style="font-size:11px;color:var(--ink3)">${s.count}${t('회 이용',' visits')}</div></div>
+          <div style="font-size:14px;font-weight:800;color:var(--adeep)">${won(s.month)}</div></div>`).join('') : `<div style="color:var(--ink3);font-size:13px;padding:16px 0;text-align:center">${t('이번 달 이용 기록이 없어요','No usage records this month')}</div>`}
       </div>
     </div>
   </div>`;
@@ -9510,20 +9516,20 @@ function openStorePassSetup() {
   wrap.onclick = e => { if (e.target === wrap) wrap.remove(); };
   wrap.innerHTML = `
     <div style="background:var(--surface);border-radius:20px;padding:24px;width:100%;max-width:400px" onclick="event.stopPropagation()">
-      <div style="font-size:17px;font-weight:800;color:var(--ink);margin-bottom:6px">🔑 매점 비밀번호 설정</div>
-      <div style="font-size:12.5px;color:var(--ink3);margin-bottom:16px">이 공동체 매점 관리 페이지 접속용 비밀번호예요. 매점 담당자에게만 알려주세요.</div>
-      <div style="margin-bottom:12px"><label style="font-size:12px;font-weight:700;color:var(--ink3);display:block;margin-bottom:6px">매점 이름 (선택)</label>
-        <input id="store-name-inp" value="${escAttr((storeData&&storeData.storeName)||'')}" placeholder="예: IMUSA 매점" style="width:100%;height:42px;padding:0 13px;border:1.5px solid var(--border);border-radius:11px;background:var(--s2);font:14px var(--font);color:var(--ink);outline:none"/></div>
-      <div style="margin-bottom:12px"><label style="font-size:12px;font-weight:700;color:var(--ink3);display:block;margin-bottom:6px">통화 (금액 단위)</label>
+      <div style="font-size:17px;font-weight:800;color:var(--ink);margin-bottom:6px">🔑 ${t('매점 비밀번호 설정','Set store password')}</div>
+      <div style="font-size:12.5px;color:var(--ink3);margin-bottom:16px">${t('이 공동체 매점 관리 페이지 접속용 비밀번호예요. 매점 담당자에게만 알려주세요.','This password grants access to this community\'s store admin page. Share it only with the store manager.')}</div>
+      <div style="margin-bottom:12px"><label style="font-size:12px;font-weight:700;color:var(--ink3);display:block;margin-bottom:6px">${t('매점 이름 (선택)','Store name (optional)')}</label>
+        <input id="store-name-inp" value="${escAttr((storeData&&storeData.storeName)||'')}" placeholder="${t('예: IMUSA 매점','e.g. IMUSA Store')}" style="width:100%;height:42px;padding:0 13px;border:1.5px solid var(--border);border-radius:11px;background:var(--s2);font:14px var(--font);color:var(--ink);outline:none"/></div>
+      <div style="margin-bottom:12px"><label style="font-size:12px;font-weight:700;color:var(--ink3);display:block;margin-bottom:6px">${t('통화 (금액 단위)','Currency (unit)')}</label>
         <div style="display:flex;gap:8px" id="store-cur-pick">
-          ${[{v:'원',l:'원 (₩)'},{v:'$',l:'달러 ($)'},{v:'₱',l:'페소 (₱)'}].map(c=>`<button type="button" data-v="${c.v}" onclick="pickStoreCur('${c.v}')" style="flex:1;height:40px;border-radius:10px;border:1.5px solid ${((storeData&&storeData.currency)||'원')===c.v?'var(--accent)':'var(--border)'};background:${((storeData&&storeData.currency)||'원')===c.v?'var(--asoft)':'var(--surface)'};color:${((storeData&&storeData.currency)||'원')===c.v?'var(--adeep)':'var(--ink2)'};font:700 12.5px var(--font);cursor:pointer">${c.l}</button>`).join('')}
+          ${[{v:'원',l:t('원 (₩)','Won (₩)')},{v:'$',l:t('달러 ($)','Dollar ($)')},{v:'₱',l:t('페소 (₱)','Peso (₱)')}].map(c=>`<button type="button" data-v="${c.v}" onclick="pickStoreCur('${c.v}')" style="flex:1;height:40px;border-radius:10px;border:1.5px solid ${((storeData&&storeData.currency)||'원')===c.v?'var(--accent)':'var(--border)'};background:${((storeData&&storeData.currency)||'원')===c.v?'var(--asoft)':'var(--surface)'};color:${((storeData&&storeData.currency)||'원')===c.v?'var(--adeep)':'var(--ink2)'};font:700 12.5px var(--font);cursor:pointer">${c.l}</button>`).join('')}
         </div></div>
-      <div style="margin-bottom:16px"><label style="font-size:12px;font-weight:700;color:var(--ink3);display:block;margin-bottom:6px">비밀번호 (4자 이상)</label>
+      <div style="margin-bottom:16px"><label style="font-size:12px;font-weight:700;color:var(--ink3);display:block;margin-bottom:6px">${t('비밀번호 (4자 이상)','Password (4+ characters)')}</label>
         <input id="store-pass-inp" type="password" placeholder="••••••" style="width:100%;height:42px;padding:0 13px;border:1.5px solid var(--border);border-radius:11px;background:var(--s2);font:14px var(--font);color:var(--ink);outline:none"/></div>
       <div id="store-pass-err" style="display:none;color:#b91c1c;font-size:12.5px;font-weight:600;margin-bottom:10px"></div>
       <div style="display:flex;gap:8px">
-        <button onclick="document.getElementById('store-pass-modal').remove()" style="flex:1;height:42px;border-radius:11px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);font:700 13px var(--font);cursor:pointer">취소</button>
-        <button id="store-pass-save" onclick="saveStorePass()" style="flex:1;height:42px;border-radius:11px;border:none;background:linear-gradient(135deg,#1d3a5f,#2a5298);color:#fff;font:700 13px var(--font);cursor:pointer">저장</button>
+        <button onclick="document.getElementById('store-pass-modal').remove()" style="flex:1;height:42px;border-radius:11px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);font:700 13px var(--font);cursor:pointer">${t('취소','Cancel')}</button>
+        <button id="store-pass-save" onclick="saveStorePass()" style="flex:1;height:42px;border-radius:11px;border:none;background:linear-gradient(135deg,#1d3a5f,#2a5298);color:#fff;font:700 13px var(--font);cursor:pointer">${t('저장','Save')}</button>
       </div>
     </div>`;
   document.body.appendChild(wrap);
@@ -9548,18 +9554,18 @@ async function saveStorePass() {
   const err = document.getElementById('store-pass-err');
   const btn = document.getElementById('store-pass-save');
   err.style.display = 'none';
-  if (!pw || pw.length < 4) { err.textContent = '비밀번호는 4자 이상이어야 해요'; err.style.display='block'; return; }
-  btn.disabled = true; btn.textContent = '저장 중…';
+  if (!pw || pw.length < 4) { err.textContent = t('비밀번호는 4자 이상이어야 해요','Password must be at least 4 characters'); err.style.display='block'; return; }
+  btn.disabled = true; btn.textContent = t('저장 중…','Saving…');
   try {
     const { data, error } = await sb.functions.invoke(STORE_FN, { body: { action:'set_password', community_id: CID(), password: pw, store_name: name || null, currency: _storeCurPick } });
     if (error) throw new Error(error.message);
     if (data && data.error) throw new Error(data.error);
     document.getElementById('store-pass-modal')?.remove();
-    showUploadToast('매점 비밀번호가 저장됐어요 🔐');
+    showUploadToast(t('매점 비밀번호가 저장됐어요 🔐','Store password saved 🔐'));
     initStorePage();
   } catch(e) {
-    err.textContent = e.message || '저장 실패'; err.style.display='block';
-    btn.disabled = false; btn.textContent = '저장';
+    err.textContent = e.message || t('저장 실패','Save failed'); err.style.display='block';
+    btn.disabled = false; btn.textContent = t('저장','Save');
   }
 }
 
@@ -9568,7 +9574,7 @@ async function initLeavePage() {
   const sn = document.getElementById('subnav-leave');
   if (sn) sn.innerHTML = isTeacher() ? '' : tcsSubnavHtml('leave');
   const main = document.getElementById('leave-main');
-  if (main) main.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink3);font-size:13px">불러오는 중...</div>';
+  if (main) main.innerHTML = `<div style="text-align:center;padding:40px;color:var(--ink3);font-size:13px">${t('불러오는 중...','Loading...')}</div>`;
   let mine = [];
   try {
     const { data, error } = await sb.from('leave_requests').select('*').eq('student_id', ME.id).order('created_at',{ascending:false});
@@ -9576,7 +9582,7 @@ async function initLeavePage() {
     mine = data || [];
   } catch(e) {
     if (schoolTableMissing(e)) { main.innerHTML = leaveSetupHtml(); return; }
-    main.innerHTML = `<div style="color:#b91c1c;padding:30px;text-align:center;font-size:13px">불러오기 실패: ${e.message||e}</div>`;
+    main.innerHTML = `<div style="color:#b91c1c;padding:30px;text-align:center;font-size:13px">${t('불러오기 실패','Load failed')}: ${e.message||e}</div>`;
     return;
   }
   renderLeaveStudent(mine);
@@ -9585,46 +9591,46 @@ async function initLeavePage() {
 function leaveSetupHtml() {
   return `<div style="max-width:560px;margin:40px auto;text-align:center">
     <div style="font-size:40px;margin-bottom:12px">📝</div>
-    <div style="font-size:16px;font-weight:700;margin-bottom:8px">데이터베이스 설정이 필요해요</div>
-    <div style="font-size:13px;color:var(--ink3);line-height:1.8">출결 신청을 쓰려면 <b>db/학사_전자결재_출결신청_DB설치.sql</b> 을 Supabase → SQL Editor에서 실행해주세요.</div>
+    <div style="font-size:16px;font-weight:700;margin-bottom:8px">${t('데이터베이스 설정이 필요해요','Database setup required')}</div>
+    <div style="font-size:13px;color:var(--ink3);line-height:1.8">${t('출결 신청을 쓰려면 <b>db/학사_전자결재_출결신청_DB설치.sql</b> 을 Supabase → SQL Editor에서 실행해주세요.','To use leave requests, run <b>db/학사_전자결재_출결신청_DB설치.sql</b> in Supabase → SQL Editor.')}</div>
   </div>`;
 }
 
 function renderLeaveStudent(mine) {
   const main = document.getElementById('leave-main'); if (!main) return;
   const inp = 'height:36px;padding:0 10px;border:1px solid var(--border);border-radius:9px;font:600 13px var(--font);color:var(--ink);background:var(--surface)';
-  const typeOpts = LEAVE_TYPES.map(t=>`<option value="${t.label}">${t.label}</option>`).join('');
+  const typeOpts = LEAVE_TYPES.map(t=>`<option value="${t.label}">${leaveTypeLabel(t.label)}</option>`).join('');
   const cards = mine.map(r => `
     <div style="border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:10px;background:var(--surface)">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
-        <span style="font-size:13.5px;font-weight:700;color:var(--ink)">${escHtml(r.type||'')}</span>
+        <span style="font-size:13.5px;font-weight:700;color:var(--ink)">${leaveTypeLabel(r.type||'')}</span>
         ${leaveStatusBadge(r.status)}
         <span style="font-size:11px;color:var(--ink3)">📅 ${leavePeriodText(r)}</span>
         <div style="flex:1"></div>
-        ${r.status==='pending'?`<button onclick="cancelLeaveRequest('${r.id}')" style="border:1px solid var(--border);background:var(--surface);border-radius:7px;height:26px;padding:0 9px;cursor:pointer;font:600 10.5px var(--font);color:var(--ink3)">취소</button>`:''}
+        ${r.status==='pending'?`<button onclick="cancelLeaveRequest('${r.id}')" style="border:1px solid var(--border);background:var(--surface);border-radius:7px;height:26px;padding:0 9px;cursor:pointer;font:600 10.5px var(--font);color:var(--ink3)">${t('취소','Cancel')}</button>`:''}
       </div>
       ${r.reason?`<div style="font-size:12.5px;color:var(--ink2);line-height:1.6">${escHtml(r.reason)}</div>`:''}
-      ${r.status!=='pending'&&r.decider_name?`<div style="font-size:10.5px;color:var(--ink3);margin-top:5px">${r.status==='approved'?'✅':'↩︎'} ${escHtml(r.decider_name)} 선생님${r.decision_note?` · ${escHtml(r.decision_note)}`:''}</div>`:''}
+      ${r.status!=='pending'&&r.decider_name?`<div style="font-size:10.5px;color:var(--ink3);margin-top:5px">${r.status==='approved'?'✅':'↩︎'} ${escHtml(r.decider_name)} ${t('선생님','(teacher)')}${r.decision_note?` · ${escHtml(r.decision_note)}`:''}</div>`:''}
     </div>`).join('');
   main.innerHTML = `<div style="max-width:1180px;margin:0 auto;display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap">
     <div style="flex:1 1 360px;min-width:0">
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px">
-      <div style="font-size:13px;font-weight:700;color:var(--ink);margin-bottom:10px">📝 출결 신청서</div>
+      <div style="font-size:13px;font-weight:700;color:var(--ink);margin-bottom:10px">📝 ${t('출결 신청서','Leave request form')}</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;align-items:center">
         <select id="leave-type" style="${inp}">${typeOpts}</select>
-        <span style="font-size:11px;color:var(--ink3)">기간</span>
+        <span style="font-size:11px;color:var(--ink3)">${t('기간','Period')}</span>
         <input id="leave-start" type="date" value="${attTodayStr()}" style="${inp}"/>
         <span style="font-size:12px;color:var(--ink3)">~</span>
         <input id="leave-end" type="date" value="${attTodayStr()}" style="${inp}"/>
       </div>
-      <textarea id="leave-reason" placeholder="사유를 적어주세요 (예: 가족 여행 / 병원 진료)" style="width:100%;min-height:90px;padding:11px;border:1px solid var(--border);border-radius:9px;font:400 13.5px var(--font);color:var(--ink);line-height:1.6;resize:vertical;margin-bottom:8px"></textarea>
-      <div style="display:flex;justify-content:flex-end"><button onclick="submitLeaveRequest()" style="height:36px;padding:0 18px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 13px var(--font)">신청하기</button></div>
-      <div style="font-size:11px;color:var(--ink3);margin-top:12px;line-height:1.6">신청하면 <b>담임 선생님</b>이 승인/반려합니다. 승인되면 출석부에 자동 반영돼요.</div>
+      <textarea id="leave-reason" placeholder="${t('사유를 적어주세요 (예: 가족 여행 / 병원 진료)','Enter a reason (e.g. family trip / doctor visit)')}" style="width:100%;min-height:90px;padding:11px;border:1px solid var(--border);border-radius:9px;font:400 13.5px var(--font);color:var(--ink);line-height:1.6;resize:vertical;margin-bottom:8px"></textarea>
+      <div style="display:flex;justify-content:flex-end"><button onclick="submitLeaveRequest()" style="height:36px;padding:0 18px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 13px var(--font)">${t('신청하기','Submit')}</button></div>
+      <div style="font-size:11px;color:var(--ink3);margin-top:12px;line-height:1.6">${t('신청하면 <b>담임 선생님</b>이 승인/반려합니다. 승인되면 출석부에 자동 반영돼요.','Once submitted, your <b>homeroom teacher</b> approves or rejects it. When approved, it is automatically reflected in the attendance sheet.')}</div>
     </div>
     </div>
     <div style="flex:1.3 1 420px;min-width:0">
-      <div style="font-size:12px;font-weight:700;color:var(--ink3);margin:4px 2px 10px">내 신청 내역</div>
-      ${mine.length ? cards : '<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px;background:var(--surface);border:1px solid var(--border);border-radius:12px">아직 신청 내역이 없어요.</div>'}
+      <div style="font-size:12px;font-weight:700;color:var(--ink3);margin:4px 2px 10px">${t('내 신청 내역','My requests')}</div>
+      ${mine.length ? cards : `<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px;background:var(--surface);border:1px solid var(--border);border-radius:12px">${t('아직 신청 내역이 없어요.','No requests yet.')}</div>`}
     </div>
   </div>`;
 }
@@ -9634,24 +9640,24 @@ async function submitLeaveRequest() {
   const start = document.getElementById('leave-start')?.value;
   const end = document.getElementById('leave-end')?.value || start;
   const reason = (document.getElementById('leave-reason')?.value || '').trim();
-  if (!start) { showUploadToast('기간(시작일)을 선택하세요'); return; }
-  if (end < start) { showUploadToast('종료일이 시작일보다 빠를 수 없어요'); return; }
+  if (!start) { showUploadToast(t('기간(시작일)을 선택하세요','Please select a period (start date)')); return; }
+  if (end < start) { showUploadToast(t('종료일이 시작일보다 빠를 수 없어요','End date cannot be earlier than start date')); return; }
   const spec = LEAVE_TYPES.find(t=>t.label===type) || LEAVE_TYPES[0];
   const { error } = await sb.from('leave_requests').insert({
     community_id: CID(), student_id: ME.id, student_name: ME.name,
     type, att_status: spec.att, start_date: start, end_date: end, reason,
     status: 'pending', created_by: ME.id,
   });
-  if (error) { if (schoolTableMissing(error)) { document.getElementById('leave-main').innerHTML = leaveSetupHtml(); return; } showUploadToast('신청 실패: ' + error.message); return; }
-  showUploadToast('✅ 신청됐어요 — 승인을 기다려주세요');
+  if (error) { if (schoolTableMissing(error)) { document.getElementById('leave-main').innerHTML = leaveSetupHtml(); return; } showUploadToast(t('신청 실패: ','Request failed: ') + error.message); return; }
+  showUploadToast(t('✅ 신청됐어요 — 승인을 기다려주세요','✅ Submitted — please wait for approval'));
   initLeavePage();
 }
 
 async function cancelLeaveRequest(id) {
-  if (!confirm('이 신청을 취소(삭제)할까요?')) return;
+  if (!confirm(t('이 신청을 취소(삭제)할까요?','Cancel (delete) this request?'))) return;
   const { error } = await sb.from('leave_requests').delete().eq('id', id);
-  if (error) { showUploadToast('취소 실패: ' + error.message); return; }
-  showUploadToast('신청이 취소됐어요');
+  if (error) { showUploadToast(t('취소 실패: ','Cancel failed: ') + error.message); return; }
+  showUploadToast(t('신청이 취소됐어요','Request canceled'));
   initLeavePage();
 }
 
@@ -9660,7 +9666,7 @@ function setApprovalFilter(f) { approvalFilter = f; renderApprovalHub(); }
 
 async function renderApprovalHub() {
   const main = document.getElementById('school-main');
-  main.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink3);font-size:13px">불러오는 중...</div>';
+  main.innerHTML = `<div style="text-align:center;padding:40px;color:var(--ink3);font-size:13px">${t('불러오는 중...','Loading...')}</div>`;
   let rows = [];
   try {
     const { data, error } = await sb.from('leave_requests').select('*').eq('community_id', CID()).order('created_at',{ascending:false});
@@ -9668,7 +9674,7 @@ async function renderApprovalHub() {
     rows = data || [];
   } catch(e) {
     if (schoolTableMissing(e)) return schoolSetupNeeded(e, 'db/학사_전자결재_출결신청_DB설치.sql');
-    main.innerHTML = `<div style="color:#b91c1c;padding:30px;text-align:center;font-size:13px">불러오기 실패: ${e.message||e}</div>`;
+    main.innerHTML = `<div style="color:#b91c1c;padding:30px;text-align:center;font-size:13px">${t('불러오기 실패','Load failed')}: ${e.message||e}</div>`;
     return;
   }
   const pendingCount = rows.filter(r=>r.status==='pending').length;
@@ -9679,38 +9685,38 @@ async function renderApprovalHub() {
     const dates = leaveDateRange(r.start_date, r.end_date);
     return `<div style="border:1px solid var(--border);border-radius:13px;padding:14px 16px;margin-bottom:12px;background:var(--surface)">
       <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:6px">
-        <span style="font-size:14.5px;font-weight:800;color:var(--ink)">${escHtml(r.student_name||'학생')}</span>
-        <span style="font-size:12.5px;font-weight:700;color:#1d3a5f;background:var(--asoft);padding:2px 9px;border-radius:6px">${escHtml(r.type||'')}</span>
+        <span style="font-size:14.5px;font-weight:800;color:var(--ink)">${escHtml(r.student_name||t('학생','Student'))}</span>
+        <span style="font-size:12.5px;font-weight:700;color:#1d3a5f;background:var(--asoft);padding:2px 9px;border-radius:6px">${leaveTypeLabel(r.type||'')}</span>
         ${leaveStatusBadge(r.status)}
         <div style="flex:1"></div>
-        <span style="font-size:11.5px;color:var(--ink3)">📅 ${leavePeriodText(r)}${dates.length>1?` (${dates.length}일)`:''}</span>
+        <span style="font-size:11.5px;color:var(--ink3)">📅 ${leavePeriodText(r)}${dates.length>1?` (${dates.length}${t('일',' days')})`:''}</span>
       </div>
       ${r.reason?`<div style="font-size:13px;color:var(--ink2);line-height:1.65;margin-bottom:8px">${escHtml(r.reason)}</div>`:''}
       ${r.status==='pending' ? `
         <div style="display:flex;gap:8px;justify-content:flex-end">
-          <button onclick="rejectLeave('${r.id}')" style="height:32px;padding:0 15px;border:1px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:9px;cursor:pointer;font:600 12px var(--font)">반려</button>
-          <button onclick="approveLeave('${r.id}')" style="height:32px;padding:0 16px;border:none;background:#2a7a5a;color:#fff;border-radius:9px;cursor:pointer;font:700 12px var(--font)">✅ 승인 → 출석부 반영</button>
+          <button onclick="rejectLeave('${r.id}')" style="height:32px;padding:0 15px;border:1px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:9px;cursor:pointer;font:600 12px var(--font)">${t('반려','Reject')}</button>
+          <button onclick="approveLeave('${r.id}')" style="height:32px;padding:0 16px;border:none;background:#2a7a5a;color:#fff;border-radius:9px;cursor:pointer;font:700 12px var(--font)">✅ ${t('승인 → 출석부 반영','Approve → apply to attendance')}</button>
         </div>`
-      : `<div style="font-size:11px;color:var(--ink3)">${r.status==='approved'?'✅ 승인':'↩︎ 반려'} · ${escHtml(r.decider_name||'')} ${r.decided_at?('· '+String(r.decided_at).slice(0,10)):''}${r.decision_note?` · ${escHtml(r.decision_note)}`:''}</div>`}
+      : `<div style="font-size:11px;color:var(--ink3)">${r.status==='approved'?t('✅ 승인','✅ Approved'):t('↩︎ 반려','↩︎ Rejected')} · ${escHtml(r.decider_name||'')} ${r.decided_at?('· '+String(r.decided_at).slice(0,10)):''}${r.decision_note?` · ${escHtml(r.decision_note)}`:''}</div>`}
     </div>`;
   };
 
   main.innerHTML = `<div style="max-width:900px;margin:0 auto">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap">
-      ${fBtn('pending', `승인 대기${pendingCount?` (${pendingCount})`:''}`)}
-      ${fBtn('all','전체')}
+      ${fBtn('pending', `${t('승인 대기','Pending')}${pendingCount?` (${pendingCount})`:''}`)}
+      ${fBtn('all',t('전체','All'))}
       <div style="flex:1"></div>
-      <span style="font-size:11.5px;color:var(--ink3)">승인하면 신청 기간의 출석부가 자동으로 채워집니다</span>
+      <span style="font-size:11.5px;color:var(--ink3)">${t('승인하면 신청 기간의 출석부가 자동으로 채워집니다','On approval, the attendance sheet is filled in automatically for the requested period')}</span>
     </div>
-    ${list.length ? list.map(card).join('') : `<div style="padding:50px;text-align:center;color:var(--ink3);font-size:13px;background:var(--surface);border:1px solid var(--border);border-radius:12px">${approvalFilter==='pending'?'대기 중인 신청이 없어요. 👍':'신청 내역이 없어요.'}</div>`}
+    ${list.length ? list.map(card).join('') : `<div style="padding:50px;text-align:center;color:var(--ink3);font-size:13px;background:var(--surface);border:1px solid var(--border);border-radius:12px">${approvalFilter==='pending'?t('대기 중인 신청이 없어요. 👍','No pending requests. 👍'):t('신청 내역이 없어요.','No requests.')}</div>`}
   </div>`;
 }
 
 async function approveLeave(id) {
   const { data: r } = await sb.from('leave_requests').select('*').eq('id', id).maybeSingle();
-  if (!r) { showUploadToast('신청을 찾을 수 없어요'); return; }
+  if (!r) { showUploadToast(t('신청을 찾을 수 없어요','Request not found')); return; }
   const dates = leaveDateRange(r.start_date, r.end_date);
-  if (!confirm(`${r.student_name||'학생'} · ${r.type}\n${leavePeriodText(r)} (${dates.length}일)\n\n승인하고 출석부에 '${(ATT_STATUSES.find(s=>s.key===r.att_status)||{}).label||r.att_status}'(으)로 반영할까요?`)) return;
+  if (!confirm(`${r.student_name||t('학생','Student')} · ${leaveTypeLabel(r.type)}\n${leavePeriodText(r)} (${dates.length}${t('일',' days')})\n\n${t('승인하고 출석부에','Approve and mark attendance as')} '${(ATT_STATUSES.find(s=>s.key===r.att_status)||{}).label||r.att_status}'${t('(으)로 반영할까요?','?')}`)) return;
   // 출석부 자동 반영
   const rowsUp = dates.map(d => ({
     community_id: r.community_id, student_id: r.student_id, date: d,
@@ -9719,24 +9725,24 @@ async function approveLeave(id) {
   }));
   if (rowsUp.length) {
     const { error: aErr } = await sb.from('attendance_daily').upsert(rowsUp, { onConflict: 'student_id,date' });
-    if (aErr) { showUploadToast('출석부 반영 실패: ' + aErr.message); return; }
+    if (aErr) { showUploadToast(t('출석부 반영 실패: ','Failed to apply to attendance: ') + aErr.message); return; }
   }
   const { error } = await sb.from('leave_requests').update({
     status: 'approved', decided_by: ME.id, decider_name: ME.name, decided_at: new Date().toISOString(),
   }).eq('id', id);
-  if (error) { showUploadToast('승인 저장 실패: ' + error.message); return; }
-  showUploadToast('✅ 승인 · 출석부에 반영됐어요');
+  if (error) { showUploadToast(t('승인 저장 실패: ','Failed to save approval: ') + error.message); return; }
+  showUploadToast(t('✅ 승인 · 출석부에 반영됐어요','✅ Approved · applied to attendance'));
   renderApprovalHub();
 }
 
 async function rejectLeave(id) {
-  const note = prompt('반려 사유 (선택)', '');
+  const note = prompt(t('반려 사유 (선택)','Rejection reason (optional)'), '');
   if (note === null) return;
   const { error } = await sb.from('leave_requests').update({
     status: 'rejected', decided_by: ME.id, decider_name: ME.name, decided_at: new Date().toISOString(), decision_note: note.trim() || null,
   }).eq('id', id);
-  if (error) { showUploadToast('반려 실패: ' + error.message); return; }
-  showUploadToast('신청을 반려했어요');
+  if (error) { showUploadToast(t('반려 실패: ','Reject failed: ') + error.message); return; }
+  showUploadToast(t('신청을 반려했어요','Request rejected'));
   renderApprovalHub();
 }
 
