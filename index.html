@@ -5565,14 +5565,14 @@ function tcsSubnavHtml(active) {
       const on = tcsSubMode === m;
       return `<button onclick="setTcsSubMode('${m}')" style="height:30px;padding:0 13px;border:none;border-radius:8px;font:600 12px var(--font);cursor:pointer;white-space:nowrap;flex-shrink:0;background:${on ? '#1d3a5f' : 'transparent'};color:${on ? '#fff' : 'var(--ink2)'}">${label}</button>`;
     };
-    tabs = tt('record', '기록부') + tt('mock', '모의고사') + tt('reading', 'Triple School');
+    tabs = tt('record', t('기록부','Records')) + tt('mock', t('모의고사','Mock Exam')) + tt('reading', 'Triple School');
   } else {
     const tab = (m, label) => {
       const on = active === m;
       return `<button onclick="setMode('${m}')" style="height:30px;padding:0 13px;border:none;border-radius:8px;font:600 12px var(--font);cursor:pointer;white-space:nowrap;flex-shrink:0;background:${on ? '#1d3a5f' : 'transparent'};color:${on ? '#fff' : 'var(--ink2)'}">${label}</button>`;
     };
-    tabs = tab('gishome', '🏠 홈') + tab('profile', '개인정보') + tab('reading', 'Triple School')
-         + tab('bookreport', '독후감') + tab('review', '활동후기') + tab('mytt', '시간표') + tab('allowance', '용돈') + tab('deposit', '예치금') + tab('leave', '출결신청');
+    tabs = tab('gishome', t('🏠 홈','🏠 Home')) + tab('profile', t('개인정보','Profile')) + tab('reading', 'Triple School')
+         + tab('bookreport', t('독후감','Book Report')) + tab('review', t('활동후기','Reviews')) + tab('mytt', t('시간표','Timetable')) + tab('allowance', t('용돈','Allowance')) + tab('deposit', t('예치금','Deposit')) + tab('leave', t('출결신청','Attendance'));
   }
   return `<div style="display:inline-flex;gap:2px;background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:3px">${tabs}</div>`;
 }
@@ -5590,22 +5590,22 @@ function updateTcsHeader() {
   const sub = document.getElementById('tcs-header-sub');
   const actions = document.getElementById('tcs-header-actions');
   const name = tcsCurrentStudent?.name || '';
-  const back = tcsFromSchool ? `<button onclick="backToSchoolFromTcs()" style="height:34px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:600 12px var(--font);cursor:pointer">← 학생</button>` : '';
+  const back = tcsFromSchool ? `<button onclick="backToSchoolFromTcs()" style="height:34px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:600 12px var(--font);cursor:pointer">← ${t('학생','Student')}</button>` : '';
   if (!tcsCurrentStudent) {
-    if (sub) sub.textContent = '학생을 선택하세요';
+    if (sub) sub.textContent = t('학생을 선택하세요','Select a student');
     if (actions) actions.innerHTML = back;
     return;
   }
   if (tcsSubMode === 'record') {
-    if (sub) sub.textContent = `${name} 학생의 기록부`;
+    if (sub) sub.textContent = t(`${name} 학생의 기록부`, `${name} · Records`);
     if (actions) actions.innerHTML = back + `
-      <button onclick="showTcsPreview()" style="height:34px;padding:0 14px;border-radius:9px;border:1.5px solid var(--accent);background:white;color:var(--accent);font:600 12px var(--font);cursor:pointer">👁️ 미리보기</button>
-      <button onclick="printTcsPdf()" style="height:34px;padding:0 14px;border-radius:9px;border:none;background:linear-gradient(135deg,#1d3a5f,#2a5298);color:white;font:600 12px var(--font);cursor:pointer">📄 PDF 출력</button>`;
+      <button onclick="showTcsPreview()" style="height:34px;padding:0 14px;border-radius:9px;border:1.5px solid var(--accent);background:white;color:var(--accent);font:600 12px var(--font);cursor:pointer">${t('👁️ 미리보기','👁️ Preview')}</button>
+      <button onclick="printTcsPdf()" style="height:34px;padding:0 14px;border-radius:9px;border:none;background:linear-gradient(135deg,#1d3a5f,#2a5298);color:white;font:600 12px var(--font);cursor:pointer">${t('📄 PDF 출력','📄 PDF Export')}</button>`;
   } else if (tcsSubMode === 'mock') {
-    if (sub) sub.textContent = `${name} 학생 · 모의고사 분석`;
+    if (sub) sub.textContent = t(`${name} 학생 · 모의고사 분석`, `${name} · Mock Exam Analysis`);
     if (actions) actions.innerHTML = back;
   } else {
-    if (sub) sub.textContent = `${name} 학생 · Triple School`;
+    if (sub) sub.textContent = t(`${name} 학생 · Triple School`, `${name} · Triple School`);
     if (actions) actions.innerHTML = back;
   }
 }
@@ -5616,7 +5616,7 @@ function renderTcsMain() {
   if (!main) return;
   updateTcsHeader();
   if (!tcsCurrentStudent) {
-    main.innerHTML = '<div style="text-align:center;padding:70px 20px;color:var(--ink3);font-size:14px">← 왼쪽에서 학생을 선택하세요</div>';
+    main.innerHTML = `<div style="text-align:center;padding:70px 20px;color:var(--ink3);font-size:14px">${t('← 왼쪽에서 학생을 선택하세요','← Select a student on the left')}</div>`;
     return;
   }
   if (tcsSubMode === 'mock') {
@@ -5635,7 +5635,7 @@ async function initReadingPage() {
   const sn = document.getElementById('subnav-reading'); if (sn) sn.innerHTML = tcsSubnavHtml('reading');
   const page = document.getElementById('reading-page');
   const sub = document.getElementById('reading-header-sub');
-  page.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink3)">불러오는 중...</div>';
+  page.innerHTML = `<div style="text-align:center;padding:40px;color:var(--ink3)">${t('불러오는 중...','Loading...')}</div>`;
 
   try {
     const { data: books, error: bErr } = await sb.from('reading_books').select('*').order('category').order('sort').order('title');
@@ -5643,10 +5643,10 @@ async function initReadingPage() {
     readingBooks = sortReadingBooks(books || []);
 
     if (isTeacher()) {
-      if (sub) sub.textContent = '전체 현황 · 책 관리';
+      if (sub) sub.textContent = t('전체 현황 · 책 관리','Overview · Manage Books');
       await renderReadingAdmin();
     } else {
-      if (sub) sub.textContent = '내가 읽은 필독서';
+      if (sub) sub.textContent = t('내가 읽은 필독서','My Reading List');
       const { data: logs } = await sb.from('reading_logs').select('*').eq('student_id', ME.id);
       readingMyLogs = logs || [];
       renderReadingStudent();
@@ -5661,7 +5661,7 @@ function renderReadingSetupNeeded(err) {
   page.innerHTML = `<div style="max-width:560px;margin:40px auto;text-align:center">
     <div style="font-size:40px;margin-bottom:12px">🗄️</div>
     <div style="font-size:16px;font-weight:700;margin-bottom:8px">${t('데이터베이스 설정이 필요해요','Database setup required')}</div>
-    <div style="font-size:13px;color:var(--ink3);line-height:1.8">Triple School 필독서 기능을 쓰려면 Supabase에서 테이블을 한 번 만들어야 합니다.<br>제공해드린 <b>db/필독서_DB설치.sql</b> 내용을 Supabase → SQL Editor에 붙여넣고 실행해주세요.</div>
+    <div style="font-size:13px;color:var(--ink3);line-height:1.8">${t('Triple School 필독서 기능을 쓰려면 Supabase에서 테이블을 한 번 만들어야 합니다.<br>제공해드린 <b>db/필독서_DB설치.sql</b> 내용을 Supabase → SQL Editor에 붙여넣고 실행해주세요.','To use the Triple School reading feature, you need to create a table in Supabase once.<br>Paste the contents of <b>db/필독서_DB설치.sql</b> into Supabase → SQL Editor and run it.')}</div>
     <div style="font-size:11px;color:#b91c1c;margin-top:14px">${err?.message || ''}</div>
   </div>`;
 }
@@ -5687,7 +5687,7 @@ function readingBookRow(b, log) {
       <div style="font-size:13.5px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${b.title}</div>
       ${(b.author || b.publisher) ? `<div style="font-size:11px;color:var(--ink3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${[b.author, b.publisher].filter(Boolean).join(' · ')}</div>` : ''}
     </div>
-    ${done ? `<div style="font-size:10.5px;color:#1d4ed8;text-align:right;flex-shrink:0">${log.read_date || ''}${log.include_in_record ? ' 📋' : ''}</div>` : `<div style="font-size:11px;color:var(--ink3);flex-shrink:0">기록 →</div>`}
+    ${done ? `<div style="font-size:10.5px;color:#1d4ed8;text-align:right;flex-shrink:0">${log.read_date || ''}${log.include_in_record ? ' 📋' : ''}</div>` : `<div style="font-size:11px;color:var(--ink3);flex-shrink:0">${t('기록 →','Log →')}</div>`}
   </div>`;
 }
 
@@ -5723,10 +5723,10 @@ function renderReadingList() {
 
   const showUnread = readingShowUnread || !!q;
   const showRead = readingShowRead || !!q;
-  let html = `<div onclick="readingShowUnread=!readingShowUnread;renderReadingList()" style="font-size:13px;font-weight:700;color:var(--adeep);margin:6px 0 8px;cursor:pointer;display:flex;align-items:center;gap:6px">📖 읽지 않은 책 (${unread.length}) <span style="font-size:11px;font-weight:500;color:var(--ink3)">${showUnread ? '▲ 접기' : '▼ 펼치기'}</span></div>`;
-  if (showUnread) html += unread.length ? renderGroup(unread) : `<div style="font-size:12px;color:var(--ink3);padding:8px 0">${(q || cat !== 'all') ? '조건에 맞는 책이 없어요' : '모든 책을 다 읽었어요! 🎉'}</div>`;
-  html += `<div onclick="readingShowRead=!readingShowRead;renderReadingList()" style="font-size:13px;font-weight:700;color:var(--adeep);margin:20px 0 8px;cursor:pointer;display:flex;align-items:center;gap:6px">✅ 읽은 책 (${read.length}) <span style="font-size:11px;font-weight:500;color:var(--ink3)">${showRead ? '▲ 접기' : '▼ 펼치기'}</span></div>`;
-  if (showRead) html += read.length ? renderGroup(read) : `<div style="font-size:12px;color:var(--ink3);padding:8px 0">아직 읽은 책이 없어요</div>`;
+  let html = `<div onclick="readingShowUnread=!readingShowUnread;renderReadingList()" style="font-size:13px;font-weight:700;color:var(--adeep);margin:6px 0 8px;cursor:pointer;display:flex;align-items:center;gap:6px">📖 ${t('읽지 않은 책','Unread Books')} (${unread.length}) <span style="font-size:11px;font-weight:500;color:var(--ink3)">${showUnread ? t('▲ 접기','▲ Collapse') : t('▼ 펼치기','▼ Expand')}</span></div>`;
+  if (showUnread) html += unread.length ? renderGroup(unread) : `<div style="font-size:12px;color:var(--ink3);padding:8px 0">${(q || cat !== 'all') ? t('조건에 맞는 책이 없어요','No matching books') : t('모든 책을 다 읽었어요! 🎉','You have read every book! 🎉')}</div>`;
+  html += `<div onclick="readingShowRead=!readingShowRead;renderReadingList()" style="font-size:13px;font-weight:700;color:var(--adeep);margin:20px 0 8px;cursor:pointer;display:flex;align-items:center;gap:6px">✅ ${t('읽은 책','Read Books')} (${read.length}) <span style="font-size:11px;font-weight:500;color:var(--ink3)">${showRead ? t('▲ 접기','▲ Collapse') : t('▼ 펼치기','▼ Expand')}</span></div>`;
+  if (showRead) html += read.length ? renderGroup(read) : `<div style="font-size:12px;color:var(--ink3);padding:8px 0">${t('아직 읽은 책이 없어요','No books read yet')}</div>`;
   box.innerHTML = html;
 }
 
@@ -5736,7 +5736,7 @@ function renderReadingStudent() {
   const total = readingBooks.length;
 
   if (!total) {
-    page.innerHTML = `<div style="max-width:760px"><div style="text-align:center;color:var(--ink3);font-size:13px;padding:40px;line-height:1.8">아직 등록된 필독서가 없어요.<br>선생님(관리자)이 [TCS → Triple School → 책 관리]에서 책을 추가하면<br>여기서 읽은 책을 눌러 기록할 수 있어요.</div></div>`;
+    page.innerHTML = `<div style="max-width:760px"><div style="text-align:center;color:var(--ink3);font-size:13px;padding:40px;line-height:1.8">${t('아직 등록된 필독서가 없어요.<br>선생님(관리자)이 [TCS → Triple School → 책 관리]에서 책을 추가하면<br>여기서 읽은 책을 눌러 기록할 수 있어요.','No reading books have been registered yet.<br>Once a teacher (admin) adds books under [TCS → Triple School → Manage Books],<br>you can tap a book here to log it.')}</div></div>`;
     return;
   }
 
@@ -5759,12 +5759,12 @@ function renderReadingStudent() {
 
   page.innerHTML = `<div style="max-width:760px">
     <div style="background:linear-gradient(135deg,#1d3a5f,#2a5298);border-radius:16px;padding:16px 20px;margin-bottom:12px;color:white">
-      <div style="display:flex;justify-content:space-between;align-items:baseline"><div style="font-size:13px;opacity:.8">나의 필독서 진도 (전체)</div><div style="font-size:22px;font-weight:800">${readCount} / ${total}권</div></div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline"><div style="font-size:13px;opacity:.8">${t('나의 필독서 진도 (전체)','My Reading Progress (All)')}</div><div style="font-size:22px;font-weight:800">${readCount} / ${total}${t('권',' books')}</div></div>
       <div style="background:rgba(255,255,255,.25);border-radius:99px;height:8px;margin-top:10px;overflow:hidden"><div style="height:100%;width:${pct}%;background:white;border-radius:99px;transition:width .4s"></div></div>
     </div>
     <div style="display:flex;gap:8px;margin-bottom:14px">${READING_CATEGORIES.map(catCard).join('')}</div>
-    <input id="reading-search" type="text" value="${(f.q || '').replace(/"/g, '&quot;')}" placeholder="🔍 책 제목·저자 검색" oninput="readingStudentFilter.q=this.value;renderReadingList()" style="width:100%;height:40px;padding:0 14px;border-radius:11px;border:1.5px solid var(--border);background:var(--s2);font:14px var(--font);color:var(--ink);outline:none;box-sizing:border-box;margin-bottom:6px"/>
-    ${f.cat !== 'all' ? `<div style="margin-bottom:8px"><span onclick="setReadingCat('all')" style="display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#1d4ed8;cursor:pointer">✕ ${READING_CAT_SHORT[f.cat] || f.cat} 필터 해제 (전체 보기)</span></div>` : ''}
+    <input id="reading-search" type="text" value="${(f.q || '').replace(/"/g, '&quot;')}" placeholder="${t('🔍 책 제목·저자 검색','🔍 Search title or author')}" oninput="readingStudentFilter.q=this.value;renderReadingList()" style="width:100%;height:40px;padding:0 14px;border-radius:11px;border:1.5px solid var(--border);background:var(--s2);font:14px var(--font);color:var(--ink);outline:none;box-sizing:border-box;margin-bottom:6px"/>
+    ${f.cat !== 'all' ? `<div style="margin-bottom:8px"><span onclick="setReadingCat('all')" style="display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#1d4ed8;cursor:pointer">✕ ${READING_CAT_SHORT[f.cat] || f.cat} ${t('필터 해제 (전체 보기)','filter — show all')}</span></div>` : ''}
     <div id="reading-list" style="margin-top:6px"></div>
   </div>`;
   renderReadingList();
@@ -5773,7 +5773,7 @@ function renderReadingStudent() {
 
 async function openReadingLog(bookId) {
   const page = document.getElementById('reading-page');
-  page.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink3);font-size:13px">불러오는 중...</div>';
+  page.innerHTML = `<div style="text-align:center;padding:40px;color:var(--ink3);font-size:13px">${t('불러오는 중...','Loading...')}</div>`;
   readingNotes = [];
   try {
     const { data } = await sb.from('reading_notes').select('*').eq('member_id', ME.id).eq('book_id', bookId)
@@ -5794,9 +5794,9 @@ function renderReadingLog(bookId) {
   const noteItems = readingNotes.map(n => `
     <div style="border-left:3px solid var(--accent);padding:5px 0 6px 12px;margin-bottom:13px">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
-        <span style="font-size:11px;color:var(--ink3)">${n.date||''}${n.pages?` · ${escHtml(n.pages)}쪽`:''}</span>
+        <span style="font-size:11px;color:var(--ink3)">${n.date||''}${n.pages?` · ${escHtml(n.pages)}${t('쪽','p')}`:''}</span>
         <div style="flex:1"></div>
-        <button onclick="deleteReadingNote('${n.id}','${bookId}')" title="삭제" style="border:none;background:transparent;cursor:pointer;color:var(--ink3);font-size:12px">✕</button>
+        <button onclick="deleteReadingNote('${n.id}','${bookId}')" title="${t('삭제','Delete')}" style="border:none;background:transparent;cursor:pointer;color:var(--ink3);font-size:12px">✕</button>
       </div>
       <div style="font-family:'Noto Serif KR',serif;font-size:14.5px;color:var(--ink);line-height:1.9;white-space:pre-wrap">${escHtml(n.content)}</div>
     </div>`).join('');
@@ -5804,38 +5804,38 @@ function renderReadingLog(bookId) {
     <div style="background:var(--s2);border-radius:11px;padding:12px;margin-top:4px">
       <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap">
         <input id="rn-date" type="date" value="${today}" style="${inp}"/>
-        <input id="rn-pages" placeholder="쪽수(선택) 예: 51~80" style="${inp};flex:1;min-width:120px"/>
+        <input id="rn-pages" placeholder="${t('쪽수(선택) 예: 51~80','Pages (optional) e.g. 51~80')}" style="${inp};flex:1;min-width:120px"/>
       </div>
-      <textarea id="rn-content" placeholder="오늘 읽은 부분의 줄거리·생각·느낀 점을 적어보세요" style="width:100%;min-height:72px;padding:9px;border:1px solid var(--border);border-radius:8px;font:400 13.5px var(--font);color:var(--ink);line-height:1.6;resize:vertical"></textarea>
-      <div style="display:flex;justify-content:flex-end;margin-top:7px"><button onclick="addReadingNote('${bookId}')" style="height:32px;padding:0 14px;border:none;background:#1d3a5f;color:#fff;border-radius:8px;cursor:pointer;font:700 12px var(--font)">＋ 메모 추가</button></div>
+      <textarea id="rn-content" placeholder="${t('오늘 읽은 부분의 줄거리·생각·느낀 점을 적어보세요','Write the summary, thoughts, and feelings about what you read today')}" style="width:100%;min-height:72px;padding:9px;border:1px solid var(--border);border-radius:8px;font:400 13.5px var(--font);color:var(--ink);line-height:1.6;resize:vertical"></textarea>
+      <div style="display:flex;justify-content:flex-end;margin-top:7px"><button onclick="addReadingNote('${bookId}')" style="height:32px;padding:0 14px;border:none;background:#1d3a5f;color:#fff;border-radius:8px;cursor:pointer;font:700 12px var(--font)">${t('＋ 메모 추가','＋ Add Note')}</button></div>
     </div>`;
 
   page.innerHTML = `<div style="max-width:640px">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
-      <button onclick="initReadingPage()" style="height:32px;padding:0 12px;border-radius:8px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:500 12px var(--font);cursor:pointer">← 목록</button>
+      <button onclick="initReadingPage()" style="height:32px;padding:0 12px;border-radius:8px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:500 12px var(--font);cursor:pointer">${t('← 목록','← List')}</button>
       <div style="font-size:16px;font-weight:700;color:var(--ink)">${book.title}</div>
     </div>
     <div class="adm-card">
       <div style="font-size:12px;color:var(--ink3);margin-bottom:16px">${book.step ? 'Step ' + book.step + ' · ' : ''}${READING_CAT_SHORT[book.category] || book.category}${book.author ? ' · ' + book.author : ''}${book.publisher ? ' · ' + book.publisher : ''}</div>
 
       <div style="border-top:2px solid var(--border);padding-top:16px;margin-bottom:16px">
-        <div style="font-size:12.5px;font-weight:800;color:var(--ink);margin-bottom:4px">📖 읽으며 쌓은 기록 <span style="color:var(--ink3);font-weight:600">(${readingNotes.length})</span></div>
-        <div style="font-size:11px;color:var(--ink3);margin-bottom:12px">읽은 날마다 메모를 남기면 순서대로 쌓여요.</div>
-        ${readingNotes.length ? noteItems : '<div style="font-size:12.5px;color:var(--ink3);padding:2px 0 12px">아직 메모가 없어요. 아래에서 읽은 만큼 적어보세요 👇</div>'}
+        <div style="font-size:12.5px;font-weight:800;color:var(--ink);margin-bottom:4px">📖 ${t('읽으며 쌓은 기록','Reading Notes')} <span style="color:var(--ink3);font-weight:600">(${readingNotes.length})</span></div>
+        <div style="font-size:11px;color:var(--ink3);margin-bottom:12px">${t('읽은 날마다 메모를 남기면 순서대로 쌓여요.','Leave a note each day you read and they stack up in order.')}</div>
+        ${readingNotes.length ? noteItems : `<div style="font-size:12.5px;color:var(--ink3);padding:2px 0 12px">${t('아직 메모가 없어요. 아래에서 읽은 만큼 적어보세요 👇','No notes yet. Write as much as you read below 👇')}</div>`}
         ${addForm}
       </div>
 
       <div style="border-top:2px solid var(--border);padding-top:16px">
-        <div style="font-size:12.5px;font-weight:800;color:var(--ink);margin-bottom:3px">✍️ 최종 독후감 <span style="color:var(--ink3);font-weight:600;font-size:11px">· 다 읽은 뒤 마무리</span></div>
-        <div style="font-size:11px;color:var(--ink3);margin-bottom:12px">쌓은 메모를 바탕으로 이 책의 소감을 정리하고 '읽음'으로 저장하세요. (PDF엔 이 마무리만 담겨요)</div>
-        <label style="font-size:12px;font-weight:600;color:var(--ink3);display:block;margin-bottom:6px">완독한 날짜</label>
+        <div style="font-size:12.5px;font-weight:800;color:var(--ink);margin-bottom:3px">✍️ ${t('최종 독후감','Final Book Report')} <span style="color:var(--ink3);font-weight:600;font-size:11px">${t('· 다 읽은 뒤 마무리','· wrap up after finishing')}</span></div>
+        <div style="font-size:11px;color:var(--ink3);margin-bottom:12px">${t("쌓은 메모를 바탕으로 이 책의 소감을 정리하고 '읽음'으로 저장하세요. (PDF엔 이 마무리만 담겨요)",'Based on your notes, summarize your thoughts on this book and save it as read. (Only this summary goes into the PDF)')}</div>
+        <label style="font-size:12px;font-weight:600;color:var(--ink3);display:block;margin-bottom:6px">${t('완독한 날짜','Date finished')}</label>
         <input id="rd-date" type="date" value="${log?.read_date || today}" style="${inputCss};margin-bottom:14px"/>
-        <textarea id="rd-report" rows="6" placeholder="이 책에서 배운 점, 느낀 점을 자유롭게 정리해 보세요" style="${inputCss};resize:vertical;line-height:1.6;margin-bottom:14px">${escHtml(log?.report || '')}</textarea>
+        <textarea id="rd-report" rows="6" placeholder="${t('이 책에서 배운 점, 느낀 점을 자유롭게 정리해 보세요','Freely summarize what you learned and felt from this book')}" style="${inputCss};resize:vertical;line-height:1.6;margin-bottom:14px">${escHtml(log?.report || '')}</textarea>
         <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink);cursor:pointer;margin-bottom:16px">
-          <input id="rd-include" type="checkbox" ${log?.include_in_record ? 'checked' : ''} style="width:17px;height:17px"/> 학생종합기록부(PDF)에 포함하기
+          <input id="rd-include" type="checkbox" ${log?.include_in_record ? 'checked' : ''} style="width:17px;height:17px"/> ${t('학생종합기록부(PDF)에 포함하기','Include in student record (PDF)')}
         </label>
-        <button onclick="saveReadingLog('${bookId}')" style="width:100%;height:42px;border-radius:11px;border:none;background:#1d3a5f;color:white;font:700 14px var(--font);cursor:pointer;margin-bottom:${log ? '10px' : '0'}">💾 읽음으로 저장</button>
-        ${log ? `<button onclick="deleteReadingLog('${bookId}')" style="width:100%;height:38px;border-radius:10px;border:1.5px solid var(--border);background:white;color:#ef4444;font:600 13px var(--font);cursor:pointer">읽음 취소</button>` : ''}
+        <button onclick="saveReadingLog('${bookId}')" style="width:100%;height:42px;border-radius:11px;border:none;background:#1d3a5f;color:white;font:700 14px var(--font);cursor:pointer;margin-bottom:${log ? '10px' : '0'}">${t('💾 읽음으로 저장','💾 Save as Read')}</button>
+        ${log ? `<button onclick="deleteReadingLog('${bookId}')" style="width:100%;height:38px;border-radius:10px;border:1.5px solid var(--border);background:white;color:#ef4444;font:600 13px var(--font);cursor:pointer">${t('읽음 취소','Undo Read')}</button>` : ''}
       </div>
     </div>
   </div>`;
@@ -5844,23 +5844,23 @@ async function addReadingNote(bookId) {
   const date = document.getElementById('rn-date')?.value || new Date().toISOString().slice(0,10);
   const pages = (document.getElementById('rn-pages')?.value || '').trim();
   const content = (document.getElementById('rn-content')?.value || '').trim();
-  if (!content) { showUploadToast('메모 내용을 입력하세요'); return; }
+  if (!content) { showUploadToast(t('메모 내용을 입력하세요','Please enter note content')); return; }
   const { data, error } = await sb.from('reading_notes').insert({
     book_id: bookId, member_id: ME.id, community_id: CID(), date, pages: pages || null, content,
   }).select().single();
   if (error) {
-    if (schoolTableMissing(error)) { showUploadToast('이어쓰기 테이블이 없어요. db/트리플스쿨_이어쓰기_DB설치.sql 을 실행해주세요'); return; }
-    showUploadToast('추가 실패: ' + error.message); return;
+    if (schoolTableMissing(error)) { showUploadToast(t('이어쓰기 테이블이 없어요. db/트리플스쿨_이어쓰기_DB설치.sql 을 실행해주세요','The notes table is missing. Please run db/트리플스쿨_이어쓰기_DB설치.sql')); return; }
+    showUploadToast(t('추가 실패: ','Add failed: ') + error.message); return;
   }
   if (data) readingNotes.push(data);
   readingNotes.sort((a,b)=> (a.date||'').localeCompare(b.date||'') || (a.created_at||'').localeCompare(b.created_at||''));
-  showUploadToast('✅ 메모가 쌓였어요');
+  showUploadToast(t('✅ 메모가 쌓였어요','✅ Note added'));
   renderReadingLog(bookId);
 }
 async function deleteReadingNote(id, bookId) {
-  if (!confirm('이 메모를 삭제할까요?')) return;
+  if (!confirm(t('이 메모를 삭제할까요?','Delete this note?'))) return;
   const { error } = await sb.from('reading_notes').delete().eq('id', id);
-  if (error) { showUploadToast('삭제 실패: ' + error.message); return; }
+  if (error) { showUploadToast(t('삭제 실패: ','Delete failed: ') + error.message); return; }
   readingNotes = readingNotes.filter(n => n.id !== id);
   renderReadingLog(bookId);
 }
@@ -5874,15 +5874,15 @@ async function saveReadingLog(bookId) {
     report, read_date, include_in_record: include,
     updated_at: new Date().toISOString(), updated_by: ME.id,
   }, { onConflict: 'student_id,book_id' });
-  if (error) { showUploadToast('저장 실패 😥 ' + error.message); return; }
-  showUploadToast('✅ 저장됐어요!');
+  if (error) { showUploadToast(t('저장 실패 😥 ','Save failed 😥 ') + error.message); return; }
+  showUploadToast(t('✅ 저장됐어요!','✅ Saved!'));
   try { const { data: logs } = await sb.from('reading_logs').select('*').eq('student_id', ME.id); readingMyLogs = logs || []; } catch(_) {}
   openReadingLog(bookId);
 }
 async function deleteReadingLog(bookId) {
   const { error } = await sb.from('reading_logs').delete().eq('student_id', ME.id).eq('book_id', bookId);
-  if (error) { showUploadToast('취소 실패 😥'); return; }
-  showUploadToast('읽음 취소됨');
+  if (error) { showUploadToast(t('취소 실패 😥','Undo failed 😥')); return; }
+  showUploadToast(t('읽음 취소됨','Read undone'));
   try { const { data: logs } = await sb.from('reading_logs').select('*').eq('student_id', ME.id); readingMyLogs = logs || []; } catch(_) {}
   openReadingLog(bookId);
 }
@@ -5909,9 +5909,9 @@ async function renderReadingAdmin() {
 
   const summary = `
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px">
-      <div style="background:var(--s2);border-radius:12px;padding:14px"><div style="font-size:12px;color:var(--ink3)">학생 수</div><div style="font-size:22px;font-weight:800;color:var(--adeep)">${studs.length}</div></div>
-      <div style="background:var(--s2);border-radius:12px;padding:14px"><div style="font-size:12px;color:var(--ink3)">등록된 필독서</div><div style="font-size:22px;font-weight:800;color:var(--adeep)">${total}권</div></div>
-      <div style="background:var(--s2);border-radius:12px;padding:14px"><div style="font-size:12px;color:var(--ink3)">평균 읽은 권수</div><div style="font-size:22px;font-weight:800;color:var(--adeep)">${avg.toFixed(1)}권</div></div>
+      <div style="background:var(--s2);border-radius:12px;padding:14px"><div style="font-size:12px;color:var(--ink3)">${t('학생 수','Students')}</div><div style="font-size:22px;font-weight:800;color:var(--adeep)">${studs.length}</div></div>
+      <div style="background:var(--s2);border-radius:12px;padding:14px"><div style="font-size:12px;color:var(--ink3)">${t('등록된 필독서','Registered Books')}</div><div style="font-size:22px;font-weight:800;color:var(--adeep)">${total}${t('권',' books')}</div></div>
+      <div style="background:var(--s2);border-radius:12px;padding:14px"><div style="font-size:12px;color:var(--ink3)">${t('평균 읽은 권수','Avg. Books Read')}</div><div style="font-size:22px;font-weight:800;color:var(--adeep)">${avg.toFixed(1)}${t('권',' books')}</div></div>
     </div>`;
 
   const studentRows = studs.length ? studs.map(s => {
@@ -5922,14 +5922,14 @@ async function renderReadingAdmin() {
       <div style="flex:1;background:var(--s3);border-radius:99px;height:8px;overflow:hidden"><div style="height:100%;width:${pct}%;background:#2a5298;border-radius:99px"></div></div>
       <div style="width:54px;text-align:right;font-size:12px;color:var(--ink2)">${c}/${total}</div>
     </div>`;
-  }).join('') : '<div style="font-size:13px;color:var(--ink3);padding:12px 0">등록된 학생이 없어요</div>';
+  }).join('') : `<div style="font-size:13px;color:var(--ink3);padding:12px 0">${t('등록된 학생이 없어요','No students registered')}</div>`;
 
   const popular = [...readingBooks].sort((a, b) => (byBook[b.id] || 0) - (byBook[a.id] || 0)).slice(0, 10);
   const popularRows = popular.length ? popular.map(b => `
     <div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border)">
       <div style="flex:1;font-size:13px;color:var(--ink)">${b.title} <span style="font-size:11px;color:var(--ink3)">${b.category}</span></div>
-      <div style="font-size:12px;font-weight:600;color:#1d4ed8">${byBook[b.id] || 0}명</div>
-    </div>`).join('') : '<div style="font-size:13px;color:var(--ink3);padding:12px 0">데이터 없음</div>';
+      <div style="font-size:12px;font-weight:600;color:#1d4ed8">${byBook[b.id] || 0}${t('명',' students')}</div>
+    </div>`).join('') : `<div style="font-size:13px;color:var(--ink3);padding:12px 0">${t('데이터 없음','No data')}</div>`;
 
   // 책 관리 (교사·관리자)
   let manageHtml = '';
@@ -5943,31 +5943,31 @@ async function renderReadingAdmin() {
           <div style="flex:1;min-width:0;font-size:13px;color:var(--ink)">${b.title}${(b.author || b.publisher) ? `<span style="font-size:11px;color:var(--ink3)"> · ${[b.author, b.publisher].filter(Boolean).join(' · ')}</span>` : ''}</div>
           <button onclick="deleteReadingBook('${b.id}')" style="width:26px;height:26px;border-radius:7px;border:1.5px solid var(--border);background:white;color:#ef4444;font-size:14px;cursor:pointer;flex-shrink:0">×</button>
         </div>`).join('')}`).join('');
-      return `${step ? `<div style="font-size:13px;font-weight:800;color:var(--ink);margin:16px 0 4px;padding-bottom:5px;border-bottom:2px solid var(--adeep)">📘 Step ${step}</div>` : `<div style="font-size:13px;font-weight:800;color:var(--ink);margin:16px 0 4px">직접 추가한 책</div>`}${inner}`;
+      return `${step ? `<div style="font-size:13px;font-weight:800;color:var(--ink);margin:16px 0 4px;padding-bottom:5px;border-bottom:2px solid var(--adeep)">📘 Step ${step}</div>` : `<div style="font-size:13px;font-weight:800;color:var(--ink);margin:16px 0 4px">${t('직접 추가한 책','Manually Added')}</div>`}${inner}`;
     }).join('');
     const catOpts = READING_CATEGORIES.map(c => `<option value="${c}">${READING_CAT_SHORT[c] || c}</option>`).join('');
-    const stepOpts = `<option value="">Step 없음</option>` + [1,2,3,4].map(n => `<option value="${n}">Step ${n}</option>`).join('');
+    const stepOpts = `<option value="">${t('Step 없음','No Step')}</option>` + [1,2,3,4].map(n => `<option value="${n}">Step ${n}</option>`).join('');
     manageHtml = `
-      <div style="font-size:14px;font-weight:700;color:var(--adeep);margin:0 0 10px">📚 책 관리 <span style="font-size:11px;font-weight:500;color:var(--ink3)">(전 공동체 공통 목록)</span></div>
+      <div style="font-size:14px;font-weight:700;color:var(--adeep);margin:0 0 10px">📚 ${t('책 관리','Manage Books')} <span style="font-size:11px;font-weight:500;color:var(--ink3)">${t('(전 공동체 공통 목록)','(shared list for all communities)')}</span></div>
       <div class="adm-card" style="margin-bottom:24px">
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
           <select id="rb-step" style="height:38px;padding:0 10px;border-radius:9px;border:1.5px solid var(--border);background:white;font:13px var(--font);cursor:pointer">${stepOpts}</select>
           <select id="rb-cat" style="height:38px;padding:0 10px;border-radius:9px;border:1.5px solid var(--border);background:white;font:13px var(--font);cursor:pointer">${catOpts}</select>
-          <input id="rb-title" type="text" placeholder="책 제목" style="flex:1;min-width:150px;height:38px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--s2);font:13px var(--font);outline:none"/>
-          <input id="rb-author" type="text" placeholder="저자 (선택)" style="width:120px;height:38px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--s2);font:13px var(--font);outline:none"/>
-          <input id="rb-publisher" type="text" placeholder="출판사 (선택)" style="width:120px;height:38px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--s2);font:13px var(--font);outline:none"/>
-          <button onclick="addReadingBook()" style="height:38px;padding:0 16px;border-radius:9px;border:none;background:#1d3a5f;color:white;font:600 13px var(--font);cursor:pointer">추가</button>
+          <input id="rb-title" type="text" placeholder="${t('책 제목','Book title')}" style="flex:1;min-width:150px;height:38px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--s2);font:13px var(--font);outline:none"/>
+          <input id="rb-author" type="text" placeholder="${t('저자 (선택)','Author (optional)')}" style="width:120px;height:38px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--s2);font:13px var(--font);outline:none"/>
+          <input id="rb-publisher" type="text" placeholder="${t('출판사 (선택)','Publisher (optional)')}" style="width:120px;height:38px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--s2);font:13px var(--font);outline:none"/>
+          <button onclick="addReadingBook()" style="height:38px;padding:0 16px;border-radius:9px;border:none;background:#1d3a5f;color:white;font:600 13px var(--font);cursor:pointer">${t('추가','Add')}</button>
         </div>
-        ${bookList || '<div style="font-size:13px;color:var(--ink3)">아직 등록된 책이 없어요</div>'}
+        ${bookList || `<div style="font-size:13px;color:var(--ink3)">${t('아직 등록된 책이 없어요','No books registered yet')}</div>`}
       </div>`;
   }
 
   page.innerHTML = `<div style="max-width:760px">
     ${summary}
     ${manageHtml}
-    <div style="font-size:14px;font-weight:700;color:var(--adeep);margin:0 0 8px">👥 학생별 진도</div>
+    <div style="font-size:14px;font-weight:700;color:var(--adeep);margin:0 0 8px">👥 ${t('학생별 진도','Progress by Student')}</div>
     <div class="adm-card" style="margin-bottom:20px">${studentRows}</div>
-    <div style="font-size:14px;font-weight:700;color:var(--adeep);margin:0 0 8px">🔥 많이 읽은 책 TOP 10</div>
+    <div style="font-size:14px;font-weight:700;color:var(--adeep);margin:0 0 8px">🔥 ${t('많이 읽은 책 TOP 10','Most Read Books TOP 10')}</div>
     <div class="adm-card" style="margin-bottom:4px">${popularRows}</div>
   </div>`;
 }
@@ -5976,19 +5976,19 @@ async function renderReadingAdmin() {
 async function renderTcsReadingUnified() {
   const main = document.getElementById(tcsMainId);
   if (!main || !tcsCurrentStudent) return;
-  main.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink3)">불러오는 중...</div>';
+  main.innerHTML = `<div style="text-align:center;padding:40px;color:var(--ink3)">${t('불러오는 중...','Loading...')}</div>`;
 
   try {
     if (!readingBooks.length) {
       const { data: books, error: bErr } = await sb.from('reading_books').select('*').order('category').order('sort').order('title');
       if (bErr) {
-        main.innerHTML = `<div style="max-width:560px;margin:30px auto;text-align:center"><div style="font-size:40px;margin-bottom:12px">🗄️</div><div style="font-size:16px;font-weight:700;margin-bottom:8px">데이터베이스 설정이 필요해요</div><div style="font-size:13px;color:var(--ink3);line-height:1.8">제공해드린 <b>db/필독서_DB설치.sql</b>을 Supabase → SQL Editor에서 실행해주세요.</div><div style="font-size:11px;color:#b91c1c;margin-top:14px">${bErr.message || ''}</div></div>`;
+        main.innerHTML = `<div style="max-width:560px;margin:30px auto;text-align:center"><div style="font-size:40px;margin-bottom:12px">🗄️</div><div style="font-size:16px;font-weight:700;margin-bottom:8px">${t('데이터베이스 설정이 필요해요','Database setup required')}</div><div style="font-size:13px;color:var(--ink3);line-height:1.8">${t('제공해드린 <b>db/필독서_DB설치.sql</b>을 Supabase → SQL Editor에서 실행해주세요.','Run the provided <b>db/필독서_DB설치.sql</b> in Supabase → SQL Editor.')}</div><div style="font-size:11px;color:#b91c1c;margin-top:14px">${bErr.message || ''}</div></div>`;
         return;
       }
       readingBooks = sortReadingBooks(books || []);
     }
   } catch (e) {
-    main.innerHTML = `<div style="text-align:center;padding:40px;color:#b91c1c">필독서 데이터를 불러오지 못했어요</div>`;
+    main.innerHTML = `<div style="text-align:center;padding:40px;color:#b91c1c">${t('필독서 데이터를 불러오지 못했어요','Failed to load reading data')}</div>`;
     return;
   }
 
@@ -6010,9 +6010,9 @@ async function renderTcsReadingUnified() {
 
   const readBooks = readingBooks.filter(b => readMap[b.id]);
   const readRows = readBooks.length ? readBooks.map(b => { const l = readMap[b.id]; return `<div style="border:1.5px solid #bfdbfe;background:#f0f7ff;border-radius:11px;padding:11px 13px;margin-bottom:8px">
-    <div style="display:flex;align-items:center;gap:8px"><div style="flex:1;font-size:13.5px;font-weight:700;color:var(--ink)">${b.title} <span style="font-size:11px;font-weight:500;color:var(--ink3)">${READING_CAT_SHORT[b.category] || b.category}</span></div><div style="font-size:11px;color:#1d4ed8">${l.read_date || ''}${l.include_in_record ? ' · 📋기록부' : ''}</div></div>
-    ${l.report ? `<div style="margin-top:6px;font-size:12.5px;color:var(--ink2);line-height:1.6;white-space:pre-wrap">${(l.report || '').replace(/</g, '&lt;')}</div>` : '<div style="margin-top:4px;font-size:12px;color:var(--ink3)">독후감 없음</div>'}
-  </div>`; }).join('') : '<div style="font-size:13px;color:var(--ink3);padding:12px 0">아직 읽은 책 기록이 없어요</div>';
+    <div style="display:flex;align-items:center;gap:8px"><div style="flex:1;font-size:13.5px;font-weight:700;color:var(--ink)">${b.title} <span style="font-size:11px;font-weight:500;color:var(--ink3)">${READING_CAT_SHORT[b.category] || b.category}</span></div><div style="font-size:11px;color:#1d4ed8">${l.read_date || ''}${l.include_in_record ? t(' · 📋기록부',' · 📋Record') : ''}</div></div>
+    ${l.report ? `<div style="margin-top:6px;font-size:12.5px;color:var(--ink2);line-height:1.6;white-space:pre-wrap">${(l.report || '').replace(/</g, '&lt;')}</div>` : `<div style="margin-top:4px;font-size:12px;color:var(--ink3)">${t('독후감 없음','No report')}</div>`}
+  </div>`; }).join('') : `<div style="font-size:13px;color:var(--ink3);padding:12px 0">${t('아직 읽은 책 기록이 없어요','No reading records yet')}</div>`;
 
   const bookList = groupBooksByStep(readingBooks).map(({ step, books }) => {
     const cats = {}; books.forEach(b => { (cats[b.category] = cats[b.category] || []).push(b); });
@@ -6023,36 +6023,36 @@ async function renderTcsReadingUnified() {
         <div style="flex:1;min-width:0;font-size:13px;color:var(--ink)">${b.title}${(b.author || b.publisher) ? `<span style="font-size:11px;color:var(--ink3)"> · ${[b.author, b.publisher].filter(Boolean).join(' · ')}</span>` : ''}</div>
         <button onclick="deleteReadingBook('${b.id}')" style="width:26px;height:26px;border-radius:7px;border:1.5px solid var(--border);background:white;color:#ef4444;font-size:14px;cursor:pointer;flex-shrink:0">×</button>
       </div>`).join('')}`).join('');
-    return `${step ? `<div style="font-size:13px;font-weight:800;color:var(--ink);margin:16px 0 4px;padding-bottom:5px;border-bottom:2px solid var(--adeep)">📘 Step ${step}</div>` : `<div style="font-size:13px;font-weight:800;color:var(--ink);margin:16px 0 4px">직접 추가한 책</div>`}${inner}`;
+    return `${step ? `<div style="font-size:13px;font-weight:800;color:var(--ink);margin:16px 0 4px;padding-bottom:5px;border-bottom:2px solid var(--adeep)">📘 Step ${step}</div>` : `<div style="font-size:13px;font-weight:800;color:var(--ink);margin:16px 0 4px">${t('직접 추가한 책','Manually Added')}</div>`}${inner}`;
   }).join('');
   const catOpts = READING_CATEGORIES.map(c => `<option value="${c}">${READING_CAT_SHORT[c] || c}</option>`).join('');
-  const stepOpts = `<option value="">Step 없음</option>` + [1,2,3,4].map(n => `<option value="${n}">Step ${n}</option>`).join('');
+  const stepOpts = `<option value="">${t('Step 없음','No Step')}</option>` + [1,2,3,4].map(n => `<option value="${n}">Step ${n}</option>`).join('');
 
   const popular = [...readingBooks].sort((a, b) => (byBook[b.id] || 0) - (byBook[a.id] || 0)).slice(0, 10);
-  const popularRows = popular.length ? popular.map(b => `<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border)"><div style="flex:1;font-size:13px;color:var(--ink)">${b.title} <span style="font-size:11px;color:var(--ink3)">${READING_CAT_SHORT[b.category] || b.category}</span></div><div style="font-size:12px;font-weight:600;color:#1d4ed8">${byBook[b.id] || 0}명</div></div>`).join('') : '<div style="font-size:13px;color:var(--ink3);padding:12px 0">데이터 없음</div>';
+  const popularRows = popular.length ? popular.map(b => `<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border)"><div style="flex:1;font-size:13px;color:var(--ink)">${b.title} <span style="font-size:11px;color:var(--ink3)">${READING_CAT_SHORT[b.category] || b.category}</span></div><div style="font-size:12px;font-weight:600;color:#1d4ed8">${byBook[b.id] || 0}${t('명',' students')}</div></div>`).join('') : `<div style="font-size:13px;color:var(--ink3);padding:12px 0">${t('데이터 없음','No data')}</div>`;
 
   main.innerHTML = `<div style="max-width:720px">
     <div style="background:linear-gradient(135deg,#1d3a5f,#2a5298);border-radius:14px;padding:14px 18px;margin-bottom:12px;color:white">
-      <div style="display:flex;justify-content:space-between;align-items:baseline"><div style="font-size:13px;opacity:.85">${tcsCurrentStudent.name} 학생 · 읽은 책</div><div style="font-size:20px;font-weight:800">${readCount} / ${total}권</div></div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline"><div style="font-size:13px;opacity:.85">${t(`${tcsCurrentStudent.name} 학생 · 읽은 책`, `${tcsCurrentStudent.name} · Books Read`)}</div><div style="font-size:20px;font-weight:800">${readCount} / ${total}${t('권',' books')}</div></div>
     </div>
     <div style="display:flex;gap:8px;margin-bottom:16px">${catCards}</div>
-    <div style="font-size:13px;font-weight:700;color:var(--adeep);margin:0 0 8px">📖 ${tcsCurrentStudent.name} 학생이 읽은 책 · 독후감</div>
+    <div style="font-size:13px;font-weight:700;color:var(--adeep);margin:0 0 8px">📖 ${t(`${tcsCurrentStudent.name} 학생이 읽은 책 · 독후감`, `Books ${tcsCurrentStudent.name} has read · Reports`)}</div>
     <div style="margin-bottom:22px">${readRows}</div>
 
-    <div style="font-size:14px;font-weight:700;color:var(--adeep);margin:0 0 10px">📚 책 관리 <span style="font-size:11px;font-weight:500;color:var(--ink3)">(전 공동체 공통 목록)</span></div>
+    <div style="font-size:14px;font-weight:700;color:var(--adeep);margin:0 0 10px">📚 ${t('책 관리','Manage Books')} <span style="font-size:11px;font-weight:500;color:var(--ink3)">${t('(전 공동체 공통 목록)','(shared list for all communities)')}</span></div>
     <div class="adm-card" style="margin-bottom:22px">
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
         <select id="rb-step" style="height:38px;padding:0 10px;border-radius:9px;border:1.5px solid var(--border);background:white;font:13px var(--font);cursor:pointer">${stepOpts}</select>
         <select id="rb-cat" style="height:38px;padding:0 10px;border-radius:9px;border:1.5px solid var(--border);background:white;font:13px var(--font);cursor:pointer">${catOpts}</select>
-        <input id="rb-title" type="text" placeholder="책 제목" style="flex:1;min-width:150px;height:38px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--s2);font:13px var(--font);outline:none"/>
-        <input id="rb-author" type="text" placeholder="저자 (선택)" style="width:120px;height:38px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--s2);font:13px var(--font);outline:none"/>
-        <input id="rb-publisher" type="text" placeholder="출판사 (선택)" style="width:120px;height:38px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--s2);font:13px var(--font);outline:none"/>
-        <button onclick="addReadingBook()" style="height:38px;padding:0 16px;border-radius:9px;border:none;background:#1d3a5f;color:white;font:600 13px var(--font);cursor:pointer">추가</button>
+        <input id="rb-title" type="text" placeholder="${t('책 제목','Book title')}" style="flex:1;min-width:150px;height:38px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--s2);font:13px var(--font);outline:none"/>
+        <input id="rb-author" type="text" placeholder="${t('저자 (선택)','Author (optional)')}" style="width:120px;height:38px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--s2);font:13px var(--font);outline:none"/>
+        <input id="rb-publisher" type="text" placeholder="${t('출판사 (선택)','Publisher (optional)')}" style="width:120px;height:38px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--s2);font:13px var(--font);outline:none"/>
+        <button onclick="addReadingBook()" style="height:38px;padding:0 16px;border-radius:9px;border:none;background:#1d3a5f;color:white;font:600 13px var(--font);cursor:pointer">${t('추가','Add')}</button>
       </div>
-      ${bookList || '<div style="font-size:13px;color:var(--ink3)">아직 등록된 책이 없어요</div>'}
+      ${bookList || `<div style="font-size:13px;color:var(--ink3)">${t('아직 등록된 책이 없어요','No books registered yet')}</div>`}
     </div>
 
-    <div style="font-size:14px;font-weight:700;color:var(--adeep);margin:0 0 8px">🔥 많이 읽은 책 TOP 10 <span style="font-size:11px;font-weight:500;color:var(--ink3)">(전 공동체 합산)</span></div>
+    <div style="font-size:14px;font-weight:700;color:var(--adeep);margin:0 0 8px">🔥 ${t('많이 읽은 책 TOP 10','Most Read Books TOP 10')} <span style="font-size:11px;font-weight:500;color:var(--ink3)">${t('(전 공동체 합산)','(all communities combined)')}</span></div>
     <div class="adm-card" style="margin-bottom:4px">${popularRows}</div>
   </div>`;
 }
@@ -6072,19 +6072,19 @@ async function addReadingBook() {
   const author = document.getElementById('rb-author').value.trim();
   const publisher = (document.getElementById('rb-publisher')?.value || '').trim();
   const stepVal = document.getElementById('rb-step')?.value;
-  if (!title) { showUploadToast('책 제목을 입력하세요'); return; }
+  if (!title) { showUploadToast(t('책 제목을 입력하세요','Please enter a book title')); return; }
   const row = { category: cat, title, author };
   if (publisher) row.publisher = publisher;
   if (stepVal) row.step = Number(stepVal);
   const { error } = await sb.from('reading_books').insert(row);
-  if (error) { showUploadToast('추가 실패 😥 ' + error.message + ' (db/트리플스쿨_도서목록.sql 실행 필요할 수 있어요)'); return; }
-  showUploadToast('✅ 책이 추가됐어요');
+  if (error) { showUploadToast(t('추가 실패 😥 ','Add failed 😥 ') + error.message + t(' (db/트리플스쿨_도서목록.sql 실행 필요할 수 있어요)',' (you may need to run db/트리플스쿨_도서목록.sql)')); return; }
+  showUploadToast(t('✅ 책이 추가됐어요','✅ Book added'));
   refreshReadingAfterBookChange();
 }
 async function deleteReadingBook(id) {
   const { error } = await sb.from('reading_books').delete().eq('id', id);
-  if (error) { showUploadToast('삭제 실패 😥 ' + error.message); return; }
-  showUploadToast('삭제됨');
+  if (error) { showUploadToast(t('삭제 실패 😥 ','Delete failed 😥 ') + error.message); return; }
+  showUploadToast(t('삭제됨','Deleted'));
   refreshReadingAfterBookChange();
 }
 
@@ -6106,7 +6106,7 @@ function renderTcsField(field, value) {
     return `<div style="margin-bottom:16px">
       <label style="${labelStyle}">${field.label}</label>
       <select id="tcs-${field.key}" style="${inputStyle};cursor:pointer;appearance:none">
-        <option value="">선택해주세요</option>
+        <option value="">${t('선택해주세요','Please select')}</option>
         ${field.options.map(o => `<option value="${o}" ${val===o?'selected':''}>${o}</option>`).join('')}
       </select>
     </div>`;
