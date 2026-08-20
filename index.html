@@ -12340,14 +12340,14 @@ async function initDepositPage() {
   const sn = document.getElementById('subnav-deposit');
   if (sn) sn.innerHTML = isTeacher() ? '' : tcsSubnavHtml('deposit');
   const main = document.getElementById('deposit-main');
-  if (main) main.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink3);font-size:13px">불러오는 중...</div>';
+  if (main) main.innerHTML = `<div style="text-align:center;padding:40px;color:var(--ink3);font-size:13px">${t('불러오는 중...','Loading...')}</div>`;
   let list = [];
   try {
     const { data, error } = await sb.from('deposit_entries').select('*').eq('member_id', ME.id).order('date',{ascending:false}).order('created_at',{ascending:false});
     if (error) throw error;
     list = data || [];
   } catch(e) {
-    if (schoolTableMissing(e)) { main.innerHTML = '<div style="max-width:520px;margin:40px auto;text-align:center"><div style="font-size:40px">🏦</div><div style="font-size:15px;font-weight:700;margin:10px 0 6px">예치금이 아직 준비되지 않았어요</div><div style="font-size:13px;color:var(--ink3);line-height:1.7">담당 선생님이 예치금 기능을 열면 여기서 잔액과 내역을 볼 수 있어요.</div></div>'; return; }
+    if (schoolTableMissing(e)) { main.innerHTML = `<div style="max-width:520px;margin:40px auto;text-align:center"><div style="font-size:40px">🏦</div><div style="font-size:15px;font-weight:700;margin:10px 0 6px">${t('예치금이 아직 준비되지 않았어요','Deposit is not ready yet')}</div><div style="font-size:13px;color:var(--ink3);line-height:1.7">${t('담당 선생님이 예치금 기능을 열면 여기서 잔액과 내역을 볼 수 있어요.','Once your teacher enables the deposit feature, you can view your balance and history here.')}</div></div>`; return; }
     main.innerHTML = `<div style="color:#b91c1c;padding:30px;text-align:center;font-size:13px">${t('불러오기 실패: ','Failed to load: ')}${e.message||e}</div>`; return;
   }
   renderDeposit(list);
@@ -12359,23 +12359,23 @@ function renderDeposit(list) {
     const tin  = list.filter(e=>e.type==='in'  && (e.currency||'원')===cur).reduce((a,e)=>a+(Number(e.amount)||0),0);
     const tout = list.filter(e=>e.type==='out' && (e.currency||'원')===cur).reduce((a,e)=>a+(Number(e.amount)||0),0);
     return `<div style="flex:1;min-width:180px;background:linear-gradient(135deg,#5A7C8B,#1d3a5f);border-radius:16px;padding:18px 20px;color:#fff">
-      <div style="font-size:12px;opacity:.85">예치금 잔액 ${cur==='$'?'(달러)':'(원)'}</div>
+      <div style="font-size:12px;opacity:.85">${t('예치금 잔액','Deposit balance')} ${cur==='$'?t('(달러)','(USD)'):t('(원)','(KRW)')}</div>
       <div style="font-size:26px;font-weight:800;letter-spacing:-.02em">${allowMoney(tin-tout,cur)}</div>
-      <div style="font-size:11.5px;opacity:.9;margin-top:4px">입금 ${allowMoney(tin,cur)} · 출금 ${allowMoney(tout,cur)}</div>
+      <div style="font-size:11.5px;opacity:.9;margin-top:4px">${t('입금','Deposit')} ${allowMoney(tin,cur)} · ${t('출금','Withdrawal')} ${allowMoney(tout,cur)}</div>
     </div>`;
   }).join('');
   const rows = list.map(e => { const isIn=e.type==='in'; const cur=e.currency||'원';
     return `<div style="display:flex;align-items:center;gap:11px;padding:11px 2px;border-bottom:1px solid var(--border)">
       <span style="font-size:17px">${isIn?'📥':'📤'}</span>
-      <div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600;color:var(--ink)">${isIn?'입금':'출금'}${e.memo?` <span style="font-weight:400;color:var(--ink3)">· ${escHtml(e.memo)}</span>`:''}</div><div style="font-size:11.5px;color:var(--ink3)">${e.date||''}</div></div>
+      <div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600;color:var(--ink)">${isIn?t('입금','Deposit'):t('출금','Withdrawal')}${e.memo?` <span style="font-weight:400;color:var(--ink3)">· ${escHtml(e.memo)}</span>`:''}</div><div style="font-size:11.5px;color:var(--ink3)">${e.date||''}</div></div>
       <span style="font-size:15px;font-weight:700;color:${isIn?'#2a7a5a':'#c0392b'};white-space:nowrap">${isIn?'+':'-'}${allowMoney(e.amount,cur)}</span></div>`;
   }).join('');
   main.innerHTML = `<div style="max-width:720px;margin:0 auto">
     <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px">${bal}</div>
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:18px 20px">
-      <div style="font-size:14px;font-weight:800;color:var(--ink2);margin-bottom:4px">내역</div>
-      <div style="font-size:11.5px;color:var(--ink3);margin-bottom:10px">예치금은 담당 선생님이 관리해요. 궁금한 점은 선생님께 문의하세요.</div>
-      ${list.length ? rows : '<div style="font-size:13px;color:var(--ink3);padding:22px 0;text-align:center">아직 예치금 내역이 없어요.</div>'}
+      <div style="font-size:14px;font-weight:800;color:var(--ink2);margin-bottom:4px">${t('내역','History')}</div>
+      <div style="font-size:11.5px;color:var(--ink3);margin-bottom:10px">${t('예치금은 담당 선생님이 관리해요. 궁금한 점은 선생님께 문의하세요.','Deposits are managed by your teacher. If you have questions, please ask them.')}</div>
+      ${list.length ? rows : `<div style="font-size:13px;color:var(--ink3);padding:22px 0;text-align:center">${t('아직 예치금 내역이 없어요.','No deposit history yet.')}</div>`}
     </div>
   </div>`;
 }
@@ -12393,11 +12393,11 @@ function allowCurrencies() {
 
 // ── 개선창 (전역 개선 제안 게시판) ──
 const IMPROVE_STATUS = {
-  pending:  { label:'검토중',   color:'#6b7280', bg:'#6b72801f' },
-  planned:  { label:'진행예정', color:'#1d4ed8', bg:'#1d4ed81f' },
-  exists:   { label:'이미있음', color:'#b45309', bg:'#b453091f' },
-  done:     { label:'구현완료', color:'#15803d', bg:'#15803d1f' },
-  rejected: { label:'불가능',   color:'#b91c1c', bg:'#b91c1c1f' },
+  pending:  { label:t('검토중','Reviewing'),   color:'#6b7280', bg:'#6b72801f' },
+  planned:  { label:t('진행예정','Planned'), color:'#1d4ed8', bg:'#1d4ed81f' },
+  exists:   { label:t('이미있음','Already exists'), color:'#b45309', bg:'#b453091f' },
+  done:     { label:t('구현완료','Done'), color:'#15803d', bg:'#15803d1f' },
+  rejected: { label:t('불가능','Not possible'),   color:'#b91c1c', bg:'#b91c1c1f' },
 };
 const IMPROVE_ORDER = ['pending','planned','exists','done','rejected'];
 let improveItems = [];
@@ -12407,7 +12407,7 @@ let myCommunityName = null;
 
 async function initImprovePage() {
   const page = document.getElementById('improve-main');
-  page.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink3);font-size:13px">불러오는 중...</div>';
+  page.innerHTML = `<div style="text-align:center;padding:40px;color:var(--ink3);font-size:13px">${t('불러오는 중...','Loading...')}</div>`;
   try {
     const { data: items, error } = await sb.from('improvements').select('*').order('created_at', { ascending:false });
     if (error) throw error;
@@ -12421,10 +12421,10 @@ async function initImprovePage() {
     if (myCommunityName === null) { try { const { data: c } = await sb.from('communities').select('name').eq('id', CID()).single(); myCommunityName = (c && c.name) || ''; } catch(_) { myCommunityName = ''; } }
   } catch(e) {
     if (schoolTableMissing(e)) {
-      page.innerHTML = '<div style="max-width:520px;margin:40px auto;text-align:center"><div style="font-size:40px">💡</div><div style="font-size:15px;font-weight:700;margin:10px 0 6px">개선창을 준비 중이에요</div><div style="font-size:13px;color:var(--ink3);line-height:1.7">Supabase에서 <b>db/개선창_DB설치.sql</b> 을 실행하면 켜집니다.</div></div>';
+      page.innerHTML = `<div style="max-width:520px;margin:40px auto;text-align:center"><div style="font-size:40px">💡</div><div style="font-size:15px;font-weight:700;margin:10px 0 6px">${t('개선창을 준비 중이에요','Improvements board is being prepared')}</div><div style="font-size:13px;color:var(--ink3);line-height:1.7">${t('Supabase에서 <b>db/개선창_DB설치.sql</b> 을 실행하면 켜집니다.','Run <b>db/개선창_DB설치.sql</b> in Supabase to enable it.')}</div></div>`;
       return;
     }
-    page.innerHTML = `<div style="color:#b91c1c;padding:30px;text-align:center;font-size:13px">불러오기 실패: ${e.message||e}</div>`;
+    page.innerHTML = `<div style="color:#b91c1c;padding:30px;text-align:center;font-size:13px">${t('불러오기 실패: ','Failed to load: ')}${e.message||e}</div>`;
     return;
   }
   renderImprove();
@@ -12439,13 +12439,13 @@ function renderImprove() {
   const counts = { all: improveItems.length };
   IMPROVE_ORDER.forEach(k => counts[k] = improveItems.filter(i=>(i.status||'pending')===k).length);
   const chip = (k, label) => `<button onclick="setImproveFilter('${k}')" style="height:30px;padding:0 12px;border-radius:99px;cursor:pointer;font:700 12px var(--font);white-space:nowrap;border:1.5px solid ${improveFilter===k?'#1d3a5f':'var(--border)'};background:${improveFilter===k?'#1d3a5f':'var(--surface)'};color:${improveFilter===k?'#fff':'var(--ink2)'}">${label} ${counts[k]||0}</button>`;
-  const filters = `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">${chip('all','전체')}${IMPROVE_ORDER.map(k=>chip(k, IMPROVE_STATUS[k].label)).join('')}</div>`;
+  const filters = `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">${chip('all',t('전체','All'))}${IMPROVE_ORDER.map(k=>chip(k, IMPROVE_STATUS[k].label)).join('')}</div>`;
   const inp = 'width:100%;padding:11px 13px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);color:var(--ink);background:var(--surface);outline:none;box-sizing:border-box';
   const form = `<div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin-bottom:18px">
-    <div style="font-size:13px;font-weight:800;color:var(--ink);margin-bottom:10px">✏️ 개선 아이디어 올리기</div>
-    <input id="imp-title" placeholder="제목 (예: 채팅에서 사진 여러 장 한 번에)" style="${inp};margin-bottom:8px"/>
-    <textarea id="imp-content" rows="3" placeholder="어떤 점이 불편한지, 어떻게 개선되면 좋을지 적어주세요" style="${inp};resize:vertical;line-height:1.6;margin-bottom:10px"></textarea>
-    <div style="display:flex;justify-content:flex-end"><button onclick="postImprovement()" style="height:38px;padding:0 18px;border:none;background:#1d3a5f;color:#fff;border-radius:10px;cursor:pointer;font:700 13px var(--font)">＋ 올리기</button></div>
+    <div style="font-size:13px;font-weight:800;color:var(--ink);margin-bottom:10px">${t('✏️ 개선 아이디어 올리기','✏️ Post an improvement idea')}</div>
+    <input id="imp-title" placeholder="${t('제목 (예: 채팅에서 사진 여러 장 한 번에)','Title (e.g. send multiple photos at once in chat)')}" style="${inp};margin-bottom:8px"/>
+    <textarea id="imp-content" rows="3" placeholder="${t('어떤 점이 불편한지, 어떻게 개선되면 좋을지 적어주세요','Tell us what feels inconvenient and how it could be improved')}" style="${inp};resize:vertical;line-height:1.6;margin-bottom:10px"></textarea>
+    <div style="display:flex;justify-content:flex-end"><button onclick="postImprovement()" style="height:38px;padding:0 18px;border:none;background:#1d3a5f;color:#fff;border-radius:10px;cursor:pointer;font:700 13px var(--font)">${t('＋ 올리기','＋ Post')}</button></div>
   </div>`;
   const list = improveItems.filter(i => improveFilter==='all' || (i.status||'pending')===improveFilter);
   const cards = list.map(it => {
@@ -12466,15 +12466,15 @@ function renderImprove() {
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">${improveStatusBadge(it.status||'pending')}<span style="font-size:15px;font-weight:800;color:var(--ink)">${escHtml(it.title||'')}</span></div>
           <div style="font-size:11px;color:var(--ink3)">${escHtml(it.author_name||'')}${it.community_name?` · ${escHtml(it.community_name)}`:''} · ${(it.created_at||'').slice(0,10)}</div>
         </div>
-        ${(mine||admin)?`<button onclick="deleteImprovement('${it.id}')" title="삭제" style="border:none;background:transparent;cursor:pointer;color:#c0392b;font-size:13px;flex-shrink:0">✕</button>`:''}
+        ${(mine||admin)?`<button onclick="deleteImprovement('${it.id}')" title="${t('삭제','Delete')}" style="border:none;background:transparent;cursor:pointer;color:#c0392b;font-size:13px;flex-shrink:0">✕</button>`:''}
       </div>
       ${it.content?`<div style="font-size:13.5px;color:var(--ink);line-height:1.7;white-space:pre-wrap;margin-top:8px">${escHtml(it.content)}</div>`:''}
       ${stBtns}
       <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:8px">
         ${cs.length?commentItems:''}
         <div style="display:flex;gap:6px;margin-top:8px">
-          <input id="impc-${it.id}" placeholder="${admin?'모세쌤 코멘트 남기기...':'댓글 달기...'}" style="flex:1;height:34px;padding:0 11px;border:1px solid var(--border);border-radius:8px;font:400 12.5px var(--font);background:var(--s2);color:var(--ink);outline:none" onkeydown="if(event.key==='Enter')addImproveComment('${it.id}')"/>
-          <button onclick="addImproveComment('${it.id}')" style="height:34px;padding:0 13px;border:none;background:#1d3a5f;color:#fff;border-radius:8px;cursor:pointer;font:700 12px var(--font)">등록</button>
+          <input id="impc-${it.id}" placeholder="${admin?t('모세쌤 코멘트 남기기...','Leave a teacher comment...'):t('댓글 달기...','Add a comment...')}" style="flex:1;height:34px;padding:0 11px;border:1px solid var(--border);border-radius:8px;font:400 12.5px var(--font);background:var(--s2);color:var(--ink);outline:none" onkeydown="if(event.key==='Enter')addImproveComment('${it.id}')"/>
+          <button onclick="addImproveComment('${it.id}')" style="height:34px;padding:0 13px;border:none;background:#1d3a5f;color:#fff;border-radius:8px;cursor:pointer;font:700 12px var(--font)">${t('등록','Submit')}</button>
         </div>
       </div>
     </div>`;
@@ -12482,29 +12482,29 @@ function renderImprove() {
   page.innerHTML = `<div style="max-width:760px;margin:0 auto">
     ${form}
     ${filters}
-    ${list.length ? cards : '<div style="text-align:center;color:var(--ink3);font-size:13px;padding:30px">아직 올라온 제안이 없어요. 첫 아이디어를 올려보세요!</div>'}
+    ${list.length ? cards : `<div style="text-align:center;color:var(--ink3);font-size:13px;padding:30px">${t('아직 올라온 제안이 없어요. 첫 아이디어를 올려보세요!','No suggestions yet. Be the first to post an idea!')}</div>`}
   </div>`;
 }
 function setImproveFilter(k) { improveFilter = k; renderImprove(); }
 async function postImprovement() {
   const title = (document.getElementById('imp-title')?.value || '').trim();
   const content = (document.getElementById('imp-content')?.value || '').trim();
-  if (!title) { showUploadToast('제목을 입력하세요'); return; }
+  if (!title) { showUploadToast(t('제목을 입력하세요','Please enter a title')); return; }
   const { error } = await sb.from('improvements').insert({
     author_id: ME.id, author_name: ME.name, community_name: myCommunityName || null, title, content, status: 'pending',
   });
   if (error) {
-    if (schoolTableMissing(error)) { showUploadToast('개선창 테이블이 없어요. db/개선창_DB설치.sql 실행'); return; }
-    showUploadToast('올리기 실패: ' + error.message); return;
+    if (schoolTableMissing(error)) { showUploadToast(t('개선창 테이블이 없어요. db/개선창_DB설치.sql 실행','Improvements table is missing. Run db/개선창_DB설치.sql')); return; }
+    showUploadToast(t('올리기 실패: ','Failed to post: ') + error.message); return;
   }
-  showUploadToast('✅ 제안이 올라갔어요!');
+  showUploadToast(t('✅ 제안이 올라갔어요!','✅ Your suggestion has been posted!'));
   initImprovePage();
 }
 async function setImproveStatus(id, status) {
   const { error } = await sb.from('improvements').update({ status }).eq('id', id);
-  if (error) { showUploadToast('상태 변경 실패: ' + error.message + (/policy|denied|permission/i.test(error.message)?' (권한 없음)':'')); return; }
+  if (error) { showUploadToast(t('상태 변경 실패: ','Failed to change status: ') + error.message + (/policy|denied|permission/i.test(error.message)?t(' (권한 없음)',' (no permission)'):'')); return; }
   const it = improveItems.find(x=>x.id===id); if (it) it.status = status;
-  showUploadToast('상태: ' + ((IMPROVE_STATUS[status]||{}).label||''));
+  showUploadToast(t('상태: ','Status: ') + ((IMPROVE_STATUS[status]||{}).label||''));
   renderImprove();
 }
 async function addImproveComment(id) {
@@ -12514,20 +12514,20 @@ async function addImproveComment(id) {
   const { data, error } = await sb.from('improvement_comments').insert({
     improvement_id: id, author_id: ME.id, author_name: ME.name, is_admin: isSuperAdmin(), content,
   }).select().single();
-  if (error) { showUploadToast('댓글 실패: ' + error.message); return; }
+  if (error) { showUploadToast(t('댓글 실패: ','Comment failed: ') + error.message); return; }
   if (data) (improveComments[id] = improveComments[id]||[]).push(data);
   renderImprove();
 }
 async function deleteImproveComment(cid, id) {
   const { error } = await sb.from('improvement_comments').delete().eq('id', cid);
-  if (error) { showUploadToast('삭제 실패: ' + error.message); return; }
+  if (error) { showUploadToast(t('삭제 실패: ','Delete failed: ') + error.message); return; }
   improveComments[id] = (improveComments[id]||[]).filter(c=>c.id!==cid);
   renderImprove();
 }
 async function deleteImprovement(id) {
-  if (!confirm('이 제안을 삭제할까요?')) return;
+  if (!confirm(t('이 제안을 삭제할까요?','Delete this suggestion?'))) return;
   const { error } = await sb.from('improvements').delete().eq('id', id);
-  if (error) { showUploadToast('삭제 실패: ' + error.message); return; }
+  if (error) { showUploadToast(t('삭제 실패: ','Delete failed: ') + error.message); return; }
   improveItems = improveItems.filter(i=>i.id!==id);
   renderImprove();
 }
@@ -12536,7 +12536,7 @@ async function initAllowancePage() {
   const sn = document.getElementById('subnav-allowance');
   if (sn) sn.innerHTML = isTeacher() ? '' : tcsSubnavHtml('allowance');
   const main = document.getElementById('allowance-main');
-  if (main) main.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink3);font-size:13px">불러오는 중...</div>';
+  if (main) main.innerHTML = `<div style="text-align:center;padding:40px;color:var(--ink3);font-size:13px">${t('불러오는 중...','Loading...')}</div>`;
   try {
     const { data, error } = await sb.from('allowance_entries').select('*')
       .eq('member_id', ME.id)
@@ -12555,7 +12555,7 @@ function renderAllowSetup(err) {
   document.getElementById('allowance-main').innerHTML = `<div style="max-width:560px;margin:40px auto;text-align:center">
     <div style="font-size:40px;margin-bottom:12px">🐷</div>
     <div style="font-size:16px;font-weight:700;margin-bottom:8px">${t('데이터베이스 설정이 필요해요','Database setup required')}</div>
-    <div style="font-size:13px;color:var(--ink3);line-height:1.8">용돈기입장을 쓰려면 Supabase에서 테이블을 한 번 만들어야 합니다.<br>제공해드린 <b>db/용돈기입장_DB설치.sql</b> 을 Supabase → SQL Editor에 붙여넣고 실행해주세요.</div>
+    <div style="font-size:13px;color:var(--ink3);line-height:1.8">${t('용돈기입장을 쓰려면 Supabase에서 테이블을 한 번 만들어야 합니다.','To use the allowance book, you need to create a table once in Supabase.')}<br>${t('제공해드린 <b>db/용돈기입장_DB설치.sql</b> 을 Supabase → SQL Editor에 붙여넣고 실행해주세요.','Paste the provided <b>db/용돈기입장_DB설치.sql</b> into Supabase → SQL Editor and run it.')}</div>
     <div style="font-size:11px;color:#b91c1c;margin-top:14px">${err?.message || ''}</div>
   </div>`;
 }
@@ -12563,14 +12563,14 @@ function renderAllowSetup(err) {
 function allowWeekday(dstr) {
   const p = (dstr||'').split('-'); if (p.length < 3) return '';
   const d = new Date(Number(p[0]), Number(p[1])-1, Number(p[2]));
-  return ['일','월','화','수','목','금','토'][d.getDay()] || '';
+  return [t('일','Sun'),t('월','Mon'),t('화','Tue'),t('수','Wed'),t('목','Thu'),t('금','Fri'),t('토','Sat')][d.getDay()] || '';
 }
 
 function renderAllowance() {
   const main = document.getElementById('allowance-main'); if (!main) return;
   const curs = allowCurrencies();
   const list = allowMonth ? allowEntries.filter(e => (e.date||'').slice(0,7) === allowMonth) : allowEntries;
-  const periodLabel = allowMonth ? `${Number(allowMonth.slice(5,7))}월` : '전체 기간';
+  const periodLabel = allowMonth ? t(`${Number(allowMonth.slice(5,7))}월`, ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][Number(allowMonth.slice(5,7))-1]) : t('전체 기간','All time');
 
   const inp = 'height:36px;padding:0 10px;border:1px solid var(--border);border-radius:9px;font:600 13px var(--font);color:var(--ink);background:var(--surface)';
   const navBtn = 'width:34px;height:36px;border:1px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:9px;cursor:pointer;font:700 14px var(--font);flex-shrink:0';
@@ -12585,15 +12585,15 @@ function renderAllowance() {
     const inP  = list.filter(e=>e.type==='income'  && (e.currency||'원')===cur).reduce((a,e)=>a+(Number(e.amount)||0),0);
     const outP = list.filter(e=>e.type==='expense' && (e.currency||'원')===cur).reduce((a,e)=>a+(Number(e.amount)||0),0);
     return `<div style="flex:1;min-width:230px;background:linear-gradient(135deg,#2a7a5a,#2a5298);border-radius:18px;padding:18px 20px;color:#fff;box-shadow:0 6px 18px rgba(42,82,152,.22)">
-      <div style="font-size:12px;opacity:.85">현재 잔액 ${cur==='$'?'(달러)':'(원)'}</div>
+      <div style="font-size:12px;opacity:.85">${t('현재 잔액','Current balance')} ${cur==='$'?t('(달러)','(USD)'):t('(원)','(KRW)')}</div>
       <div style="font-size:28px;font-weight:800;letter-spacing:-.02em;margin-top:2px">${allowMoney(inAll-outAll, cur)}</div>
       <div style="display:flex;gap:9px;margin-top:12px">
         <div style="flex:1;background:rgba(255,255,255,.15);border-radius:10px;padding:7px 11px">
-          <div style="font-size:10px;opacity:.85">${periodLabel} 수입</div>
+          <div style="font-size:10px;opacity:.85">${periodLabel} ${t('수입','Income')}</div>
           <div style="font-size:14px;font-weight:700;margin-top:1px">＋${allowMoney(inP,cur)}</div>
         </div>
         <div style="flex:1;background:rgba(255,255,255,.15);border-radius:10px;padding:7px 11px">
-          <div style="font-size:10px;opacity:.85">${periodLabel} 지출</div>
+          <div style="font-size:10px;opacity:.85">${periodLabel} ${t('지출','Expense')}</div>
           <div style="font-size:14px;font-weight:700;margin-top:1px">－${allowMoney(outP,cur)}</div>
         </div>
       </div>
@@ -12612,7 +12612,7 @@ function renderAllowance() {
   const CATCOLORS = ['#c0392b','#e67e22','#f1c40f','#16a085','#2980b9','#8e44ad'];
   const breakdown = catRows.length ? `
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:14px">
-      <div style="font-size:12.5px;font-weight:700;color:var(--ink);margin-bottom:11px">📊 ${periodLabel} 지출 분석</div>
+      <div style="font-size:12.5px;font-weight:700;color:var(--ink);margin-bottom:11px">📊 ${periodLabel} ${t('지출 분석','Expense breakdown')}</div>
       ${catRows.map((r,i)=>`
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:9px">
           <div style="width:60px;font-size:11.5px;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(r.cat)}</div>
@@ -12630,16 +12630,16 @@ function renderAllowance() {
       <div style="width:32px;height:32px;border-radius:9px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:14px;background:${income?'#e8f5ee':'#fdecea'}">${income?'➕':'➖'}</div>
       <div style="flex:1;min-width:0">
         <div style="font-size:13px;font-weight:600;color:var(--ink)">${escHtml(e.category||'기타')}</div>
-        ${(e.memo||pending)?`<div style="font-size:11px;color:var(--ink3)">${e.memo?escHtml(e.memo):''}${pending?`${e.memo?' · ':''}<span style="color:#b8860b;font-weight:600">🕓 삭제 요청됨</span>`:''}</div>`:''}
+        ${(e.memo||pending)?`<div style="font-size:11px;color:var(--ink3)">${e.memo?escHtml(e.memo):''}${pending?`${e.memo?' · ':''}<span style="color:#b8860b;font-weight:600">🕓 ${t('삭제 요청됨','Delete requested')}</span>`:''}</div>`:''}
       </div>
       <div style="font-size:14px;font-weight:700;color:${income?'#2a7a5a':'#c0392b'};white-space:nowrap">${income?'+':'-'}${allowMoney(e.amount, cur)}</div>
       ${pending
-        ? `<button onclick="cancelDeleteAllow('${e.id}')" title="요청 취소" style="border:1px solid var(--border);background:var(--surface);border-radius:7px;height:26px;padding:0 8px;cursor:pointer;font:600 10.5px var(--font);color:var(--ink3);flex-shrink:0">요청취소</button>`
-        : `<button onclick="requestDeleteAllow('${e.id}')" title="삭제 요청" style="border:none;background:transparent;cursor:pointer;color:var(--ink3);font-size:14px;flex-shrink:0">✕</button>`}
+        ? `<button onclick="cancelDeleteAllow('${e.id}')" title="${t('요청 취소','Cancel request')}" style="border:1px solid var(--border);background:var(--surface);border-radius:7px;height:26px;padding:0 8px;cursor:pointer;font:600 10.5px var(--font);color:var(--ink3);flex-shrink:0">${t('요청취소','Cancel')}</button>`
+        : `<button onclick="requestDeleteAllow('${e.id}')" title="${t('삭제 요청','Request delete')}" style="border:none;background:transparent;cursor:pointer;color:var(--ink3);font-size:14px;flex-shrink:0">✕</button>`}
     </div>`;
   };
   const byDate = {};
-  list.forEach(e => { const d = e.date || '날짜 미상'; (byDate[d] = byDate[d] || []).push(e); });
+  list.forEach(e => { const d = e.date || t('날짜 미상','Unknown date'); (byDate[d] = byDate[d] || []).push(e); });
   const dateKeys = Object.keys(byDate).sort((a,b)=>b.localeCompare(a));
   const groups = dateKeys.map(d => {
     const items = byDate[d];
@@ -12663,19 +12663,19 @@ function renderAllowance() {
     <div style="display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap">
     <div style="flex:1 1 340px;min-width:0">
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px">
-      <div style="font-size:12.5px;font-weight:700;color:var(--ink);margin-bottom:10px">✏️ 새 기록</div>
-      <div style="display:flex;gap:8px;margin-bottom:10px">${typeBtn('income','수입 ➕','#2a7a5a')}${typeBtn('expense','지출 ➖','#c0392b')}</div>
+      <div style="font-size:12.5px;font-weight:700;color:var(--ink);margin-bottom:10px">${t('✏️ 새 기록','✏️ New Record')}</div>
+      <div style="display:flex;gap:8px;margin-bottom:10px">${typeBtn('income',t('수입 ➕','Income ➕'),'#2a7a5a')}${typeBtn('expense',t('지출 ➖','Expense ➖'),'#c0392b')}</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;align-items:center">
         <input id="allow-date" type="date" value="${attTodayStr()}" style="${inp}"/>
         <select id="allow-cat" style="${inp}">${catOpts}</select>
-        <div style="display:flex;gap:4px">${curBtn('원','₩ 원')}${curBtn('$','$ 달러')}</div>
-        <input id="allow-amount" type="number" min="0" step="${allowCurrency==='$'?'0.01':'100'}" placeholder="금액" style="${inp};width:110px"/>
+        <div style="display:flex;gap:4px">${curBtn('원',t('₩ 원','₩ KRW'))}${curBtn('$',t('$ 달러','$ USD'))}</div>
+        <input id="allow-amount" type="number" min="0" step="${allowCurrency==='$'?'0.01':'100'}" placeholder="${t('금액','Amount')}" style="${inp};width:110px"/>
       </div>
       <div style="display:flex;gap:8px">
-        <input id="allow-memo" placeholder="내용 (예: 편의점 과자)" style="${inp};flex:1" onkeydown="if(event.key==='Enter')addAllowEntry()"/>
-        <button onclick="addAllowEntry()" style="height:36px;padding:0 18px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 13px var(--font)">＋ 기록</button>
+        <input id="allow-memo" placeholder="${t('내용 (예: 편의점 과자)','Note (e.g. convenience store snacks)')}" style="${inp};flex:1" onkeydown="if(event.key==='Enter')addAllowEntry()"/>
+        <button onclick="addAllowEntry()" style="height:36px;padding:0 18px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 13px var(--font)">${t('＋ 기록','＋ Record')}</button>
       </div>
-      <div style="font-size:11px;color:var(--ink3);margin-top:12px;line-height:1.6">🔒 기록 삭제는 <b>담당 선생님·관리자 승인</b> 후 완료됩니다.</div>
+      <div style="font-size:11px;color:var(--ink3);margin-top:12px;line-height:1.6">${t('🔒 기록 삭제는 <b>담당 선생님·관리자 승인</b> 후 완료됩니다.','🔒 Deleting a record is completed after <b>teacher/admin approval</b>.')}</div>
     </div>
     ${breakdown ? `<div style="margin-top:14px">${breakdown}</div>` : ''}
     </div>
@@ -12685,15 +12685,15 @@ function renderAllowance() {
       <button onclick="shiftAllowMonth(-1)" style="${navBtn}">◀</button>
       <input type="month" value="${allowMonth||''}" onchange="setAllowMonth(this.value)" style="${inp};flex:1;min-width:0;text-align:center"/>
       <button onclick="shiftAllowMonth(1)" style="${navBtn}">▶</button>
-      <button onclick="setAllowMonth('')" style="${inp};cursor:pointer;color:${allowMonth?'var(--ink2)':'#1d3a5f'};font-weight:700;${allowMonth?'':'background:var(--asoft)'}">전체</button>
+      <button onclick="setAllowMonth('')" style="${inp};cursor:pointer;color:${allowMonth?'var(--ink2)':'#1d3a5f'};font-weight:700;${allowMonth?'':'background:var(--asoft)'}">${t('전체','All')}</button>
     </div>
     <div style="display:flex;align-items:center;margin-bottom:6px;padding:0 2px">
-      <span style="font-size:12px;font-weight:700;color:var(--ink2)">📒 ${periodLabel} 내역</span>
+      <span style="font-size:12px;font-weight:700;color:var(--ink2)">📒 ${periodLabel} ${t('내역','History')}</span>
       <div style="flex:1"></div>
-      <span style="font-size:11.5px;color:var(--ink3)">${list.length}건</span>
+      <span style="font-size:11.5px;color:var(--ink3)">${list.length}${t('건',' items')}</span>
     </div>
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:2px 14px 10px">
-      ${list.length ? groups : '<div style="padding:44px 20px;text-align:center;color:var(--ink3);font-size:13px;line-height:1.7">아직 기록이 없어요.<br>왼쪽에서 첫 기록을 추가해보세요!</div>'}
+      ${list.length ? groups : `<div style="padding:44px 20px;text-align:center;color:var(--ink3);font-size:13px;line-height:1.7">${t('아직 기록이 없어요.','No records yet.')}<br>${t('왼쪽에서 첫 기록을 추가해보세요!','Add your first record on the left!')}</div>`}
     </div>
     </div>
     </div>
@@ -12718,46 +12718,46 @@ async function addAllowEntry() {
   const category = document.getElementById('allow-cat').value;
   const memo = document.getElementById('allow-memo').value.trim();
   const amount = parseFloat(document.getElementById('allow-amount').value) || 0;
-  if (amount <= 0) { showUploadToast('금액을 입력하세요'); return; }
+  if (amount <= 0) { showUploadToast(t('금액을 입력하세요','Please enter an amount')); return; }
   const { error } = await sb.from('allowance_entries').insert({
     member_id: ME.id, community_id: CID(), date, type: allowType, category, memo, amount, currency: allowCurrency,
   });
-  if (error) { if (schoolTableMissing(error)) return renderAllowSetup(error); showUploadToast('저장 실패: ' + error.message); return; }
-  showUploadToast(allowType === 'income' ? '➕ 수입 기록됨' : '➖ 지출 기록됨');
+  if (error) { if (schoolTableMissing(error)) return renderAllowSetup(error); showUploadToast(t('저장 실패: ','Save failed: ') + error.message); return; }
+  showUploadToast(allowType === 'income' ? t('➕ 수입 기록됨','➕ Income recorded') : t('➖ 지출 기록됨','➖ Expense recorded'));
   await initAllowancePage();
 }
 
 // 학생: 직접 삭제 대신 '삭제 요청' (담당교사/관리자 승인 필요)
 async function requestDeleteAllow(id) {
-  if (!confirm('이 기록의 삭제를 요청할까요?\n담당 선생님 또는 관리자가 승인해야 실제로 삭제됩니다.')) return;
+  if (!confirm(t('이 기록의 삭제를 요청할까요?\n담당 선생님 또는 관리자가 승인해야 실제로 삭제됩니다.','Request deletion of this record?\nIt will only be deleted after a teacher or admin approves.'))) return;
   const { error } = await sb.from('allowance_entries')
     .update({ delete_status: 'requested', delete_requested_at: new Date().toISOString() }).eq('id', id);
-  if (error) { showUploadToast('요청 실패: ' + error.message); return; }
-  showUploadToast('🕓 삭제 요청됨 — 승인을 기다려주세요');
+  if (error) { showUploadToast(t('요청 실패: ','Request failed: ') + error.message); return; }
+  showUploadToast(t('🕓 삭제 요청됨 — 승인을 기다려주세요','🕓 Delete requested — please wait for approval'));
   const e = allowEntries.find(x=>x.id===id); if (e) e.delete_status = 'requested';
   renderAllowance();
 }
 async function cancelDeleteAllow(id) {
   const { error } = await sb.from('allowance_entries')
     .update({ delete_status: null, delete_requested_at: null }).eq('id', id);
-  if (error) { showUploadToast('취소 실패: ' + error.message); return; }
+  if (error) { showUploadToast(t('취소 실패: ','Cancel failed: ') + error.message); return; }
   const e = allowEntries.find(x=>x.id===id); if (e) e.delete_status = null;
   renderAllowance();
 }
 
 // 교사/관리자: 학사 → 학생 페이지에서 삭제 요청 승인/거부
 async function approveAllowDelete(id) {
-  if (!confirm('이 용돈 기록을 삭제(승인)할까요? 되돌릴 수 없어요.')) return;
+  if (!confirm(t('이 용돈 기록을 삭제(승인)할까요? 되돌릴 수 없어요.','Delete (approve) this allowance record? This cannot be undone.'))) return;
   const { error } = await sb.from('allowance_entries').delete().eq('id', id);
-  if (error) { showUploadToast('승인 실패: ' + error.message); return; }
-  showUploadToast('✅ 삭제 승인 완료');
+  if (error) { showUploadToast(t('승인 실패: ','Approval failed: ') + error.message); return; }
+  showUploadToast(t('✅ 삭제 승인 완료','✅ Deletion approved'));
   renderS360Detail();
 }
 async function rejectAllowDelete(id) {
   const { error } = await sb.from('allowance_entries')
     .update({ delete_status: null, delete_requested_at: null }).eq('id', id);
-  if (error) { showUploadToast('거부 실패: ' + error.message); return; }
-  showUploadToast('삭제 요청을 거부했어요');
+  if (error) { showUploadToast(t('거부 실패: ','Rejection failed: ') + error.message); return; }
+  showUploadToast(t('삭제 요청을 거부했어요','Delete request rejected'));
   renderS360Detail();
 }
 
