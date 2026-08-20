@@ -3803,18 +3803,20 @@ function switchAdminTab(tab) {
 
 function initAdminPage() {
   if (isSuperAdmin()) {
-    // 총관리자: 공동체 탭 표시, 공동체 탭으로 시작
+    // 총관리자: 공동체 탭 + 공동체 설정(언어 등) 탭 표시, 공동체 탭으로 시작
     const commTab = document.getElementById('adm-tab-communities');
     if (commTab) commTab.style.display = 'block';
+    const settingsTab = document.getElementById('adm-tab-mysettings');
+    if (settingsTab) settingsTab.style.display = 'block';
     const label = document.getElementById('admin-role-label');
-    if (label) label.textContent = '총관리자 — 공동체·멤버·채널 전체 관리';
+    if (label) label.textContent = t('총관리자 — 공동체·멤버·채널 전체 관리','Super Admin — manage all communities, members, channels');
     switchAdminTab('communities');
   } else if (isCommunityAdmin()) {
     // 공동체 관리자: 공동체 설정 탭 표시, 설정 탭으로 시작
     const settingsTab = document.getElementById('adm-tab-mysettings');
     if (settingsTab) settingsTab.style.display = 'block';
     const label = document.getElementById('admin-role-label');
-    if (label) label.textContent = '공동체 관리자 — 공동체 설정 및 멤버 관리';
+    if (label) label.textContent = t('공동체 관리자 — 공동체 설정 및 멤버 관리','Community Admin — community settings & member management');
     switchAdminTab('mysettings');
   } else {
     switchAdminTab('members');
