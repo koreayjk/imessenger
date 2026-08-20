@@ -9749,10 +9749,10 @@ async function rejectLeave(id) {
 // ════════════════════════════════════════════════════════════════════
 //  개인 시간표 (학생 대학 수업 등) — 담당 선생님도 열람
 // ════════════════════════════════════════════════════════════════════
-const TT_DAYS_FULL = ['','월','화','수','목','금','토','일'];
+const TT_DAYS_FULL = ['',t('월','Mon'),t('화','Tue'),t('수','Wed'),t('목','Thu'),t('금','Fri'),t('토','Sat'),t('일','Sun')];
 const TT_COLORS = ['#2a5298','#2a7a5a','#b8860b','#8e44ad','#c0392b','#2a7ab8','#5A7C8B','#B05865'];
 // 카탈로그 2종: 수업(기존 파란색) / 개인시간(노란색)
-const TT_KINDS = [ {key:'class', label:'수업', color:'#2a5298'}, {key:'personal', label:'개인시간', color:'#d9a441'} ];
+const TT_KINDS = [ {key:'class', label:t('수업','Class'), color:'#2a5298'}, {key:'personal', label:t('개인시간','Personal'), color:'#d9a441'} ];
 function ttColorForKind(k){ const f = TT_KINDS.find(x=>x.key===k); return f ? f.color : '#2a5298'; }
 function ttKindForColor(c){ const f = TT_KINDS.find(x=>x.color===c); return f ? f.key : 'class'; }
 let myTT = [];
@@ -9762,11 +9762,11 @@ let ttSelectedId = null; // 선택된 블록
 let ttClipboard = null;  // 복사한 블록
 let ttLastHover = null;  // 마지막 마우스 위치 {day, minutes}
 
-const TT_SEASONS = [ {key:'spring',label:'봄'}, {key:'summer',label:'여름'}, {key:'fall',label:'가을'} ];
+const TT_SEASONS = [ {key:'spring',label:t('봄','Spring')}, {key:'summer',label:t('여름','Summer')}, {key:'fall',label:t('가을','Fall')} ];
 function ttDefaultTerm(){ const d=new Date(); const m=d.getMonth()+1; const s = m<=5?'spring':(m<=8?'summer':'fall'); return `${d.getFullYear()}-${s}`; }
 function ttTermYear(){ return parseInt((mttTerm||ttDefaultTerm()).split('-')[0]); }
 function ttTermSeason(){ return (mttTerm||ttDefaultTerm()).split('-')[1]; }
-function ttTermLabel(t){ if(!t) return ''; const [y,s]=t.split('-'); const f=TT_SEASONS.find(x=>x.key===s); return `${y} ${f?f.label:''}학기`; }
+function ttTermLabel(t){ if(!t) return ''; const [y,s]=t.split('-'); const f=TT_SEASONS.find(x=>x.key===s); return `${y} ${f?f.label:''}${window.t('학기',' term')}`; }
 function shiftMttYear(d){ mttTerm = `${ttTermYear()+d}-${ttTermSeason()}`; ttSelectedId=null; renderMyTimetable(); }
 function setMttSeason(s){ mttTerm = `${ttTermYear()}-${s}`; ttSelectedId=null; renderMyTimetable(); }
 function ttEntriesForTerm(list, term){ return (list||[]).filter(e => (e.term || ttDefaultTerm()) === term); }
@@ -9777,7 +9777,7 @@ function ttFmt(hhmm){ return (hhmm||'').slice(0,5); }
 // 시간표 그리드 (학생: editable / 교사: 읽기전용)
 function ttGridHtml(entries, editable) {
   if (!entries.length && !editable)
-    return '<div style="padding:18px;text-align:center;color:var(--ink3);font-size:12.5px">학생이 아직 시간표를 등록하지 않았어요.</div>';
+    return `<div style="padding:18px;text-align:center;color:var(--ink3);font-size:12.5px">${t('학생이 아직 시간표를 등록하지 않았어요.','No timetable registered by the student yet.')}</div>`;
   const maxDay = Math.max(5, ...entries.map(e => e.day || 1));
   const days = []; for (let d=1; d<=maxDay; d++) days.push(d);
   let minH = 24, maxH = 0;
@@ -9797,12 +9797,12 @@ function ttGridHtml(entries, editable) {
       const col = e.color || TT_COLORS[Math.floor(ttMin(e.start_time)/30) % TT_COLORS.length];
       const sel = editable && e.id === ttSelectedId;
       return `<div class="tt-block" data-id="${e.id}" ${editable?`onmousedown="ttBlockDown(event,'${e.id}')"`:''} style="position:absolute;top:${top}px;height:${h}px;left:3px;right:3px;background:${col};color:#fff;border-radius:7px;padding:5px 7px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.18);${editable?'cursor:grab;':''}${sel?'outline:3px solid #16304f;outline-offset:1px;box-shadow:0 4px 14px rgba(0,0,0,.35);':''}">
-        <div style="font-weight:800;font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(e.subject||'수업')}</div>
+        <div style="font-weight:800;font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(e.subject||t('수업','Class'))}</div>
         ${e.place?`<div style="opacity:.92;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(e.place)}</div>`:''}
         <div style="opacity:.85;font-size:9.5px">${ttFmt(e.start_time)}~${ttFmt(e.end_time)}</div>
-        ${editable?`<b onmousedown="event.stopPropagation()" onclick="event.stopPropagation();deleteMyTTEntry('${e.id}')" title="삭제" style="position:absolute;top:2px;right:5px;cursor:pointer;font-size:12px;opacity:.9;z-index:5">✕</b>
-        <div onmousedown="ttResizeDown(event,'${e.id}','top')" title="시작 시간 조절" style="position:absolute;top:0;left:0;right:0;height:8px;cursor:ns-resize;z-index:3"></div>
-        <div onmousedown="ttResizeDown(event,'${e.id}','bottom')" title="종료 시간 조절" style="position:absolute;bottom:0;left:0;right:0;height:8px;cursor:ns-resize;z-index:3"></div>`:''}
+        ${editable?`<b onmousedown="event.stopPropagation()" onclick="event.stopPropagation();deleteMyTTEntry('${e.id}')" title="${t('삭제','Delete')}" style="position:absolute;top:2px;right:5px;cursor:pointer;font-size:12px;opacity:.9;z-index:5">✕</b>
+        <div onmousedown="ttResizeDown(event,'${e.id}','top')" title="${t('시작 시간 조절','Adjust start time')}" style="position:absolute;top:0;left:0;right:0;height:8px;cursor:ns-resize;z-index:3"></div>
+        <div onmousedown="ttResizeDown(event,'${e.id}','bottom')" title="${t('종료 시간 조절','Adjust end time')}" style="position:absolute;bottom:0;left:0;right:0;height:8px;cursor:ns-resize;z-index:3"></div>`:''}
       </div>`;
     }).join('');
     return `<div style="flex:1;min-width:0;border-left:1px solid var(--border)">
@@ -9820,7 +9820,7 @@ function ttGridHtml(entries, editable) {
 }
 
 function myTTSetupHtml() {
-  return `<div style="max-width:560px;margin:40px auto;text-align:center"><div style="font-size:40px;margin-bottom:12px">🗓</div><div style="font-size:16px;font-weight:700;margin-bottom:8px">데이터베이스 설정이 필요해요</div><div style="font-size:13px;color:var(--ink3);line-height:1.8"><b>db/학사_다중담당_개인시간표_DB설치.sql</b> 을 Supabase → SQL Editor에서 실행해주세요.</div></div>`;
+  return `<div style="max-width:560px;margin:40px auto;text-align:center"><div style="font-size:40px;margin-bottom:12px">🗓</div><div style="font-size:16px;font-weight:700;margin-bottom:8px">${t('데이터베이스 설정이 필요해요','Database setup required')}</div><div style="font-size:13px;color:var(--ink3);line-height:1.8">${t('<b>db/학사_다중담당_개인시간표_DB설치.sql</b> 을 Supabase → SQL Editor에서 실행해주세요.','Run <b>db/학사_다중담당_개인시간표_DB설치.sql</b> in Supabase → SQL Editor.')}</div></div>`;
 }
 
 async function initMyTimetable() {
@@ -9829,14 +9829,14 @@ async function initMyTimetable() {
   if (!mttTerm) mttTerm = ttDefaultTerm();
   ttBindKeys();
   const main = document.getElementById('mytt-main');
-  if (main) main.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink3);font-size:13px">불러오는 중...</div>';
+  if (main) main.innerHTML = `<div style="text-align:center;padding:40px;color:var(--ink3);font-size:13px">${t('불러오는 중...','Loading...')}</div>`;
   try {
     const { data, error } = await sb.from('student_timetables').select('*').eq('member_id', ME.id).order('day').order('start_time');
     if (error) throw error;
     myTT = data || [];
   } catch(e) {
     if (schoolTableMissing(e)) { main.innerHTML = myTTSetupHtml(); return; }
-    main.innerHTML = `<div style="color:#b91c1c;padding:30px;text-align:center;font-size:13px">불러오기 실패: ${e.message||e}</div>`;
+    main.innerHTML = `<div style="color:#b91c1c;padding:30px;text-align:center;font-size:13px">${t('불러오기 실패','Load failed')}: ${e.message||e}</div>`;
     return;
   }
   renderMyTimetable();
@@ -9859,7 +9859,7 @@ function renderMyTimetable() {
   const dot = c => `<span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${c};vertical-align:middle;margin-right:5px"></span>`;
   const navBtn = 'width:30px;height:32px;border:1px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:8px;cursor:pointer;font:700 14px var(--font)';
   const season = ttTermSeason();
-  const seasonBtns = TT_SEASONS.map(s=>`<button onclick="setMttSeason('${s.key}')" style="height:32px;padding:0 14px;border:1px solid ${season===s.key?'#1d3a5f':'var(--border)'};border-radius:9px;cursor:pointer;font:700 12.5px var(--font);background:${season===s.key?'#1d3a5f':'var(--surface)'};color:${season===s.key?'#fff':'var(--ink2)'}">${s.label}학기</button>`).join('');
+  const seasonBtns = TT_SEASONS.map(s=>`<button onclick="setMttSeason('${s.key}')" style="height:32px;padding:0 14px;border:1px solid ${season===s.key?'#1d3a5f':'var(--border)'};border-radius:9px;cursor:pointer;font:700 12.5px var(--font);background:${season===s.key?'#1d3a5f':'var(--surface)'};color:${season===s.key?'#fff':'var(--ink2)'}">${s.label}${t('학기',' term')}</button>`).join('');
   const shown = ttEntriesForTerm(myTT, mttTerm);
   const finp = `${inp};width:100%`;
   main.innerHTML = `<div style="max-width:1320px;margin:0 auto;display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap">
@@ -9874,8 +9874,8 @@ function renderMyTimetable() {
         <div style="display:flex;gap:6px">${seasonBtns}</div>
       </div>
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px">
-        <div style="font-size:13px;font-weight:800;color:${sel?'#2a7a5a':'var(--ink)'};margin-bottom:3px">${sel?'✏️ 선택한 일정 수정':'＋ 일정 추가'}</div>
-        <div style="font-size:10.5px;color:var(--ink3);line-height:1.55;margin-bottom:11px">${sel?'카테고리는 바꾸면 바로 적용. 나머지는 고친 뒤 저장.':'표에서 <b>드래그</b>해 등록 · 블록 <b>드래그로 이동</b> · <b>가장자리 드래그로 시간 조절</b> · 클릭 후 <b>⌘/Ctrl+C→V 복사</b>'}</div>
+        <div style="font-size:13px;font-weight:800;color:${sel?'#2a7a5a':'var(--ink)'};margin-bottom:3px">${sel?t('✏️ 선택한 일정 수정','✏️ Edit selected entry'):t('＋ 일정 추가','＋ Add entry')}</div>
+        <div style="font-size:10.5px;color:var(--ink3);line-height:1.55;margin-bottom:11px">${sel?t('카테고리는 바꾸면 바로 적용. 나머지는 고친 뒤 저장.','Category applies instantly when changed. Edit the rest, then save.'):t('표에서 <b>드래그</b>해 등록 · 블록 <b>드래그로 이동</b> · <b>가장자리 드래그로 시간 조절</b> · 클릭 후 <b>⌘/Ctrl+C→V 복사</b>','Drag on the grid to add · <b>drag a block to move</b> · <b>drag edges to resize</b> · click then <b>⌘/Ctrl+C→V to copy</b>')}</div>
         <div style="display:flex;flex-direction:column;gap:8px">
           <select id="mtt-kind" onchange="${sel?'saveMyTTEdit()':'mttKind=this.value'}" style="${finp}">${kindOpts}</select>
           <select id="mtt-day" style="${finp}">${dayOpts}</select>
@@ -9884,14 +9884,14 @@ function renderMyTimetable() {
             <span style="color:var(--ink3)">~</span>
             <input id="mtt-end" type="time" value="${fEnd}" style="${inp};flex:1;min-width:0"/>
           </div>
-          <input id="mtt-subject" value="${fSubject}" placeholder="내용 (예: 국어 / 알바)" style="${finp}" onkeydown="if(event.key==='Enter')${sel?'saveMyTTEdit()':'addMyTTEntry()'}"/>
-          <input id="mtt-place" value="${fPlace}" placeholder="장소 (예: 공학관 301)" style="${finp}" onkeydown="if(event.key==='Enter')${sel?'saveMyTTEdit()':'addMyTTEntry()'}"/>
+          <input id="mtt-subject" value="${fSubject}" placeholder="${t('내용 (예: 국어 / 알바)','Title (e.g. Korean / part-time job)')}" style="${finp}" onkeydown="if(event.key==='Enter')${sel?'saveMyTTEdit()':'addMyTTEntry()'}"/>
+          <input id="mtt-place" value="${fPlace}" placeholder="${t('장소 (예: 공학관 301)','Place (e.g. Eng. Bldg 301)')}" style="${finp}" onkeydown="if(event.key==='Enter')${sel?'saveMyTTEdit()':'addMyTTEntry()'}"/>
           ${sel
-            ? `<div style="display:flex;gap:6px"><button onclick="saveMyTTEdit()" style="flex:1;height:38px;border:none;background:#2a7a5a;color:#fff;border-radius:9px;cursor:pointer;font:700 13px var(--font)">저장</button>
-               <button onclick="ttDeselect()" style="height:38px;padding:0 14px;border:1px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:9px;cursor:pointer;font:600 13px var(--font)">새 일정</button></div>`
-            : `<button onclick="addMyTTEntry()" style="height:38px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 13px var(--font)">＋ 추가</button>`}
+            ? `<div style="display:flex;gap:6px"><button onclick="saveMyTTEdit()" style="flex:1;height:38px;border:none;background:#2a7a5a;color:#fff;border-radius:9px;cursor:pointer;font:700 13px var(--font)">${t('저장','Save')}</button>
+               <button onclick="ttDeselect()" style="height:38px;padding:0 14px;border:1px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:9px;cursor:pointer;font:600 13px var(--font)">${t('새 일정','New')}</button></div>`
+            : `<button onclick="addMyTTEntry()" style="height:38px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 13px var(--font)">${t('＋ 추가','＋ Add')}</button>`}
         </div>
-        <div style="font-size:11px;color:var(--ink3);margin-top:11px;padding-top:10px;border-top:1px solid var(--border)">${dot(TT_KINDS[0].color)}수업 &nbsp; ${dot(TT_KINDS[1].color)}개인시간</div>
+        <div style="font-size:11px;color:var(--ink3);margin-top:11px;padding-top:10px;border-top:1px solid var(--border)">${dot(TT_KINDS[0].color)}${t('수업','Class')} &nbsp; ${dot(TT_KINDS[1].color)}${t('개인시간','Personal')}</div>
       </div>
     </div>
     <!-- 오른쪽: 시간표 -->
@@ -9957,7 +9957,7 @@ function ttDragEnd() {
   const [st, en] = ttDragTimes();
   const day = dg.day;
   dg.preview.style.opacity = '.95';
-  dg.preview.innerHTML = `<div style="font-size:9px;color:#fff;font-weight:700;padding:2px 5px 0">${st}~${en}</div><input class="tt-newsubj" placeholder="이름 입력 후 Enter" style="width:100%;height:22px;border:none;background:transparent;color:#fff;font:700 11px var(--font);padding:0 5px;outline:none"/>`;
+  dg.preview.innerHTML = `<div style="font-size:9px;color:#fff;font-weight:700;padding:2px 5px 0">${st}~${en}</div><input class="tt-newsubj" placeholder="${t('이름 입력 후 Enter','Type a name, then Enter')}" style="width:100%;height:22px;border:none;background:transparent;color:#fff;font:700 11px var(--font);padding:0 5px;outline:none"/>`;
   const input = dg.preview.querySelector('.tt-newsubj');
   const finish = async (save) => {
     if (dg.done) return; dg.done = true;
@@ -9980,13 +9980,13 @@ async function ttInsertEntry(row) {
     const r2 = { ...row }; delete r2.term;
     const rr = await sb.from('student_timetables').insert(r2); error = rr.error;
   }
-  if (error) { if (schoolTableMissing(error)) { document.getElementById('mytt-main').innerHTML = myTTSetupHtml(); return false; } showUploadToast('추가 실패: ' + error.message); return false; }
+  if (error) { if (schoolTableMissing(error)) { document.getElementById('mytt-main').innerHTML = myTTSetupHtml(); return false; } showUploadToast(t('추가 실패','Add failed') + ': ' + error.message); return false; }
   return true;
 }
 async function ttCreateEntry(day, start, end, subject, place, color) {
-  if (end <= start) { showUploadToast('시간 범위가 올바르지 않아요'); return; }
+  if (end <= start) { showUploadToast(t('시간 범위가 올바르지 않아요','Invalid time range')); return; }
   const ok = await ttInsertEntry({ day, start_time: start, end_time: end, subject, place: place || null, color: color || ttColorForKind(mttKind) });
-  if (ok) { ttSelectedId = null; showUploadToast('✅ 추가됐어요'); initMyTimetable(); }
+  if (ok) { ttSelectedId = null; showUploadToast(t('✅ 추가됐어요','✅ Added')); initMyTimetable(); }
 }
 
 function ttDeselect() { ttSelectedId = null; renderMyTimetable(); }
@@ -10000,11 +10000,11 @@ async function saveMyTTEdit() {
   const end = document.getElementById('mtt-end').value;
   const subject = (document.getElementById('mtt-subject').value || '').trim();
   const place = (document.getElementById('mtt-place').value || '').trim();
-  if (!start || !end) { showUploadToast('시간을 입력하세요'); return; }
-  if (end <= start) { showUploadToast('종료가 시작보다 빨라요 — 오전/오후를 확인해주세요'); return; }
-  if (!subject) { showUploadToast('내용(과목명 등)을 입력하세요'); return; }
+  if (!start || !end) { showUploadToast(t('시간을 입력하세요','Enter a time')); return; }
+  if (end <= start) { showUploadToast(t('종료가 시작보다 빨라요 — 오전/오후를 확인해주세요','End is before start — check AM/PM')); return; }
+  if (!subject) { showUploadToast(t('내용(과목명 등)을 입력하세요','Enter a title (subject, etc.)')); return; }
   await updateMyTTEntry(ttSelectedId, { day, start_time: start, end_time: end, subject, place: place || null, color: ttColorForKind(kindV) });
-  showUploadToast('✅ 수정됐어요');
+  showUploadToast(t('✅ 수정됐어요','✅ Updated'));
 }
 
 async function addMyTTEntry() {
@@ -10013,11 +10013,11 @@ async function addMyTTEntry() {
   const end = document.getElementById('mtt-end').value;
   const subject = (document.getElementById('mtt-subject').value || '').trim();
   const place = (document.getElementById('mtt-place').value || '').trim();
-  if (!start || !end) { showUploadToast('시간을 입력하세요'); return; }
-  if (end <= start) { showUploadToast('종료가 시작보다 빨라요 — 오전/오후를 확인해주세요'); return; }
-  if (!subject) { showUploadToast('내용(과목명 등)을 입력하세요'); return; }
+  if (!start || !end) { showUploadToast(t('시간을 입력하세요','Enter a time')); return; }
+  if (end <= start) { showUploadToast(t('종료가 시작보다 빨라요 — 오전/오후를 확인해주세요','End is before start — check AM/PM')); return; }
+  if (!subject) { showUploadToast(t('내용(과목명 등)을 입력하세요','Enter a title (subject, etc.)')); return; }
   const ok = await ttInsertEntry({ day, start_time: start, end_time: end, subject, place, color: ttColorForKind(mttKind) });
-  if (ok) { ttSelectedId = null; showUploadToast('✅ 추가됐어요'); initMyTimetable(); }
+  if (ok) { ttSelectedId = null; showUploadToast(t('✅ 추가됐어요','✅ Added')); initMyTimetable(); }
 }
 
 // ── 마우스 hover: 정확한 시각 표시 ──
@@ -10077,7 +10077,7 @@ function ttMoveEnd() {
 }
 async function updateMyTTEntry(id, patch) {
   const { error } = await sb.from('student_timetables').update(patch).eq('id', id);
-  if (error) { showUploadToast('변경 실패: ' + error.message); return; }
+  if (error) { showUploadToast(t('변경 실패','Update failed') + ': ' + error.message); return; }
   const e = myTT.find(x => x.id === id); if (e) Object.assign(e, patch);
   renderMyTimetable();
 }
@@ -10129,7 +10129,7 @@ function ttKey(ev) {
   const t = ev.target; if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
   const meta = ev.metaKey || ev.ctrlKey;
   if (meta && (ev.key === 'c' || ev.key === 'C')) {
-    if (ttSelectedId) { const e = myTT.find(x => x.id === ttSelectedId); if (e) { ttClipboard = { subject:e.subject, place:e.place, day:e.day, start_time:e.start_time, end_time:e.end_time, color:e.color }; showUploadToast('📋 복사됨 — 붙일 칸에 마우스 올리고 ⌘/Ctrl+V'); ev.preventDefault(); } }
+    if (ttSelectedId) { const e = myTT.find(x => x.id === ttSelectedId); if (e) { ttClipboard = { subject:e.subject, place:e.place, day:e.day, start_time:e.start_time, end_time:e.end_time, color:e.color }; showUploadToast(window.t('📋 복사됨 — 붙일 칸에 마우스 올리고 ⌘/Ctrl+V','📋 Copied — hover the target cell and press ⌘/Ctrl+V')); ev.preventDefault(); } }
   } else if (meta && (ev.key === 'v' || ev.key === 'V')) {
     if (ttClipboard) { ttPaste(); ev.preventDefault(); }
   } else if (ev.key === 'Delete' || ev.key === 'Backspace') {
@@ -10138,7 +10138,7 @@ function ttKey(ev) {
 }
 async function sbDeleteTT(id) {
   const { error } = await sb.from('student_timetables').delete().eq('id', id);
-  if (error) { showUploadToast('삭제 실패: ' + error.message); return; }
+  if (error) { showUploadToast(t('삭제 실패','Delete failed') + ': ' + error.message); return; }
   myTT = myTT.filter(e => e.id !== id); renderMyTimetable();
 }
 async function ttPaste() {
@@ -10149,9 +10149,9 @@ async function ttPaste() {
 }
 
 async function deleteMyTTEntry(id) {
-  if (!confirm('이 수업을 삭제할까요?')) return;
+  if (!confirm(t('이 수업을 삭제할까요?','Delete this class?'))) return;
   const { error } = await sb.from('student_timetables').delete().eq('id', id);
-  if (error) { showUploadToast('삭제 실패: ' + error.message); return; }
+  if (error) { showUploadToast(t('삭제 실패','Delete failed') + ': ' + error.message); return; }
   myTT = myTT.filter(e => e.id !== id);
   renderMyTimetable();
 }
@@ -10165,9 +10165,9 @@ function s360TimetableCard(entries) {
   const shown = entries.filter(e => (e.term || ttDefaultTerm()) === term);
   return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin-bottom:14px">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
-      <div style="font-size:14px;font-weight:700;color:var(--ink)">🗓 개인 시간표</div>
+      <div style="font-size:14px;font-weight:700;color:var(--ink)">${t('🗓 개인 시간표','🗓 Personal timetable')}</div>
       ${entries.length?`<span style="font-size:11px;font-weight:700;color:#1d3a5f;background:var(--asoft);padding:2px 9px;border-radius:6px">${ttTermLabel(term)}</span>`:''}
-      <span style="font-size:11px;color:var(--ink3)">학생이 등록한 시간표</span>
+      <span style="font-size:11px;color:var(--ink3)">${t('학생이 등록한 시간표','Timetable registered by the student')}</span>
     </div>
     ${ttGridHtml(shown, false)}
   </div>`;
