@@ -10609,12 +10609,12 @@ let finTab = 'tuition';      // 재정 허브 하위탭: 'tuition' | 'allowance'
 function setFinTab(t) { finTab = t; renderTuitionHub(); }
 function finTabBar() {
   const t = (id,icon,label) => `<button onclick="setFinTab('${id}')" style="height:36px;padding:0 16px;border:none;border-radius:9px;font:700 13px var(--font);cursor:pointer;background:${finTab===id?'#1d3a5f':'transparent'};color:${finTab===id?'#fff':'var(--ink2)'}">${icon} ${label}</button>`;
-  return `<div style="display:inline-flex;gap:3px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:4px;margin-bottom:16px">${t('tuition','💰','학비')}${t('allowance','🐷','용돈')}${t('deposit','🏦','예치금')}</div>`;
+  return `<div style="display:inline-flex;gap:3px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:4px;margin-bottom:16px">${t('tuition','💰',window.t('학비','Tuition'))}${t('allowance','🐷',window.t('용돈','Allowance'))}${t('deposit','🏦',window.t('예치금','Deposit'))}</div>`;
 }
 function finGroupChips() {
   const chip = (id,label) => { const on = id==='all'?tuiGroups.size===0:tuiGroups.has(id); const oc = id==='all'?'tuiClearGroups()':`tuiToggleGroup('${id}')`;
     return `<button onclick="${oc}" style="height:30px;padding:0 12px;border-radius:8px;cursor:pointer;font:700 12px var(--font);border:1.5px solid ${on?'#1d3a5f':'var(--border)'};background:${on?'#1d3a5f':'var(--surface)'};color:${on?'#fff':'var(--ink2)'}">${on&&id!=='all'?'✓ ':''}${escHtml(label)}</button>`; };
-  return `<div style="display:inline-flex;gap:5px;flex-wrap:wrap;align-items:center">${chip('all','전체')}${tcsGroups.map(g=>chip(g.id,g.name)).join('')}${chip('none','미지정')}</div>`;
+  return `<div style="display:inline-flex;gap:5px;flex-wrap:wrap;align-items:center">${chip('all',t('전체','All'))}${tcsGroups.map(g=>chip(g.id,g.name)).join('')}${chip('none',t('미지정','Unassigned'))}</div>`;
 }
 function finOpenStudent(id) { s360Id = id; setSchoolSubMode('student'); }
 
@@ -10656,36 +10656,36 @@ function finInlineEditor() {
   const tBtn = (t,label,color)=>`<button onclick="finSetType('${t}')" style="flex:1;height:33px;border:none;border-radius:8px;font:700 12px var(--font);cursor:pointer;background:${finAddType===t?color:'var(--surface)'};color:${finAddType===t?'#fff':'var(--ink2)'}">${label}</button>`;
   const cBtn = (c,label)=>`<button onclick="finSetCur('${c}')" style="height:33px;padding:0 11px;border:1px solid ${finAddCur===c?'#1d3a5f':'var(--border)'};border-radius:8px;font:700 12px var(--font);cursor:pointer;background:${finAddCur===c?'#1d3a5f':'var(--surface)'};color:${finAddCur===c?'#fff':'var(--ink2)'}">${label}</button>`;
   const catSel = isAllow ? `<select id="fin-cat" style="${inp}">${(ALLOW_CATS[finAddType]||[]).map(c=>`<option value="${c}">${c}</option>`).join('')}</select>` : '';
-  const form = `<div style="display:flex;gap:6px;margin-bottom:8px">${isAllow?tBtn('income','수입 ➕','#2a7a5a')+tBtn('expense','지출 ➖','#c0392b'):tBtn('in','입금 ＋','#2a7a5a')+tBtn('out','출금 －','#c0392b')}</div>
+  const form = `<div style="display:flex;gap:6px;margin-bottom:8px">${isAllow?tBtn('income',t('수입 ➕','Income ➕'),'#2a7a5a')+tBtn('expense',t('지출 ➖','Expense ➖'),'#c0392b'):tBtn('in',t('입금 ＋','Deposit ＋'),'#2a7a5a')+tBtn('out',t('출금 －','Withdraw －'),'#c0392b')}</div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
       <input id="fin-date" type="date" value="${attTodayStr()}" style="${inp}"/>
       ${catSel}
       <div style="display:flex;gap:4px">${cBtn('원','₩')}${cBtn('$','$')}</div>
-      <input id="fin-amount" type="number" min="0" step="${finAddCur==='$'?'0.01':'100'}" placeholder="금액" style="${inp};width:100px"/>
-      <input id="fin-memo" placeholder="${isAllow?'내용 (예: 간식비)':'내용 (예: 부모님 입금)'}" style="${inp};flex:1;min-width:120px" onkeydown="if(event.key==='Enter')finAddEntry()"/>
-      <button onclick="finAddEntry()" style="height:33px;padding:0 16px;border:none;background:#1d3a5f;color:#fff;border-radius:8px;cursor:pointer;font:700 12.5px var(--font)">＋ 기록</button>
+      <input id="fin-amount" type="number" min="0" step="${finAddCur==='$'?'0.01':'100'}" placeholder="${t('금액','Amount')}" style="${inp};width:100px"/>
+      <input id="fin-memo" placeholder="${isAllow?t('내용 (예: 간식비)','Note (e.g. snacks)'):t('내용 (예: 부모님 입금)','Note (e.g. parent deposit)')}" style="${inp};flex:1;min-width:120px" onkeydown="if(event.key==='Enter')finAddEntry()"/>
+      <button onclick="finAddEntry()" style="height:33px;padding:0 16px;border:none;background:#1d3a5f;color:#fff;border-radius:8px;cursor:pointer;font:700 12.5px var(--font)">${t('＋ 기록','＋ Add')}</button>
     </div>`;
   const rows = (finEntries||[]).slice(0,10).map(e => {
     const cur = e.currency||'원';
     const pos = isAllow ? e.type==='income' : e.type==='in';
-    const label = isAllow ? (e.category||'기타') : (e.type==='in'?'입금':'출금');
+    const label = isAllow ? (e.category||'기타') : (e.type==='in'?t('입금','Deposit'):t('출금','Withdrawal'));
     return `<div style="display:flex;align-items:center;gap:8px;padding:6px 2px;border-top:1px solid var(--border)">
       <span style="font-size:13px">${pos?'📥':'📤'}</span>
       <div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:600;color:var(--ink)">${escHtml(label)}${e.memo?` <span style="font-weight:400;color:var(--ink3)">· ${escHtml(e.memo)}</span>`:''}</div><div style="font-size:10px;color:var(--ink3)">${e.date||''}</div></div>
       <span style="font-size:12.5px;font-weight:700;color:${pos?'#2a7a5a':'#c0392b'};white-space:nowrap">${pos?'+':'-'}${allowMoney(e.amount,cur)}</span>
-      <button onclick="finDelEntry('${e.id}')" title="삭제" style="border:none;background:transparent;cursor:pointer;color:#c0392b;font-size:12px">✕</button></div>`;
+      <button onclick="finDelEntry('${e.id}')" title="${t('삭제','Delete')}" style="border:none;background:transparent;cursor:pointer;color:#c0392b;font-size:12px">✕</button></div>`;
   }).join('');
   return `<div style="background:var(--s2);border:1px solid var(--border);border-radius:11px;padding:12px;margin:2px 0 10px">
-    <div style="font-size:11.5px;font-weight:700;color:var(--ink2);margin-bottom:8px">${isAllow?'🐷 용돈 기록':'🏦 입금 / 출금 기록'}</div>
+    <div style="font-size:11.5px;font-weight:700;color:var(--ink2);margin-bottom:8px">${isAllow?t('🐷 용돈 기록','🐷 Allowance log'):t('🏦 입금 / 출금 기록','🏦 Deposit / Withdrawal log')}</div>
     ${form}
-    ${finEntries&&finEntries.length ? `<div style="font-size:11px;font-weight:700;color:var(--ink3);margin-top:4px">최근 내역</div>${rows}` : '<div style="font-size:11.5px;color:var(--ink3);padding:6px 0">아직 기록이 없어요.</div>'}
+    ${finEntries&&finEntries.length ? `<div style="font-size:11px;font-weight:700;color:var(--ink3);margin-top:4px">${t('최근 내역','Recent')}</div>${rows}` : `<div style="font-size:11.5px;color:var(--ink3);padding:6px 0">${t('아직 기록이 없어요.','No records yet.')}</div>`}
   </div>`;
 }
 async function finAddEntry() {
   const date = document.getElementById('fin-date')?.value || attTodayStr();
   const amount = parseFloat(document.getElementById('fin-amount')?.value) || 0;
   const memo = (document.getElementById('fin-memo')?.value || '').trim();
-  if (!(amount > 0)) { showUploadToast('금액을 입력하세요'); return; }
+  if (!(amount > 0)) { showUploadToast(t('금액을 입력하세요','Enter an amount')); return; }
   const s = schoolStudents.find(x=>x.id===finExpandId);
   const cid = (s&&s.community_id)||CID();
   let error;
@@ -10696,19 +10696,19 @@ async function finAddEntry() {
     ({ error } = await sb.from('deposit_entries').insert({ member_id: finExpandId, community_id: cid, date, type: finAddType, amount, currency: finAddCur, memo, created_by: ME.id }));
   }
   if (error) {
-    if (schoolTableMissing(error)) { showUploadToast(`${finKind==='deposit'?'db/예치금_DB설치.sql':'db/용돈기입장_DB설치.sql'} 을 먼저 실행하세요`); return; }
-    showUploadToast('저장 실패: ' + error.message); return;
+    if (schoolTableMissing(error)) { showUploadToast(`${finKind==='deposit'?'db/예치금_DB설치.sql':'db/용돈기입장_DB설치.sql'} ${t('을 먼저 실행하세요','must be run first')}`); return; }
+    showUploadToast(t('저장 실패: ','Save failed: ') + error.message); return;
   }
-  showUploadToast('기록됐어요');
+  showUploadToast(t('기록됐어요','Recorded'));
   await finLoadEntries();
   finRerenderKeepScroll();
 }
 async function finDelEntry(id) {
-  if (!confirm('이 기록을 삭제할까요?')) return;
+  if (!confirm(t('이 기록을 삭제할까요?','Delete this record?'))) return;
   const table = finKind==='allowance' ? 'allowance_entries' : 'deposit_entries';
   const { error } = await sb.from(table).delete().eq('id', id);
-  if (error) { showUploadToast('삭제 실패: ' + error.message); return; }
-  showUploadToast('🗑 삭제됐어요');
+  if (error) { showUploadToast(t('삭제 실패: ','Delete failed: ') + error.message); return; }
+  showUploadToast(t('🗑 삭제됐어요','🗑 Deleted'));
   await finLoadEntries();
   finRerenderKeepScroll();
 }
@@ -10716,13 +10716,13 @@ async function finDelEntry(id) {
 async function renderFinBalances(kind) {
   finKind = kind;
   const main = document.getElementById('school-main');
-  main.innerHTML = finTabBar() + '<div style="text-align:center;padding:30px;color:var(--ink3);font-size:13px">불러오는 중...</div>';
+  main.innerHTML = finTabBar() + `<div style="text-align:center;padding:30px;color:var(--ink3);font-size:13px">${t('불러오는 중...','Loading...')}</div>`;
   const table = kind==='allowance' ? 'allowance_entries' : 'deposit_entries';
   let data = [];
   try { const r = await sb.from(table).select('member_id,type,amount,currency').eq('community_id', CID()); if (r.error) throw r.error; data = r.data||[]; }
   catch(e) {
-    if (schoolTableMissing(e)) { main.innerHTML = finTabBar() + `<div style="max-width:560px;margin:30px auto;text-align:center"><div style="font-size:40px">${kind==='deposit'?'🏦':'🐷'}</div><div style="font-size:15px;font-weight:700;margin:10px 0 6px">DB 설정이 필요해요</div><div style="font-size:13px;color:var(--ink3)">Supabase에서 <b>${kind==='deposit'?'db/예치금_DB설치.sql':'db/용돈기입장_DB설치.sql'}</b> 을 실행하세요.</div></div>`; return; }
-    main.innerHTML = finTabBar() + `<div style="color:#b91c1c;padding:20px;text-align:center;font-size:13px">불러오기 실패: ${e.message||e}</div>`; return;
+    if (schoolTableMissing(e)) { main.innerHTML = finTabBar() + `<div style="max-width:560px;margin:30px auto;text-align:center"><div style="font-size:40px">${kind==='deposit'?'🏦':'🐷'}</div><div style="font-size:15px;font-weight:700;margin:10px 0 6px">${t('DB 설정이 필요해요','Database setup required')}</div><div style="font-size:13px;color:var(--ink3)">${t('Supabase에서 ','Run ')}<b>${kind==='deposit'?'db/예치금_DB설치.sql':'db/용돈기입장_DB설치.sql'}</b>${t(' 을 실행하세요.',' in Supabase.')}</div></div>`; return; }
+    main.innerHTML = finTabBar() + `<div style="color:#b91c1c;padding:20px;text-align:center;font-size:13px">${t('불러오기 실패: ','Failed to load: ')}${e.message||e}</div>`; return;
   }
   const balMap = {};
   data.forEach(e => { const cur=e.currency||'원'; const sign = kind==='allowance' ? (e.type==='income'?1:-1) : (e.type==='in'?1:-1); if(!balMap[e.member_id]) balMap[e.member_id]={}; balMap[e.member_id][cur]=(balMap[e.member_id][cur]||0)+sign*(Number(e.amount)||0); });
@@ -10744,15 +10744,16 @@ async function renderFinBalances(kind) {
   main.innerHTML = `<div style="max-width:1200px;margin:0 auto">
     ${finTabBar()}
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
-      <div style="font-size:16px;font-weight:800;color:var(--ink)">${kind==='deposit'?'🏦 예치금':'🐷 용돈'} 잔액</div>
-      <span style="font-size:11.5px;color:var(--ink3)">학생을 누르면 바로 ${kind==='deposit'?'입금·출금':'수입·지출'}을 기록해요</span>
+      <div style="font-size:16px;font-weight:800;color:var(--ink)">${kind==='deposit'?t('🏦 예치금 잔액','🏦 Deposit balance'):t('🐷 용돈 잔액','🐷 Allowance balance')}</div>
+      <span style="font-size:11.5px;color:var(--ink3)">${kind==='deposit'?t('학생을 누르면 바로 입금·출금을 기록해요','Tap a student to record a deposit or withdrawal'):t('학생을 누르면 바로 수입·지출을 기록해요','Tap a student to record income or an expense')}</span>
       <div style="flex:1"></div>${finGroupChips()}
     </div>
-    ${students.length ? rows : '<div style="padding:30px;text-align:center;color:var(--ink3);font-size:13px">학생이 없어요</div>'}
+    ${students.length ? rows : `<div style="padding:30px;text-align:center;color:var(--ink3);font-size:13px">${t('학생이 없어요','No students')}</div>`}
   </div>`;
 }
 let tuiCur = '원';   // 활성 통화 '원' | '$'
 const TUI_MONTHS = [1,2,3,4,5,6,7,8,9,10,11,12];
+const TUI_MON_EN = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 function tuiNum(n) { return (Number(n)||0).toLocaleString('en-US', { maximumFractionDigits: tuiCur==='$'?2:0 }); }
 function tuiWon(n) { return tuiCur==='$' ? '$'+tuiNum(n) : tuiNum(n)+'원'; }
 
@@ -10786,16 +10787,16 @@ async function tuiSetCurrency(target) {
   if (cnt === 0) {
     localStorage.setItem('tui_currency_' + CID(), target);
     tuiCur = target;
-    showUploadToast(`통화를 ${target==='원'?'원(₩)':'달러($)'}로 설정했어요`);
+    showUploadToast(target==='원'?t('통화를 원(₩)로 설정했어요','Currency set to Won (₩)'):t('통화를 달러($)로 설정했어요','Currency set to Dollar ($)'));
     renderTuition();
     return;
   }
   const rate = await fetchUsdKrw();
-  if (!rate) { showUploadToast('환율을 가져오지 못했어요. 잠시 후 다시 시도해주세요'); return; }
+  if (!rate) { showUploadToast(t('환율을 가져오지 못했어요. 잠시 후 다시 시도해주세요','Could not fetch the exchange rate. Please try again shortly')); return; }
   const conv = (n) => n==null ? null : (target==='원' ? Math.round((Number(n)||0)*rate) : Math.round((Number(n)||0)/rate*100)/100);
   const rateTxt = `1 $ ≈ ${Math.round(rate).toLocaleString('ko-KR')}원`;
-  if (!confirm(`현재 환율(${rateTxt})로 학비 금액을 ${tuiCur==='$'?'달러→원':'원→달러'}으로 변환할까요?\n대상: ${cnt}건 (기록 + 학생별 월 학비)\n※ 되돌리려면 통화를 다시 바꿔야 해요.`)) return;
-  showUploadToast('환율 변환 중...');
+  if (!confirm(t(`현재 환율(${rateTxt})로 학비 금액을 ${tuiCur==='$'?'달러→원':'원→달러'}으로 변환할까요?\n대상: ${cnt}건 (기록 + 학생별 월 학비)\n※ 되돌리려면 통화를 다시 바꿔야 해요.`, `Convert tuition amounts ${tuiCur==='$'?'from USD to KRW':'from KRW to USD'} at the current rate (${rateTxt})?\nItems: ${cnt} (records + per-student monthly tuition)\n※ To undo, switch the currency back.`))) return;
+  showUploadToast(t('환율 변환 중...','Converting…'));
   for (const b of (allBills||[])) {
     await sb.from('tuition_bills').update({ currency: target, amount: conv(b.amount), paid_amount: conv(b.paid_amount), updated_at: new Date().toISOString() }).eq('id', b.id);
   }
@@ -10806,7 +10807,7 @@ async function tuiSetCurrency(target) {
   }
   localStorage.setItem('tui_currency_' + CID(), target);
   tuiCur = target;
-  showUploadToast(`✅ ${target==='원'?'원(₩)':'달러($)'}로 변환 완료`);
+  showUploadToast(target==='원'?t('✅ 원(₩)로 변환 완료','✅ Converted to Won (₩)'):t('✅ 달러($)로 변환 완료','✅ Converted to Dollar ($)'));
   await renderTuitionHub();
 }
 
@@ -10814,7 +10815,7 @@ async function tuiSetCurrency(target) {
 async function saveTuiStudentAmount(sid, val) {
   const amount = val==='' ? null : (parseFloat(val) || 0);
   const { error } = await sb.from('members').update({ tuition_monthly: amount }).eq('id', sid);
-  if (error) { showUploadToast('저장 실패: ' + error.message); return; }
+  if (error) { showUploadToast(t('저장 실패: ','Save failed: ') + error.message); return; }
   const s = schoolStudents.find(x=>x.id===sid); if (s) s.tuition_monthly = amount;
 }
 
@@ -10874,7 +10875,7 @@ function renderTuition() {
     let bg='transparent', color='var(--ink3)', txt='';
     if (paid) { bg='#e8f5ee'; color='#15803d'; const d=(b.paid_date||'').slice(5).replace('-','/').replace(/^0/,''); const amt=tuiNum(b.paid_amount ?? b.amount); txt=`<div style="font-size:10.5px;font-weight:800;line-height:1.15">${amt}</div>${d?`<div style="font-size:8px;color:#2a7a5a;font-weight:600">${d}</div>`:''}`; }
     else if (isPast(mo) && expects(smap[sid])) { bg='#fdecea'; color='#c0392b'; txt='·'; }
-    return `<td onclick="openTuiCell('${sid}',${mo})" style="padding:2px 4px;text-align:center;border:1px solid var(--border);cursor:pointer;background:${bg};color:${color};font-weight:700;font-size:11.5px;height:38px;min-width:60px" title="${TUI_MONTHS.indexOf(mo)>=0?mo+'월':''}">${txt}</td>`;
+    return `<td onclick="openTuiCell('${sid}',${mo})" style="padding:2px 4px;text-align:center;border:1px solid var(--border);cursor:pointer;background:${bg};color:${color};font-weight:700;font-size:11.5px;height:38px;min-width:60px" title="${TUI_MONTHS.indexOf(mo)>=0?t(mo+'월',TUI_MON_EN[mo]):''}">${txt}</td>`;
   };
 
   const rows = students.map(s => {
@@ -10886,7 +10887,7 @@ function renderTuition() {
         <div style="font-size:12.5px;font-weight:700;color:var(--ink)">${escHtml(s.name)} <span style="font-size:10px;color:var(--ink3);font-weight:500">${paidN}/12</span></div>
         <div style="display:flex;align-items:center;gap:3px;margin-top:3px">
           <span style="font-size:10px;color:var(--ink3)">${unit}</span>
-          <input type="number" min="0" step="${tuiCur==='$'?'1':'1000'}" value="${s.tuition_monthly!=null?s.tuition_monthly:''}" placeholder="월 학비" onchange="saveTuiStudentAmount('${s.id}',this.value)" onclick="event.stopPropagation()" style="width:74px;height:22px;border:1px solid var(--border);border-radius:6px;padding:0 6px;font:600 11px var(--font);text-align:right;background:var(--s2)"/>
+          <input type="number" min="0" step="${tuiCur==='$'?'1':'1000'}" value="${s.tuition_monthly!=null?s.tuition_monthly:''}" placeholder="${t('월 학비','Monthly')}" onchange="saveTuiStudentAmount('${s.id}',this.value)" onclick="event.stopPropagation()" style="width:74px;height:22px;border:1px solid var(--border);border-radius:6px;padding:0 6px;font:600 11px var(--font);text-align:right;background:var(--s2)"/>
         </div>
       </td>
       ${TUI_MONTHS.map(mo=>cell(s.id,mo)).join('')}
@@ -10897,7 +10898,7 @@ function renderTuition() {
   // 월 합계
   const monthTotals = TUI_MONTHS.map(mo => students.reduce((a,s)=>{ const b=payMap[s.id]&&payMap[s.id][mo]; return a+(b&&b.paid?(Number(b.paid_amount??b.amount)||0):0); },0));
   const footer = `<tr style="background:var(--s2)">
-    <td style="position:sticky;left:0;background:var(--s2);padding:7px 10px;font-size:11.5px;font-weight:700;color:var(--ink2);border:1px solid var(--border)">월 합계</td>
+    <td style="position:sticky;left:0;background:var(--s2);padding:7px 10px;font-size:11.5px;font-weight:700;color:var(--ink2);border:1px solid var(--border)">${t('월 합계','Monthly total')}</td>
     ${monthTotals.map(t=>`<td style="padding:5px 4px;text-align:center;font-size:10px;font-weight:600;color:var(--ink2);border:1px solid var(--border)">${t?tuiNum(t):'-'}</td>`).join('')}
     <td style="padding:7px 10px;text-align:right;font-size:12px;font-weight:800;color:var(--adeep);border:1px solid var(--border)">${tuiWon(monthTotals.reduce((a,b)=>a+b,0))}</td>
   </tr>`;
@@ -10907,44 +10908,44 @@ function renderTuition() {
     const oc = id==='all' ? 'tuiClearGroups()' : `tuiToggleGroup('${id}')`;
     return `<button onclick="${oc}" style="height:30px;padding:0 12px;border-radius:8px;cursor:pointer;font:700 12px var(--font);border:1.5px solid ${on?'#1d3a5f':'var(--border)'};background:${on?'#1d3a5f':'var(--surface)'};color:${on?'#fff':'var(--ink2)'}">${on&&id!=='all'?'✓ ':''}${escHtml(label)}</button>`;
   };
-  const groupChips = `<div style="display:inline-flex;gap:5px;flex-wrap:wrap;align-items:center">${chip('all','전체')}${tcsGroups.map(g=>chip(g.id,g.name)).join('')}${chip('none','미지정')}</div>`;
-  const headMonths = TUI_MONTHS.map(mo=>`<th style="padding:7px 2px;font-size:11px;font-weight:700;color:${(tuiYear===nowY&&mo===nowM)?'#1d3a5f':'var(--ink3)'};text-align:center;border:1px solid var(--border);background:${(tuiYear===nowY&&mo===nowM)?'#e7f0fb':'var(--s2)'}">${mo}월</th>`).join('');
+  const groupChips = `<div style="display:inline-flex;gap:5px;flex-wrap:wrap;align-items:center">${chip('all',t('전체','All'))}${tcsGroups.map(g=>chip(g.id,g.name)).join('')}${chip('none',t('미지정','Unassigned'))}</div>`;
+  const headMonths = TUI_MONTHS.map(mo=>`<th style="padding:7px 2px;font-size:11px;font-weight:700;color:${(tuiYear===nowY&&mo===nowM)?'#1d3a5f':'var(--ink3)'};text-align:center;border:1px solid var(--border);background:${(tuiYear===nowY&&mo===nowM)?'#e7f0fb':'var(--s2)'}">${t(mo+'월',TUI_MON_EN[mo])}</th>`).join('');
 
   main.innerHTML = `<div style="max-width:1200px;margin:0 auto">
     ${finTabBar()}
     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px">
       <div>
-        <div style="font-size:18px;font-weight:800;color:var(--ink)">💰 학비 납부 현황판</div>
-        <div style="font-size:12px;color:var(--ink3);margin-top:2px">칸을 눌러 그 달 학비 납부를 기록해요. 초록=납부(금액), 빨강=미납</div>
+        <div style="font-size:18px;font-weight:800;color:var(--ink)">${t('💰 학비 납부 현황판','💰 Tuition Payment Board')}</div>
+        <div style="font-size:12px;color:var(--ink3);margin-top:2px">${t('칸을 눌러 그 달 학비 납부를 기록해요. 초록=납부(금액), 빨강=미납','Tap a cell to log tuition for that month. Green = paid (amount), red = unpaid')}</div>
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <div style="display:inline-flex;align-items:center;gap:4px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:3px 4px">
           <button onclick="setTuiYear(-1)" style="width:30px;height:30px;border:none;background:transparent;cursor:pointer;font-size:16px;color:var(--ink2)">◀</button>
-          <span style="font-size:15px;font-weight:800;color:var(--ink);min-width:56px;text-align:center">${tuiYear}년</span>
+          <span style="font-size:15px;font-weight:800;color:var(--ink);min-width:56px;text-align:center">${tuiYear}${t('년','')}</span>
           <button onclick="setTuiYear(1)" style="width:30px;height:30px;border:none;background:transparent;cursor:pointer;font-size:16px;color:var(--ink2)">▶</button>
         </div>
         ${groupChips}
         <div style="display:inline-flex;gap:2px;background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:3px">
-          ${[['원','₩ 원'],['$','$ 달러']].map(([v,l])=>`<button onclick="tuiSetCurrency('${v}')" style="height:30px;padding:0 12px;border:none;border-radius:7px;cursor:pointer;font:700 12px var(--font);background:${tuiCur===v?'#1d3a5f':'transparent'};color:${tuiCur===v?'#fff':'var(--ink2)'}">${l}</button>`).join('')}
+          ${[['원',t('₩ 원','₩ Won')],['$',t('$ 달러','$ USD')]].map(([v,l])=>`<button onclick="tuiSetCurrency('${v}')" style="height:30px;padding:0 12px;border:none;border-radius:7px;cursor:pointer;font:700 12px var(--font);background:${tuiCur===v?'#1d3a5f':'transparent'};color:${tuiCur===v?'#fff':'var(--ink2)'}">${l}</button>`).join('')}
         </div>
-        <button onclick="printTuitionMatrix()" style="height:36px;padding:0 15px;border:none;background:linear-gradient(135deg,#1d3a5f,#2a5298);color:#fff;border-radius:9px;cursor:pointer;font:700 12.5px var(--font)">📄 PDF (가로)</button>
+        <button onclick="printTuitionMatrix()" style="height:36px;padding:0 15px;border:none;background:linear-gradient(135deg,#1d3a5f,#2a5298);color:#fff;border-radius:9px;cursor:pointer;font:700 12.5px var(--font)">${t('📄 PDF (가로)','📄 PDF (landscape)')}</button>
       </div>
     </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">
-      <div style="flex:1;min-width:150px;background:#e8f5ee;border:1px solid #bfe3cf;border-radius:10px;padding:11px 14px"><div style="font-size:11px;color:#2a7a5a">${tuiYear}년 수납 총액</div><div style="font-size:18px;font-weight:800;color:#2a7a5a">${tuiWon(yearReceived)}</div></div>
-      <div style="flex:1;min-width:150px;background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:11px 14px"><div style="font-size:11px;color:var(--ink3)">납부 건수</div><div style="font-size:18px;font-weight:800;color:var(--ink)">${paidCount}건</div></div>
-      ${curUnpaid!==null?`<div style="flex:1;min-width:150px;background:#fdecea;border:1px solid #f3c0bb;border-radius:10px;padding:11px 14px"><div style="font-size:11px;color:#c0392b">이번 달(${nowM}월) 미납</div><div style="font-size:18px;font-weight:800;color:#c0392b">${curUnpaid}명</div></div>`:''}
+      <div style="flex:1;min-width:150px;background:#e8f5ee;border:1px solid #bfe3cf;border-radius:10px;padding:11px 14px"><div style="font-size:11px;color:#2a7a5a">${tuiYear}${t('년 수납 총액',' Total Received')}</div><div style="font-size:18px;font-weight:800;color:#2a7a5a">${tuiWon(yearReceived)}</div></div>
+      <div style="flex:1;min-width:150px;background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:11px 14px"><div style="font-size:11px;color:var(--ink3)">${t('납부 건수','Payments')}</div><div style="font-size:18px;font-weight:800;color:var(--ink)">${paidCount}${t('건','')}</div></div>
+      ${curUnpaid!==null?`<div style="flex:1;min-width:150px;background:#fdecea;border:1px solid #f3c0bb;border-radius:10px;padding:11px 14px"><div style="font-size:11px;color:#c0392b">${t('이번 달(','This month (')}${t(nowM+'월',TUI_MON_EN[nowM])}${t(') 미납',') unpaid')}</div><div style="font-size:18px;font-weight:800;color:#c0392b">${curUnpaid}${t('명',' students')}</div></div>`:''}
     </div>
     ${students.length ? `<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow-x:auto">
       <table style="border-collapse:collapse;width:100%;min-width:980px">
         <thead><tr>
-          <th style="position:sticky;left:0;z-index:2;background:var(--s2);padding:7px 10px;font-size:11.5px;font-weight:700;color:var(--ink2);text-align:left;border:1px solid var(--border)">학생</th>
+          <th style="position:sticky;left:0;z-index:2;background:var(--s2);padding:7px 10px;font-size:11.5px;font-weight:700;color:var(--ink2);text-align:left;border:1px solid var(--border)">${t('학생','Student')}</th>
           ${headMonths}
-          <th style="padding:7px 8px;font-size:11px;font-weight:700;color:var(--ink3);text-align:right;border:1px solid var(--border);background:var(--s2)">합계</th>
+          <th style="padding:7px 8px;font-size:11px;font-weight:700;color:var(--ink3);text-align:right;border:1px solid var(--border);background:var(--s2)">${t('합계','Total')}</th>
         </tr></thead>
         <tbody>${rows}${footer}</tbody>
       </table>
-    </div>` : '<div style="padding:50px;text-align:center;color:var(--ink3);font-size:13px">등록된 학생이 없어요. 관리자에서 학생을 먼저 승인해주세요.</div>'}
+    </div>` : `<div style="padding:50px;text-align:center;color:var(--ink3);font-size:13px">${t('등록된 학생이 없어요. 관리자에서 학생을 먼저 승인해주세요.','No students yet. Approve students in the admin panel first.')}</div>`}
   </div>`;
 }
 
@@ -10965,18 +10966,18 @@ function openTuiCell(sid, mo) {
   wrap.style.cssText = 'position:fixed;inset:0;z-index:500;background:rgba(15,23,42,.5);display:flex;align-items:center;justify-content:center;padding:20px';
   wrap.onclick = e => { if (e.target===wrap) wrap.remove(); };
   wrap.innerHTML = `<div style="background:var(--surface);border-radius:18px;padding:22px;width:100%;max-width:380px" onclick="event.stopPropagation()">
-    <div style="font-size:17px;font-weight:800;color:var(--ink)">${escHtml(s.name)} · ${tuiYear}년 ${mo}월 학비</div>
-    <div style="font-size:12px;color:var(--ink3);margin:3px 0 16px">${existing&&existing.paid?'✅ 이미 납부됨 — 수정하거나 미납으로 되돌릴 수 있어요':'납부 내역을 기록해요'}</div>
-    <div style="margin-bottom:11px"><label style="font-size:12px;font-weight:700;color:var(--ink3);display:block;margin-bottom:5px">납부 금액 (${tuiCur==='$'?'$ 달러':'원'})</label><input id="tui-c-amount" type="number" min="0" step="${tuiCur==='$'?'1':'1000'}" value="${amount||''}" placeholder="0" style="${inp};text-align:right"/></div>
+    <div style="font-size:17px;font-weight:800;color:var(--ink)">${escHtml(s.name)} · ${tuiYear}${t('년','')} ${t(mo+'월',TUI_MON_EN[mo])} ${t('학비','Tuition')}</div>
+    <div style="font-size:12px;color:var(--ink3);margin:3px 0 16px">${existing&&existing.paid?t('✅ 이미 납부됨 — 수정하거나 미납으로 되돌릴 수 있어요','✅ Already paid — you can edit it or revert to unpaid'):t('납부 내역을 기록해요','Record a payment')}</div>
+    <div style="margin-bottom:11px"><label style="font-size:12px;font-weight:700;color:var(--ink3);display:block;margin-bottom:5px">${t('납부 금액','Payment amount')} (${tuiCur==='$'?t('$ 달러','$ USD'):t('원','₩')})</label><input id="tui-c-amount" type="number" min="0" step="${tuiCur==='$'?'1':'1000'}" value="${amount||''}" placeholder="0" style="${inp};text-align:right"/></div>
     <div style="display:flex;gap:10px;margin-bottom:11px">
-      <div style="flex:1"><label style="font-size:12px;font-weight:700;color:var(--ink3);display:block;margin-bottom:5px">납부일</label><input id="tui-c-date" type="date" value="${date}" style="${inp}"/></div>
-      <div style="flex:1"><label style="font-size:12px;font-weight:700;color:var(--ink3);display:block;margin-bottom:5px">방법</label><select id="tui-c-method" style="${inp}">${['계좌','현금','카드','기타'].map(x=>`<option ${method===x?'selected':''}>${x}</option>`).join('')}</select></div>
+      <div style="flex:1"><label style="font-size:12px;font-weight:700;color:var(--ink3);display:block;margin-bottom:5px">${t('납부일','Payment date')}</label><input id="tui-c-date" type="date" value="${date}" style="${inp}"/></div>
+      <div style="flex:1"><label style="font-size:12px;font-weight:700;color:var(--ink3);display:block;margin-bottom:5px">${t('방법','Method')}</label><select id="tui-c-method" style="${inp}">${['계좌','현금','카드','기타'].map(x=>`<option ${method===x?'selected':''}>${x}</option>`).join('')}</select></div>
     </div>
     <div id="tui-c-err" style="display:none;color:#b91c1c;font-size:12.5px;font-weight:600;margin-bottom:8px"></div>
     <div style="display:flex;gap:8px;margin-top:6px">
-      ${existing&&existing.paid?`<button onclick="unmarkTuiCell('${existing.id}')" style="height:44px;padding:0 14px;border:1.5px solid #c0392b;background:#fff;color:#c0392b;border-radius:11px;font:700 13px var(--font);cursor:pointer">미납 처리</button>`:''}
-      <button onclick="document.getElementById('tui-cell-modal').remove()" style="flex:1;height:44px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:11px;font:700 13px var(--font);cursor:pointer">닫기</button>
-      <button onclick="saveTuiCell('${sid}',${mo},'${existing?existing.id:''}')" style="flex:1.4;height:44px;border:none;background:linear-gradient(135deg,#15803d,#0f6a31);color:#fff;border-radius:11px;font:800 14px var(--font);cursor:pointer">✓ 납부 저장</button>
+      ${existing&&existing.paid?`<button onclick="unmarkTuiCell('${existing.id}')" style="height:44px;padding:0 14px;border:1.5px solid #c0392b;background:#fff;color:#c0392b;border-radius:11px;font:700 13px var(--font);cursor:pointer">${t('미납 처리','Mark unpaid')}</button>`:''}
+      <button onclick="document.getElementById('tui-cell-modal').remove()" style="flex:1;height:44px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:11px;font:700 13px var(--font);cursor:pointer">${t('닫기','Close')}</button>
+      <button onclick="saveTuiCell('${sid}',${mo},'${existing?existing.id:''}')" style="flex:1.4;height:44px;border:none;background:linear-gradient(135deg,#15803d,#0f6a31);color:#fff;border-radius:11px;font:800 14px var(--font);cursor:pointer">${t('✓ 납부 저장','✓ Save payment')}</button>
     </div>
   </div>`;
   document.body.appendChild(wrap);
@@ -10988,23 +10989,23 @@ async function saveTuiCell(sid, mo, existingId) {
   const paid_date = document.getElementById('tui-c-date').value || attTodayStr();
   const method = document.getElementById('tui-c-method').value;
   const err = document.getElementById('tui-c-err');
-  if (amount <= 0) { err.textContent = '납부 금액을 입력하세요'; err.style.display='block'; return; }
+  if (amount <= 0) { err.textContent = t('납부 금액을 입력하세요','Enter a payment amount'); err.style.display='block'; return; }
   const mm = String(mo).padStart(2,'0');
   const row = { community_id: CID(), student_id: sid, title: `${tuiYear}-${mm} 학비`, period: `${tuiYear}-${mm}`,
     amount, paid: true, paid_date, paid_amount: amount, method, currency: tuiCur, updated_at: new Date().toISOString() };
   let error;
   if (existingId) ({ error } = await sb.from('tuition_bills').update(row).eq('id', existingId));
   else { row.created_by = ME.id; ({ error } = await sb.from('tuition_bills').insert(row)); }
-  if (error) { if (schoolTableMissing(error)) return schoolSetupNeeded(error, 'db/학사_학비_DB설치.sql'); err.textContent='저장 실패: '+error.message; err.style.display='block'; return; }
+  if (error) { if (schoolTableMissing(error)) return schoolSetupNeeded(error, 'db/학사_학비_DB설치.sql'); err.textContent=t('저장 실패: ','Save failed: ')+error.message; err.style.display='block'; return; }
   document.getElementById('tui-cell-modal')?.remove();
-  showUploadToast('✅ 납부 기록됨');
+  showUploadToast(t('✅ 납부 기록됨','✅ Payment recorded'));
   await renderTuitionHub();
 }
 async function unmarkTuiCell(id) {
   const { error } = await sb.from('tuition_bills').delete().eq('id', id);
-  if (error) { showUploadToast('처리 실패: '+error.message); return; }
+  if (error) { showUploadToast(t('처리 실패: ','Failed: ')+error.message); return; }
   document.getElementById('tui-cell-modal')?.remove();
-  showUploadToast('미납으로 되돌렸어요');
+  showUploadToast(t('미납으로 되돌렸어요','Reverted to unpaid'));
   await renderTuitionHub();
 }
 
@@ -11013,7 +11014,7 @@ function printTuitionMatrix() {
   const now = new Date(); const nowY=now.getFullYear(), nowM=now.getMonth()+1;
   const payMap = tuiPayMap();
   const students = tuiRowStudents();
-  if (!students.length) { showUploadToast('학생이 없어요'); return; }
+  if (!students.length) { showUploadToast(t('학생이 없어요','No students')); return; }
   const isPast = mo => (tuiYear<nowY)||(tuiYear===nowY&&mo<=nowM);
   const smap = {}; students.forEach(s=>smap[s.id]=s);
   const cellTxt = (sid,mo) => { const b=payMap[sid]&&payMap[sid][mo];
@@ -11025,9 +11026,9 @@ function printTuitionMatrix() {
     return `<tr><td class="nm">${escHtml(s.name)}</td>${TUI_MONTHS.map(mo=>cellTxt(s.id,mo)).join('')}<td class="tot">${tuiWon(total)}</td></tr>`;
   }).join('');
   const monthTotals = TUI_MONTHS.map(mo=>students.reduce((a,s)=>{const b=payMap[s.id]&&payMap[s.id][mo];return a+(b&&b.paid?(Number(b.paid_amount??b.amount)||0):0);},0));
-  const footer = `<tr class="ft"><td class="nm">월 합계</td>${monthTotals.map(t=>`<td>${t?tuiNum(t):''}</td>`).join('')}<td class="tot">${tuiWon(monthTotals.reduce((a,b)=>a+b,0))}</td></tr>`;
-  const win = window.open('','_blank'); if(!win){ showUploadToast('팝업 허용 필요'); return; }
-  win.document.write(`<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"/><title>${tuiYear}년 학비 납부 현황</title><style>
+  const footer = `<tr class="ft"><td class="nm">${t('월 합계','Monthly total')}</td>${monthTotals.map(t=>`<td>${t?tuiNum(t):''}</td>`).join('')}<td class="tot">${tuiWon(monthTotals.reduce((a,b)=>a+b,0))}</td></tr>`;
+  const win = window.open('','_blank'); if(!win){ showUploadToast(t('팝업 허용 필요','Allow pop-ups')); return; }
+  win.document.write(`<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"/><title>${tuiYear}${t('년 학비 납부 현황',' Tuition Payment Status')}</title><style>
     *{box-sizing:border-box;margin:0;padding:0}body{font-family:'Malgun Gothic',Arial,sans-serif;color:#1a2332;padding:10mm}@page{size:A4 landscape;margin:10mm}@media print{.btn{display:none}}
     h1{font-size:19px;margin-bottom:3px}.sub{font-size:11px;color:#667;margin-bottom:10px}
     table{width:100%;border-collapse:collapse;table-layout:fixed}
@@ -11040,12 +11041,12 @@ function printTuitionMatrix() {
     .btn{position:fixed;top:10px;right:10px;padding:8px 15px;background:#1d3a5f;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer}
     .legend{font-size:10px;color:#667;margin-top:8px}
   </style></head><body>
-    <button class="btn" onclick="window.print()">🖨 인쇄 / PDF</button>
-    <h1>${tuiYear}년 학비 납부 현황</h1>
-    <div class="sub">발행일 ${attTodayStr()} · 초록 ✓ = 납부 완료, 빨강 · = 미납</div>
-    <table><thead><tr><th class="nm">학생</th>${TUI_MONTHS.map(mo=>`<th>${mo}월</th>`).join('')}<th class="tot">합계</th></tr></thead>
+    <button class="btn" onclick="window.print()">${t('🖨 인쇄 / PDF','🖨 Print / PDF')}</button>
+    <h1>${tuiYear}${t('년 학비 납부 현황',' Tuition Payment Status')}</h1>
+    <div class="sub">${t('발행일 ','Issued ')}${attTodayStr()}${t(' · 초록 ✓ = 납부 완료, 빨강 · = 미납',' · Green ✓ = paid, red · = unpaid')}</div>
+    <table><thead><tr><th class="nm">${t('학생','Student')}</th>${TUI_MONTHS.map(mo=>`<th>${t(mo+'월',TUI_MON_EN[mo])}</th>`).join('')}<th class="tot">${t('합계','Total')}</th></tr></thead>
     <tbody>${rows}${footer}</tbody></table>
-    <div class="legend">칸: ✓(납부일) = 납부 완료 · 빈칸 = 해당 없음(미래 달)</div>
+    <div class="legend">${t('칸: ✓(납부일) = 납부 완료 · 빈칸 = 해당 없음(미래 달)','Cell: ✓(payment date) = paid · blank = not applicable (future month)')}</div>
   </body></html>`);
   win.document.close(); setTimeout(()=>{try{win.print()}catch(_){}} , 500);
 }
@@ -11058,9 +11059,9 @@ let nlGroupFilter = 'all';
 let nlForm = null;          // null | {id?, title, body, group_id, sent_date}
 
 function nlGroupName(gid) {
-  if (!gid) return '전체';
+  if (!gid) return t('전체','All');
   const g = tcsGroups.find(x => x.id === gid);
-  return g ? g.name : '그룹';
+  return g ? g.name : t('그룹','Group');
 }
 
 async function loadNewsletters() {
@@ -11088,7 +11089,7 @@ function renderNewsletterList() {
   const list = nlGroupFilter === 'all' ? nlList
     : nlList.filter(n => nlGroupFilter === 'none' ? !n.group_id : n.group_id === nlGroupFilter);
 
-  const groupOpts = `<option value="all">전체 보기</option><option value="none" ${nlGroupFilter==='none'?'selected':''}>전체 대상만</option>` +
+  const groupOpts = `<option value="all">${t('전체 보기','All')}</option><option value="none" ${nlGroupFilter==='none'?'selected':''}>${t('전체 대상만','All-recipients only')}</option>` +
     tcsGroups.map(g => `<option value="${g.id}" ${nlGroupFilter===g.id?'selected':''}>${g.name}</option>`).join('');
 
   const cards = list.map(n => `
@@ -11098,12 +11099,12 @@ function renderNewsletterList() {
         <span style="font-size:11px;color:var(--ink3)">${n.sent_date||''}${n.author_name?` · ${n.author_name}`:''}</span>
         <div style="flex:1"></div>
         ${n.is_public
-          ? `<span style="font-size:10px;font-weight:700;color:#2a7a5a;background:#e8f5ee;padding:4px 8px;border-radius:6px">🔗 공유중</span>
-             <button onclick="copyNewsletterLink('${n.id}')" style="border:1px solid var(--border);background:var(--surface);border-radius:7px;height:28px;padding:0 10px;cursor:pointer;font:600 11px var(--font);color:var(--ink2)">링크복사</button>
-             <button onclick="unshareNewsletter('${n.id}')" style="border:1px solid var(--border);background:var(--surface);border-radius:7px;height:28px;padding:0 10px;cursor:pointer;font:600 11px var(--font);color:var(--ink3)">공유해제</button>`
-          : `<button onclick="shareNewsletter('${n.id}')" style="border:1px solid var(--border);background:var(--surface);border-radius:7px;height:28px;padding:0 10px;cursor:pointer;font:600 11px var(--font);color:var(--ink2)">🔗 공유</button>`}
-        <button onclick="editNewsletter('${n.id}')" style="border:1px solid var(--border);background:var(--surface);border-radius:7px;height:28px;padding:0 10px;cursor:pointer;font:600 11px var(--font);color:var(--ink2)">수정</button>
-        <button onclick="printNewsletter('${n.id}')" title="인쇄 또는 PDF로 저장" style="border:1px solid var(--border);background:var(--surface);border-radius:7px;height:28px;padding:0 10px;cursor:pointer;font:600 11px var(--font);color:var(--ink2)">📄 PDF/인쇄</button>
+          ? `<span style="font-size:10px;font-weight:700;color:#2a7a5a;background:#e8f5ee;padding:4px 8px;border-radius:6px">${t('🔗 공유중','🔗 Shared')}</span>
+             <button onclick="copyNewsletterLink('${n.id}')" style="border:1px solid var(--border);background:var(--surface);border-radius:7px;height:28px;padding:0 10px;cursor:pointer;font:600 11px var(--font);color:var(--ink2)">${t('링크복사','Copy link')}</button>
+             <button onclick="unshareNewsletter('${n.id}')" style="border:1px solid var(--border);background:var(--surface);border-radius:7px;height:28px;padding:0 10px;cursor:pointer;font:600 11px var(--font);color:var(--ink3)">${t('공유해제','Unshare')}</button>`
+          : `<button onclick="shareNewsletter('${n.id}')" style="border:1px solid var(--border);background:var(--surface);border-radius:7px;height:28px;padding:0 10px;cursor:pointer;font:600 11px var(--font);color:var(--ink2)">${t('🔗 공유','🔗 Share')}</button>`}
+        <button onclick="editNewsletter('${n.id}')" style="border:1px solid var(--border);background:var(--surface);border-radius:7px;height:28px;padding:0 10px;cursor:pointer;font:600 11px var(--font);color:var(--ink2)">${t('수정','Edit')}</button>
+        <button onclick="printNewsletter('${n.id}')" title="${t('인쇄 또는 PDF로 저장','Print or save as PDF')}" style="border:1px solid var(--border);background:var(--surface);border-radius:7px;height:28px;padding:0 10px;cursor:pointer;font:600 11px var(--font);color:var(--ink2)">${t('📄 PDF/인쇄','📄 PDF/Print')}</button>
         <button onclick="deleteNewsletter('${n.id}')" style="border:none;background:transparent;cursor:pointer;color:var(--ink3);font-size:14px">✕</button>
       </div>
       <div style="font-size:15px;font-weight:700;color:var(--ink);margin-bottom:6px">${escHtml(n.title||'')}</div>
@@ -11114,34 +11115,34 @@ function renderNewsletterList() {
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px">
       <select onchange="setNlGroup(this.value)" style="height:34px;padding:0 10px;border:1px solid var(--border);border-radius:9px;font:600 13px var(--font);background:var(--surface);color:var(--ink)">${groupOpts}</select>
       <div style="flex:1"></div>
-      <button onclick="newNewsletter()" style="height:34px;padding:0 16px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 13px var(--font)">＋ 새 가정통신문</button>
+      <button onclick="newNewsletter()" style="height:34px;padding:0 16px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 13px var(--font)">${t('＋ 새 가정통신문','＋ New newsletter')}</button>
     </div>
-    <div style="font-size:12px;color:var(--ink3);margin-bottom:14px">학부모·학생에게 보내는 안내문입니다. 작성하면 가족이 <b>홈 화면</b>에서 바로 볼 수 있어요. (대상 반을 지정하면 해당 반에게만 표시)</div>
-    ${list.length ? cards : '<div style="padding:50px;text-align:center;color:var(--ink3);font-size:13px;background:var(--surface);border:1px solid var(--border);border-radius:12px">아직 가정통신문이 없어요. 새로 작성해보세요.</div>'}
+    <div style="font-size:12px;color:var(--ink3);margin-bottom:14px">${t('학부모·학생에게 보내는 안내문입니다. 작성하면 가족이 <b>홈 화면</b>에서 바로 볼 수 있어요. (대상 반을 지정하면 해당 반에게만 표시)','A notice sent to parents and students. Once posted, families can see it right on the <b>home screen</b>. (Set a target class to show it only to that class.)')}</div>
+    ${list.length ? cards : `<div style="padding:50px;text-align:center;color:var(--ink3);font-size:13px;background:var(--surface);border:1px solid var(--border);border-radius:12px">${t('아직 가정통신문이 없어요. 새로 작성해보세요.','No newsletters yet. Create one.')}</div>`}
   </div>`;
 }
 
 function renderNewsletterForm() {
   const main = document.getElementById('school-main');
   const f = nlForm;
-  const groupOpts = `<option value="">전체 (모든 가족)</option>` +
+  const groupOpts = `<option value="">${t('전체 (모든 가족)','All (all families)')}</option>` +
     tcsGroups.map(g => `<option value="${g.id}" ${f.group_id===g.id?'selected':''}>${g.name}</option>`).join('');
   main.innerHTML = `<div style="max-width:680px;margin:0 auto">
-    <div style="font-size:16px;font-weight:700;color:var(--ink);margin-bottom:16px">${f.id?'가정통신문 수정':'새 가정통신문'}</div>
+    <div style="font-size:16px;font-weight:700;color:var(--ink);margin-bottom:16px">${f.id?t('가정통신문 수정','Edit newsletter'):t('새 가정통신문','New newsletter')}</div>
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px">
-      <label style="font-size:12px;font-weight:600;color:var(--ink2)">제목</label>
-      <input id="nl-title" value="${escAttr(f.title||'')}" placeholder="예: 3월 학사일정 및 준비물 안내" style="width:100%;height:38px;margin:6px 0 14px;padding:0 12px;border:1px solid var(--border);border-radius:9px;font:600 14px var(--font);color:var(--ink)"/>
+      <label style="font-size:12px;font-weight:600;color:var(--ink2)">${t('제목','Title')}</label>
+      <input id="nl-title" value="${escAttr(f.title||'')}" placeholder="${t('예: 3월 학사일정 및 준비물 안내','e.g. March schedule and supplies notice')}" style="width:100%;height:38px;margin:6px 0 14px;padding:0 12px;border:1px solid var(--border);border-radius:9px;font:600 14px var(--font);color:var(--ink)"/>
       <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px">
-        <div style="flex:1;min-width:160px"><label style="font-size:12px;font-weight:600;color:var(--ink2)">대상</label>
+        <div style="flex:1;min-width:160px"><label style="font-size:12px;font-weight:600;color:var(--ink2)">${t('대상','Recipients')}</label>
           <select id="nl-group" style="width:100%;height:38px;margin-top:6px;padding:0 10px;border:1px solid var(--border);border-radius:9px;font:600 13px var(--font);background:var(--surface);color:var(--ink)">${groupOpts}</select></div>
-        <div style="flex:1;min-width:160px"><label style="font-size:12px;font-weight:600;color:var(--ink2)">발송일</label>
+        <div style="flex:1;min-width:160px"><label style="font-size:12px;font-weight:600;color:var(--ink2)">${t('발송일','Send date')}</label>
           <input id="nl-date" type="date" value="${f.sent_date||attTodayStr()}" style="width:100%;height:38px;margin-top:6px;padding:0 10px;border:1px solid var(--border);border-radius:9px;font:600 13px var(--font);color:var(--ink)"/></div>
       </div>
-      <label style="font-size:12px;font-weight:600;color:var(--ink2)">내용</label>
-      <textarea id="nl-body" placeholder="가정에 안내할 내용을 입력하세요" style="width:100%;min-height:200px;margin:6px 0 16px;padding:12px;border:1px solid var(--border);border-radius:9px;font:400 14px var(--font);color:var(--ink);line-height:1.7;resize:vertical">${escHtml(f.body||'')}</textarea>
+      <label style="font-size:12px;font-weight:600;color:var(--ink2)">${t('내용','Content')}</label>
+      <textarea id="nl-body" placeholder="${t('가정에 안내할 내용을 입력하세요','Enter the message to send home')}" style="width:100%;min-height:200px;margin:6px 0 16px;padding:12px;border:1px solid var(--border);border-radius:9px;font:400 14px var(--font);color:var(--ink);line-height:1.7;resize:vertical">${escHtml(f.body||'')}</textarea>
       <div style="display:flex;gap:8px;justify-content:flex-end">
-        <button onclick="cancelNewsletter()" style="height:38px;padding:0 18px;border:1px solid var(--border);background:var(--surface);border-radius:9px;cursor:pointer;font:600 13px var(--font);color:var(--ink2)">취소</button>
-        <button onclick="saveNewsletter()" style="height:38px;padding:0 22px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 13px var(--font)">저장</button>
+        <button onclick="cancelNewsletter()" style="height:38px;padding:0 18px;border:1px solid var(--border);background:var(--surface);border-radius:9px;cursor:pointer;font:600 13px var(--font);color:var(--ink2)">${t('취소','Cancel')}</button>
+        <button onclick="saveNewsletter()" style="height:38px;padding:0 22px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 13px var(--font)">${t('저장','Save')}</button>
       </div>
     </div>
   </div>`;
@@ -11157,7 +11158,7 @@ async function saveNewsletter() {
   const body  = document.getElementById('nl-body').value;
   const group_id = document.getElementById('nl-group').value || null;
   const sent_date = document.getElementById('nl-date').value || attTodayStr();
-  if (!title) { showUploadToast('제목을 입력하세요'); return; }
+  if (!title) { showUploadToast(t('제목을 입력하세요','Enter a title')); return; }
   const row = { community_id: CID(), group_id, title, body, sent_date, updated_at: new Date().toISOString() };
   let error;
   if (nlForm.id) {
@@ -11166,16 +11167,16 @@ async function saveNewsletter() {
     row.created_by = ME.id; row.author_name = ME.name;
     ({ error } = await sb.from('newsletters').insert(row));
   }
-  if (error) { if (schoolTableMissing(error)) return schoolSetupNeeded(error, 'db/학사_가정통신문_DB설치.sql'); showUploadToast('저장 실패: ' + error.message); return; }
-  showUploadToast('✅ 가정통신문 저장 완료');
+  if (error) { if (schoolTableMissing(error)) return schoolSetupNeeded(error, 'db/학사_가정통신문_DB설치.sql'); showUploadToast(t('저장 실패: ','Save failed: ') + error.message); return; }
+  showUploadToast(t('✅ 가정통신문 저장 완료','✅ Newsletter saved'));
   nlForm = null;
   await renderNewsletterHub();
 }
 
 async function deleteNewsletter(id) {
-  if (!confirm('이 가정통신문을 삭제할까요?')) return;
+  if (!confirm(t('이 가정통신문을 삭제할까요?','Delete this newsletter?'))) return;
   const { error } = await sb.from('newsletters').delete().eq('id', id);
-  if (error) { showUploadToast('삭제 실패: ' + error.message); return; }
+  if (error) { showUploadToast(t('삭제 실패: ','Delete failed: ') + error.message); return; }
   nlList = nlList.filter(n => n.id !== id);
   renderNewsletterList();
 }
@@ -11183,13 +11184,13 @@ async function deleteNewsletter(id) {
 function printNewsletter(id) {
   const n = nlList.find(x => x.id === id); if (!n) return;
   const win = window.open('', '_blank');
-  win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${escHtml(n.title||'가정통신문')}</title>
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${escHtml(n.title||t('가정통신문','Newsletter'))}</title>
     <style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Malgun Gothic',sans-serif;padding:24mm 20mm;color:#111;line-height:1.8}
     h1{font-size:13pt;color:#666;text-align:center;margin-bottom:4px}h2{font-size:20pt;text-align:center;margin-bottom:6px}
     .meta{text-align:center;color:#888;font-size:10pt;margin-bottom:24px;border-bottom:2px solid #1d3a5f;padding-bottom:14px}
     .body{font-size:12pt;white-space:pre-wrap}@page{size:A4;margin:18mm}</style></head>
-    <body><h1>가 정 통 신 문</h1><h2>${escHtml(n.title||'')}</h2>
-    <div class="meta">대상: ${escHtml(nlGroupName(n.group_id))} · ${n.sent_date||''}${n.author_name?` · ${escHtml(n.author_name)}`:''}</div>
+    <body><h1>${t('가 정 통 신 문','NEWSLETTER')}</h1><h2>${escHtml(n.title||'')}</h2>
+    <div class="meta">${t('대상: ','To: ')}${escHtml(nlGroupName(n.group_id))} · ${n.sent_date||''}${n.author_name?` · ${escHtml(n.author_name)}`:''}</div>
     <div class="body">${escHtml(n.body||'')}</div></body></html>`);
   win.document.close();
   setTimeout(() => win.print(), 500);
@@ -11201,25 +11202,25 @@ function nlShareLink(id) { return location.origin + location.pathname + '#nl=' +
 async function shareNewsletter(id) {
   const { error } = await sb.from('newsletters').update({ is_public:true, updated_at:new Date().toISOString() }).eq('id', id);
   if (error) {
-    if (/column .*is_public.* does not exist|is_public/.test(error.message||'')) { showUploadToast('공유 기능 DB가 필요해요 → db/학사_가정통신문_공유_DB설치.sql 실행'); return; }
-    showUploadToast('공유 설정 실패: ' + error.message); return;
+    if (/column .*is_public.* does not exist|is_public/.test(error.message||'')) { showUploadToast(t('공유 기능 DB가 필요해요 → db/학사_가정통신문_공유_DB설치.sql 실행','Sharing needs a DB → run db/학사_가정통신문_공유_DB설치.sql')); return; }
+    showUploadToast(t('공유 설정 실패: ','Failed to enable sharing: ') + error.message); return;
   }
   const n = nlList.find(x => x.id === id); if (n) n.is_public = true;
   await copyNewsletterLink(id, true);
   renderNewsletterList();
 }
 async function unshareNewsletter(id) {
-  if (!confirm('공유를 해제하면 기존 링크로 더 이상 열람할 수 없어요. 해제할까요?')) return;
+  if (!confirm(t('공유를 해제하면 기존 링크로 더 이상 열람할 수 없어요. 해제할까요?','Unsharing makes the existing link unusable. Unshare?'))) return;
   const { error } = await sb.from('newsletters').update({ is_public:false, updated_at:new Date().toISOString() }).eq('id', id);
-  if (error) { showUploadToast('해제 실패: ' + error.message); return; }
+  if (error) { showUploadToast(t('해제 실패: ','Failed to unshare: ') + error.message); return; }
   const n = nlList.find(x => x.id === id); if (n) n.is_public = false;
-  showUploadToast('🔒 공유를 해제했어요');
+  showUploadToast(t('🔒 공유를 해제했어요','🔒 Sharing disabled'));
   renderNewsletterList();
 }
 async function copyNewsletterLink(id, quiet) {
   const link = nlShareLink(id);
-  try { await navigator.clipboard.writeText(link); showUploadToast('🔗 공유 링크를 복사했어요'); }
-  catch(e) { window.prompt('아래 링크를 복사해 학부모에게 보내세요:', link); }
+  try { await navigator.clipboard.writeText(link); showUploadToast(t('🔗 공유 링크를 복사했어요','🔗 Link copied')); }
+  catch(e) { window.prompt(t('아래 링크를 복사해 학부모에게 보내세요:','Copy the link below and send it to parents:'), link); }
 }
 
 async function renderPublicNewsletter(id) {
@@ -11228,25 +11229,25 @@ async function renderPublicNewsletter(id) {
   let box = document.getElementById('public-nl');
   if (!box) { box = document.createElement('div'); box.id = 'public-nl'; document.body.appendChild(box); }
   box.style.cssText = 'position:fixed;inset:0;overflow:auto;background:var(--bg);z-index:9999;padding:24px;font-family:var(--font)';
-  box.innerHTML = '<div style="text-align:center;padding:60px;color:var(--ink3)">불러오는 중...</div>';
+  box.innerHTML = `<div style="text-align:center;padding:60px;color:var(--ink3)">${t('불러오는 중...','Loading...')}</div>`;
   const { data } = await sb.from('newsletters').select('title,body,sent_date,author_name,is_public').eq('id', id).maybeSingle();
   if (!data || !data.is_public) {
     box.innerHTML = `<div style="max-width:520px;margin:80px auto;text-align:center">
       <div style="font-size:42px;margin-bottom:14px">🔒</div>
-      <div style="font-size:16px;font-weight:700;color:var(--ink);margin-bottom:8px">열람할 수 없는 링크예요</div>
-      <div style="font-size:13px;color:var(--ink3);line-height:1.8">링크가 만료되었거나 공유가 해제되었어요.<br>학교에 문의해 주세요.</div></div>`;
+      <div style="font-size:16px;font-weight:700;color:var(--ink);margin-bottom:8px">${t('열람할 수 없는 링크예요','This link cannot be viewed')}</div>
+      <div style="font-size:13px;color:var(--ink3);line-height:1.8">${t('링크가 만료되었거나 공유가 해제되었어요.<br>학교에 문의해 주세요.','The link has expired or sharing was disabled.<br>Please contact the school.')}</div></div>`;
     return;
   }
   box.innerHTML = `<div style="max-width:680px;margin:0 auto">
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px 30px;box-shadow:0 4px 20px rgba(29,58,95,.08)">
       <div style="text-align:center;border-bottom:2px solid #1d3a5f;padding-bottom:14px;margin-bottom:18px">
-        <div style="font-size:12px;font-weight:600;color:var(--ink3);letter-spacing:2px">가 정 통 신 문</div>
+        <div style="font-size:12px;font-weight:600;color:var(--ink3);letter-spacing:2px">${t('가 정 통 신 문','NEWSLETTER')}</div>
         <div style="font-size:20px;font-weight:800;color:var(--ink);margin-top:8px">${escHtml(data.title||'')}</div>
         <div style="font-size:12px;color:var(--ink3);margin-top:6px">${data.sent_date||''}${data.author_name?` · ${escHtml(data.author_name)}`:''}</div>
       </div>
       <div style="font-size:14px;color:var(--ink);line-height:1.9;white-space:pre-wrap">${escHtml(data.body||'')}</div>
       <div style="display:flex;justify-content:center;gap:8px;margin-top:24px;padding-top:18px;border-top:1px solid var(--border)">
-        <button onclick="window.print()" style="height:38px;padding:0 20px;border:1px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:9px;cursor:pointer;font:600 13px var(--font)">🖨 인쇄</button>
+        <button onclick="window.print()" style="height:38px;padding:0 20px;border:1px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:9px;cursor:pointer;font:600 13px var(--font)">${t('🖨 인쇄','🖨 Print')}</button>
       </div>
     </div>
     <div style="text-align:center;font-size:11px;color:var(--ink3);margin-top:16px">TCS Total Care System</div>
@@ -11257,9 +11258,9 @@ async function renderPublicNewsletter(id) {
 //  학사 — 증명서 발급 (새 DB 불필요: 학생·기록·기관 데이터 재사용)
 // ════════════════════════════════════════════════════════════════════
 const CERT_TYPES = {
-  enroll: { label:'재학증명서', stmt:'위 학생은 본교에 재학 중임을 증명합니다.' },
-  grad:   { label:'졸업증명서', stmt:'위 학생은 본교 소정의 전 과정을 이수하고 졸업하였음을 증명합니다.' },
-  custom: { label:'직접입력',   stmt:'' },
+  enroll: { label:t('재학증명서','Certificate of Enrollment'), stmt:t('위 학생은 본교에 재학 중임을 증명합니다.','This certifies that the above student is currently enrolled at this school.') },
+  grad:   { label:t('졸업증명서','Certificate of Graduation'), stmt:t('위 학생은 본교 소정의 전 과정을 이수하고 졸업하였음을 증명합니다.','This certifies that the above student completed all prescribed courses and graduated from this school.') },
+  custom: { label:t('직접입력','Custom'),   stmt:'' },
 };
 let certStudentId = '';
 let certPrefill = { name:'', birth:'', school:'' };
@@ -11294,37 +11295,37 @@ function renderCert() {
   const studentOpts = schoolStudents.map(x => `<option value="${x.id}" ${x.id===certStudentId?'selected':''}>${x.name}${x.grade?` (${x.grade})`:''}</option>`).join('');
   const typeOpts = Object.entries(CERT_TYPES).map(([k,v]) => `<option value="${k}">${v.label}</option>`).join('');
   const orgOpts = tcsOrgs.length ? tcsOrgs.map(o => `<option value="${o.id}" ${o.id===tcsSelectedOrgId?'selected':''}>${o.name}</option>`).join('')
-    : '<option value="">기관 미등록</option>';
+    : `<option value="">${t('기관 미등록','No organization registered')}</option>`;
   const inp = 'height:38px;padding:0 12px;border:1px solid var(--border);border-radius:9px;font:600 13px var(--font);color:var(--ink);background:var(--surface)';
   const lbl = 'font-size:12px;font-weight:600;color:var(--ink2);display:block;margin-bottom:6px';
 
   main.innerHTML = `<div style="max-width:680px;margin:0 auto">
-    ${schoolStudents.length ? '' : '<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px">등록된 학생이 없어요.</div>'}
+    ${schoolStudents.length ? '' : `<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px">${t('등록된 학생이 없어요.','No students registered.')}</div>`}
     ${schoolStudents.length ? `
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
-        <div><label style="${lbl}">학생</label><select id="cert-student" onchange="certChangeStudent(this.value)" style="${inp};width:100%">${studentOpts}</select></div>
-        <div><label style="${lbl}">증명서 종류</label><select id="cert-type" onchange="certOnType(this.value)" style="${inp};width:100%">${typeOpts}</select></div>
-        <div><label style="${lbl}">성명</label><input id="cert-name" value="${escAttr(certPrefill.name||(s?s.name:''))}" style="${inp};width:100%"/></div>
-        <div><label style="${lbl}">생년월일</label><input id="cert-birth" value="${escAttr(certPrefill.birth||(s?s.birth_date||'':''))}" placeholder="예: 2010-03-15" style="${inp};width:100%"/></div>
-        <div><label style="${lbl}">학년</label><input id="cert-grade" value="${escAttr(s?s.grade||'':'')}" style="${inp};width:100%"/></div>
-        <div><label style="${lbl}">학교명</label><input id="cert-school" value="${escAttr(certPrefill.school||'')}" style="${inp};width:100%"/></div>
+        <div><label style="${lbl}">${t('학생','Student')}</label><select id="cert-student" onchange="certChangeStudent(this.value)" style="${inp};width:100%">${studentOpts}</select></div>
+        <div><label style="${lbl}">${t('증명서 종류','Certificate type')}</label><select id="cert-type" onchange="certOnType(this.value)" style="${inp};width:100%">${typeOpts}</select></div>
+        <div><label style="${lbl}">${t('성명','Name')}</label><input id="cert-name" value="${escAttr(certPrefill.name||(s?s.name:''))}" style="${inp};width:100%"/></div>
+        <div><label style="${lbl}">${t('생년월일','Date of birth')}</label><input id="cert-birth" value="${escAttr(certPrefill.birth||(s?s.birth_date||'':''))}" placeholder="${t('예: 2010-03-15','e.g. 2010-03-15')}" style="${inp};width:100%"/></div>
+        <div><label style="${lbl}">${t('학년','Grade')}</label><input id="cert-grade" value="${escAttr(s?s.grade||'':'')}" style="${inp};width:100%"/></div>
+        <div><label style="${lbl}">${t('학교명','School name')}</label><input id="cert-school" value="${escAttr(certPrefill.school||'')}" style="${inp};width:100%"/></div>
       </div>
       <div id="cert-custom-wrap" style="display:none;margin-bottom:14px">
-        <label style="${lbl}">증명 내용 (직접입력)</label>
-        <textarea id="cert-custom" placeholder="증명할 내용을 입력하세요" style="width:100%;min-height:80px;padding:12px;border:1px solid var(--border);border-radius:9px;font:400 14px var(--font);color:var(--ink);line-height:1.7;resize:vertical"></textarea>
+        <label style="${lbl}">${t('증명 내용 (직접입력)','Certificate text (custom)')}</label>
+        <textarea id="cert-custom" placeholder="${t('증명할 내용을 입력하세요','Enter the text to certify')}" style="width:100%;min-height:80px;padding:12px;border:1px solid var(--border);border-radius:9px;font:400 14px var(--font);color:var(--ink);line-height:1.7;resize:vertical"></textarea>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
-        <div><label style="${lbl}">발급 사유</label><input id="cert-reason" value="제출용" style="${inp};width:100%"/></div>
-        <div><label style="${lbl}">발급일자</label><input id="cert-date" type="date" value="${attTodayStr()}" style="${inp};width:100%"/></div>
-        <div><label style="${lbl}">발급번호</label><input id="cert-no" value="${certNo()}" style="${inp};width:100%"/></div>
-        <div><label style="${lbl}">발급 기관</label><select id="cert-org" style="${inp};width:100%">${orgOpts}</select></div>
-        <div style="grid-column:1/3"><label style="${lbl}">대표자 명의 (직인 표기)</label><input id="cert-rep" value="${escAttr((tcsOrgs.find(o=>o.id===tcsSelectedOrgId)?.name)||'')} 장" placeholder="예: ○○학교장 / 대표 홍길동" style="${inp};width:100%"/></div>
+        <div><label style="${lbl}">${t('발급 사유','Purpose')}</label><input id="cert-reason" value="${t('제출용','For submission')}" style="${inp};width:100%"/></div>
+        <div><label style="${lbl}">${t('발급일자','Issue date')}</label><input id="cert-date" type="date" value="${attTodayStr()}" style="${inp};width:100%"/></div>
+        <div><label style="${lbl}">${t('발급번호','Certificate no.')}</label><input id="cert-no" value="${certNo()}" style="${inp};width:100%"/></div>
+        <div><label style="${lbl}">${t('발급 기관','Issuing organization')}</label><select id="cert-org" style="${inp};width:100%">${orgOpts}</select></div>
+        <div style="grid-column:1/3"><label style="${lbl}">${t('대표자 명의 (직인 표기)','Representative name (for seal)')}</label><input id="cert-rep" value="${escAttr((tcsOrgs.find(o=>o.id===tcsSelectedOrgId)?.name)||'')}${t(' 장',' Head')}" placeholder="${t('예: ○○학교장 / 대표 홍길동','e.g. Principal of ○○ School / Rep. Hong Gil-dong')}" style="${inp};width:100%"/></div>
       </div>
       <div style="display:flex;justify-content:flex-end;gap:8px">
-        <button onclick="printCertificate()" style="height:40px;padding:0 22px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 13px var(--font)">📄 미리보기 & 인쇄</button>
+        <button onclick="printCertificate()" style="height:40px;padding:0 22px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 13px var(--font)">${t('📄 미리보기 & 인쇄','📄 Preview & Print')}</button>
       </div>
-      <div style="font-size:12px;color:var(--ink3);margin-top:12px;line-height:1.7">학생을 고르면 인적·학적 정보가 자동으로 채워집니다(필요시 수정 가능). <b>발급 기관</b>은 관리자 → 공동체 설정의 ‘기록부 기관’에서 로고와 함께 등록할 수 있어요.</div>
+      <div style="font-size:12px;color:var(--ink3);margin-top:12px;line-height:1.7">${t('학생을 고르면 인적·학적 정보가 자동으로 채워집니다(필요시 수정 가능). <b>발급 기관</b>은 관리자 → 공동체 설정의 ‘기록부 기관’에서 로고와 함께 등록할 수 있어요.','Selecting a student auto-fills personal and academic info (editable if needed). You can register the <b>issuing organization</b> with its logo under Admin → Community Settings → “Record Organizations”.')}</div>
     </div>` : ''}
   </div>`;
 }
@@ -11346,11 +11347,11 @@ function printCertificate() {
   const orgId = document.getElementById('cert-org').value;
   const rep = document.getElementById('cert-rep').value.trim();
   const org = tcsOrgs.find(o => o.id === orgId);
-  if (!name) { showUploadToast('성명을 입력하세요'); return; }
+  if (!name) { showUploadToast(window.t('성명을 입력하세요','Enter a name')); return; }
   const t = CERT_TYPES[type] || CERT_TYPES.enroll;
-  const stmt = type === 'custom' ? (document.getElementById('cert-custom').value.trim() || '위 사실을 증명합니다.') : t.stmt;
+  const stmt = type === 'custom' ? (document.getElementById('cert-custom').value.trim() || window.t('위 사실을 증명합니다.','This certifies the above facts.')) : t.stmt;
   const dro = (label, value) => value ? `<tr><th>${label}</th><td>${escHtml(value)}</td></tr>` : '';
-  const dateKo = (() => { const p = date.split('-'); return p.length===3 ? `${p[0]}년 ${parseInt(p[1])}월 ${parseInt(p[2])}일` : date; })();
+  const dateKo = (() => { const p = date.split('-'); return p.length===3 ? window.t(`${p[0]}년 ${parseInt(p[1])}월 ${parseInt(p[2])}일`, `${TUI_MON_EN[parseInt(p[1])]} ${parseInt(p[2])}, ${p[0]}`) : date; })();
 
   const win = window.open('', '_blank');
   win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${escHtml(t.label)} — ${escHtml(name)}</title>
@@ -11372,16 +11373,16 @@ function printCertificate() {
     .seal{display:inline-block;margin-left:10px;color:#c0392b;border:2px solid #c0392b;border-radius:50%;width:30px;height:30px;line-height:26px;font-size:10pt;font-weight:700;vertical-align:middle}
     @page{size:A4;margin:0}
   </style></head><body>
-    <div class="doc-no">제 ${escHtml(no||'____')} 호</div>
+    <div class="doc-no">${window.t('제','No.')} ${escHtml(no||'____')}${window.t(' 호','')}</div>
     <h1>${escHtml(t.label)}</h1>
     <table class="info">
-      ${dro('성 명', name)}
-      ${dro('생년월일', birth)}
-      ${dro('학 년', grade)}
-      ${dro('학 교', school)}
+      ${dro(window.t('성 명','Name'), name)}
+      ${dro(window.t('생년월일','Date of Birth'), birth)}
+      ${dro(window.t('학 년','Grade'), grade)}
+      ${dro(window.t('학 교','School'), school)}
     </table>
     <div class="stmt">${escHtml(stmt)}</div>
-    ${reason ? `<div class="reason">— 발급 사유: ${escHtml(reason)} —</div>` : ''}
+    ${reason ? `<div class="reason">${window.t('— 발급 사유: ','— Purpose: ')}${escHtml(reason)} —</div>` : ''}
     <div class="date">${escHtml(dateKo)}</div>
     <div class="org">
       ${org && org.logo_url ? `<img src="${org.logo_url}"/>` : ''}
