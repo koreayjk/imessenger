@@ -4290,7 +4290,7 @@ async function initTcsPage() {
   const main = document.getElementById(tcsMainId);
   // 학사(👤학생)에서 진입하면 학생은 거기서 고르므로 중복 패널 숨김
   panel.style.display = tcsFromSchool ? 'none' : 'block';
-  panel.innerHTML = '<div style="text-align:center;padding:20px;color:var(--ink3);font-size:12px">불러오는 중...</div>';
+  panel.innerHTML = `<div style="text-align:center;padding:20px;color:var(--ink3);font-size:12px">${t('불러오는 중...','Loading...')}</div>`;
   main.innerHTML = '';
 
   // 소속 공동체 학생 목록 로드
@@ -4311,8 +4311,8 @@ async function initTcsPage() {
   } else {
     main.innerHTML = `<div style="text-align:center;padding:60px 20px">
       <div style="font-size:48px;margin-bottom:12px">👨‍🎓</div>
-      <div style="font-size:15px;font-weight:600;color:var(--ink2);margin-bottom:6px">등록된 학생이 없어요</div>
-      <div style="font-size:13px;color:var(--ink3)">관리자 페이지에서 학생을 먼저 승인해주세요</div>
+      <div style="font-size:15px;font-weight:600;color:var(--ink2);margin-bottom:6px">${t('등록된 학생이 없어요','No students registered')}</div>
+      <div style="font-size:13px;color:var(--ink3)">${t('관리자 페이지에서 학생을 먼저 승인해주세요','Please approve students first on the admin page')}</div>
     </div>`;
   }
 }
@@ -4338,15 +4338,15 @@ function renderTcsStudentPanel() {
     });
     const ungrouped = tcsStudents.filter(s => !s.group_id || !tcsGroups.find(g => g.id === s.group_id));
     if (ungrouped.length) {
-      body += `<div style="font-size:11px;font-weight:700;color:var(--ink3);padding:8px 8px 4px">미분류 <span style="font-weight:500">${ungrouped.length}</span></div>`;
+      body += `<div style="font-size:11px;font-weight:700;color:var(--ink3);padding:8px 8px 4px">${t('미분류','Unclassified')} <span style="font-weight:500">${ungrouped.length}</span></div>`;
       body += ungrouped.map(studentRow).join('');
     }
   } else {
     body = tcsStudents.map(studentRow).join('');
   }
   panel.innerHTML = `
-    <div style="font-size:11px;font-weight:600;color:var(--ink3);padding:4px 8px 8px;letter-spacing:.05em;text-transform:uppercase">학생 목록 (${tcsStudents.length}명)</div>
-    ${isTeacher() ? `<button onclick="openGroupManager()" style="width:100%;margin:0 0 8px;height:30px;border-radius:9px;border:1.5px dashed var(--accent);background:white;color:var(--accent);font:600 11.5px var(--font);cursor:pointer">👥 그룹 관리</button>` : ''}
+    <div style="font-size:11px;font-weight:600;color:var(--ink3);padding:4px 8px 8px;letter-spacing:.05em;text-transform:uppercase">${t('학생 목록','Student list')} (${tcsStudents.length}${t('명','')})</div>
+    ${isTeacher() ? `<button onclick="openGroupManager()" style="width:100%;margin:0 0 8px;height:30px;border-radius:9px;border:1.5px dashed var(--accent);background:white;color:var(--accent);font:600 11.5px var(--font);cursor:pointer">${t('👥 그룹 관리','👥 Manage groups')}</button>` : ''}
     ${body}`;
 }
 
@@ -4355,48 +4355,48 @@ function openGroupManager() { renderGroupManager(); }
 function renderGroupManager() {
   const main = document.getElementById(tcsMainId);
   if (!main) return;
-  const groupOpts = (sel) => `<option value="" ${!sel ? 'selected' : ''}>그룹 없음</option>` + tcsGroups.map(g => `<option value="${g.id}" ${sel === g.id ? 'selected' : ''}>${g.name}</option>`).join('');
+  const groupOpts = (sel) => `<option value="" ${!sel ? 'selected' : ''}>${t('그룹 없음','No group')}</option>` + tcsGroups.map(g => `<option value="${g.id}" ${sel === g.id ? 'selected' : ''}>${g.name}</option>`).join('');
   main.innerHTML = `<div style="max-width:640px">
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px"><span style="font-size:20px">👥</span><span style="font-size:17px;font-weight:700;color:var(--ink)">학생 그룹 관리</span>
-      <button onclick="renderTcsMain()" style="margin-left:auto;height:32px;padding:0 14px;border-radius:9px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:600 12px var(--font);cursor:pointer">← 돌아가기</button></div>
-    <div style="font-size:13px;font-weight:700;color:var(--adeep);margin-bottom:8px">그룹</div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px"><span style="font-size:20px">👥</span><span style="font-size:17px;font-weight:700;color:var(--ink)">${t('학생 그룹 관리','Student Group Management')}</span>
+      <button onclick="renderTcsMain()" style="margin-left:auto;height:32px;padding:0 14px;border-radius:9px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:600 12px var(--font);cursor:pointer">${t('← 돌아가기','← Back')}</button></div>
+    <div style="font-size:13px;font-weight:700;color:var(--adeep);margin-bottom:8px">${t('그룹','Groups')}</div>
     <div class="adm-card" style="margin-bottom:18px">
       ${tcsGroups.length ? tcsGroups.map(g => `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--bs)">
-        <div style="flex:1;font-size:13.5px;font-weight:600;color:var(--ink)">${g.name} <span style="font-size:11px;font-weight:500;color:var(--ink3)">${tcsStudents.filter(s => s.group_id === g.id).length}명</span></div>
-        <button onclick="renameStudentGroup('${g.id}')" style="height:28px;padding:0 10px;border-radius:7px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:600 12px var(--font);cursor:pointer">이름변경</button>
+        <div style="flex:1;font-size:13.5px;font-weight:600;color:var(--ink)">${g.name} <span style="font-size:11px;font-weight:500;color:var(--ink3)">${tcsStudents.filter(s => s.group_id === g.id).length}${t('명','')}</span></div>
+        <button onclick="renameStudentGroup('${g.id}')" style="height:28px;padding:0 10px;border-radius:7px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:600 12px var(--font);cursor:pointer">${t('이름변경','Rename')}</button>
         <button onclick="deleteStudentGroup('${g.id}')" style="width:28px;height:28px;border-radius:7px;border:1.5px solid var(--border);background:white;color:#ef4444;font-size:14px;cursor:pointer">×</button>
-      </div>`).join('') : '<div style="font-size:12px;color:var(--ink3);padding:4px 0">아직 그룹이 없어요</div>'}
+      </div>`).join('') : `<div style="font-size:12px;color:var(--ink3);padding:4px 0">${t('아직 그룹이 없어요','No groups yet')}</div>`}
       <div style="display:flex;gap:8px;margin-top:12px">
-        <input id="new-group-name" type="text" placeholder="새 그룹 이름 (예: 중등부, A반)" style="flex:1;height:38px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--s2);font:13px var(--font);outline:none"/>
-        <button onclick="addStudentGroup()" style="height:38px;padding:0 16px;border-radius:9px;border:none;background:#1d3a5f;color:white;font:600 13px var(--font);cursor:pointer">추가</button>
+        <input id="new-group-name" type="text" placeholder="${t('새 그룹 이름 (예: 중등부, A반)','New group name (e.g. Middle School, Class A)')}" style="flex:1;height:38px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--s2);font:13px var(--font);outline:none"/>
+        <button onclick="addStudentGroup()" style="height:38px;padding:0 16px;border-radius:9px;border:none;background:#1d3a5f;color:white;font:600 13px var(--font);cursor:pointer">${t('추가','Add')}</button>
       </div>
     </div>
-    <div style="font-size:13px;font-weight:700;color:var(--adeep);margin-bottom:8px">학생 배치</div>
+    <div style="font-size:13px;font-weight:700;color:var(--adeep);margin-bottom:8px">${t('학생 배치','Assign Students')}</div>
     <div class="adm-card">
       ${tcsStudents.length ? tcsStudents.map(s => `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--bs)">
         <div style="width:30px;height:30px;border-radius:8px;background:${s.color || '#1d3a5f'};display:flex;align-items:center;justify-content:center;color:white;font-size:11px;font-weight:700;flex-shrink:0">${s.initials || s.name?.[0] || '?'}</div>
         <div style="flex:1;font-size:13px;font-weight:600;color:var(--ink)">${s.name}</div>
         <select onchange="assignStudentGroup('${s.id}',this.value)" style="height:30px;padding:0 8px;border-radius:7px;border:1.5px solid var(--border);font:500 12px var(--font);background:white;cursor:pointer">${groupOpts(s.group_id)}</select>
-      </div>`).join('') : '<div style="font-size:12px;color:var(--ink3)">학생이 없어요</div>'}
+      </div>`).join('') : `<div style="font-size:12px;color:var(--ink3)">${t('학생이 없어요','No students')}</div>`}
     </div>
   </div>`;
 }
 async function addStudentGroup() {
   const name = document.getElementById('new-group-name').value.trim();
-  if (!name) { showUploadToast('그룹 이름을 입력하세요'); return; }
+  if (!name) { showUploadToast(t('그룹 이름을 입력하세요','Please enter a group name')); return; }
   const { error } = await sb.from('student_groups').insert({ community_id: CID(), name });
-  if (error) { showUploadToast('추가 실패: ' + error.message); return; }
+  if (error) { showUploadToast(t('추가 실패: ','Add failed: ') + error.message); return; }
   await loadStudentGroups(); renderGroupManager(); renderTcsStudentPanel();
 }
 async function renameStudentGroup(id) {
   const g = tcsGroups.find(x => x.id === id);
-  const name = prompt('그룹 이름', g ? g.name : ''); if (name === null) return;
+  const name = prompt(window.t('그룹 이름','Group name'), g ? g.name : ''); if (name === null) return;
   const t = name.trim(); if (!t) return;
   await sb.from('student_groups').update({ name: t }).eq('id', id);
   await loadStudentGroups(); renderGroupManager(); renderTcsStudentPanel();
 }
 async function deleteStudentGroup(id) {
-  if (!confirm('이 그룹을 삭제할까요? (소속 학생은 미분류로 바뀝니다)')) return;
+  if (!confirm(t('이 그룹을 삭제할까요? (소속 학생은 미분류로 바뀝니다)','Delete this group? (Students in it will become unclassified)'))) return;
   await sb.from('members').update({ group_id: null }).eq('group_id', id);
   await sb.from('student_groups').delete().eq('id', id);
   tcsStudents.forEach(s => { if (s.group_id === id) s.group_id = null; });
@@ -4405,10 +4405,10 @@ async function deleteStudentGroup(id) {
 async function assignStudentGroup(studentId, groupId) {
   const gid = groupId || null;
   const { error } = await sb.from('members').update({ group_id: gid }).eq('id', studentId);
-  if (error) { showUploadToast('변경 실패'); return; }
+  if (error) { showUploadToast(t('변경 실패','Change failed')); return; }
   const s = tcsStudents.find(x => x.id === studentId); if (s) s.group_id = gid;
   renderTcsStudentPanel();
-  showUploadToast('✅ 그룹이 변경됐어요');
+  showUploadToast(t('✅ 그룹이 변경됐어요','✅ Group changed'));
 }
 
 async function selectTcsStudent(student) {
@@ -4469,14 +4469,14 @@ async function selectTcsStudent(student) {
 
 async function setTcsStudentGrade(grade) {
   if (!tcsCurrentStudent?.id) return;
-  if (!isTeacher()) { showUploadToast('권한이 없어요'); return; }
+  if (!isTeacher()) { showUploadToast(t('권한이 없어요','You do not have permission')); return; }
   const { error } = await sb.from('members').update({ grade }).eq('id', tcsCurrentStudent.id);
-  if (error) { showUploadToast('학년 저장 실패 😥'); return; }
+  if (error) { showUploadToast(t('학년 저장 실패 😥','Failed to save grade 😥')); return; }
   // 로컬 상태 갱신
   tcsCurrentStudent.grade = grade;
   const idx = tcsStudents.findIndex(s => s.id === tcsCurrentStudent.id);
   if (idx > -1) tcsStudents[idx].grade = grade;
-  showUploadToast(grade ? `✅ 학년을 ${grade}(으)로 저장했어요` : '학년을 비웠어요');
+  showUploadToast(grade ? t(`✅ 학년을 ${grade}(으)로 저장했어요`, `✅ Grade saved as ${grade}`) : t('학년을 비웠어요','Grade cleared'));
   renderTcsSectionList();
 }
 
@@ -4519,36 +4519,36 @@ function renderTcsSectionList() {
         <div style="width:52px;height:52px;border-radius:14px;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;color:white;font-size:20px;font-weight:700;flex-shrink:0">${tcsCurrentStudent.initials||tcsCurrentStudent.name?.[0]||'?'}</div>
         <div style="flex:1">
           <div style="font-size:18px;font-weight:700;color:white">${tcsCurrentStudent.name}${gradeLabel}</div>
-          <div style="font-size:12px;color:rgba(255,255,255,.7);margin-top:2px">TCS 학생 종합 기록부</div>
+          <div style="font-size:12px;color:rgba(255,255,255,.7);margin-top:2px">${t('TCS 학생 종합 기록부','TCS Student Comprehensive Record')}</div>
         </div>
         <div style="text-align:right">
           <div style="font-size:22px;font-weight:700;color:white">${completedSections}/${TCS_SECTIONS.length}</div>
-          <div style="font-size:11px;color:rgba(255,255,255,.6)">섹션 완성</div>
+          <div style="font-size:11px;color:rgba(255,255,255,.6)">${t('섹션 완성','Sections done')}</div>
         </div>
       </div>
 
       ${isTeacher() ? `
       <div style="background:${gradeNum!==null?'#eff6ff':'#fef9c3'};border:1.5px solid ${gradeNum!==null?'#bfdbfe':'#fde047'};border-radius:12px;padding:12px 14px;margin-bottom:16px">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-          <label style="font-size:12px;font-weight:700;color:${gradeNum!==null?'#1d4ed8':'#854d0e'}">현재 학년</label>
+          <label style="font-size:12px;font-weight:700;color:${gradeNum!==null?'#1d4ed8':'#854d0e'}">${t('현재 학년','Current grade')}</label>
           <select onchange="setTcsStudentGrade(this.value)"
             style="height:34px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:white;font:13px var(--font);color:var(--ink);cursor:pointer;outline:none">
-            <option value="">선택 안 함</option>
+            <option value="">${t('선택 안 함','Not selected')}</option>
             ${['K','1','2','3','4','5','6','G7 (중1)','G8 (중2)','G9 (중3)','G10 (고1)','G11 (고2)','G12 (고3)','졸업']
               .map(o=>`<option value="${o}" ${gradeStr===o?'selected':''}>${o}</option>`).join('')}
           </select>
         </div>
         <div style="font-size:11px;margin-top:8px;color:${gradeNum!==null?'#1d4ed8':'#854d0e'}">
           ${gradeNum!==null
-            ? `📌 <b>${gradeStr}</b> 기준으로 완료 여부 표시. 출결·성적은 현재 학년 칸이 채워져야 ✅ 완료예요.`
-            : `⚠️ 학년이 아직 없어요. 여기서 학년을 정하면 출결·성적 완료 여부가 표시됩니다. (학생 본인도 프로필에서 설정 가능)`}
+            ? t(`📌 <b>${gradeStr}</b> 기준으로 완료 여부 표시. 출결·성적은 현재 학년 칸이 채워져야 ✅ 완료예요.`, `📌 Completion is shown based on <b>${gradeStr}</b>. Attendance & grades count as ✅ complete only when the current grade's cell is filled.`)
+            : t(`⚠️ 학년이 아직 없어요. 여기서 학년을 정하면 출결·성적 완료 여부가 표시됩니다. (학생 본인도 프로필에서 설정 가능)`, `⚠️ No grade set yet. Setting a grade here enables completion tracking for attendance & grades. (Students can also set it in their profile.)`)}
         </div>
       </div>` : (gradeNum !== null ? `
       <div style="background:#dbeafe;border:1.5px solid #93c5fd;border-radius:12px;padding:10px 14px;margin-bottom:16px;font-size:12px;color:#1d4ed8">
-        📌 <b>${gradeStr}</b> 기준으로 완료 여부 표시. 출결·성적은 현재 학년 칸이 채워져야 ✅ 완료예요.
+        ${t(`📌 <b>${gradeStr}</b> 기준으로 완료 여부 표시. 출결·성적은 현재 학년 칸이 채워져야 ✅ 완료예요.`, `📌 Completion is shown based on <b>${gradeStr}</b>. Attendance & grades count as ✅ complete only when the current grade's cell is filled.`)}
       </div>` : `
       <div style="background:#fef9c3;border:1.5px solid #fde047;border-radius:12px;padding:10px 14px;margin-bottom:16px;font-size:12px;color:#854d0e">
-        ⚠️ 학생 프로필에 학년이 등록되지 않았어요. 프로필에서 학년을 먼저 설정해주세요.
+        ${t('⚠️ 학생 프로필에 학년이 등록되지 않았어요. 프로필에서 학년을 먼저 설정해주세요.','⚠️ No grade is registered in the student profile. Please set the grade in the profile first.')}
       </div>`)}
 
       <div style="background:var(--border);border-radius:99px;height:6px;margin-bottom:20px;overflow:hidden">
@@ -4568,9 +4568,9 @@ function renderTcsSectionList() {
             onmouseout="this.style.borderColor='${done?'#2a5298':partial?'#93c5fd':'var(--border)'}';this.style.transform=''">
             <div style="font-size:22px">${sec.icon}</div>
             <div style="flex:1">
-              <div style="font-size:13px;font-weight:600;color:var(--ink)">${sec.label}</div>
+              <div style="font-size:13px;font-weight:600;color:var(--ink)">${APP_LANG==='en' ? sec.labelEn : sec.label}</div>
               <div style="font-size:11px;margin-top:1px;color:${done?'#2a5298':partial?'#3b82f6':'var(--ink3)'}">
-                ${done?'✅ 완료':partial?'📝 일부 입력됨':'미입력'}
+                ${done?t('✅ 완료','✅ Complete'):partial?t('📝 일부 입력됨','📝 Partially filled'):t('미입력','Not filled')}
               </div>
             </div>
             <div style="width:20px;height:20px;border-radius:50%;background:${done?'#2a5298':partial?'#93c5fd':'var(--border)'};display:flex;align-items:center;justify-content:center;flex-shrink:0">
@@ -4596,16 +4596,16 @@ function openTcsSection(sectionId) {
   main.innerHTML = `
     <div style="max-width:680px">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
-        <button onclick="renderTcsSectionList()" style="height:32px;padding:0 12px;border-radius:8px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:500 12px var(--font);cursor:pointer">← 목록</button>
+        <button onclick="renderTcsSectionList()" style="height:32px;padding:0 12px;border-radius:8px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:500 12px var(--font);cursor:pointer">${t('← 목록','← List')}</button>
         <div style="font-size:22px">${sec.icon}</div>
-        <div style="font-size:16px;font-weight:700;color:var(--ink)">${sec.label}</div>
+        <div style="font-size:16px;font-weight:700;color:var(--ink)">${APP_LANG==='en' ? sec.labelEn : sec.label}</div>
       </div>
 
       <div class="adm-card">
         ${fields.map(f => renderTcsField(f, data[f.key])).join('')}
         <button onclick="saveTcsSection('${sectionId}')"
           style="width:100%;height:42px;border-radius:11px;border:none;background:linear-gradient(135deg,#1d3a5f,#2a5298);color:white;font:600 14px var(--font);cursor:pointer;margin-top:8px;box-shadow:0 4px 12px rgba(29,58,95,.25)">
-          💾 저장하기
+          ${t('💾 저장하기','💾 Save')}
         </button>
       </div>
     </div>`;
@@ -4614,110 +4614,110 @@ function openTcsSection(sectionId) {
 function getTcsSectionFields(sectionId) {
   const F = {
     personal: [
-      {key:'name_ko', label:'성명 (한글)', type:'text', placeholder:'홍길동'},
-      {key:'name_en', label:'성명 (영문)', type:'text', placeholder:'Hong Gildong'},
-      {key:'birth', label:'생년월일', type:'date'},
-      {key:'gender', label:'성별', type:'select', options:['남','여']},
-      {key:'nationality', label:'국적', type:'text', placeholder:'대한민국'},
-      {key:'native_lang', label:'모국어', type:'text', placeholder:'한국어'},
-      {key:'guardian', label:'보호자 성명', type:'text'},
-      {key:'contact', label:'연락처', type:'text'},
-      {key:'address', label:'주소', type:'text'},
+      {key:'name_ko', label:t('성명 (한글)','Name (Korean)'), type:'text', placeholder:t('홍길동','Hong Gildong')},
+      {key:'name_en', label:t('성명 (영문)','Name (English)'), type:'text', placeholder:'Hong Gildong'},
+      {key:'birth', label:t('생년월일','Date of Birth'), type:'date'},
+      {key:'gender', label:t('성별','Gender'), type:'select', options:['남','여']},
+      {key:'nationality', label:t('국적','Nationality'), type:'text', placeholder:t('대한민국','Republic of Korea')},
+      {key:'native_lang', label:t('모국어','Native Language'), type:'text', placeholder:t('한국어','Korean')},
+      {key:'guardian', label:t('보호자 성명','Guardian Name'), type:'text'},
+      {key:'contact', label:t('연락처','Contact'), type:'text'},
+      {key:'address', label:t('주소','Address'), type:'text'},
     ],
     school: [
-      {key:'school_name', label:'학교명', type:'text'},
-      {key:'school_type', label:'학교 구분', type:'select', options:['대안학교','홈스쿨','기독학교','기타']},
-      {key:'enroll_date', label:'입학일', type:'date'},
-      {key:'grad_date', label:'졸업(예정)일', type:'date'},
-      {key:'course', label:'재학 과정', type:'select', options:['중학','고등','중·고통합']},
-      {key:'principal', label:'학교장', type:'text'},
+      {key:'school_name', label:t('학교명','School Name'), type:'text'},
+      {key:'school_type', label:t('학교 구분','School Type'), type:'select', options:['대안학교','홈스쿨','기독학교','기타']},
+      {key:'enroll_date', label:t('입학일','Enrollment Date'), type:'date'},
+      {key:'grad_date', label:t('졸업(예정)일','Graduation Date'), type:'date'},
+      {key:'course', label:t('재학 과정','Program'), type:'select', options:['중학','고등','중·고통합']},
+      {key:'principal', label:t('학교장','Principal'), type:'text'},
     ],
     attendance: [
-      {key:'k',  label:'K (유치원) — 수업일수 / 결석 / 지각 / 조퇴', type:'text', placeholder:'예: 180 / 0 / 0 / 0'},
-      {key:'g1', label:'G1 (1학년)', type:'text', placeholder:''},
-      {key:'g2', label:'G2 (2학년)', type:'text', placeholder:''},
-      {key:'g3', label:'G3 (3학년)', type:'text', placeholder:''},
-      {key:'g4', label:'G4 (4학년)', type:'text', placeholder:''},
-      {key:'g5', label:'G5 (5학년)', type:'text', placeholder:''},
-      {key:'g6', label:'G6 (6학년)', type:'text', placeholder:''},
-      {key:'g7', label:'G7 (중1) — 수업일수 / 결석 / 지각 / 조퇴', type:'text', placeholder:'예: 190 / 2 / 1 / 0'},
-      {key:'g8', label:'G8 (중2)', type:'text', placeholder:''},
-      {key:'g9', label:'G9 (중3)', type:'text', placeholder:''},
-      {key:'g10', label:'G10 (고1)', type:'text', placeholder:''},
-      {key:'g11', label:'G11 (고2)', type:'text', placeholder:''},
-      {key:'g12', label:'G12 (고3)', type:'text', placeholder:''},
+      {key:'k',  label:t('K (유치원) — 수업일수 / 결석 / 지각 / 조퇴','K (Kindergarten) — School days / Absence / Tardy / Early leave'), type:'text', placeholder:t('예: 180 / 0 / 0 / 0','e.g. 180 / 0 / 0 / 0')},
+      {key:'g1', label:t('G1 (1학년)','G1 (Grade 1)'), type:'text', placeholder:''},
+      {key:'g2', label:t('G2 (2학년)','G2 (Grade 2)'), type:'text', placeholder:''},
+      {key:'g3', label:t('G3 (3학년)','G3 (Grade 3)'), type:'text', placeholder:''},
+      {key:'g4', label:t('G4 (4학년)','G4 (Grade 4)'), type:'text', placeholder:''},
+      {key:'g5', label:t('G5 (5학년)','G5 (Grade 5)'), type:'text', placeholder:''},
+      {key:'g6', label:t('G6 (6학년)','G6 (Grade 6)'), type:'text', placeholder:''},
+      {key:'g7', label:t('G7 (중1) — 수업일수 / 결석 / 지각 / 조퇴','G7 (Middle 1) — School days / Absence / Tardy / Early leave'), type:'text', placeholder:t('예: 190 / 2 / 1 / 0','e.g. 190 / 2 / 1 / 0')},
+      {key:'g8', label:t('G8 (중2)','G8 (Middle 2)'), type:'text', placeholder:''},
+      {key:'g9', label:t('G9 (중3)','G9 (Middle 3)'), type:'text', placeholder:''},
+      {key:'g10', label:t('G10 (고1)','G10 (High 1)'), type:'text', placeholder:''},
+      {key:'g11', label:t('G11 (고2)','G11 (High 2)'), type:'text', placeholder:''},
+      {key:'g12', label:t('G12 (고3)','G12 (High 3)'), type:'text', placeholder:''},
     ],
     academic: [
-      {key:'k_grades',  label:'K (유치원) 성취도', type:'textarea', placeholder:'예: 읽기:A, 수학:A, 생활:A'},
-      {key:'g1_grades', label:'G1 성적', type:'textarea', placeholder:'국어:A, 수학:A, 사회:A, 과학:A, 성경:A'},
-      {key:'g2_grades', label:'G2 성적', type:'textarea', placeholder:''},
-      {key:'g3_grades', label:'G3 성적', type:'textarea', placeholder:''},
-      {key:'g4_grades', label:'G4 성적', type:'textarea', placeholder:''},
-      {key:'g5_grades', label:'G5 성적', type:'textarea', placeholder:''},
-      {key:'g6_grades', label:'G6 성적', type:'textarea', placeholder:''},
-      {key:'g7_grades', label:'G7 성적 (과목: 등급, …)', type:'textarea', placeholder:'국어:A, 영어:B, 수학:A, 사회:B, 과학:A, 성경:A'},
-      {key:'g8_grades', label:'G8 성적', type:'textarea', placeholder:''},
-      {key:'g9_grades', label:'G9 성적', type:'textarea', placeholder:''},
-      {key:'g10_grades', label:'G10 성적', type:'textarea', placeholder:''},
-      {key:'g11_grades', label:'G11 성적', type:'textarea', placeholder:''},
-      {key:'g12_grades', label:'G12 성적', type:'textarea', placeholder:''},
-      {key:'gpa', label:'누적 GPA (4.0 만점)', type:'text', placeholder:'예: 3.75'},
+      {key:'k_grades',  label:t('K (유치원) 성취도','K (Kindergarten) Achievement'), type:'textarea', placeholder:t('예: 읽기:A, 수학:A, 생활:A','e.g. Reading:A, Math:A, Life:A')},
+      {key:'g1_grades', label:t('G1 성적','G1 Grades'), type:'textarea', placeholder:t('국어:A, 수학:A, 사회:A, 과학:A, 성경:A','Korean:A, Math:A, Social:A, Science:A, Bible:A')},
+      {key:'g2_grades', label:t('G2 성적','G2 Grades'), type:'textarea', placeholder:''},
+      {key:'g3_grades', label:t('G3 성적','G3 Grades'), type:'textarea', placeholder:''},
+      {key:'g4_grades', label:t('G4 성적','G4 Grades'), type:'textarea', placeholder:''},
+      {key:'g5_grades', label:t('G5 성적','G5 Grades'), type:'textarea', placeholder:''},
+      {key:'g6_grades', label:t('G6 성적','G6 Grades'), type:'textarea', placeholder:''},
+      {key:'g7_grades', label:t('G7 성적 (과목: 등급, …)','G7 Grades (subject: grade, …)'), type:'textarea', placeholder:t('국어:A, 영어:B, 수학:A, 사회:B, 과학:A, 성경:A','Korean:A, English:B, Math:A, Social:B, Science:A, Bible:A')},
+      {key:'g8_grades', label:t('G8 성적','G8 Grades'), type:'textarea', placeholder:''},
+      {key:'g9_grades', label:t('G9 성적','G9 Grades'), type:'textarea', placeholder:''},
+      {key:'g10_grades', label:t('G10 성적','G10 Grades'), type:'textarea', placeholder:''},
+      {key:'g11_grades', label:t('G11 성적','G11 Grades'), type:'textarea', placeholder:''},
+      {key:'g12_grades', label:t('G12 성적','G12 Grades'), type:'textarea', placeholder:''},
+      {key:'gpa', label:t('누적 GPA (4.0 만점)','Cumulative GPA (4.0 scale)'), type:'text', placeholder:t('예: 3.75','e.g. 3.75')},
     ],
     faith: [
-      {key:'baptism', label:'세례 여부 / 날짜', type:'text', placeholder:'예: 세례 완료 / 2022-03-15'},
-      {key:'church', label:'소속 교회', type:'text'},
-      {key:'scripture', label:'성경 암송 (구절 수)', type:'text', placeholder:'예: 50구절'},
-      {key:'devotion', label:'큐티 / 경건 생활', type:'select', options:['매우 성실','성실','보통','미흡']},
-      {key:'faith_note', label:'신앙 성장 서술 (담임 기재)', type:'textarea', rows:6},
+      {key:'baptism', label:t('세례 여부 / 날짜','Baptism status / date'), type:'text', placeholder:t('예: 세례 완료 / 2022-03-15','e.g. Baptized / 2022-03-15')},
+      {key:'church', label:t('소속 교회','Church'), type:'text'},
+      {key:'scripture', label:t('성경 암송 (구절 수)','Scripture Memorization (verses)'), type:'text', placeholder:t('예: 50구절','e.g. 50 verses')},
+      {key:'devotion', label:t('큐티 / 경건 생활','Devotional Life'), type:'select', options:['매우 성실','성실','보통','미흡']},
+      {key:'faith_note', label:t('신앙 성장 서술 (담임 기재)','Faith Growth Narrative (by teacher)'), type:'textarea', rows:6},
     ],
     activities: [
-      {key:'act1', label:'활동 1 (학년 / 구분 / 내용 / 시간)', type:'text', placeholder:'G9 / 동아리 / 성경 스터디 / 40h'},
-      {key:'act2', label:'활동 2', type:'text'},
-      {key:'act3', label:'활동 3', type:'text'},
-      {key:'act4', label:'활동 4', type:'text'},
-      {key:'act5', label:'활동 5', type:'text'},
-      {key:'act6', label:'활동 6', type:'text'},
-      {key:'act7', label:'활동 7', type:'text'},
-      {key:'act8', label:'활동 8', type:'text'},
+      {key:'act1', label:t('활동 1 (학년 / 구분 / 내용 / 시간)','Activity 1 (grade / type / description / hours)'), type:'text', placeholder:t('G9 / 동아리 / 성경 스터디 / 40h','G9 / Club / Bible study / 40h')},
+      {key:'act2', label:t('활동 2','Activity 2'), type:'text'},
+      {key:'act3', label:t('활동 3','Activity 3'), type:'text'},
+      {key:'act4', label:t('활동 4','Activity 4'), type:'text'},
+      {key:'act5', label:t('활동 5','Activity 5'), type:'text'},
+      {key:'act6', label:t('활동 6','Activity 6'), type:'text'},
+      {key:'act7', label:t('활동 7','Activity 7'), type:'text'},
+      {key:'act8', label:t('활동 8','Activity 8'), type:'text'},
     ],
     service: [
-      {key:'svc1', label:'봉사 1 (날짜 / 내용 / 기관 / 시간)', type:'text', placeholder:'2023-07 / 지역사회 청소 / 교회 / 8h'},
-      {key:'svc2', label:'봉사 2', type:'text'},
-      {key:'svc3', label:'봉사 3', type:'text'},
-      {key:'svc4', label:'봉사 4', type:'text'},
-      {key:'svc5', label:'봉사 5', type:'text'},
+      {key:'svc1', label:t('봉사 1 (날짜 / 내용 / 기관 / 시간)','Service 1 (date / description / organization / hours)'), type:'text', placeholder:t('2023-07 / 지역사회 청소 / 교회 / 8h','2023-07 / Community cleanup / Church / 8h')},
+      {key:'svc2', label:t('봉사 2','Service 2'), type:'text'},
+      {key:'svc3', label:t('봉사 3','Service 3'), type:'text'},
+      {key:'svc4', label:t('봉사 4','Service 4'), type:'text'},
+      {key:'svc5', label:t('봉사 5','Service 5'), type:'text'},
     ],
     awards: [
-      {key:'awd1', label:'수상/자격증 1 (날짜 / 명칭 / 수여기관 / 급수)', type:'text', placeholder:'2023-11 / 영어경시 우수상 / 학교 / -'},
-      {key:'awd2', label:'수상/자격증 2', type:'text'},
-      {key:'awd3', label:'수상/자격증 3', type:'text'},
-      {key:'awd4', label:'수상/자격증 4', type:'text'},
-      {key:'awd5', label:'수상/자격증 5', type:'text'},
+      {key:'awd1', label:t('수상/자격증 1 (날짜 / 명칭 / 수여기관 / 급수)','Award/Certificate 1 (date / name / issuer / level)'), type:'text', placeholder:t('2023-11 / 영어경시 우수상 / 학교 / -','2023-11 / English Contest Excellence Award / School / -')},
+      {key:'awd2', label:t('수상/자격증 2','Award/Certificate 2'), type:'text'},
+      {key:'awd3', label:t('수상/자격증 3','Award/Certificate 3'), type:'text'},
+      {key:'awd4', label:t('수상/자격증 4','Award/Certificate 4'), type:'text'},
+      {key:'awd5', label:t('수상/자격증 5','Award/Certificate 5'), type:'text'},
     ],
     reading: [
-      {key:'book1', label:'도서 1 (제목 / 저자 / 출판사 / 학년학기)', type:'text', placeholder:'리스본행 야간열차 / 파스칼 메르시에 / 들녘 / G9-1학기'},
-      {key:'book2', label:'도서 2', type:'text'},
-      {key:'book3', label:'도서 3', type:'text'},
-      {key:'book4', label:'도서 4', type:'text'},
-      {key:'book5', label:'도서 5', type:'text'},
-      {key:'book6', label:'도서 6', type:'text'},
-      {key:'book7', label:'도서 7', type:'text'},
-      {key:'book8', label:'도서 8', type:'text'},
+      {key:'book1', label:t('도서 1 (제목 / 저자 / 출판사 / 학년학기)','Book 1 (title / author / publisher / grade-semester)'), type:'text', placeholder:t('리스본행 야간열차 / 파스칼 메르시에 / 들녘 / G9-1학기','Night Train to Lisbon / Pascal Mercier / Deulnyeok / G9-Sem1')},
+      {key:'book2', label:t('도서 2','Book 2'), type:'text'},
+      {key:'book3', label:t('도서 3','Book 3'), type:'text'},
+      {key:'book4', label:t('도서 4','Book 4'), type:'text'},
+      {key:'book5', label:t('도서 5','Book 5'), type:'text'},
+      {key:'book6', label:t('도서 6','Book 6'), type:'text'},
+      {key:'book7', label:t('도서 7','Book 7'), type:'text'},
+      {key:'book8', label:t('도서 8','Book 8'), type:'text'},
     ],
     career: [
-      {key:'career_goal', label:'진로 희망', type:'text', placeholder:'예: 선교사 / 교사 / 의사'},
-      {key:'ged', label:'검정고시 성적', type:'text', placeholder:'예: 전과목 합격 (2024)'},
-      {key:'sat', label:'SAT (총점 / 날짜)', type:'text', placeholder:'예: 1450 / 2024-03'},
-      {key:'act', label:'ACT (점수 / 날짜)', type:'text'},
-      {key:'ap', label:'AP 과목 및 점수', type:'text', placeholder:'예: AP English 4, AP Calculus 3'},
+      {key:'career_goal', label:t('진로 희망','Career Aspiration'), type:'text', placeholder:t('예: 선교사 / 교사 / 의사','e.g. Missionary / Teacher / Doctor')},
+      {key:'ged', label:t('검정고시 성적','GED Score'), type:'text', placeholder:t('예: 전과목 합격 (2024)','e.g. All subjects passed (2024)')},
+      {key:'sat', label:t('SAT (총점 / 날짜)','SAT (total / date)'), type:'text', placeholder:t('예: 1450 / 2024-03','e.g. 1450 / 2024-03')},
+      {key:'act', label:t('ACT (점수 / 날짜)','ACT (score / date)'), type:'text'},
+      {key:'ap', label:t('AP 과목 및 점수','AP Subjects & Scores'), type:'text', placeholder:t('예: AP English 4, AP Calculus 3','e.g. AP English 4, AP Calculus 3')},
       {key:'toefl', label:'TOEFL / IELTS', type:'text'},
-      {key:'final_college', label:'최종 진학 결과', type:'text', placeholder:'예: 한동대학교 국제어문학부 (2025 입학)'},
+      {key:'final_college', label:t('최종 진학 결과','Final College Result'), type:'text', placeholder:t('예: 한동대학교 국제어문학부 (2025 입학)','e.g. Handong Global University, Intl. Languages (2025 admission)')},
     ],
     comment: [
-      {key:'comment_ko', label:'담임교사 종합의견 (한국어)', type:'textarea', rows:10, placeholder:'학생의 학교생활, 성품, 성장 과정, 강점 중심으로 서술해주세요...'},
+      {key:'comment_ko', label:t('담임교사 종합의견 (한국어)','Homeroom Teacher Overall Comment (Korean)'), type:'textarea', rows:10, placeholder:t('학생의 학교생활, 성품, 성장 과정, 강점 중심으로 서술해주세요...','Describe the student\'s school life, character, growth, and strengths...')},
       {key:'comment_en', label:"Teacher's Assessment (English)", type:'textarea', rows:10, placeholder:'Describe the student\'s character, growth, and unique strengths...'},
-      {key:'teacher_name', label:'담임교사 성명', type:'text'},
-      {key:'issue_date', label:'작성일', type:'date'},
+      {key:'teacher_name', label:t('담임교사 성명','Homeroom Teacher Name'), type:'text'},
+      {key:'issue_date', label:t('작성일','Date Written'), type:'date'},
     ],
   };
   return F[sectionId] || [];
@@ -4804,29 +4804,29 @@ function renderAcademicEditor() {
   main.innerHTML = `
     <div style="max-width:680px">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
-        <button onclick="renderTcsSectionList()" style="height:32px;padding:0 12px;border-radius:8px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:500 12px var(--font);cursor:pointer">← 목록</button>
+        <button onclick="renderTcsSectionList()" style="height:32px;padding:0 12px;border-radius:8px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:500 12px var(--font);cursor:pointer">${t('← 목록','← List')}</button>
         <div style="font-size:22px">📚</div>
-        <div style="font-size:16px;font-weight:700;color:var(--ink)">교과학습 발달 (성적)</div>
+        <div style="font-size:16px;font-weight:700;color:var(--ink)">${t('교과학습 발달 (성적)','Academic Development (Grades)')}</div>
       </div>
 
-      <div style="font-size:11px;font-weight:600;color:var(--ink3);margin-bottom:8px;text-transform:uppercase;letter-spacing:.04em">학년 선택</div>
+      <div style="font-size:11px;font-weight:600;color:var(--ink3);margin-bottom:8px;text-transform:uppercase;letter-spacing:.04em">${t('학년 선택','Select Grade')}</div>
       <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:18px">${pills}</div>
 
       <div class="adm-card">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-          <div style="font-size:14px;font-weight:700;color:var(--adeep)">${activeLabel} 성적</div>
+          <div style="font-size:14px;font-weight:700;color:var(--adeep)">${activeLabel} ${t('성적','Grades')}</div>
           <div id="acad-grade-avg" style="font-size:12px;font-weight:700;color:#1d4ed8"></div>
         </div>
         <div id="acad-rows"></div>
         <button onclick="addAcademicSubject()"
           style="width:100%;height:38px;border-radius:10px;border:1.5px dashed var(--border);background:var(--s2);color:var(--ink2);font:600 13px var(--font);cursor:pointer;margin-top:4px">
-          ＋ 과목 추가
+          ${t('＋ 과목 추가','＋ Add Subject')}
         </button>
       </div>
 
       <div style="background:linear-gradient(135deg,#1d3a5f,#2a5298);border-radius:14px;padding:18px 22px;margin-top:16px;display:flex;align-items:center;justify-content:space-between">
         <div>
-          <div style="font-size:12px;color:rgba(255,255,255,.7)">총 GPA (전 학년 누적)</div>
+          <div style="font-size:12px;color:rgba(255,255,255,.7)">${t('총 GPA (전 학년 누적)','Total GPA (cumulative)')}</div>
           <div id="acad-total-detail" style="font-size:11px;color:rgba(255,255,255,.55);margin-top:2px"></div>
         </div>
         <div id="acad-total-gpa" style="font-size:30px;font-weight:800;color:white">–</div>
@@ -4834,7 +4834,7 @@ function renderAcademicEditor() {
 
       <button onclick="saveAcademicSection()"
         style="width:100%;height:44px;border-radius:11px;border:none;background:#1d3a5f;color:white;font:700 14px var(--font);cursor:pointer;margin-top:16px">
-        💾 저장하기
+        ${t('💾 저장하기','💾 Save')}
       </button>
     </div>`;
 
@@ -4854,11 +4854,11 @@ function renderAcademicRows() {
   box.innerHTML = rows.map((r, i) => {
     const nameCell = r.fixed
       ? `<div style="flex:1;font-size:14px;font-weight:600;color:var(--ink);padding:0 4px">${r.name}</div>`
-      : `<input value="${(r.name||'').replace(/"/g,'&quot;')}" placeholder="과목명"
+      : `<input value="${(r.name||'').replace(/"/g,'&quot;')}" placeholder="${t('과목명','Subject')}"
            oninput="setAcademicName(${i}, this.value)"
            style="flex:1;height:38px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--s2);font:14px var(--font);color:var(--ink);outline:none"/>`;
     const del = r.fixed ? '' :
-      `<button onclick="removeAcademicSubject(${i})" title="삭제"
+      `<button onclick="removeAcademicSubject(${i})" title="${t('삭제','Delete')}"
          style="width:34px;height:38px;border-radius:9px;border:1.5px solid var(--border);background:white;color:#ef4444;font-size:16px;cursor:pointer;flex-shrink:0">×</button>`;
     return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">${nameCell}${sel(i, r.grade)}${del}</div>`;
   }).join('');
@@ -4867,12 +4867,12 @@ function renderAcademicRows() {
 function refreshAcademicGpa() {
   const g = gradeGpa(tcsAcademicDraft.grades[tcsAcademicDraft.active] || []);
   const avgEl = document.getElementById('acad-grade-avg');
-  if (avgEl) avgEl.textContent = g.avg !== null ? `이 학년 평균 ${g.avg.toFixed(2)} (${g.n}과목)` : '';
+  if (avgEl) avgEl.textContent = g.avg !== null ? t(`이 학년 평균 ${g.avg.toFixed(2)} (${g.n}과목)`, `Grade avg ${g.avg.toFixed(2)} (${g.n} subjects)`) : '';
   const c = cumulativeGpa();
   const totEl = document.getElementById('acad-total-gpa');
   const detEl = document.getElementById('acad-total-detail');
   if (totEl) totEl.textContent = c.avg !== null ? `${c.avg.toFixed(2)} / 4.0` : '–';
-  if (detEl) detEl.textContent = c.avg !== null ? `총 ${c.n}개 과목 평균` : '과목 점수를 입력하면 자동 계산돼요';
+  if (detEl) detEl.textContent = c.avg !== null ? t(`총 ${c.n}개 과목 평균`, `Average of ${c.n} subjects`) : t('과목 점수를 입력하면 자동 계산돼요','Enter subject scores to auto-calculate');
 }
 
 function setAcademicGrade(i, val) {
@@ -4918,9 +4918,9 @@ async function saveAcademicSection() {
     updated_by: ME.id,
   }, { onConflict: 'student_id,section' });
 
-  if (error) { showUploadToast('저장 실패 😥 ' + error.message); return; }
+  if (error) { showUploadToast(t('저장 실패 😥 ','Save failed 😥 ') + error.message); return; }
   tcsRecords.academic = data;
-  showUploadToast('✅ 성적이 저장됐어요!');
+  showUploadToast(t('✅ 성적이 저장됐어요!','✅ Grades saved!'));
   renderTcsSectionList();
 }
 
@@ -4989,32 +4989,32 @@ function renderAttendanceEditor() {
         style="width:120px;height:38px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--s2);font:14px var(--font);color:var(--ink);outline:none;text-align:right"
         onfocus="this.style.borderColor='#1d3a5f';this.style.background='white'"
         onblur="this.style.borderColor='var(--border)';this.style.background='var(--s2)'"/>
-      <div style="font-size:13px;color:var(--ink3)">일${f==='수업일수'?'':' '}</div>
+      <div style="font-size:13px;color:var(--ink3)">${t('일','days')}${f==='수업일수'?'':' '}</div>
     </div>`;
 
   main.innerHTML = `
     <div style="max-width:680px">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
-        <button onclick="renderTcsSectionList()" style="height:32px;padding:0 12px;border-radius:8px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:500 12px var(--font);cursor:pointer">← 목록</button>
+        <button onclick="renderTcsSectionList()" style="height:32px;padding:0 12px;border-radius:8px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:500 12px var(--font);cursor:pointer">${t('← 목록','← List')}</button>
         <div style="font-size:22px">📅</div>
-        <div style="font-size:16px;font-weight:700;color:var(--ink)">출결사항</div>
+        <div style="font-size:16px;font-weight:700;color:var(--ink)">${t('출결사항','Attendance')}</div>
       </div>
 
-      <div style="font-size:11px;font-weight:600;color:var(--ink3);margin-bottom:8px;text-transform:uppercase;letter-spacing:.04em">학년 선택</div>
+      <div style="font-size:11px;font-weight:600;color:var(--ink3);margin-bottom:8px;text-transform:uppercase;letter-spacing:.04em">${t('학년 선택','Select Grade')}</div>
       <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:18px">${pills}</div>
 
       <div class="adm-card">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-          <div style="font-size:14px;font-weight:700;color:var(--adeep)">${activeLabel} 출결</div>
+          <div style="font-size:14px;font-weight:700;color:var(--adeep)">${activeLabel} ${t('출결','Attendance')}</div>
           <div id="att-rate" style="font-size:12px;font-weight:700;color:#1d4ed8"></div>
         </div>
         ${TCS_ATT_FIELDS.map(fieldRow).join('')}
-        <div style="font-size:11px;color:var(--ink3);margin-top:6px">숫자만 입력하세요. 출석률은 (수업일수 − 결석) ÷ 수업일수 로 자동 계산됩니다.</div>
+        <div style="font-size:11px;color:var(--ink3);margin-top:6px">${t('숫자만 입력하세요. 출석률은 (수업일수 − 결석) ÷ 수업일수 로 자동 계산됩니다.','Enter numbers only. Attendance rate is auto-calculated as (school days − absences) ÷ school days.')}</div>
       </div>
 
       <button onclick="saveAttendanceSection()"
         style="width:100%;height:44px;border-radius:11px;border:none;background:#1d3a5f;color:white;font:700 14px var(--font);cursor:pointer;margin-top:16px">
-        💾 저장하기
+        ${t('💾 저장하기','💾 Save')}
       </button>
     </div>`;
   refreshAttendanceRate();
@@ -5027,7 +5027,7 @@ function refreshAttendanceRate() {
   const total = parseInt(g['수업일수']); const absent = parseInt(g['결석']) || 0;
   if (!isNaN(total) && total > 0) {
     const rate = Math.max(0, Math.min(100, ((total - absent) / total) * 100));
-    el.textContent = `출석률 ${rate.toFixed(1)}%`;
+    el.textContent = t(`출석률 ${rate.toFixed(1)}%`, `Attendance ${rate.toFixed(1)}%`);
   } else el.textContent = '';
 }
 function setAttendance(f, val) {
@@ -5050,9 +5050,9 @@ async function saveAttendanceSection() {
     section: 'attendance', data,
     updated_at: new Date().toISOString(), updated_by: ME.id,
   }, { onConflict: 'student_id,section' });
-  if (error) { showUploadToast('저장 실패 😥 ' + error.message); return; }
+  if (error) { showUploadToast(t('저장 실패 😥 ','Save failed 😥 ') + error.message); return; }
   tcsRecords.attendance = data;
-  showUploadToast('✅ 출결이 저장됐어요!');
+  showUploadToast(t('✅ 출결이 저장됐어요!','✅ Attendance saved!'));
   renderTcsSectionList();
 }
 
@@ -5099,7 +5099,7 @@ function renderListEditor() {
     <div style="border:1.5px solid var(--border);border-radius:12px;padding:12px;margin-bottom:10px;background:white">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
         <div style="font-size:12px;font-weight:700;color:var(--adeep)">${ei+1}</div>
-        <button onclick="removeListEntry(${ei})" title="삭제"
+        <button onclick="removeListEntry(${ei})" title="${t('삭제','Delete')}"
           style="width:28px;height:28px;border-radius:7px;border:1.5px solid var(--border);background:white;color:#ef4444;font-size:15px;cursor:pointer">×</button>
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:8px">
@@ -5112,25 +5112,25 @@ function renderListEditor() {
   main.innerHTML = `
     <div style="max-width:680px">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
-        <button onclick="renderTcsSectionList()" style="height:32px;padding:0 12px;border-radius:8px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:500 12px var(--font);cursor:pointer">← 목록</button>
+        <button onclick="renderTcsSectionList()" style="height:32px;padding:0 12px;border-radius:8px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:500 12px var(--font);cursor:pointer">${t('← 목록','← List')}</button>
         <div style="font-size:22px">${sec.icon}</div>
-        <div style="font-size:16px;font-weight:700;color:var(--ink)">${sec.label}</div>
+        <div style="font-size:16px;font-weight:700;color:var(--ink)">${APP_LANG==='en' ? sec.labelEn : sec.label}</div>
       </div>
       <div style="background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:10px;padding:9px 13px;margin-bottom:16px;font-size:12px;color:#1d4ed8">
-        📋 입력 항목: <b>${guideline}</b>
+        ${t('📋 입력 항목:','📋 Fields:')} <b>${guideline}</b>
       </div>
 
       <div class="adm-card">
-        <div id="list-entries">${entryCards || '<div style="text-align:center;color:var(--ink3);font-size:13px;padding:16px 0">아직 항목이 없어요. 아래 버튼으로 추가하세요.</div>'}</div>
+        <div id="list-entries">${entryCards || `<div style="text-align:center;color:var(--ink3);font-size:13px;padding:16px 0">${t('아직 항목이 없어요. 아래 버튼으로 추가하세요.','No entries yet. Add one with the button below.')}</div>`}</div>
         <button onclick="addListEntry()"
           style="width:100%;height:38px;border-radius:10px;border:1.5px dashed var(--border);background:var(--s2);color:var(--ink2);font:600 13px var(--font);cursor:pointer;margin-top:4px">
-          ＋ 항목 추가
+          ${t('＋ 항목 추가','＋ Add Entry')}
         </button>
       </div>
 
       <button onclick="saveListSection()"
         style="width:100%;height:44px;border-radius:11px;border:none;background:#1d3a5f;color:white;font:700 14px var(--font);cursor:pointer;margin-top:16px">
-        💾 저장하기
+        ${t('💾 저장하기','💾 Save')}
       </button>
     </div>`;
 }
@@ -5138,7 +5138,7 @@ function renderListEditor() {
 function setListField(ei, key, val) { tcsListDraft.entries[ei][key] = val; }
 function addListEntry() {
   const spec = TCS_LIST_SPECS[tcsListDraft.section];
-  if (tcsListDraft.entries.length >= spec.max) { showUploadToast(`최대 ${spec.max}개까지 추가할 수 있어요`); return; }
+  if (tcsListDraft.entries.length >= spec.max) { showUploadToast(t(`최대 ${spec.max}개까지 추가할 수 있어요`, `You can add up to ${spec.max} entries`)); return; }
   const e = {}; spec.columns.forEach(c => e[c.key] = '');
   tcsListDraft.entries.push(e);
   renderListEditor();
@@ -5160,9 +5160,9 @@ async function saveListSection() {
     section: tcsListDraft.section, data,
     updated_at: new Date().toISOString(), updated_by: ME.id,
   }, { onConflict: 'student_id,section' });
-  if (error) { showUploadToast('저장 실패 😥 ' + error.message); return; }
+  if (error) { showUploadToast(t('저장 실패 😥 ','Save failed 😥 ') + error.message); return; }
   tcsRecords[tcsListDraft.section] = data;
-  showUploadToast('✅ 저장됐어요!');
+  showUploadToast(t('✅ 저장됐어요!','✅ Saved!'));
   renderTcsSectionList();
 }
 
@@ -5204,7 +5204,7 @@ function tcsImageToB64Resized(file, maxDim = 2200, quality = 0.9) {
         resolve({ mime: 'image/jpeg', data: dataUrl.split(',')[1] });
       } catch (e) { reject(e); }
     };
-    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('이미지를 읽지 못했어요')); };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error(t('이미지를 읽지 못했어요','Could not read image'))); };
     img.src = url;
   });
 }
