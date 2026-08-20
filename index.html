@@ -8108,18 +8108,24 @@ let editingEventId = null;
 let selectedEventColor = '#2a5298';
 
 // 학사력 분류 (색상 자동 지정 + 달력 필터)
+// label 은 DB(events.category)에 저장되는 값이므로 변경 금지, en 은 화면 표시용
 const EVENT_CATS = [
-  { label:'예배/집회', emoji:'🙏', color:'#7B6BA0' },
-  { label:'시험',      emoji:'📝', color:'#B05865' },
-  { label:'행사',      emoji:'🎉', color:'#2a7ab8' },
-  { label:'방학/휴일', emoji:'🌴', color:'#6F8A5C' },
-  { label:'현장학습',  emoji:'🚌', color:'#5A7C8B' },
-  { label:'회의',      emoji:'👥', color:'#2a5298' },
-  { label:'기타',      emoji:'📌', color:'#8a94a6' },
+  { label:'예배/집회', en:'Worship/Meeting', emoji:'🙏', color:'#7B6BA0' },
+  { label:'시험',      en:'Exam',            emoji:'📝', color:'#B05865' },
+  { label:'행사',      en:'Event',           emoji:'🎉', color:'#2a7ab8' },
+  { label:'방학/휴일', en:'Break/Holiday',   emoji:'🌴', color:'#6F8A5C' },
+  { label:'현장학습',  en:'Field trip',      emoji:'🚌', color:'#5A7C8B' },
+  { label:'회의',      en:'Meeting',         emoji:'👥', color:'#2a5298' },
+  { label:'기타',      en:'Other',           emoji:'📌', color:'#8a94a6' },
 ];
 let calCatFilter = null;   // null = 전체
 
 function eventCat(label) { return EVENT_CATS.find(c => c.label === label) || null; }
+// 저장된 한글 카테고리 → 현재 언어 표시 텍스트
+function eventCatLabel(label) {
+  const c = EVENT_CATS.find(x => x.label === label);
+  return (APP_LANG === 'en' && c) ? c.en : (label || '');
+}
 function setCalCatFilter(v) { calCatFilter = v; renderCalendar(); }
 function selectEventCat(v) {
   const c = eventCat(v); if (!c) return;
