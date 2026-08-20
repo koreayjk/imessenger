@@ -5234,7 +5234,7 @@ async function initMockPage() {
   const sn = document.getElementById('subnav-mock'); if (sn) sn.innerHTML = tcsSubnavHtml('mock');
   tcsMockTarget = 'mock-page';
   const page = document.getElementById('mock-page');
-  page.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink3)">불러오는 중...</div>';
+  page.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink3)">' + t('불러오는 중...','Loading...') + '</div>';
 
   const { data: students } = await sb.from('members')
     .select('id,name,color,initials,grade,status')
@@ -5246,8 +5246,8 @@ async function initMockPage() {
   if (!tcsMockStudents.length) {
     page.innerHTML = `<div style="text-align:center;padding:60px 20px">
       <div style="font-size:48px;margin-bottom:12px">👨‍🎓</div>
-      <div style="font-size:15px;font-weight:600;color:var(--ink2);margin-bottom:6px">등록된 학생이 없어요</div>
-      <div style="font-size:13px;color:var(--ink3)">관리자 페이지에서 학생을 먼저 승인해주세요</div>
+      <div style="font-size:15px;font-weight:600;color:var(--ink2);margin-bottom:6px">${t('등록된 학생이 없어요','No students registered yet')}</div>
+      <div style="font-size:13px;color:var(--ink3)">${t('관리자 페이지에서 학생을 먼저 승인해주세요','Please approve students first on the admin page')}</div>
     </div>`;
     return;
   }
@@ -5266,7 +5266,7 @@ async function loadMockStudent(id) {
   const page = document.getElementById('mock-page');
   const selector = `
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px;flex-wrap:wrap">
-      <label style="font-size:12px;font-weight:700;color:var(--ink3)">학생</label>
+      <label style="font-size:12px;font-weight:700;color:var(--ink3)">${t('학생','Student')}</label>
       <select onchange="loadMockStudent(this.value)"
         style="height:38px;padding:0 14px;border-radius:10px;border:1.5px solid var(--border);background:white;font:600 14px var(--font);color:var(--ink);cursor:pointer;outline:none;min-width:200px">
         ${tcsMockStudents.map(st => `<option value="${st.id}" ${st.id===s.id?'selected':''}>${st.name}${st.grade?` (${st.grade})`:''}</option>`).join('')}
@@ -5287,66 +5287,66 @@ function renderMockExamEditor() {
   const savedList = saved.length ? saved.map((it, i) => `
     <div style="border:1.5px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:10px;background:white">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-        <div style="font-size:14px;font-weight:700;color:var(--ink)">${it.subject||'과목 미상'} <span style="font-size:12px;font-weight:400;color:var(--ink3)">${it.exam||''} · ${it.date||''}</span></div>
+        <div style="font-size:14px;font-weight:700;color:var(--ink)">${it.subject||t('과목 미상','Unknown subject')} <span style="font-size:12px;font-weight:400;color:var(--ink3)">${it.exam||''} · ${it.date||''}</span></div>
         <button onclick="deleteMockItem(${i})" style="width:26px;height:26px;border-radius:7px;border:1.5px solid var(--border);background:white;color:#ef4444;font-size:14px;cursor:pointer">×</button>
       </div>
       ${it.score?`<div style="font-size:12px;color:#1d4ed8;font-weight:600;margin-top:4px">${it.score}</div>`:''}
       ${(it.correct_count!=null||it.wrong_count!=null)?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
-        <span style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:7px;background:#dcfce7;color:#166534">맞음 ${it.correct_count??'–'}</span>
-        <span style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:7px;background:#fee2e2;color:#b91c1c">틀림 ${it.wrong_count??'–'}</span>
-        ${it.uncertain_count?`<span style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:7px;background:#f3f4f6;color:#6b7280">불확실 ${it.uncertain_count}</span>`:''}
-        ${it.total_questions!=null?`<span style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:7px;background:var(--s2);color:var(--ink2)">총 ${it.total_questions}</span>`:''}
+        <span style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:7px;background:#dcfce7;color:#166534">${t('맞음','Correct')} ${it.correct_count??'–'}</span>
+        <span style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:7px;background:#fee2e2;color:#b91c1c">${t('틀림','Wrong')} ${it.wrong_count??'–'}</span>
+        ${it.uncertain_count?`<span style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:7px;background:#f3f4f6;color:#6b7280">${t('불확실','Uncertain')} ${it.uncertain_count}</span>`:''}
+        ${it.total_questions!=null?`<span style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:7px;background:var(--s2);color:var(--ink2)">${t('총','Total')} ${it.total_questions}</span>`:''}
       </div>`:''}
-      ${(it.items&&it.items.length)?`<details style="margin-top:6px"><summary style="font-size:12px;color:var(--accent);cursor:pointer">문항별 채점 보기</summary>${mockItemsGrid(it.items)}</details>`:''}
+      ${(it.items&&it.items.length)?`<details style="margin-top:6px"><summary style="font-size:12px;color:var(--accent);cursor:pointer">${t('문항별 채점 보기','View per-question grading')}</summary>${mockItemsGrid(it.items)}</details>`:''}
       ${it.mode?`<div style="font-size:11px;color:var(--ink3);margin-top:2px">${it.mode}</div>`:''}
-      ${(it.weak&&it.weak.length)?`<div style="margin-top:8px"><b style="font-size:12px;color:var(--adeep)">약점</b><ul style="margin:4px 0 0;padding-left:18px;font-size:13px;color:var(--ink2)">${it.weak.map(w=>`<li>${w}</li>`).join('')}</ul></div>`:''}
-      ${(it.focus&&it.focus.length)?`<div style="margin-top:6px"><b style="font-size:12px;color:var(--adeep)">집중 학습</b><ul style="margin:4px 0 0;padding-left:18px;font-size:13px;color:var(--ink2)">${it.focus.map(w=>`<li>${w}</li>`).join('')}</ul></div>`:''}
+      ${(it.weak&&it.weak.length)?`<div style="margin-top:8px"><b style="font-size:12px;color:var(--adeep)">${t('약점','Weaknesses')}</b><ul style="margin:4px 0 0;padding-left:18px;font-size:13px;color:var(--ink2)">${it.weak.map(w=>`<li>${w}</li>`).join('')}</ul></div>`:''}
+      ${(it.focus&&it.focus.length)?`<div style="margin-top:6px"><b style="font-size:12px;color:var(--adeep)">${t('집중 학습','Focus study')}</b><ul style="margin:4px 0 0;padding-left:18px;font-size:13px;color:var(--ink2)">${it.focus.map(w=>`<li>${w}</li>`).join('')}</ul></div>`:''}
       ${it.comment?`<div style="margin-top:8px;background:var(--s2);border-radius:8px;padding:8px 10px;font-size:12px;color:var(--ink2);line-height:1.6">${it.comment}</div>`:''}
-    </div>`).join('') : '<div style="text-align:center;color:var(--ink3);font-size:13px;padding:14px 0">저장된 분석이 없어요.</div>';
+    </div>`).join('') : `<div style="text-align:center;color:var(--ink3);font-size:13px;padding:14px 0">${t('저장된 분석이 없어요.','No saved analyses.')}</div>`;
 
   main.innerHTML = `
     <div style="max-width:680px">
       ${(standalone || tcsMockUnified) ? (tcsMockUnified ? `<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
         <div style="font-size:22px">🧠</div>
-        <div style="font-size:16px;font-weight:700;color:var(--ink)">${tcsCurrentStudent?.name || ''} · 모의고사 분석 (AI)</div>
+        <div style="font-size:16px;font-weight:700;color:var(--ink)">${tcsCurrentStudent?.name || ''} · ${t('모의고사 분석 (AI)','Mock Exam Analysis (AI)')}</div>
       </div>` : '') : `<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
-        <button onclick="renderTcsSectionList()" style="height:32px;padding:0 12px;border-radius:8px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:500 12px var(--font);cursor:pointer">← 목록</button>
+        <button onclick="renderTcsSectionList()" style="height:32px;padding:0 12px;border-radius:8px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:500 12px var(--font);cursor:pointer">${t('← 목록','← List')}</button>
         <div style="font-size:22px">🧠</div>
-        <div style="font-size:16px;font-weight:700;color:var(--ink)">모의고사 분석 (AI)</div>
+        <div style="font-size:16px;font-weight:700;color:var(--ink)">${t('모의고사 분석 (AI)','Mock Exam Analysis (AI)')}</div>
       </div>`}
       <div style="background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:10px;padding:9px 13px;margin-bottom:16px;font-size:12px;color:#1d4ed8;line-height:1.6">
-        📷 시험지 스캔을 올리면 AI가 과목·약점·학습 방향을 분석합니다. <b>정답지나 점수표를 같이 올리면</b> 정확도가 올라가요. (정답이 없으면 AI 추정 채점 — 참고용)
+        ${t('📷 시험지 스캔을 올리면 AI가 과목·약점·학습 방향을 분석합니다. <b>정답지나 점수표를 같이 올리면</b> 정확도가 올라가요. (정답이 없으면 AI 추정 채점 — 참고용)','📷 Upload a scan of the test and AI will analyze the subject, weaknesses, and study direction. <b>Uploading the answer key or score sheet too</b> improves accuracy. (Without answers, AI does estimated grading — for reference only)')}
       </div>
 
       <div class="adm-card" style="margin-bottom:16px">
-        <label style="font-size:12px;font-weight:700;color:var(--adeep);display:block;margin-bottom:6px">① 학생이 푼 시험지 (필수, 여러 장 가능)</label>
+        <label style="font-size:12px;font-weight:700;color:var(--adeep);display:block;margin-bottom:6px">${t('① 학생이 푼 시험지 (필수, 여러 장 가능)','① Student\'s completed test (required, multiple pages OK)')}</label>
         <input id="mock-files" type="file" accept="image/*,application/pdf" multiple onchange="onMockFiles(this.files)"
           style="width:100%;font:13px var(--font);margin-bottom:6px"/>
         <div id="mock-filelist" style="font-size:12px;color:var(--ink2);margin-bottom:14px"></div>
 
-        <label style="font-size:12px;font-weight:700;color:var(--adeep);display:block;margin-bottom:6px">② 정답지 파일 (선택, 여러 장 가능) — 올리면 정밀 채점</label>
+        <label style="font-size:12px;font-weight:700;color:var(--adeep);display:block;margin-bottom:6px">${t('② 정답지 파일 (선택, 여러 장 가능) — 올리면 정밀 채점','② Answer key file (optional, multiple pages OK) — upload for precise grading')}</label>
         <input id="mock-answer-files" type="file" accept="image/*,application/pdf" multiple onchange="onMockAnswerFiles(this.files)"
           style="width:100%;font:13px var(--font);margin-bottom:6px"/>
         <div id="mock-answer-filelist" style="font-size:12px;color:var(--ink2);margin-bottom:14px"></div>
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
-          <input id="mock-exam" type="text" placeholder="시험명 (예: 3월 모의고사)"
+          <input id="mock-exam" type="text" placeholder="${t('시험명 (예: 3월 모의고사)','Exam name (e.g., March mock exam)')}"
             style="height:38px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--s2);font:13px var(--font);outline:none"/>
-          <input id="mock-subject" type="text" placeholder="과목 힌트 (선택, 비우면 자동 판별)"
+          <input id="mock-subject" type="text" placeholder="${t('과목 힌트 (선택, 비우면 자동 판별)','Subject hint (optional, auto-detected if blank)')}"
             style="height:38px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--s2);font:13px var(--font);outline:none"/>
         </div>
-        <textarea id="mock-answerkey" rows="2" placeholder="정답 직접 입력 (선택) — 예: 1.③ 2.① 3.⑤ … 정답지 파일 대신 텍스트로 넣어도 됨"
+        <textarea id="mock-answerkey" rows="2" placeholder="${t('정답 직접 입력 (선택) — 예: 1.③ 2.① 3.⑤ … 정답지 파일 대신 텍스트로 넣어도 됨','Enter answers directly (optional) — e.g., 1.③ 2.① 3.⑤ … can use text instead of an answer key file')}"
           style="width:100%;padding:10px 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--s2);font:13px var(--font);outline:none;resize:vertical;line-height:1.6;margin-bottom:12px"></textarea>
 
         <button id="mock-analyze-btn" onclick="runMockAnalysis()"
           style="width:100%;height:42px;border-radius:11px;border:none;background:linear-gradient(135deg,#1d3a5f,#2a5298);color:white;font:700 14px var(--font);cursor:pointer">
-          🔍 AI 분석하기
+          ${t('🔍 AI 분석하기','🔍 Analyze with AI')}
         </button>
       </div>
 
       <div id="mock-result"></div>
 
-      <div style="font-size:13px;font-weight:700;color:var(--adeep);margin:20px 0 10px">📋 저장된 분석 (${saved.length})</div>
+      <div style="font-size:13px;font-weight:700;color:var(--adeep);margin:20px 0 10px">${t('📋 저장된 분석','📋 Saved analyses')} (${saved.length})</div>
       <div id="mock-saved">${savedList}</div>
     </div>`;
 }
@@ -5354,20 +5354,20 @@ function renderMockExamEditor() {
 function onMockFiles(files) {
   tcsMockState.files = Array.from(files || []);
   const el = document.getElementById('mock-filelist');
-  if (el) el.textContent = tcsMockState.files.length ? '선택됨: ' + tcsMockState.files.map(f => f.name).join(', ') : '';
+  if (el) el.textContent = tcsMockState.files.length ? t('선택됨: ','Selected: ') + tcsMockState.files.map(f => f.name).join(', ') : '';
 }
 function onMockAnswerFiles(files) {
   tcsMockState.answerFiles = Array.from(files || []);
   const el = document.getElementById('mock-answer-filelist');
-  if (el) el.textContent = tcsMockState.answerFiles.length ? '정답지: ' + tcsMockState.answerFiles.map(f => f.name).join(', ') : '';
+  if (el) el.textContent = tcsMockState.answerFiles.length ? t('정답지: ','Answer key: ') + tcsMockState.answerFiles.map(f => f.name).join(', ') : '';
 }
 
 async function runMockAnalysis() {
-  if (!tcsMockState.files.length) { showUploadToast('먼저 학생 시험지를 올려주세요'); return; }
+  if (!tcsMockState.files.length) { showUploadToast(t('먼저 학생 시험지를 올려주세요','Please upload the student\'s test first')); return; }
   const btn = document.getElementById('mock-analyze-btn');
   const resBox = document.getElementById('mock-result');
-  btn.disabled = true; btn.textContent = '⏳ 분석 중… (최대 1~2분)';
-  resBox.innerHTML = '<div style="text-align:center;color:var(--ink3);padding:20px;font-size:13px">이미지 준비 중…</div>';
+  btn.disabled = true; btn.textContent = t('⏳ 분석 중… (최대 1~2분)','⏳ Analyzing… (up to 1-2 min)');
+  resBox.innerHTML = `<div style="text-align:center;color:var(--ink3);padding:20px;font-size:13px">${t('이미지 준비 중…','Preparing images…')}</div>`;
 
   try {
     const examImages = [];
@@ -5378,7 +5378,7 @@ async function runMockAnalysis() {
     for (const f of (tcsMockState.answerFiles || [])) {
       answerImages.push(await tcsImageToB64Resized(f));
     }
-    resBox.innerHTML = '<div style="text-align:center;color:var(--ink3);padding:20px;font-size:13px">AI가 시험지를 읽고 있어요… (최대 1~2분 걸릴 수 있어요)</div>';
+    resBox.innerHTML = `<div style="text-align:center;color:var(--ink3);padding:20px;font-size:13px">${t('AI가 시험지를 읽고 있어요… (최대 1~2분 걸릴 수 있어요)','AI is reading the test… (may take up to 1-2 min)')}</div>`;
     const body = {
       examImages,
       answerImages,
@@ -5391,18 +5391,18 @@ async function runMockAnalysis() {
     const invokeP = sb.functions.invoke(TCS_MOCK_FN, { body });
     const timeoutP = new Promise((_, rej) => setTimeout(() => rej(new Error('TIMEOUT')), 150000));
     const { data, error } = await Promise.race([invokeP, timeoutP]);
-    if (error) throw new Error(error.message || '함수 호출 실패');
+    if (error) throw new Error(error.message || t('함수 호출 실패','Function call failed'));
     const r = (data && data.result) ? data.result : data;
-    if (!r || (!r.subject && !r.weak_areas)) throw new Error('분석 결과를 해석하지 못했어요. 스캔 화질을 확인해주세요.');
+    if (!r || (!r.subject && !r.weak_areas)) throw new Error(t('분석 결과를 해석하지 못했어요. 스캔 화질을 확인해주세요.','Could not interpret the analysis result. Please check the scan quality.'));
     tcsMockState.result = r;
     renderMockResult(r);
   } catch (e) {
     const msg = e.message === 'TIMEOUT'
-      ? '응답이 너무 오래 걸려요(2분 초과). 이미지 장수를 줄이거나 화질을 낮춰 다시 시도해주세요. 계속 안 되면 Edge Function 로그를 확인해주세요.'
-      : '분석 실패: ' + e.message;
-    resBox.innerHTML = `<div style="background:#fef2f2;border:1.5px solid #fecaca;border-radius:10px;padding:14px;font-size:13px;color:#b91c1c">${msg}<br><span style="font-size:11px;color:#9ca3af">Edge Function(${TCS_MOCK_FN}) 배포·Gemini 키 등록 여부도 확인해주세요.</span></div>`;
+      ? t('응답이 너무 오래 걸려요(2분 초과). 이미지 장수를 줄이거나 화질을 낮춰 다시 시도해주세요. 계속 안 되면 Edge Function 로그를 확인해주세요.','The response is taking too long (over 2 min). Please reduce the number of images or lower the quality and try again. If it keeps failing, check the Edge Function logs.')
+      : t('분석 실패: ','Analysis failed: ') + e.message;
+    resBox.innerHTML = `<div style="background:#fef2f2;border:1.5px solid #fecaca;border-radius:10px;padding:14px;font-size:13px;color:#b91c1c">${msg}<br><span style="font-size:11px;color:#9ca3af">${t(`Edge Function(${TCS_MOCK_FN}) 배포·Gemini 키 등록 여부도 확인해주세요.`,`Also check whether the Edge Function (${TCS_MOCK_FN}) is deployed and the Gemini key is registered.`)}</span></div>`;
   } finally {
-    btn.disabled = false; btn.textContent = '🔍 AI 분석하기';
+    btn.disabled = false; btn.textContent = t('🔍 AI 분석하기','🔍 Analyze with AI');
   }
 }
 
@@ -5414,7 +5414,7 @@ function mockItemsGrid(items) {
     const bg = it.uncertain ? '#f3f4f6' : it.ok ? '#dcfce7' : '#fee2e2';
     const mark = it.uncertain ? '?' : it.ok ? '○' : '✕';
     const detail = (wrong || it.uncertain) ? ` <span style="font-weight:500">${it.student || '?'}→${it.correct || '?'}</span>` : '';
-    return `<div title="문항 ${it.q}: 학생 ${it.student || '?'} / 정답 ${it.correct || '?'}" style="background:${bg};color:${c};border-radius:7px;padding:4px 7px;font-size:11px;font-weight:700;white-space:nowrap">${it.q} ${mark}${detail}</div>`;
+    return `<div title="${t('문항','Q')} ${it.q}: ${t('학생','student')} ${it.student || '?'} / ${t('정답','correct')} ${it.correct || '?'}" style="background:${bg};color:${c};border-radius:7px;padding:4px 7px;font-size:11px;font-weight:700;white-space:nowrap">${it.q} ${mark}${detail}</div>`;
   }).join('');
   return `<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px">${cells}</div>`;
 }
@@ -5424,10 +5424,10 @@ function mockCountBar(r) {
   if (tot == null && r.correct_count == null) return '';
   const co = r.correct_count ?? '–', wr = r.wrong_count ?? '–', un = r.uncertain_count || 0;
   return `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
-    <span style="font-size:12px;font-weight:700;padding:4px 10px;border-radius:8px;background:#dcfce7;color:#166534">맞음 ${co}</span>
-    <span style="font-size:12px;font-weight:700;padding:4px 10px;border-radius:8px;background:#fee2e2;color:#b91c1c">틀림 ${wr}</span>
-    ${un ? `<span style="font-size:12px;font-weight:700;padding:4px 10px;border-radius:8px;background:#f3f4f6;color:#6b7280">불확실 ${un}</span>` : ''}
-    ${tot != null ? `<span style="font-size:12px;font-weight:700;padding:4px 10px;border-radius:8px;background:var(--s2);color:var(--ink2)">총 ${tot}문항</span>` : ''}
+    <span style="font-size:12px;font-weight:700;padding:4px 10px;border-radius:8px;background:#dcfce7;color:#166534">${t('맞음','Correct')} ${co}</span>
+    <span style="font-size:12px;font-weight:700;padding:4px 10px;border-radius:8px;background:#fee2e2;color:#b91c1c">${t('틀림','Wrong')} ${wr}</span>
+    ${un ? `<span style="font-size:12px;font-weight:700;padding:4px 10px;border-radius:8px;background:#f3f4f6;color:#6b7280">${t('불확실','Uncertain')} ${un}</span>` : ''}
+    ${tot != null ? `<span style="font-size:12px;font-weight:700;padding:4px 10px;border-radius:8px;background:var(--s2);color:var(--ink2)">${t('총','Total')} ${tot}${t('문항',' Qs')}</span>` : ''}
   </div>`;
 }
 
@@ -5436,31 +5436,31 @@ function renderMockResult(r) {
   const resBox = document.getElementById('mock-result');
   const itemsHtml = (r.items && r.items.length) ? `
     <div style="margin-bottom:12px">
-      <b style="font-size:13px;color:var(--adeep)">📝 문항별 채점 (선생님이 직접 확인하세요)</b>
+      <b style="font-size:13px;color:var(--adeep)">${t('📝 문항별 채점 (선생님이 직접 확인하세요)','📝 Per-question grading (please verify it yourself, teacher)')}</b>
       ${mockItemsGrid(r.items)}
-      <div style="font-size:11px;color:var(--ink3);margin-top:6px">○ 정답 · ✕ 오답(학생답→정답) · ? 불확실. AI 채점이므로 틀린 표시가 있으면 실제 시험지와 대조해 주세요.</div>
-    </div>` : `<div style="background:#fef9c3;border:1px solid #fde047;border-radius:9px;padding:9px 12px;font-size:12px;color:#854d0e;margin-bottom:12px">⚠️ 문항별 채점표가 생성되지 않았어요. 정답지·시험지 화질이 낮거나 인식이 안 된 경우입니다. 더 선명한 사진으로 다시 시도해 주세요.</div>`;
+      <div style="font-size:11px;color:var(--ink3);margin-top:6px">${t('○ 정답 · ✕ 오답(학생답→정답) · ? 불확실. AI 채점이므로 틀린 표시가 있으면 실제 시험지와 대조해 주세요.','○ Correct · ✕ Wrong (student answer→correct answer) · ? Uncertain. This is AI grading, so if there are wrong marks please compare with the actual test.')}</div>
+    </div>` : `<div style="background:#fef9c3;border:1px solid #fde047;border-radius:9px;padding:9px 12px;font-size:12px;color:#854d0e;margin-bottom:12px">${t('⚠️ 문항별 채점표가 생성되지 않았어요. 정답지·시험지 화질이 낮거나 인식이 안 된 경우입니다. 더 선명한 사진으로 다시 시도해 주세요.','⚠️ A per-question grading table could not be generated. This happens when the answer key or test image quality is low or not recognized. Please try again with a clearer photo.')}</div>`;
   resBox.innerHTML = `
     <div class="adm-card" style="border:2px solid #2a5298">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-        <div style="font-size:16px;font-weight:800;color:var(--adeep)">${r.subject||'과목 미상'}</div>
-        <span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:99px;background:${/추정/.test(r.grading_mode||'')?'#fef9c3':'#dcfce7'};color:${/추정/.test(r.grading_mode||'')?'#854d0e':'#166534'}">${r.grading_mode||'분석 완료'}</span>
+        <div style="font-size:16px;font-weight:800;color:var(--adeep)">${r.subject||t('과목 미상','Unknown subject')}</div>
+        <span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:99px;background:${/추정/.test(r.grading_mode||'')?'#fef9c3':'#dcfce7'};color:${/추정/.test(r.grading_mode||'')?'#854d0e':'#166534'}">${r.grading_mode||t('분석 완료','Analysis complete')}</span>
       </div>
       ${r.score_summary?`<div style="font-size:15px;font-weight:800;color:#1d4ed8;margin-bottom:8px">${r.score_summary}</div>`:''}
       ${mockCountBar(r)}
       ${itemsHtml}
-      <div style="margin-bottom:12px"><b style="font-size:13px;color:var(--adeep)">📉 약점 단원</b>${list(r.weak_areas)}</div>
-      <div style="margin-bottom:12px"><b style="font-size:13px;color:var(--adeep)">🎯 집중 학습 포인트</b>${list(r.focus)}</div>
-      <div style="margin-bottom:12px"><b style="font-size:13px;color:var(--adeep)">📚 추천 학습법</b>${list(r.study_plan)}</div>
+      <div style="margin-bottom:12px"><b style="font-size:13px;color:var(--adeep)">${t('📉 약점 단원','📉 Weak units')}</b>${list(r.weak_areas)}</div>
+      <div style="margin-bottom:12px"><b style="font-size:13px;color:var(--adeep)">${t('🎯 집중 학습 포인트','🎯 Focus study points')}</b>${list(r.focus)}</div>
+      <div style="margin-bottom:12px"><b style="font-size:13px;color:var(--adeep)">${t('📚 추천 학습법','📚 Recommended study methods')}</b>${list(r.study_plan)}</div>
       ${r.comment?`<div style="background:var(--s2);border-radius:9px;padding:11px 13px;font-size:13px;color:var(--ink2);line-height:1.7;margin-bottom:12px">${r.comment}</div>`:''}
-      <button onclick="saveMockItem()" style="width:100%;height:42px;border-radius:11px;border:none;background:#1d3a5f;color:white;font:700 14px var(--font);cursor:pointer">💾 이 분석을 기록부에 저장</button>
+      <button onclick="saveMockItem()" style="width:100%;height:42px;border-radius:11px;border:none;background:#1d3a5f;color:white;font:700 14px var(--font);cursor:pointer">${t('💾 이 분석을 기록부에 저장','💾 Save this analysis to the record')}</button>
     </div>`;
 }
 
 async function saveMockItem() {
   const r = tcsMockState.result;
   if (!r) return;
-  showUploadToast('저장 중…');
+  showUploadToast(t('저장 중…','Saving…'));
   // 스캔 파일 업로드 (선택적, 실패해도 분석은 저장)
   const filePaths = [];
   const answerPaths = [];
@@ -5512,10 +5512,10 @@ async function saveMockItem() {
     section: 'mockexam', data,
     updated_at: new Date().toISOString(), updated_by: ME.id,
   }, { onConflict: 'student_id,section' });
-  if (error) { showUploadToast('저장 실패 😥 ' + error.message); return; }
+  if (error) { showUploadToast(t('저장 실패 😥 ','Save failed 😥 ') + error.message); return; }
   tcsRecords.mockexam = data;
   tcsMockState.result = null; tcsMockState.files = []; tcsMockState.answerFiles = [];
-  showUploadToast('✅ 기록부에 저장됐어요!');
+  showUploadToast(t('✅ 기록부에 저장됐어요!','✅ Saved to the record!'));
   renderMockExamEditor();
 }
 
@@ -5529,9 +5529,9 @@ async function deleteMockItem(i) {
     section: 'mockexam', data,
     updated_at: new Date().toISOString(), updated_by: ME.id,
   }, { onConflict: 'student_id,section' });
-  if (error) { showUploadToast('삭제 실패 😥'); return; }
+  if (error) { showUploadToast(t('삭제 실패 😥','Delete failed 😥')); return; }
   tcsRecords.mockexam = data;
-  showUploadToast('삭제됐어요');
+  showUploadToast(t('삭제됐어요','Deleted'));
   renderMockExamEditor();
 }
 
