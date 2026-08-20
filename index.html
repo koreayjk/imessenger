@@ -1242,43 +1242,43 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
   <div id="event-modal" style="display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.45);align-items:center;justify-content:center">
     <div style="background:var(--surface);border-radius:20px;padding:28px;width:440px;box-shadow:0 20px 60px rgba(0,0,0,.2)">
       <div style="font-size:17px;font-weight:700;margin-bottom:20px" id="event-modal-title">📅 일정 추가</div>
-      <input id="ev-title" placeholder="일정 제목 (예: 주일예배)" style="width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none;margin-bottom:10px"/>
-      <textarea id="ev-desc" placeholder="설명 (선택사항)" rows="2" style="width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none;resize:none;margin-bottom:10px"></textarea>
+      <input id="ev-title" placeholder="일정 제목 (예: 주일예배)" data-ko-ph="일정 제목 (예: 주일예배)" data-en-ph="Event title (e.g. Sunday service)" style="width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none;margin-bottom:10px"/>
+      <textarea id="ev-desc" placeholder="설명 (선택사항)" data-ko-ph="설명 (선택사항)" data-en-ph="Description (optional)" rows="2" style="width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none;resize:none;margin-bottom:10px"></textarea>
       <div style="display:flex;gap:10px;margin-bottom:10px">
         <div style="flex:1">
-          <div style="font-size:11.5px;color:var(--ink3);margin-bottom:5px">날짜</div>
+          <div style="font-size:11.5px;color:var(--ink3);margin-bottom:5px" data-ko="날짜" data-en="Date">날짜</div>
           <input id="ev-date" type="date" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none"/>
         </div>
         <div style="flex:1">
-          <div style="font-size:11.5px;color:var(--ink3);margin-bottom:5px">종료일 (선택)</div>
+          <div style="font-size:11.5px;color:var(--ink3);margin-bottom:5px" data-ko="종료일 (선택)" data-en="End date (optional)">종료일 (선택)</div>
           <input id="ev-end-date" type="date" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none"/>
         </div>
       </div>
       <div style="display:flex;gap:10px;margin-bottom:14px">
         <div style="flex:1">
-          <div style="font-size:11.5px;color:var(--ink3);margin-bottom:5px">시작 시간</div>
+          <div style="font-size:11.5px;color:var(--ink3);margin-bottom:5px" data-ko="시작 시간" data-en="Start time">시작 시간</div>
           <input id="ev-time" type="time" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none"/>
         </div>
         <div style="flex:1">
-          <div style="font-size:11.5px;color:var(--ink3);margin-bottom:5px">종료 시간</div>
+          <div style="font-size:11.5px;color:var(--ink3);margin-bottom:5px" data-ko="종료 시간" data-en="End time">종료 시간</div>
           <input id="ev-end-time" type="time" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none"/>
         </div>
       </div>
       <div style="margin-bottom:12px">
-        <div style="font-size:11.5px;color:var(--ink3);margin-bottom:5px">분류 (학사력)</div>
+        <div style="font-size:11.5px;color:var(--ink3);margin-bottom:5px" data-ko="분류 (학사력)" data-en="Category (academic calendar)">분류 (학사력)</div>
         <select id="ev-cat" onchange="selectEventCat(this.value)" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none;background:var(--surface);color:var(--ink)">
-          <option value="">분류 없음</option>
-          <option value="예배/집회">🙏 예배/집회</option>
-          <option value="시험">📝 시험</option>
-          <option value="행사">🎉 행사</option>
-          <option value="방학/휴일">🌴 방학/휴일</option>
-          <option value="현장학습">🚌 현장학습</option>
-          <option value="회의">👥 회의</option>
-          <option value="기타">📌 기타</option>
+          <option value="" data-ko="분류 없음" data-en="No category">분류 없음</option>
+          <option value="예배/집회" data-ko="🙏 예배/집회" data-en="🙏 Worship/Meeting">🙏 예배/집회</option>
+          <option value="시험" data-ko="📝 시험" data-en="📝 Exam">📝 시험</option>
+          <option value="행사" data-ko="🎉 행사" data-en="🎉 Event">🎉 행사</option>
+          <option value="방학/휴일" data-ko="🌴 방학/휴일" data-en="🌴 Break/Holiday">🌴 방학/휴일</option>
+          <option value="현장학습" data-ko="🚌 현장학습" data-en="🚌 Field trip">🚌 현장학습</option>
+          <option value="회의" data-ko="👥 회의" data-en="👥 Meeting">👥 회의</option>
+          <option value="기타" data-ko="📌 기타" data-en="📌 Other">📌 기타</option>
         </select>
       </div>
       <div style="margin-bottom:16px">
-        <div style="font-size:11.5px;color:var(--ink3);margin-bottom:8px">색상</div>
+        <div style="font-size:11.5px;color:var(--ink3);margin-bottom:8px" data-ko="색상" data-en="Color">색상</div>
         <div style="display:flex;gap:8px">
           <div onclick="selectEventColor(this,'#2a5298')" data-color="#2a5298" style="width:28px;height:28px;border-radius:8px;background:#2a5298;cursor:pointer;outline:3px solid #2a5298;outline-offset:2px"></div>
           <div onclick="selectEventColor(this,'#6F8A5C')" data-color="#6F8A5C" style="width:28px;height:28px;border-radius:8px;background:#6F8A5C;cursor:pointer"></div>
@@ -1289,9 +1289,9 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
         </div>
       </div>
       <div style="display:flex;gap:8px">
-        <div onclick="closeEventModal()" style="flex:1;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:var(--s3);color:var(--ink2);cursor:pointer;font-size:14px">취소</div>
-        <div id="ev-delete-btn" onclick="deleteEvent()" style="display:none;flex:1;height:42px;border-radius:12px;align-items:center;justify-content:center;background:#FEE2E2;color:var(--rose);cursor:pointer;font-size:14px;font-weight:600">삭제</div>
-        <div onclick="submitEvent()" style="flex:2;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:var(--accent);color:white;cursor:pointer;font-size:14px;font-weight:600" id="ev-submit-btn">저장하기</div>
+        <div onclick="closeEventModal()" style="flex:1;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:var(--s3);color:var(--ink2);cursor:pointer;font-size:14px" data-ko="취소" data-en="Cancel">취소</div>
+        <div id="ev-delete-btn" onclick="deleteEvent()" style="display:none;flex:1;height:42px;border-radius:12px;align-items:center;justify-content:center;background:#FEE2E2;color:var(--rose);cursor:pointer;font-size:14px;font-weight:600" data-ko="삭제" data-en="Delete">삭제</div>
+        <div onclick="submitEvent()" style="flex:2;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:var(--accent);color:white;cursor:pointer;font-size:14px;font-weight:600" id="ev-submit-btn" data-ko="저장하기" data-en="Save">저장하기</div>
       </div>
     </div>
   </div>
@@ -8155,23 +8155,26 @@ function birthdaysForDate(dateStr) {
   return calBirthdays.filter(b => {
     const [bm,bd] = b.md.split('-').map(Number);
     return bm === m && Math.min(bd, dim) === d;
-  }).map(b => ({ id:'bday-'+b.member_id, title:'🎂 '+b.name+' 생일', start_date:dateStr, isBirthday:true, color:'#E86AA6' }));
+  }).map(b => ({ id:'bday-'+b.member_id, title:'🎂 '+b.name+t(' 생일',' Birthday'), start_date:dateStr, isBirthday:true, color:'#E86AA6' }));
 }
 
 function renderCalendar() {
   const today = new Date();
   const firstDay = new Date(calYear, calMonth, 1).getDay();
   const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
-  const monthNames = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'];
+  const monthNames = APP_LANG === 'en'
+    ? ['January','February','March','April','May','June','July','August','September','October','November','December']
+    : ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'];
+  const calTitle = APP_LANG === 'en' ? `${monthNames[calMonth]} ${calYear}` : `${calYear}년 ${monthNames[calMonth]}`;
 
-  document.getElementById('cal-nav-title').textContent = `${calYear}년 ${monthNames[calMonth]}`;
-  document.getElementById('cal-month-title').textContent = `${calYear}년 ${monthNames[calMonth]}`;
+  document.getElementById('cal-nav-title').textContent = calTitle;
+  document.getElementById('cal-month-title').textContent = calTitle;
 
   // 학사력 분류 필터 범례
   const legend = document.getElementById('cal-legend');
   if (legend) {
     const chip = (label, color, active) =>
-      `<button onclick="setCalCatFilter(${label===null?'null':`'${label}'`})" style="display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 11px;border:1px solid ${active?(color||'#1d3a5f'):'var(--border)'};border-radius:99px;cursor:pointer;font:600 11px var(--font);white-space:nowrap;background:${active?(color||'#1d3a5f'):'var(--surface)'};color:${active?'#fff':'var(--ink2)'}">${color?`<span style="width:8px;height:8px;border-radius:50%;background:${active?'#fff':color}"></span>`:''}${label===null?'전체':label}</button>`;
+      `<button onclick="setCalCatFilter(${label===null?'null':`'${label}'`})" style="display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 11px;border:1px solid ${active?(color||'#1d3a5f'):'var(--border)'};border-radius:99px;cursor:pointer;font:600 11px var(--font);white-space:nowrap;background:${active?(color||'#1d3a5f'):'var(--surface)'};color:${active?'#fff':'var(--ink2)'}">${color?`<span style="width:8px;height:8px;border-radius:50%;background:${active?'#fff':color}"></span>`:''}${label===null?t('전체','All'):eventCatLabel(label)}</button>`;
     legend.innerHTML = chip(null, null, !calCatFilter) + EVENT_CATS.map(c => chip(c.label, c.color, calCatFilter===c.label)).join('');
   }
   const evs = calCatFilter ? calEvents.filter(e => (e.category||'') === calCatFilter) : calEvents;
@@ -8254,7 +8257,7 @@ function renderCalendar() {
 
   // 요일 헤더 행
   html += `<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:var(--border)">`;
-  ['일','월','화','수','목','금','토'].forEach((d,i) => {
+  (APP_LANG === 'en' ? ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'] : ['일','월','화','수','목','금','토']).forEach((d,i) => {
     html += `<div style="background:var(--s2);text-align:center;font-size:11.5px;font-weight:600;color:${i===0?'var(--rose)':i===6?'#5A7C8B':'var(--ink3)'};padding:6px 0">${d}</div>`;
   });
   html += '</div>';
@@ -8298,7 +8301,7 @@ function renderCalendar() {
           title="${e.title}">
           ${e.start_time?`<b style="color:${e.color||'var(--accent)'}">${e.start_time.slice(0,5)}</b> `:''}${e.title}
         </div>`).join('');
-      const moreEvt = dayEvts.length > 2 ? `<div style="font-size:10px;color:var(--ink3)">+${dayEvts.length-2}개</div>` : '';
+      const moreEvt = dayEvts.length > 2 ? `<div style="font-size:10px;color:var(--ink3)">+${dayEvts.length-2}${t('개',' more')}</div>` : '';
 
       html += `<div onclick="selectCalDate('${dateStr}')"
         style="background:${isSelected?'rgba(42,82,152,.07)':'var(--surface)'};height:100%;padding:5px 6px;cursor:pointer;transition:background .1s;overflow:hidden"
@@ -8355,36 +8358,39 @@ function showDayEvents(dateStr) {
     return e.start_date <= dateStr && e.end_date >= dateStr;
   }).concat(birthdaysForDate(dateStr));
   const d = new Date(dateStr);
-  const wk = ['일','월','화','수','목','금','토'];
-  const label = `${d.getMonth()+1}월 ${d.getDate()}일 ${wk[d.getDay()]}요일`;
+  const wk = APP_LANG === 'en' ? ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'] : ['일','월','화','수','목','금','토'];
+  const monthsEn = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const label = APP_LANG === 'en'
+    ? `${wk[d.getDay()]}, ${monthsEn[d.getMonth()]} ${d.getDate()}`
+    : `${d.getMonth()+1}월 ${d.getDate()}일 ${wk[d.getDay()]}요일`;
 
   if (!dayEvents.length) {
     area.innerHTML = `<div style="font-size:13px;font-weight:600;color:var(--ink3);margin-bottom:8px">${label}</div>
-      <div style="padding:16px;border-radius:12px;background:var(--bg);text-align:center;color:var(--ink3);font-size:13px">일정이 없어요. + 일정 추가로 만들어보세요!</div>`;
+      <div style="padding:16px;border-radius:12px;background:var(--bg);text-align:center;color:var(--ink3);font-size:13px">${t('일정이 없어요. + 일정 추가로 만들어보세요!','No events yet. Tap + Add event to create one!')}</div>`;
     return;
   }
-  area.innerHTML = `<div style="font-size:13px;font-weight:600;color:var(--ink3);margin-bottom:10px">${label} · ${dayEvents.length}개</div>` +
+  area.innerHTML = `<div style="font-size:13px;font-weight:600;color:var(--ink3);margin-bottom:10px">${label} · ${dayEvents.length}${t('개',' events')}</div>` +
     dayEvents.map(e => e.isBirthday ? `
     <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:14px;background:${e.color}12;margin-bottom:8px">
       <div style="width:4px;height:40px;border-radius:2px;background:${e.color};flex-shrink:0"></div>
       <div style="flex:1;min-width:0">
         <div style="font-size:14px;font-weight:700;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${e.title}</div>
-        <div style="font-size:12px;color:${e.color};font-weight:600;margin-top:2px">생일 🎉</div>
+        <div style="font-size:12px;color:${e.color};font-weight:600;margin-top:2px">${t('생일','Birthday')} 🎉</div>
       </div>
     </div>` : `
     <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:14px;background:var(--bg);margin-bottom:8px;cursor:pointer" onclick="editEvent('${e.id}')">
       <div style="width:4px;height:40px;border-radius:2px;background:${e.color||'var(--accent)'};flex-shrink:0"></div>
       <div style="flex:1;min-width:0">
         <div style="display:flex;align-items:center;gap:6px">
-          ${e.category?`<span style="font-size:10px;font-weight:700;color:#fff;background:${(eventCat(e.category)||{}).color||e.color||'#8a94a6'};padding:1px 7px;border-radius:6px;white-space:nowrap">${(eventCat(e.category)||{}).emoji||''}${escHtml(e.category)}</span>`:''}
+          ${e.category?`<span style="font-size:10px;font-weight:700;color:#fff;background:${(eventCat(e.category)||{}).color||e.color||'#8a94a6'};padding:1px 7px;border-radius:6px;white-space:nowrap">${(eventCat(e.category)||{}).emoji||''}${eventCatLabel(e.category)}</span>`:''}
           <div style="font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${e.title}</div>
         </div>
         <div style="font-size:12px;color:var(--ink3);margin-top:2px">
-          ${e.end_date && e.end_date !== e.start_date ? `${e.start_date} ~ ${e.end_date}` : (e.start_time ? e.start_time.slice(0,5) : '종일') + (e.end_time?' ~ '+e.end_time.slice(0,5):'')}
+          ${e.end_date && e.end_date !== e.start_date ? `${e.start_date} ~ ${e.end_date}` : (e.start_time ? e.start_time.slice(0,5) : t('종일','All day')) + (e.end_time?' ~ '+e.end_time.slice(0,5):'')}
         </div>
         ${e.description ? `<div style="font-size:12px;color:var(--ink2);margin-top:2px">${e.description}</div>` : ''}
       </div>
-      ${e.created_by === ME.id ? `<div style="font-size:11px;color:var(--ink3)">수정 ›</div>` : ''}
+      ${e.created_by === ME.id ? `<div style="font-size:11px;color:var(--ink3)">${t('수정','Edit')} ›</div>` : ''}
     </div>`).join('');
 }
 
@@ -8405,7 +8411,7 @@ function selectEventColor(el, color) {
 function showEventForm(dateStr) {
   editingEventId = null;
   selectedEventColor = '#2a5298';
-  document.getElementById('event-modal-title').textContent = '📅 일정 추가';
+  document.getElementById('event-modal-title').textContent = t('📅 일정 추가','📅 Add Event');
   document.getElementById('ev-title').value = '';
   document.getElementById('ev-desc').value = '';
   document.getElementById('ev-date').value = dateStr || calSelectedDate || new Date().toISOString().slice(0,10);
@@ -8426,7 +8432,7 @@ function editEvent(id) {
   if (ev.created_by !== ME.id) { return; }
   editingEventId = id;
   selectedEventColor = ev.color || '#2a5298';
-  document.getElementById('event-modal-title').textContent = '✏️ 일정 수정';
+  document.getElementById('event-modal-title').textContent = t('✏️ 일정 수정','✏️ Edit Event');
   document.getElementById('ev-title').value = ev.title;
   document.getElementById('ev-desc').value = ev.description || '';
   document.getElementById('ev-date').value = ev.start_date;
