@@ -4229,34 +4229,46 @@ const TCS_ATTENDANCE_GRADES = [
   ['g4','G4','G4 (4학년)'],['g5','G5','G5 (5학년)'],['g6','G6','G6 (6학년)'],['g7','G7','G7 (중1)'],
   ['g8','G8','G8 (중2)'],['g9','G9','G9 (중3)'],['g10','G10','G10 (고1)'],['g11','G11','G11 (고2)'],['g12','G12','G12 (고3)'],
 ];
-const TCS_ATT_FIELDS = ['수업일수','결석','지각','조퇴'];
+const TCS_ATT_FIELDS = ['수업일수','결석','지각','조퇴'];   // DB 키 — 변경 금지
+// 출결 필드 화면 표시 라벨 (키는 그대로, 표시만 현지화)
+function tcsAttFieldLabel(f) {
+  return t(f, { '수업일수':'School days', '결석':'Absent', '지각':'Late', '조퇴':'Early leave' }[f] || f);
+}
+// 학년 라벨의 한글 괄호부분 현지화 (예: 'G9 (중3)' → 'G9 (M3)')
+function localizeGradeLabel(s) {
+  if (APP_LANG !== 'en' || !s) return s;
+  return s
+    .replace('유치원','Kindergarten')
+    .replace(/(\d+)학년/, 'Grade $1')
+    .replace(/중(\d+)/, 'M$1').replace(/고(\d+)/, 'H$1');
+}
 let tcsAttendanceDraft = null; // { active:'g9', grades:{ key:{수업일수,결석,지각,조퇴} } }
 
-// ── 목록형 섹션 설정 (칸 고정) ──
+// ── 목록형 섹션 설정 (칸 고정) — label 은 표시용(현지화), options/key 는 저장값 ──
 const TCS_LIST_SPECS = {
   activities: { prefix:'act', max:12, columns:[
-    {key:'grade', label:'학년', type:'select', options:['K','G1','G2','G3','G4','G5','G6','G7','G8','G9','G10','G11','G12'], w:'90px'},
-    {key:'area',  label:'영역', type:'select', options:['자율활동','동아리활동','진로활동','봉사활동','기타'], w:'130px'},
-    {key:'content', label:'내용', type:'text', flex:true},
-    {key:'hours', label:'시간', type:'text', w:'80px', suffix:'h'},
+    {key:'grade', label:t('학년','Grade'), type:'select', options:['K','G1','G2','G3','G4','G5','G6','G7','G8','G9','G10','G11','G12'], w:'90px'},
+    {key:'area',  label:t('영역','Area'), type:'select', options:['자율활동','동아리활동','진로활동','봉사활동','기타'], w:'130px'},
+    {key:'content', label:t('내용','Content'), type:'text', flex:true},
+    {key:'hours', label:t('시간','Hours'), type:'text', w:'80px', suffix:'h'},
   ]},
   service: { prefix:'svc', max:12, columns:[
-    {key:'date', label:'날짜', type:'month', w:'150px'},
-    {key:'content', label:'내용', type:'text', flex:true},
-    {key:'org', label:'기관', type:'text', w:'150px'},
-    {key:'hours', label:'시간', type:'text', w:'80px', suffix:'h'},
+    {key:'date', label:t('날짜','Date'), type:'month', w:'150px'},
+    {key:'content', label:t('내용','Content'), type:'text', flex:true},
+    {key:'org', label:t('기관','Organization'), type:'text', w:'150px'},
+    {key:'hours', label:t('시간','Hours'), type:'text', w:'80px', suffix:'h'},
   ]},
   awards: { prefix:'awd', max:12, columns:[
-    {key:'date', label:'날짜', type:'month', w:'150px'},
-    {key:'title', label:'명칭', type:'text', flex:true},
-    {key:'org', label:'수여기관', type:'text', w:'150px'},
-    {key:'level', label:'급수/등급', type:'text', w:'110px'},
+    {key:'date', label:t('날짜','Date'), type:'month', w:'150px'},
+    {key:'title', label:t('명칭','Title'), type:'text', flex:true},
+    {key:'org', label:t('수여기관','Awarding Body'), type:'text', w:'150px'},
+    {key:'level', label:t('급수/등급','Level/Grade'), type:'text', w:'110px'},
   ]},
   reading: { prefix:'book', max:20, columns:[
-    {key:'title', label:'제목', type:'text', flex:true},
-    {key:'author', label:'저자', type:'text', w:'130px'},
-    {key:'pub', label:'출판사', type:'text', w:'130px'},
-    {key:'term', label:'학년학기', type:'text', w:'120px'},
+    {key:'title', label:t('제목','Title'), type:'text', flex:true},
+    {key:'author', label:t('저자','Author'), type:'text', w:'130px'},
+    {key:'pub', label:t('출판사','Publisher'), type:'text', w:'130px'},
+    {key:'term', label:t('학년학기','Grade/Term'), type:'text', w:'120px'},
   ]},
 };
 let tcsListDraft = null; // { section, entries:[{col:val}] }
@@ -4786,7 +4798,7 @@ function openAcademicEditor() {
 function renderAcademicEditor() {
   const main = document.getElementById(tcsMainId);
   const active = tcsAcademicDraft.active;
-  const activeLabel = (TCS_ACADEMIC_GRADES.find(([k]) => k === active) || [,,active])[2];
+  const activeLabel = localizeGradeLabel((TCS_ACADEMIC_GRADES.find(([k]) => k === active) || [,,active])[2]);
 
   // 학년 선택 pill (데이터 있으면 점 표시)
   const pills = TCS_ACADEMIC_GRADES.map(([key, short]) => {
@@ -4966,7 +4978,7 @@ function openAttendanceEditor() {
 function renderAttendanceEditor() {
   const main = document.getElementById(tcsMainId);
   const active = tcsAttendanceDraft.active;
-  const activeLabel = (TCS_ATTENDANCE_GRADES.find(([k]) => k === active) || [,,active])[2];
+  const activeLabel = localizeGradeLabel((TCS_ATTENDANCE_GRADES.find(([k]) => k === active) || [,,active])[2]);
 
   const pills = TCS_ATTENDANCE_GRADES.map(([key, short]) => {
     const g = tcsAttendanceDraft.grades[key] || {};
@@ -4983,7 +4995,7 @@ function renderAttendanceEditor() {
   const g = tcsAttendanceDraft.grades[active];
   const fieldRow = (f) => `
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
-      <div style="width:90px;font-size:14px;font-weight:600;color:var(--ink)">${f}</div>
+      <div style="width:90px;font-size:14px;font-weight:600;color:var(--ink)">${tcsAttFieldLabel(f)}</div>
       <input type="number" min="0" inputmode="numeric" value="${g[f] || ''}" placeholder="0"
         oninput="setAttendance('${f}', this.value)"
         style="width:120px;height:38px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--s2);font:14px var(--font);color:var(--ink);outline:none;text-align:right"
