@@ -1463,21 +1463,26 @@ function CID() { return ME?.community_id || DEFAULT_CID; }
 let APP_LANG = localStorage.getItem('app_lang') || 'ko';
 function t(ko, en) { return APP_LANG === 'en' ? (en != null ? en : ko) : ko; }
 async function loadCommunityLang() {
+  const prev = APP_LANG;   // 상수들이 평가된 시점의 언어
   try {
     const { data } = await sb.from('communities').select('language').eq('id', CID()).single();
     if (data && data.language) APP_LANG = data.language;
     localStorage.setItem('app_lang', APP_LANG);
   } catch(_) {}
   applyI18n();
+  // 첫 로드 때 DB 언어가 상수 평가 언어와 다르면(예: 새 기기) 1회만 새로고침해 전체 반영
+  if (APP_LANG !== prev && !sessionStorage.getItem('lang_synced')) {
+    sessionStorage.setItem('lang_synced', '1');
+    setTimeout(() => { try { location.reload(); } catch(_) {} }, 50);
+  }
 }
 async function setAppLanguage(lang) {
   APP_LANG = (lang === 'en') ? 'en' : 'ko';
   localStorage.setItem('app_lang', APP_LANG);
   try { await sb.from('communities').update({ language: APP_LANG }).eq('id', CID()); } catch(_) {}
-  applyI18n();
-  try { if (typeof mode !== 'undefined' && mode) setMode(mode); } catch(_) {}
-  try { renderCommunitySettings(); } catch(_) {}
   showUploadToast(APP_LANG === 'en' ? 'Language: English' : '언어: 한국어');
+  // 상수(메뉴/상태 라벨 등)는 로드 시 1회 평가되므로, 전체 반영을 위해 새로고침
+  setTimeout(() => { try { location.reload(); } catch(_) {} }, 350);
 }
 // 정적 네비게이션 라벨 갱신 (사이드바 + 모바일 하단탭)
 function applyI18n() {
@@ -8460,16 +8465,16 @@ async function deleteEvent() {
 //  학사관리 (학교 행정 허브) — 출석부 / 시간표 / 학비 / 가정통신문
 // ════════════════════════════════════════════════════════════════════
 const SCHOOL_TABS = [
-  { id:'student',    icon:'👤', label:'학생',     ready:true  },
-  { id:'attendance', icon:'📋', label:'출석부',   ready:true  },
-  { id:'approval',   icon:'🖊', label:'결재',     ready:true  },
-  { id:'timetable',  icon:'🗓', label:'시간표',   ready:true  },
-  { id:'record',     icon:'🗂', label:'생활기록부', ready:true  },
-  { id:'reading',    icon:'📖', label:'트리플스쿨', ready:true  },
-  { id:'mock',       icon:'🧠', label:'모의고사',   ready:true  },
-  { id:'newsletter', icon:'✉️', label:'가정통신문', ready:true, admin:true },
-  { id:'cert',       icon:'📄', label:'증명서',    ready:true, admin:true },
-  { id:'tuition',    icon:'💰', label:'재정',     ready:true, admin:true },
+  { id:'student',    icon:'👤', label:t('학생','Students'),      ready:true  },
+  { id:'attendance', icon:'📋', label:t('출석부','Attendance'),   ready:true  },
+  { id:'approval',   icon:'🖊', label:t('결재','Approval'),       ready:true  },
+  { id:'timetable',  icon:'🗓', label:t('시간표','Timetable'),    ready:true  },
+  { id:'record',     icon:'🗂', label:t('생활기록부','Records'),   ready:true  },
+  { id:'reading',    icon:'📖', label:t('트리플스쿨','Triple School'), ready:true  },
+  { id:'mock',       icon:'🧠', label:t('모의고사','Mock Exam'),    ready:true  },
+  { id:'newsletter', icon:'✉️', label:t('가정통신문','Newsletter'), ready:true, admin:true },
+  { id:'cert',       icon:'📄', label:t('증명서','Certificates'),  ready:true, admin:true },
+  { id:'tuition',    icon:'💰', label:t('재정','Finance'),        ready:true, admin:true },
 ];
 let schoolSubMode = 'student';
 let schoolStudents = [];
@@ -8477,12 +8482,12 @@ let schoolTeachers = [];
 
 // ── 출결 상태 정의 ──
 const ATT_STATUSES = [
-  { key:'present', label:'출석', color:'#2a7a5a', bg:'#e8f5ee' },
-  { key:'late',    label:'지각', color:'#b8860b', bg:'#fdf6e3' },
-  { key:'early',   label:'조퇴', color:'#2a5298', bg:'#eaf1fb' },
-  { key:'absent',  label:'결석', color:'#c0392b', bg:'#fdecea' },
-  { key:'sick',    label:'병결', color:'#8e44ad', bg:'#f5eefa' },
-  { key:'excused', label:'공결', color:'#7f8c8d', bg:'#eef1f2' },
+  { key:'present', label:t('출석','Present'),     color:'#2a7a5a', bg:'#e8f5ee' },
+  { key:'late',    label:t('지각','Late'),        color:'#b8860b', bg:'#fdf6e3' },
+  { key:'early',   label:t('조퇴','Early leave'), color:'#2a5298', bg:'#eaf1fb' },
+  { key:'absent',  label:t('결석','Absent'),      color:'#c0392b', bg:'#fdecea' },
+  { key:'sick',    label:t('병결','Sick'),        color:'#8e44ad', bg:'#f5eefa' },
+  { key:'excused', label:t('공결','Excused'),     color:'#7f8c8d', bg:'#eef1f2' },
 ];
 let attDate = null;          // 'YYYY-MM-DD'
 let attMonth = null;         // 'YYYY-MM'
