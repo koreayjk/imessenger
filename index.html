@@ -12767,11 +12767,11 @@ async function rejectAllowDelete(id) {
 // 독후감 안내 질문 — 답변만 이어 붙이면 '처음–가운데–끝' 짜임의 독후감이 됨
 //  처음(도입) → 가운데(줄거리·인상·생각) → 끝(마무리)
 const BOOK_QS = [
-  { key:'q1', q:'① 어떤 책인가요?',                    hint:'책 제목·지은이와 이 책을 읽게 된 계기를 적어보세요. (처음·도입)' },
-  { key:'q2', q:'② 어떤 내용의 책이었나요?',            hint:'책의 줄거리나 중심 내용을 간단히 정리해보세요. (가운데·줄거리)' },
-  { key:'q3', q:'③ 가장 기억에 남는 장면·문장과 그 이유는?', hint:'인상 깊었던 부분과 왜 그랬는지 함께 적어보세요. (가운데·인상)' },
-  { key:'q4', q:'④ 새롭게 알게 되거나 느낀 점은?',      hint:'책을 읽고 생각이 바뀌거나 배운 점을 적어보세요. (가운데·나의 생각)' },
-  { key:'q5', q:'⑤ 앞으로 어떻게 적용하고 싶나요?',      hint:'내 삶에 적용하고 싶은 점이나 다짐을 적어보세요. (끝·마무리)' },
+  { key:'q1', q:t('① 어떤 책인가요?','① What book is it?'),                    hint:t('책 제목·지은이와 이 책을 읽게 된 계기를 적어보세요. (처음·도입)','Write the title, author, and what led you to read it. (Beginning · Intro)') },
+  { key:'q2', q:t('② 어떤 내용의 책이었나요?','② What was the book about?'),            hint:t('책의 줄거리나 중심 내용을 간단히 정리해보세요. (가운데·줄거리)','Briefly summarize the plot or main content. (Middle · Plot)') },
+  { key:'q3', q:t('③ 가장 기억에 남는 장면·문장과 그 이유는?','③ The most memorable scene/sentence and why?'), hint:t('인상 깊었던 부분과 왜 그랬는지 함께 적어보세요. (가운데·인상)','Write the part that impressed you and why. (Middle · Impression)') },
+  { key:'q4', q:t('④ 새롭게 알게 되거나 느낀 점은?','④ What did you newly learn or feel?'),      hint:t('책을 읽고 생각이 바뀌거나 배운 점을 적어보세요. (가운데·나의 생각)','Write how your thinking changed or what you learned. (Middle · My thoughts)') },
+  { key:'q5', q:t('⑤ 앞으로 어떻게 적용하고 싶나요?','⑤ How do you want to apply it going forward?'),      hint:t('내 삶에 적용하고 싶은 점이나 다짐을 적어보세요. (끝·마무리)','Write what you want to apply to your life or a resolution. (End · Conclusion)') },
 ];
 
 let writingKind = 'book';        // 'book'(독후감) | 'activity'(활동후기)
@@ -12794,15 +12794,15 @@ function bookPickCardHtml() {
       ${bookPick.author?`<div style="font-size:11.5px;color:var(--ink3);margin-top:1px">${escHtml(bookPick.author)}</div>`:''}
       ${bookPick.desc?`<div style="font-size:11px;color:var(--ink3);margin-top:5px;line-height:1.5;max-height:48px;overflow:hidden">${escHtml(bookPick.desc)}</div>`:''}
     </div>
-    <button onclick="clearBookPick()" title="선택 해제" style="border:none;background:transparent;cursor:pointer;color:var(--ink3);font-size:14px;flex-shrink:0">✕</button>
+    <button onclick="clearBookPick()" title="${t('선택 해제','Clear selection')}" style="border:none;background:transparent;cursor:pointer;color:var(--ink3);font-size:14px;flex-shrink:0">✕</button>
   </div>`;
 }
 
 async function searchGoogleBooks() {
   const q = (document.getElementById('wr-title')?.value || '').trim();
   const box = document.getElementById('wr-book-results');
-  if (!q) { showUploadToast('먼저 책 제목을 입력하세요'); return; }
-  if (box) box.innerHTML = '<div style="font-size:12px;color:var(--ink3);padding:8px 4px">📚 책을 찾는 중...</div>';
+  if (!q) { showUploadToast(t('먼저 책 제목을 입력하세요','Enter a book title first')); return; }
+  if (box) box.innerHTML = '<div style="font-size:12px;color:var(--ink3);padding:8px 4px">📚 '+t('책을 찾는 중...','Searching for books...')+'</div>';
   try {
     const url = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=8&printType=books`;
     const res = await fetch(url);
@@ -12819,22 +12819,22 @@ async function searchGoogleBooks() {
       };
     }).filter(b => b.title);
   } catch(e) {
-    if (box) box.innerHTML = `<div style="font-size:12px;color:#b91c1c;padding:8px 4px">검색 실패: ${e.message||e}. 인터넷 연결을 확인하거나, 제목을 직접 입력해도 돼요.</div>`;
+    if (box) box.innerHTML = `<div style="font-size:12px;color:#b91c1c;padding:8px 4px">${t('검색 실패: ','Search failed: ')}${e.message||e}. ${t('인터넷 연결을 확인하거나, 제목을 직접 입력해도 돼요.','Check your internet connection, or just type the title directly.')}</div>`;
     return;
   }
   if (!box) return;
-  if (!bookResults.length) { box.innerHTML = '<div style="font-size:12px;color:var(--ink3);padding:8px 4px">검색 결과가 없어요. 제목을 바꿔보거나 그대로 직접 입력해도 됩니다.</div>'; return; }
+  if (!bookResults.length) { box.innerHTML = '<div style="font-size:12px;color:var(--ink3);padding:8px 4px">'+t('검색 결과가 없어요. 제목을 바꿔보거나 그대로 직접 입력해도 됩니다.','No results found. Try a different title, or just type it in directly.')+'</div>'; return; }
   box.innerHTML = `<div style="border:1px solid var(--border);border-radius:11px;overflow:hidden;max-height:300px;overflow-y:auto">
     ${bookResults.map((b,i)=>`
       <div onclick="pickBook(${i})" style="display:flex;gap:11px;align-items:center;padding:9px 11px;cursor:pointer;border-bottom:1px solid var(--border);background:var(--surface)" onmouseover="this.style.background='var(--s2)'" onmouseout="this.style.background='var(--surface)'">
         ${b.cover?`<img src="${escAttr(b.cover)}" style="width:36px;height:52px;object-fit:cover;border-radius:4px;flex-shrink:0"/>`:'<div style="width:36px;height:52px;border-radius:4px;background:var(--s2);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">📘</div>'}
         <div style="flex:1;min-width:0">
           <div style="font-size:13px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(b.title)}</div>
-          <div style="font-size:11px;color:var(--ink3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(b.author||'저자 미상')}${b.year?` · ${b.year}`:''}</div>
+          <div style="font-size:11px;color:var(--ink3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(b.author||t('저자 미상','Unknown author'))}${b.year?` · ${b.year}`:''}</div>
         </div>
       </div>`).join('')}
   </div>
-  <div style="font-size:10.5px;color:var(--ink3);padding:6px 2px">원하는 책을 눌러 선택하세요. 없으면 제목만 그대로 써도 됩니다.</div>`;
+  <div style="font-size:10.5px;color:var(--ink3);padding:6px 2px">${t('원하는 책을 눌러 선택하세요. 없으면 제목만 그대로 써도 됩니다.','Tap the book you want to select it. If it is not listed, just keep the title as typed.')}</div>`;
 }
 
 function pickBook(i) {
@@ -12855,10 +12855,10 @@ async function initWritingPage() {
   if (sn) sn.innerHTML = isTeacher() ? '' : tcsSubnavHtml(writingKind==='book'?'bookreport':'review');
   const isBook = writingKind === 'book';
   document.getElementById('writing-icon').textContent = isBook ? '📖' : '✍️';
-  document.getElementById('writing-title').textContent = isBook ? '독후감' : '활동 후기';
+  document.getElementById('writing-title').textContent = isBook ? t('독후감','Book Report') : t('활동 후기','Activity Review');
   document.getElementById('writing-sub').textContent = isBook
-    ? '책을 등록하고 읽은 만큼 메모를 이어가면 한 편의 독후감이 완성돼요.'
-    : '선교·봉사·체험 등을 다녀온 뒤 후기를 남겨요.';
+    ? t('책을 등록하고 읽은 만큼 메모를 이어가면 한 편의 독후감이 완성돼요.','Register a book and keep adding notes as you read to complete a full book report.')
+    : t('선교·봉사·체험 등을 다녀온 뒤 후기를 남겨요.','Leave a review after a mission trip, volunteering, or an experience.');
   reviewCatCustom = false;
   bookPick = null; bookResults = [];
   const main = document.getElementById('writing-main');
@@ -12898,7 +12898,7 @@ function writingSetupHtml() {
   return `<div style="max-width:560px;margin:40px auto;text-align:center">
     <div style="font-size:40px;margin-bottom:12px">🗄️</div>
     <div style="font-size:16px;font-weight:700;margin-bottom:8px">${t('데이터베이스 설정이 필요해요','Database setup required')}</div>
-    <div style="font-size:13px;color:var(--ink3);line-height:1.8">제공해드린 <b>db/학생기록_독후감_활동후기_DB설치.sql</b> 을 Supabase → SQL Editor에 붙여넣고 실행해주세요.</div>
+    <div style="font-size:13px;color:var(--ink3);line-height:1.8">${t('제공해드린 <b>db/학생기록_독후감_활동후기_DB설치.sql</b> 을 Supabase → SQL Editor에 붙여넣고 실행해주세요.','Paste the provided <b>db/학생기록_독후감_활동후기_DB설치.sql</b> into Supabase → SQL Editor and run it.')}</div>
   </div>`;
 }
 
@@ -12920,7 +12920,7 @@ function renderWriting() {
         ${writingKind==='book'?readPeriod(e):''}
         <span style="font-size:11px;color:var(--ink3)">${writingKind==='book'?'✍️ ':''}${e.date||''}</span>
         <div style="flex:1"></div>
-        <button onclick="deleteWriting('${e.id}')" title="삭제" style="border:none;background:transparent;cursor:pointer;color:var(--ink3);font-size:14px">✕</button>
+        <button onclick="deleteWriting('${e.id}')" title="${t('삭제','Delete')}" style="border:none;background:transparent;cursor:pointer;color:var(--ink3);font-size:14px">✕</button>
       </div>
       ${e.body?`<div style="font-size:13px;color:var(--ink2);line-height:1.7;white-space:pre-wrap">${escHtml(e.body)}</div>`:''}
     </div>`).join('');
@@ -12937,16 +12937,16 @@ function renderWriting() {
         ${coverThumb(e.cover_url,'📗')}
         <div style="flex:1;min-width:0">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;flex-wrap:wrap">
-            <span style="font-size:14px;font-weight:700;color:var(--ink)">${escHtml(e.title||'제목 없음')}</span>
+            <span style="font-size:14px;font-weight:700;color:var(--ink)">${escHtml(e.title||t('제목 없음','Untitled'))}</span>
             ${e.author?`<span style="font-size:11px;color:var(--ink3)">${escHtml(e.author)}</span>`:''}
-            ${nts.length?`<span style="font-size:10px;font-weight:700;color:#2a5298;background:var(--asoft);padding:2px 7px;border-radius:6px">📝 메모 ${nts.length}</span>`:''}
+            ${nts.length?`<span style="font-size:10px;font-weight:700;color:#2a5298;background:var(--asoft);padding:2px 7px;border-radius:6px">📝 ${t('메모','Notes')} ${nts.length}</span>`:''}
           </div>
           <div style="font-size:11px;color:var(--ink3);margin-bottom:5px">${readPeriod(e)||''}${(e.read_start||e.read_end)?' · ':''}✍️ ${e.date||''}</div>
-          ${preview?`<div style="font-size:12.5px;color:var(--ink2);line-height:1.6;max-height:44px;overflow:hidden">${escHtml(preview)}</div>`:'<div style="font-size:12px;color:var(--ink3)">눌러서 이어쓰기 →</div>'}
+          ${preview?`<div style="font-size:12.5px;color:var(--ink2);line-height:1.6;max-height:44px;overflow:hidden">${escHtml(preview)}</div>`:'<div style="font-size:12px;color:var(--ink3)">'+t('눌러서 이어쓰기 →','Tap to continue →')+'</div>'}
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0">
-          <button onclick="event.stopPropagation();deleteWriting('${e.id}')" title="삭제" style="border:none;background:transparent;cursor:pointer;color:var(--ink3);font-size:14px">✕</button>
-          <span style="font-size:10px;color:var(--accent);font-weight:700">이어쓰기 →</span>
+          <button onclick="event.stopPropagation();deleteWriting('${e.id}')" title="${t('삭제','Delete')}" style="border:none;background:transparent;cursor:pointer;color:var(--ink3);font-size:14px">✕</button>
+          <span style="font-size:10px;color:var(--accent);font-weight:700">${t('이어쓰기 →','Continue →')}</span>
         </div>
       </div>`;}).join('');
     const tsCards = writingReadReports.map((r,i) => {
@@ -12956,78 +12956,78 @@ function renderWriting() {
         <div style="flex:1;min-width:0">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;flex-wrap:wrap">
             <span style="font-size:10px;font-weight:700;color:#2a7a5a;background:#e8f5ee;padding:2px 7px;border-radius:6px">📖 Triple School</span>
-            <span style="font-size:14px;font-weight:700;color:var(--ink)">${escHtml(b.title||'책')}</span>
+            <span style="font-size:14px;font-weight:700;color:var(--ink)">${escHtml(b.title||t('책','Book'))}</span>
             ${b.author?`<span style="font-size:11px;color:var(--ink3)">${escHtml(b.author)}</span>`:''}
           </div>
           <div style="font-size:11px;color:var(--ink3);margin-bottom:5px">✍️ ${r.read_date||''}</div>
           <div style="font-size:12.5px;color:var(--ink2);line-height:1.6;max-height:44px;overflow:hidden">${escHtml(r.report)}</div>
         </div>
-        <span style="font-size:10px;color:var(--accent);font-weight:700;flex-shrink:0;align-self:flex-end">열기 →</span>
+        <span style="font-size:10px;color:var(--accent);font-weight:700;flex-shrink:0;align-self:flex-end">${t('열기 →','Open →')}</span>
       </div>`;
     }).join('');
     const st = bookStats();
     const statChip = (label,val) => `<div style="flex:1;min-width:90px;text-align:center;padding:10px 6px;background:var(--s2);border:1px solid var(--border);border-radius:11px">
-      <div style="font-size:20px;font-weight:800;color:#1d3a5f;line-height:1.1">${val}<span style="font-size:12px;font-weight:700">권</span></div>
+      <div style="font-size:20px;font-weight:800;color:#1d3a5f;line-height:1.1">${val}<span style="font-size:12px;font-weight:700">${t('권',' books')}</span></div>
       <div style="font-size:11px;color:var(--ink3);margin-top:3px">${label}</div></div>`;
     const bookList = (tsCards||bookMineCards)
       ? `${bookMineCards}${tsCards}`
-      : '<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px;background:var(--surface);border:1px solid var(--border);border-radius:12px">아직 독후감이 없어요. Triple School에서 책을 읽고 독후감을 쓰거나, 왼쪽에서 직접 써보세요!</div>';
+      : '<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px;background:var(--surface);border:1px solid var(--border);border-radius:12px">'+t('아직 독후감이 없어요. Triple School에서 책을 읽고 독후감을 쓰거나, 왼쪽에서 직접 써보세요!','No book reports yet. Read a book and write a report in Triple School, or write one directly on the left!')+'</div>';
     main.innerHTML = `<div style="max-width:1180px;margin:0 auto">
       <div style="display:flex;gap:8px;margin-bottom:16px;max-width:520px">
-        ${statChip('이번 달', st.month)}
-        ${statChip(st.year+'년', st.yearCnt)}
-        ${statChip('전체', st.total)}
+        ${statChip(t('이번 달','This month'), st.month)}
+        ${statChip(st.year+t('년',''), st.yearCnt)}
+        ${statChip(t('전체','Total'), st.total)}
       </div>
       <div style="display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap">
       <div style="flex:1.35 1 440px;min-width:0">
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px">
-        <div style="font-size:13px;font-weight:700;color:var(--ink);margin-bottom:10px">📖 새 책 시작하기</div>
+        <div style="font-size:13px;font-weight:700;color:var(--ink);margin-bottom:10px">📖 ${t('새 책 시작하기','Start a new book')}</div>
         <div style="display:flex;gap:8px;margin-bottom:6px">
-          <input id="wr-title" placeholder="책 제목 (검색해서 표지·작가·줄거리를 불러올 수 있어요)" onkeydown="if(event.key==='Enter'){event.preventDefault();searchGoogleBooks();}" style="${inp};flex:1"/>
-          <button onclick="searchGoogleBooks()" style="height:36px;padding:0 14px;border:1px solid var(--border);background:var(--s2);color:var(--ink2);border-radius:9px;cursor:pointer;font:700 12px var(--font)">🔍 책 검색</button>
+          <input id="wr-title" placeholder="${t('책 제목 (검색해서 표지·작가·줄거리를 불러올 수 있어요)','Book title (search to load the cover, author, and summary)')}" onkeydown="if(event.key==='Enter'){event.preventDefault();searchGoogleBooks();}" style="${inp};flex:1"/>
+          <button onclick="searchGoogleBooks()" style="height:36px;padding:0 14px;border:1px solid var(--border);background:var(--s2);color:var(--ink2);border-radius:9px;cursor:pointer;font:700 12px var(--font)">🔍 ${t('책 검색','Search')}</button>
         </div>
         <div id="wr-book-results" style="margin-bottom:6px"></div>
         <div id="wr-book-picked" style="margin-bottom:10px">${bookPickCardHtml()}</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
-          <span style="font-size:11px;color:var(--ink3)">읽은 기간</span>
-          <input id="wr-rstart" type="date" title="읽기 시작한 날" value="${attTodayStr()}" style="${inp}"/>
+          <span style="font-size:11px;color:var(--ink3)">${t('읽은 기간','Reading period')}</span>
+          <input id="wr-rstart" type="date" title="${t('읽기 시작한 날','Day you started reading')}" value="${attTodayStr()}" style="${inp}"/>
           <span style="font-size:12px;color:var(--ink3)">~</span>
-          <input id="wr-rend" type="date" title="다 읽은 날" style="${inp}"/>
+          <input id="wr-rend" type="date" title="${t('다 읽은 날','Day you finished')}" style="${inp}"/>
           <div style="flex:1"></div>
-          <span style="font-size:11px;color:var(--ink3)">시작일</span>
+          <span style="font-size:11px;color:var(--ink3)">${t('시작일','Start date')}</span>
           <input id="wr-date" type="date" value="${attTodayStr()}" style="${inp}"/>
         </div>
         <div style="font-size:11.5px;color:var(--ink2);line-height:1.7;margin-bottom:12px;padding:11px 13px;background:var(--asoft);border-radius:9px">
-          📚 <b>이어쓰는 독후감</b> — 여기서는 <b>책만 등록</b>하면 돼요. 등록한 뒤 <b>오른쪽 목록에서 책을 눌러</b> 읽은 만큼 메모를 이어가고, 다 읽으면 그 안에서 <b>마무리 정리</b>까지 하면 한 편이 완성됩니다.
+          📚 ${t('<b>이어쓰는 독후감</b> — 여기서는 <b>책만 등록</b>하면 돼요. 등록한 뒤 <b>오른쪽 목록에서 책을 눌러</b> 읽은 만큼 메모를 이어가고, 다 읽으면 그 안에서 <b>마무리 정리</b>까지 하면 한 편이 완성됩니다.','<b>Ongoing book report</b> — here you just <b>register the book</b>. After registering, <b>tap the book in the list on the right</b> to keep adding notes as you read, and when you finish, do the <b>final summary</b> inside it to complete one report.')}
         </div>
-        <div style="display:flex;justify-content:flex-end;margin-top:4px"><button onclick="addWriting()" style="height:36px;padding:0 18px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 13px var(--font)">＋ 책 등록</button></div>
+        <div style="display:flex;justify-content:flex-end;margin-top:4px"><button onclick="addWriting()" style="height:36px;padding:0 18px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 13px var(--font)">＋ ${t('책 등록','Register book')}</button></div>
       </div>
       </div>
       <div style="flex:1 1 340px;min-width:0">
-        <div style="font-size:12px;font-weight:700;color:var(--ink3);margin:4px 2px 10px">📚 내 독후감</div>
+        <div style="font-size:12px;font-weight:700;color:var(--ink3);margin:4px 2px 10px">📚 ${t('내 독후감','My book reports')}</div>
         ${bookList}
       </div>
       </div>
     </div>`;
   } else {
-    const catOpts = reviewCats.map(c=>`<option value="${escAttr(c.name)}">${escHtml(c.name)}</option>`).join('') + `<option value="__custom__">＋ 직접 입력</option>`;
+    const catOpts = reviewCats.map(c=>`<option value="${escAttr(c.name)}">${escHtml(c.name)}</option>`).join('') + `<option value="__custom__">＋ ${t('직접 입력','Enter manually')}</option>`;
     main.innerHTML = `<div style="max-width:1180px;margin:0 auto;display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap">
       <div style="flex:1.35 1 440px;min-width:0">
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px">
-        <div style="font-size:13px;font-weight:700;color:var(--ink);margin-bottom:8px">✍️ 활동 후기 쓰기</div>
+        <div style="font-size:13px;font-weight:700;color:var(--ink);margin-bottom:8px">✍️ ${t('활동 후기 쓰기','Write an activity review')}</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;align-items:center">
           <select id="wr-cat" onchange="onReviewCatChange(this.value)" style="${inp}">${catOpts}</select>
-          <input id="wr-cat-custom" placeholder="분류 직접 입력" style="${inp};display:${reviewCatCustom?'block':'none'}"/>
+          <input id="wr-cat-custom" placeholder="${t('분류 직접 입력','Enter category')}" style="${inp};display:${reviewCatCustom?'block':'none'}"/>
           <input id="wr-date" type="date" value="${attTodayStr()}" style="${inp}"/>
         </div>
-        <input id="wr-title" placeholder="제목 (예: 여름 단기선교 후기)" style="${inp};width:100%;margin-bottom:8px"/>
-        <textarea id="wr-body" placeholder="어디에 다녀왔는지, 무엇을 배우고 느꼈는지 자유롭게 적어보세요" style="${ta};min-height:200px;margin-bottom:8px"></textarea>
-        <div style="display:flex;justify-content:flex-end"><button onclick="addWriting()" style="height:36px;padding:0 18px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 13px var(--font)">＋ 후기 저장</button></div>
+        <input id="wr-title" placeholder="${t('제목 (예: 여름 단기선교 후기)','Title (e.g. Summer short-term mission review)')}" style="${inp};width:100%;margin-bottom:8px"/>
+        <textarea id="wr-body" placeholder="${t('어디에 다녀왔는지, 무엇을 배우고 느꼈는지 자유롭게 적어보세요','Freely write where you went and what you learned and felt')}" style="${ta};min-height:200px;margin-bottom:8px"></textarea>
+        <div style="display:flex;justify-content:flex-end"><button onclick="addWriting()" style="height:36px;padding:0 18px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 13px var(--font)">＋ ${t('후기 저장','Save review')}</button></div>
       </div>
       </div>
       <div style="flex:1 1 340px;min-width:0">
-        <div style="font-size:12px;font-weight:700;color:var(--ink3);margin:4px 2px 10px">📝 내 활동 후기</div>
-        ${myCards || '<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px;background:var(--surface);border:1px solid var(--border);border-radius:12px">아직 후기가 없어요. 어딘가 다녀온 뒤 첫 후기를 남겨보세요!</div>'}
+        <div style="font-size:12px;font-weight:700;color:var(--ink3);margin:4px 2px 10px">📝 ${t('내 활동 후기','My activity reviews')}</div>
+        ${myCards || '<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px;background:var(--surface);border:1px solid var(--border);border-radius:12px">'+t('아직 후기가 없어요. 어딘가 다녀온 뒤 첫 후기를 남겨보세요!','No reviews yet. After you go somewhere, leave your first review!')+'</div>'}
       </div>
     </div>`;
   }
@@ -13057,16 +13057,16 @@ function onReviewCatChange(v) {
 function bookReportData(kind, key) {
   if (kind === 'mine') {
     const e = writingEntries.find(x => x.id === key); if (!e) return null;
-    return { id:e.id, title:e.title||'제목 없음', author:e.author||'', cover:e.cover_url||'', desc:e.book_desc||'',
+    return { id:e.id, title:e.title||t('제목 없음','Untitled'), author:e.author||'', cover:e.cover_url||'', desc:e.book_desc||'',
              readStart:e.read_start||'', readEnd:e.read_end||'', date:e.date||'', body:e.body||'', source:'', notes:notesForWriting(e.id), finalAnswers:e.final_answers||'' };
   }
   const r = writingReadReports[Number(key)]; if (!r) return null;
   const b = r.reading_books || {};
-  return { title:b.title||'책', author:b.author||'', cover:'', desc:'', readStart:'', readEnd:'', date:r.read_date||'', body:r.report||'', source:'Triple School', notes:[] };
+  return { title:b.title||t('책','Book'), author:b.author||'', cover:'', desc:'', readStart:'', readEnd:'', date:r.read_date||'', body:r.report||'', source:'Triple School', notes:[] };
 }
 
 function bookPeriodText(d) {
-  if (d.readStart || d.readEnd) return `읽은 기간 ${d.readStart||'?'} ~ ${d.readEnd||'?'}`;
+  if (d.readStart || d.readEnd) return `${t('읽은 기간','Reading period')} ${d.readStart||'?'} ~ ${d.readEnd||'?'}`;
   return '';
 }
 
@@ -13085,9 +13085,9 @@ function openBookReport(kind, key) {
   modal.innerHTML = `
     <div style="background:var(--surface);border-radius:18px;max-width:640px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3);overflow:hidden">
       <div style="display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--border)">
-        <div style="font-size:14px;font-weight:800;color:var(--ink)">📖 독후감</div>
+        <div style="font-size:14px;font-weight:800;color:var(--ink)">📖 ${t('독후감','Book Report')}</div>
         <div style="flex:1"></div>
-        <button onclick="printBookReport('${kind}','${key}')" style="height:34px;padding:0 15px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 12.5px var(--font)">📄 PDF로 저장</button>
+        <button onclick="printBookReport('${kind}','${key}')" style="height:34px;padding:0 15px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 12.5px var(--font)">📄 ${t('PDF로 저장','Save as PDF')}</button>
         <button onclick="document.getElementById('book-modal').remove()" style="height:34px;width:34px;border:1px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:9px;cursor:pointer;font-size:15px">✕</button>
       </div>
       <div style="padding:24px 26px;max-height:calc(100vh - 130px);overflow-y:auto">
@@ -13099,19 +13099,19 @@ function openBookReport(kind, key) {
             <div style="margin-top:12px;font-size:12px;color:var(--ink3);line-height:1.9">
               ${writer?`<div>✍️ ${escHtml(writer)}</div>`:''}
               ${period?`<div>📅 ${escHtml(period)}</div>`:''}
-              ${d.date?`<div>📝 작성일 ${escHtml(d.date)}</div>`:''}
-              ${d.source?`<div>📚 ${escHtml(d.source)} 기록</div>`:''}
+              ${d.date?`<div>📝 ${t('작성일','Written')} ${escHtml(d.date)}</div>`:''}
+              ${d.source?`<div>📚 ${escHtml(d.source)} ${t('기록','record')}</div>`:''}
             </div>
           </div>
         </div>
         ${d.desc?`<div style="background:var(--s2);border-radius:11px;padding:13px 15px;margin-bottom:18px">
-          <div style="font-size:11px;font-weight:700;color:var(--ink3);margin-bottom:5px">책 소개</div>
+          <div style="font-size:11px;font-weight:700;color:var(--ink3);margin-bottom:5px">${t('책 소개','About the book')}</div>
           <div style="font-size:12.5px;color:var(--ink2);line-height:1.75;max-height:150px;overflow-y:auto">${escHtml(d.desc)}</div>
         </div>`:''}
         ${kind==='mine' ? bookNotesSectionHtml(d, key) : `
         <div style="border-top:2px solid var(--border);padding-top:16px">
-          <div style="font-size:12px;font-weight:700;color:var(--ink3);margin-bottom:10px">독후감</div>
-          <div style="font-family:'Noto Serif KR',serif;font-size:15px;color:var(--ink);line-height:2;white-space:pre-wrap">${escHtml(d.body)||'<span style="color:var(--ink3)">내용이 없습니다.</span>'}</div>
+          <div style="font-size:12px;font-weight:700;color:var(--ink3);margin-bottom:10px">${t('독후감','Book report')}</div>
+          <div style="font-family:'Noto Serif KR',serif;font-size:15px;color:var(--ink);line-height:2;white-space:pre-wrap">${escHtml(d.body)||'<span style="color:var(--ink3)">'+t('내용이 없습니다.','No content.')+'</span>'}</div>
         </div>`}
       </div>
     </div>`;
@@ -13124,9 +13124,9 @@ function bookNotesSectionHtml(d, key) {
   const noteItems = notes.map(n => `
     <div style="border-left:3px solid var(--accent);padding:5px 0 6px 12px;margin-bottom:13px">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
-        <span style="font-size:11px;color:var(--ink3)">${n.date||''}${n.pages?` · ${escHtml(n.pages)}쪽`:''}</span>
+        <span style="font-size:11px;color:var(--ink3)">${n.date||''}${n.pages?` · ${escHtml(n.pages)}${t('쪽',' pp')}`:''}</span>
         <div style="flex:1"></div>
-        <button onclick="deleteBookNote('${n.id}','${key}')" title="삭제" style="border:none;background:transparent;cursor:pointer;color:var(--ink3);font-size:12px">✕</button>
+        <button onclick="deleteBookNote('${n.id}','${key}')" title="${t('삭제','Delete')}" style="border:none;background:transparent;cursor:pointer;color:var(--ink3);font-size:12px">✕</button>
       </div>
       <div style="font-family:'Noto Serif KR',serif;font-size:14.5px;color:var(--ink);line-height:1.9;white-space:pre-wrap">${escHtml(n.content)}</div>
     </div>`).join('');
@@ -13134,16 +13134,16 @@ function bookNotesSectionHtml(d, key) {
     <div style="background:var(--s2);border-radius:11px;padding:12px;margin-top:4px">
       <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap">
         <input id="bn-date" type="date" value="${attTodayStr()}" style="${inp}"/>
-        <input id="bn-pages" placeholder="쪽수(선택) 예: 51~80" style="${inp};flex:1;min-width:120px"/>
+        <input id="bn-pages" placeholder="${t('쪽수(선택) 예: 51~80','Pages (optional) e.g. 51~80')}" style="${inp};flex:1;min-width:120px"/>
       </div>
-      <textarea id="bn-content" placeholder="오늘 읽은 부분의 줄거리·생각·느낀 점을 적어보세요" style="width:100%;min-height:72px;padding:9px;border:1px solid var(--border);border-radius:8px;font:400 13.5px var(--font);color:var(--ink);line-height:1.6;resize:vertical"></textarea>
-      <div style="display:flex;justify-content:flex-end;margin-top:7px"><button onclick="addBookNote('${key}')" style="height:32px;padding:0 14px;border:none;background:#1d3a5f;color:#fff;border-radius:8px;cursor:pointer;font:700 12px var(--font)">＋ 메모 추가</button></div>
+      <textarea id="bn-content" placeholder="${t('오늘 읽은 부분의 줄거리·생각·느낀 점을 적어보세요','Write the plot, thoughts, and feelings about what you read today')}" style="width:100%;min-height:72px;padding:9px;border:1px solid var(--border);border-radius:8px;font:400 13.5px var(--font);color:var(--ink);line-height:1.6;resize:vertical"></textarea>
+      <div style="display:flex;justify-content:flex-end;margin-top:7px"><button onclick="addBookNote('${key}')" style="height:32px;padding:0 14px;border:none;background:#1d3a5f;color:#fff;border-radius:8px;cursor:pointer;font:700 12px var(--font)">＋ ${t('메모 추가','Add note')}</button></div>
     </div>`;
   return `
     <div style="border-top:2px solid var(--border);padding-top:16px;margin-bottom:14px">
-      <div style="font-size:12.5px;font-weight:800;color:var(--ink);margin-bottom:4px">📖 읽으며 쌓은 독후감 <span style="color:var(--ink3);font-weight:600">(${notes.length})</span></div>
-      <div style="font-size:11px;color:var(--ink3);margin-bottom:12px">읽은 만큼 메모를 남기면 순서대로 쌓여 한 편의 독후감이 됩니다.</div>
-      ${notes.length ? noteItems : '<div style="font-size:12.5px;color:var(--ink3);padding:2px 0 12px">아직 메모가 없어요. 아래에서 읽은 만큼 적어보세요 👇</div>'}
+      <div style="font-size:12.5px;font-weight:800;color:var(--ink);margin-bottom:4px">📖 ${t('읽으며 쌓은 독후감','Notes gathered while reading')} <span style="color:var(--ink3);font-weight:600">(${notes.length})</span></div>
+      <div style="font-size:11px;color:var(--ink3);margin-bottom:12px">${t('읽은 만큼 메모를 남기면 순서대로 쌓여 한 편의 독후감이 됩니다.','Leave notes as you read and they stack up in order into a full book report.')}</div>
+      ${notes.length ? noteItems : '<div style="font-size:12.5px;color:var(--ink3);padding:2px 0 12px">'+t('아직 메모가 없어요. 아래에서 읽은 만큼 적어보세요 👇','No notes yet. Write as much as you read below 👇')+'</div>'}
       ${addForm}
     </div>
     ${(() => {
@@ -13153,13 +13153,13 @@ function bookNotesSectionHtml(d, key) {
         <div style="margin-bottom:12px">
           <div style="font-size:12.5px;font-weight:700;color:var(--ink);margin-bottom:2px">${x.q}</div>
           <div style="font-size:11px;color:var(--ink3);margin-bottom:5px">${x.hint}</div>
-          <textarea id="bf-q${i}" placeholder="여기에 답을 적어보세요" style="width:100%;min-height:60px;padding:9px;border:1px solid var(--border);border-radius:8px;font:400 13.5px var(--font);color:var(--ink);line-height:1.65;resize:vertical">${escHtml(answers[i]||'')}</textarea>
+          <textarea id="bf-q${i}" placeholder="${t('여기에 답을 적어보세요','Write your answer here')}" style="width:100%;min-height:60px;padding:9px;border:1px solid var(--border);border-radius:8px;font:400 13.5px var(--font);color:var(--ink);line-height:1.65;resize:vertical">${escHtml(answers[i]||'')}</textarea>
         </div>`).join('');
       return `<div style="border-top:1px solid var(--border);padding-top:14px">
-        <div style="font-size:12.5px;font-weight:800;color:var(--ink);margin-bottom:3px">✍️ 마무리 정리 <span style="color:var(--ink3);font-weight:600;font-size:11px">· 다 읽은 뒤 전체 소감</span></div>
-        <div style="font-size:11px;color:var(--ink3);line-height:1.6;margin-bottom:11px">쌓아온 메모를 바탕으로 아래 질문에 답하면, 답만 이어져 한 편의 완성된 독후감이 됩니다. (PDF에는 이 마무리 정리만 담겨요)</div>
+        <div style="font-size:12.5px;font-weight:800;color:var(--ink);margin-bottom:3px">✍️ ${t('마무리 정리','Final summary')} <span style="color:var(--ink3);font-weight:600;font-size:11px">${t('· 다 읽은 뒤 전체 소감','· Overall thoughts after finishing')}</span></div>
+        <div style="font-size:11px;color:var(--ink3);line-height:1.6;margin-bottom:11px">${t('쌓아온 메모를 바탕으로 아래 질문에 답하면, 답만 이어져 한 편의 완성된 독후감이 됩니다. (PDF에는 이 마무리 정리만 담겨요)','Answer the questions below based on your gathered notes, and your answers join together into one finished book report. (Only this final summary goes into the PDF.)')}</div>
         ${qBoxes}
-        <div style="display:flex;justify-content:flex-end;margin-top:2px"><button onclick="saveBookFinal('${key}')" style="height:32px;padding:0 16px;border:none;background:#2a7a5a;color:#fff;border-radius:8px;cursor:pointer;font:700 12px var(--font)">마무리 저장</button></div>
+        <div style="display:flex;justify-content:flex-end;margin-top:2px"><button onclick="saveBookFinal('${key}')" style="height:32px;padding:0 16px;border:none;background:#2a7a5a;color:#fff;border-radius:8px;cursor:pointer;font:700 12px var(--font)">${t('마무리 저장','Save summary')}</button></div>
       </div>`;
     })()}`;
 }
@@ -13174,9 +13174,9 @@ async function saveBookFinal(writingId) {
     const r2 = await sb.from('student_writings').update({ body }).eq('id', writingId);
     error = r2.error;
   }
-  if (error) { showUploadToast('저장 실패: ' + error.message); return; }
+  if (error) { showUploadToast(t('저장 실패: ','Save failed: ') + error.message); return; }
   const e = writingEntries.find(x => x.id === writingId); if (e) { e.body = body; e.final_answers = faJson; }
-  showUploadToast('✅ 마무리 저장됨');
+  showUploadToast(t('✅ 마무리 저장됨','✅ Summary saved'));
   renderWriting();
   openBookReport('mine', writingId);
 }
@@ -13185,25 +13185,25 @@ async function addBookNote(writingId) {
   const date = document.getElementById('bn-date')?.value || attTodayStr();
   const pages = (document.getElementById('bn-pages')?.value || '').trim();
   const content = (document.getElementById('bn-content')?.value || '').trim();
-  if (!content) { showUploadToast('메모 내용을 입력하세요'); return; }
+  if (!content) { showUploadToast(t('메모 내용을 입력하세요','Enter note content')); return; }
   const { data, error } = await sb.from('book_report_notes').insert({
     writing_id: writingId, member_id: ME.id, community_id: CID(), date, pages: pages || null, content,
   }).select().single();
   if (error) {
-    if (schoolTableMissing(error)) { showUploadToast('이어쓰기 테이블이 없어요. db/독후감_이어쓰기_DB설치.sql 을 실행해주세요'); return; }
-    showUploadToast('추가 실패: ' + error.message); return;
+    if (schoolTableMissing(error)) { showUploadToast(t('이어쓰기 테이블이 없어요. db/독후감_이어쓰기_DB설치.sql 을 실행해주세요','The notes table is missing. Please run db/독후감_이어쓰기_DB설치.sql')); return; }
+    showUploadToast(t('추가 실패: ','Add failed: ') + error.message); return;
   }
   if (data) bookNotes.push(data);
   bookNotes.sort((a,b)=> (a.date||'').localeCompare(b.date||'') || (a.created_at||'').localeCompare(b.created_at||''));
-  showUploadToast('✅ 메모가 쌓였어요');
+  showUploadToast(t('✅ 메모가 쌓였어요','✅ Note added'));
   renderWriting();
   openBookReport('mine', writingId);
 }
 
 async function deleteBookNote(id, writingId) {
-  if (!confirm('이 메모를 삭제할까요?')) return;
+  if (!confirm(t('이 메모를 삭제할까요?','Delete this note?'))) return;
   const { error } = await sb.from('book_report_notes').delete().eq('id', id);
-  if (error) { showUploadToast('삭제 실패: ' + error.message); return; }
+  if (error) { showUploadToast(t('삭제 실패: ','Delete failed: ') + error.message); return; }
   bookNotes = bookNotes.filter(n => n.id !== id);
   renderWriting();
   openBookReport('mine', writingId);
@@ -13214,15 +13214,15 @@ function printBookReport(kind, key) {
   const writer = (ME && ME.name) ? ME.name : '';
   const period = bookPeriodText(d);
   const meta = [
-    writer ? `글쓴이 ${escHtml(writer)}` : '',
+    writer ? `${t('글쓴이','By')} ${escHtml(writer)}` : '',
     period ? escHtml(period) : '',
-    d.date ? `작성일 ${escHtml(d.date)}` : '',
-    d.source ? `${escHtml(d.source)} 기록` : '',
+    d.date ? `${t('작성일','Written')} ${escHtml(d.date)}` : '',
+    d.source ? `${escHtml(d.source)} ${t('기록','record')}` : '',
   ].filter(Boolean).join('&nbsp;&nbsp;·&nbsp;&nbsp;');
   const coverImg = d.cover ? `<img id="cv" src="${escAttr(d.cover)}"/>` : '';
   const win = window.open('', '_blank');
   win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"/>
-  <title>독후감 - ${escHtml(d.title)}</title>
+  <title>${t('독후감','Book Report')} - ${escHtml(d.title)}</title>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;600;700&display=swap"/>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
@@ -13248,9 +13248,9 @@ function printBookReport(kind, key) {
         ${meta?`<div class="meta">${meta}</div>`:''}
       </div>
     </div>
-    ${d.desc?`<div class="desc"><b>책 소개</b>${escHtml(d.desc)}</div>`:''}
-    <div class="label">■ 독후감</div>
-    <div class="body">${escHtml(d.body) || '(마무리 정리가 아직 작성되지 않았어요)'}</div>
+    ${d.desc?`<div class="desc"><b>${t('책 소개','About the book')}</b>${escHtml(d.desc)}</div>`:''}
+    <div class="label">■ ${t('독후감','Book Report')}</div>
+    <div class="body">${escHtml(d.body) || t('(마무리 정리가 아직 작성되지 않았어요)','(The final summary has not been written yet)')}</div>
     <script>
       var img=document.getElementById('cv');
       function go(){ setTimeout(function(){ window.print(); }, 250); }
@@ -13274,9 +13274,9 @@ async function addWriting() {
     body = (document.getElementById('wr-body')?.value || '').trim();
     const sel = document.getElementById('wr-cat').value;
     category = sel === '__custom__' ? (document.getElementById('wr-cat-custom').value || '').trim() : sel;
-    if (!category) { showUploadToast('분류를 선택하거나 입력하세요'); return; }
+    if (!category) { showUploadToast(t('분류를 선택하거나 입력하세요','Select or enter a category')); return; }
   }
-  if (!title && !body) { showUploadToast(writingKind==='book'?'책 제목이나 답변을 하나 이상 적어주세요':'제목이나 내용을 입력하세요'); return; }
+  if (!title && !body) { showUploadToast(writingKind==='book'?t('책 제목이나 답변을 하나 이상 적어주세요','Enter a book title or at least one answer'):t('제목이나 내용을 입력하세요','Enter a title or content')); return; }
   const row = { member_id: ME.id, community_id: CID(), kind: writingKind, category, title, body, date };
   if (writingKind === 'book') {
     row.read_start = document.getElementById('wr-rstart')?.value || null;
