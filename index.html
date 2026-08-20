@@ -11398,21 +11398,21 @@ function printCertificate() {
 //  학사 — 상담·생활지도 / 보건·건강 (학생별 기록 로그, 공용 엔진)
 // ════════════════════════════════════════════════════════════════════
 const LOG_SPECS = {
-  observation: { table:'observation_logs', file:'db/학사_관찰기록_DB설치.sql', icon:'📝', title:'관찰 누가기록',
-    desc:'평소 <b>지켜본 모습</b>을 한 줄씩 — 생기부 종합의견의 재료가 됩니다. (개입 없이 관찰한 것)',
+  observation: { table:'observation_logs', file:'db/학사_관찰기록_DB설치.sql', icon:'📝', title:t('관찰 누가기록','Observation Log'),
+    desc:t('평소 <b>지켜본 모습</b>을 한 줄씩 — 생기부 종합의견의 재료가 됩니다. (개입 없이 관찰한 것)','A line at a time on what you <b>observed</b> — material for the record summary. (Observed without intervening)'),
     cats:['학습','태도','인성','교우관계','특기·재능','칭찬','기타'],
     catColor:{ '학습':'#2a5298','태도':'#b8860b','인성':'#2a7a5a','교우관계':'#8e44ad','특기·재능':'#e67e22','칭찬':'#2a9d8f','기타':'#7f8c8d' },
-    titlePh:'한 줄 요약 (예: 발표 적극적)', bodyPh:'관찰한 모습을 간단히 적어보세요' },
-  counseling: { table:'counseling_logs', file:'db/학사_상담_DB설치.sql', icon:'💬', title:'상담·생활지도 기록',
-    desc:'면담·상담하거나 <b>생활지도한 일</b>을 기록해요. (선생님이 개입·지도한 내용)',
+    titlePh:t('한 줄 요약 (예: 발표 적극적)','One-line summary (e.g. active in class)'), bodyPh:t('관찰한 모습을 간단히 적어보세요','Briefly note what you observed') },
+  counseling: { table:'counseling_logs', file:'db/학사_상담_DB설치.sql', icon:'💬', title:t('상담·생활지도 기록','Counseling & Guidance Log'),
+    desc:t('면담·상담하거나 <b>생활지도한 일</b>을 기록해요. (선생님이 개입·지도한 내용)','Record interviews, counseling, or <b>guidance given</b>. (What the teacher intervened in or guided)'),
     cats:['상담','생활지도','주의','기타'],
     catColor:{ '상담':'#2a5298','생활지도':'#b8860b','주의':'#c0392b','기타':'#7f8c8d' },
-    titlePh:'제목 (예: 진로 상담)', bodyPh:'상담/지도 내용을 입력하세요' },
-  health: { table:'health_logs', file:'db/학사_보건_DB설치.sql', icon:'🏥', title:'보건·건강 기록',
-    desc:'보건실 방문·투약·병결 등 건강 관련 기록을 남깁니다.',
+    titlePh:t('제목 (예: 진로 상담)','Title (e.g. career counseling)'), bodyPh:t('상담/지도 내용을 입력하세요','Enter counseling/guidance details') },
+  health: { table:'health_logs', file:'db/학사_보건_DB설치.sql', icon:'🏥', title:t('보건·건강 기록','Health Log'),
+    desc:t('보건실 방문·투약·병결 등 건강 관련 기록을 남깁니다.','Record health matters such as nurse-office visits, medication, and sick leave.'),
     cats:['보건실 방문','투약','병결','예방접종','기타'],
     catColor:{ '보건실 방문':'#2a5298','투약':'#8e44ad','병결':'#c0392b','예방접종':'#2a7a5a','기타':'#7f8c8d' },
-    titlePh:'증상/제목 (예: 두통, 복통)', bodyPh:'조치 내용·특이사항을 입력하세요' },
+    titlePh:t('증상/제목 (예: 두통, 복통)','Symptom/title (e.g. headache, stomachache)'), bodyPh:t('조치 내용·특이사항을 입력하세요','Enter actions taken and any notes') },
 };
 let logSpecKey = 'counseling';
 let logStudentId = '';
@@ -11422,7 +11422,7 @@ async function renderLogHub(key) {
   logSpecKey = key;
   const spec = LOG_SPECS[key];
   const main = document.getElementById('school-main');
-  if (!schoolStudents.length) { main.innerHTML = '<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px">등록된 학생이 없어요.</div>'; return; }
+  if (!schoolStudents.length) { main.innerHTML = '<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px">'+t('등록된 학생이 없어요.','No students registered yet.')+'</div>'; return; }
   if (!logStudentId || !schoolStudents.find(s => s.id === logStudentId)) logStudentId = schoolStudents[0].id;
   main.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink3);font-size:13px">'+t('불러오는 중...','Loading...')+'</div>';
   try { await loadLogs(); }
@@ -11458,7 +11458,7 @@ function renderLog() {
         ${e.title?`<span style="font-size:14px;font-weight:700;color:var(--ink)">${escHtml(e.title)}</span>`:''}
         <span style="font-size:11px;color:var(--ink3)">${e.date||''}${e.author_name?` · ${escHtml(e.author_name)}`:''}</span>
         <div style="flex:1"></div>
-        <button onclick="deleteLog('${e.id}')" title="삭제" style="border:none;background:transparent;cursor:pointer;color:var(--ink3);font-size:14px">✕</button>
+        <button onclick="deleteLog('${e.id}')" title="${t('삭제','Delete')}" style="border:none;background:transparent;cursor:pointer;color:var(--ink3);font-size:14px">✕</button>
       </div>
       ${e.content?`<div style="font-size:13px;color:var(--ink2);line-height:1.7;white-space:pre-wrap">${escHtml(e.content)}</div>`:''}
     </div>`;
@@ -11466,7 +11466,7 @@ function renderLog() {
 
   main.innerHTML = `<div style="max-width:720px;margin:0 auto">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
-      <label style="font-size:12px;font-weight:600;color:var(--ink2)">학생</label>
+      <label style="font-size:12px;font-weight:600;color:var(--ink2)">${t('학생','Student')}</label>
       <select onchange="changeLogStudent(this.value)" style="${inp};min-width:160px">${studentOpts}</select>
       <span style="font-size:12px;color:var(--ink3)">${spec.desc}</span>
     </div>
@@ -11479,11 +11479,11 @@ function renderLog() {
       </div>
       <textarea id="log-content" placeholder="${spec.bodyPh}" style="width:100%;min-height:80px;padding:11px;border:1px solid var(--border);border-radius:9px;font:400 14px var(--font);color:var(--ink);line-height:1.7;resize:vertical"></textarea>
       <div style="display:flex;justify-content:flex-end;margin-top:8px">
-        <button onclick="addLog()" style="height:36px;padding:0 18px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 13px var(--font)">＋ 기록 추가</button>
+        <button onclick="addLog()" style="height:36px;padding:0 18px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 13px var(--font)">${t('＋ 기록 추가','＋ Add Entry')}</button>
       </div>
     </div>
     <!-- 목록 -->
-    ${logEntries.length ? entries : '<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px;background:var(--surface);border:1px solid var(--border);border-radius:12px">아직 기록이 없어요.</div>'}
+    ${logEntries.length ? entries : '<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px;background:var(--surface);border:1px solid var(--border);border-radius:12px">'+t('아직 기록이 없어요.','No entries yet.')+'</div>'}
   </div>`;
 }
 
@@ -11495,22 +11495,22 @@ async function addLog() {
   const date = document.getElementById('log-date').value || attTodayStr();
   const title = document.getElementById('log-title').value.trim();
   const content = document.getElementById('log-content').value.trim();
-  if (!title && !content) { showUploadToast('제목이나 내용을 입력하세요'); return; }
+  if (!title && !content) { showUploadToast(t('제목이나 내용을 입력하세요','Enter a title or content')); return; }
   const { error } = await sb.from(spec.table).insert({
     community_id: CID(), student_id: logStudentId, date, category, title, content,
     author_name: ME.name, created_by: ME.id,
   });
-  if (error) { if (schoolTableMissing(error)) return schoolSetupNeeded(error, spec.file); showUploadToast('저장 실패: ' + error.message); return; }
-  showUploadToast('✅ 기록이 추가됐어요');
+  if (error) { if (schoolTableMissing(error)) return schoolSetupNeeded(error, spec.file); showUploadToast(t('저장 실패: ','Save failed: ') + error.message); return; }
+  showUploadToast(t('✅ 기록이 추가됐어요','✅ Entry added'));
   await loadLogs();
   renderLog();
 }
 
 async function deleteLog(id) {
   const spec = LOG_SPECS[logSpecKey];
-  if (!confirm('이 기록을 삭제할까요?')) return;
+  if (!confirm(t('이 기록을 삭제할까요?','Delete this entry?'))) return;
   const { error } = await sb.from(spec.table).delete().eq('id', id);
-  if (error) { showUploadToast('삭제 실패: ' + error.message); return; }
+  if (error) { showUploadToast(t('삭제 실패: ','Delete failed: ') + error.message); return; }
   logEntries = logEntries.filter(e => e.id !== id);
   renderLog();
 }
@@ -11533,18 +11533,18 @@ function s360GroupName(gid) { const g = tcsGroups.find(x => x.id === gid); retur
 // 학생 상세에서 그룹 배정(+ 새 그룹 즉시 생성)
 async function s360AssignGroup(sid, val) {
   if (val === '__new__') {
-    const name = prompt('새 그룹 이름 (예: 중등부, A그룹)');
+    const name = prompt(t('새 그룹 이름 (예: 중등부, A그룹)','New group name (e.g. Middle School, Group A)'));
     if (!name || !name.trim()) { renderS360Detail(); return; }
     const { data, error } = await sb.from('student_groups').insert({ community_id: CID(), name: name.trim() }).select().single();
-    if (error) { showUploadToast('그룹 생성 실패: ' + error.message); renderS360Detail(); return; }
+    if (error) { showUploadToast(t('그룹 생성 실패: ','Failed to create group: ') + error.message); renderS360Detail(); return; }
     await loadStudentGroups();
     val = data.id;
   }
   const gid = val || null;
   const { error } = await sb.from('members').update({ group_id: gid }).eq('id', sid);
-  if (error) { showUploadToast('그룹 배정 실패: ' + error.message); return; }
+  if (error) { showUploadToast(t('그룹 배정 실패: ','Failed to assign group: ') + error.message); return; }
   const s = schoolStudents.find(x => x.id === sid); if (s) s.group_id = gid;
-  showUploadToast('그룹이 저장됐어요 ✅');
+  showUploadToast(t('그룹이 저장됐어요 ✅','Group saved ✅'));
   renderStudent360();
 }
 
@@ -11578,14 +11578,14 @@ async function loadStudent360(id) {
 
 async function renderStudent360() {
   const main = document.getElementById('school-main');
-  if (!schoolStudents.length) { main.innerHTML = '<div style="padding:50px;text-align:center;color:var(--ink3);font-size:13px">등록된 학생이 없어요. 관리자에서 학생을 먼저 승인해주세요.</div>'; return; }
+  if (!schoolStudents.length) { main.innerHTML = '<div style="padding:50px;text-align:center;color:var(--ink3);font-size:13px">'+t('등록된 학생이 없어요. 관리자에서 학생을 먼저 승인해주세요.','No students registered yet. Approve students in the admin area first.')+'</div>'; return; }
   const list = s360List();
   if (!s360Id || !schoolStudents.find(s=>s.id===s360Id)) s360Id = (list[0]||schoolStudents[0]).id;
   if (list.length && !list.find(s=>s.id===s360Id)) s360Id = list[0].id;
   main.innerHTML = `<div id="s360-split" style="display:flex;gap:18px;align-items:flex-start">
-    <button class="s360-mobile-back" onclick="s360BackToList()" style="align-items:center;gap:6px;height:36px;padding:0 14px;border:1px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:9px;cursor:pointer;font:700 13px var(--font);margin-bottom:2px">‹ 학생 목록</button>
+    <button class="s360-mobile-back" onclick="s360BackToList()" style="align-items:center;gap:6px;height:36px;padding:0 14px;border:1px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:9px;cursor:pointer;font:700 13px var(--font);margin-bottom:2px">${t('‹ 학생 목록','‹ Student list')}</button>
     <div id="s360-list" style="width:228px;flex-shrink:0;position:sticky;top:0"></div>
-    <div id="s360-detail" style="flex:1;min-width:0"><div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px">불러오는 중...</div></div>
+    <div id="s360-detail" style="flex:1;min-width:0"><div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px">${t('불러오는 중...','Loading...')}</div></div>
   </div>`;
   renderS360List();
   renderS360Right();
@@ -11597,8 +11597,8 @@ async function renderS360Right() {
   const kind = schoolSubMode;
   if (kind === 'student') return renderS360Detail();
   const s = schoolStudents.find(x=>x.id===s360Id);
-  if (!s) { detail.innerHTML = '<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px">학생을 선택하세요</div>'; return; }
-  detail.innerHTML = '<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px">불러오는 중...</div>';
+  if (!s) { detail.innerHTML = '<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px">'+t('학생을 선택하세요','Select a student')+'</div>'; return; }
+  detail.innerHTML = '<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px">'+t('불러오는 중...','Loading...')+'</div>';
   tcsCurrentStudent = s;
   const { data } = await sb.from('tcs_records').select('section,data').eq('community_id',CID()).eq('student_id',s.id);
   tcsRecords = {}; (data||[]).forEach(r => { tcsRecords[r.section] = r.data || {}; });
@@ -11619,9 +11619,9 @@ function renderS360List() {
   const box = document.getElementById('s360-list'); if (!box) return;
   const list = s360List();
   const fBtn = (v,label) => `<button onclick="setS360Filter('${v}')" style="flex:1;height:30px;border:none;border-radius:7px;font:600 12px var(--font);cursor:pointer;background:${s360Filter===v?'#1d3a5f':'transparent'};color:${s360Filter===v?'#fff':'var(--ink2)'}">${label}</button>`;
-  const groupOpts = `<option value="all">전체 그룹</option>` +
+  const groupOpts = `<option value="all">${t('전체 그룹','All groups')}</option>` +
     tcsGroups.map(g=>`<option value="${g.id}" ${s360Group===g.id?'selected':''}>${g.name}</option>`).join('') +
-    `<option value="none" ${s360Group==='none'?'selected':''}>미지정</option>`;
+    `<option value="none" ${s360Group==='none'?'selected':''}>${t('미지정','Unassigned')}</option>`;
   const rows = list.map(s => {
     const on = s.id===s360Id;
     const tn = s360TeacherNames(s.id);
@@ -11629,14 +11629,14 @@ function renderS360List() {
       onmouseover="if(!${on})this.style.background='var(--s3)'" onmouseout="if(!${on})this.style.background='transparent'">
       <div style="width:28px;height:28px;border-radius:8px;background:${s.color||'#1d3a5f'};display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700;flex-shrink:0">${s.initials||s.name?.[0]||'?'}</div>
       <div style="min-width:0"><div style="font-size:13px;font-weight:${on?'700':'500'};color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${s.name}</div>
-        <div style="font-size:10.5px;color:var(--ink3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${s.grade||'학년 미정'}${tn?` · ${tn}`:''}</div></div>
+        <div style="font-size:10.5px;color:var(--ink3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${s.grade||t('학년 미정','Grade N/A')}${tn?` · ${tn}`:''}</div></div>
     </div>`;
   }).join('');
   box.innerHTML = `
-    <div style="display:flex;gap:3px;margin-bottom:8px;background:var(--s2);border:1px solid var(--border);border-radius:9px;padding:3px">${fBtn('all','전체')}${fBtn('mine','내 담당')}</div>
+    <div style="display:flex;gap:3px;margin-bottom:8px;background:var(--s2);border:1px solid var(--border);border-radius:9px;padding:3px">${fBtn('all',t('전체','All'))}${fBtn('mine',t('내 담당','Mine'))}</div>
     <select onchange="setS360Group(this.value)" style="width:100%;height:32px;padding:0 8px;border:1px solid var(--border);border-radius:8px;font:600 12px var(--font);background:var(--surface);color:var(--ink);margin-bottom:8px">${groupOpts}</select>
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:6px;max-height:calc(100vh - 220px);overflow-y:auto">
-      ${list.length ? rows : '<div style="padding:24px 8px;text-align:center;color:var(--ink3);font-size:12px">해당 조건의 학생이 없어요</div>'}
+      ${list.length ? rows : '<div style="padding:24px 8px;text-align:center;color:var(--ink3);font-size:12px">'+t('해당 조건의 학생이 없어요','No students match this filter')+'</div>'}
     </div>`;
 }
 
@@ -11658,11 +11658,11 @@ function s360LogCard(kind, entries) {
         ${e.title?`<span style="font-size:13px;font-weight:700;color:var(--ink)">${escHtml(e.title)}</span>`:''}
         <span style="font-size:10.5px;color:var(--ink3)">${e.date||''}${e.author_name?` · ${escHtml(e.author_name)}`:''}</span>
         <div style="flex:1"></div>
-        <button onclick="deleteStudentLog('${kind}','${e.id}')" title="삭제" style="border:none;background:transparent;cursor:pointer;color:var(--ink3);font-size:13px">✕</button>
+        <button onclick="deleteStudentLog('${kind}','${e.id}')" title="${t('삭제','Delete')}" style="border:none;background:transparent;cursor:pointer;color:var(--ink3);font-size:13px">✕</button>
       </div>
       ${e.content?`<div style="font-size:12.5px;color:var(--ink2);line-height:1.65;white-space:pre-wrap">${escHtml(e.content)}</div>`:''}
     </div>`;
-  }).join('') : '<div style="font-size:12px;color:var(--ink3);padding:8px 0">아직 기록이 없어요.</div>';
+  }).join('') : '<div style="font-size:12px;color:var(--ink3);padding:8px 0">'+t('아직 기록이 없어요.','No entries yet.')+'</div>';
   return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin-bottom:14px">
     <div style="font-size:14px;font-weight:700;color:var(--ink);margin-bottom:3px">${spec.icon} ${spec.title}</div>
     <div style="font-size:11px;color:var(--ink3);margin-bottom:10px;line-height:1.5">${spec.desc||''}</div>
@@ -11672,7 +11672,7 @@ function s360LogCard(kind, entries) {
       <input id="s360-${kind}-title" placeholder="${spec.titlePh}" style="${inp};flex:1;min-width:140px"/>
     </div>
     <textarea id="s360-${kind}-content" placeholder="${spec.bodyPh}" style="width:100%;min-height:62px;padding:9px;border:1px solid var(--border);border-radius:8px;font:400 13px var(--font);color:var(--ink);line-height:1.6;resize:vertical"></textarea>
-    <div style="display:flex;justify-content:flex-end;margin-top:7px"><button onclick="addStudentLog('${kind}')" style="height:32px;padding:0 14px;border:none;background:#1d3a5f;color:#fff;border-radius:8px;cursor:pointer;font:700 12px var(--font)">＋ 기록 추가</button></div>
+    <div style="display:flex;justify-content:flex-end;margin-top:7px"><button onclick="addStudentLog('${kind}')" style="height:32px;padding:0 14px;border:none;background:#1d3a5f;color:#fff;border-radius:8px;cursor:pointer;font:700 12px var(--font)">${t('＋ 기록 추가','＋ Add Entry')}</button></div>
     ${items}
   </div>`;
 }
@@ -11680,8 +11680,8 @@ function s360LogCard(kind, entries) {
 async function renderS360Detail() {
   const detail = document.getElementById('s360-detail'); if (!detail) return;
   const s = schoolStudents.find(x=>x.id===s360Id);
-  if (!s) { detail.innerHTML = '<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px">학생을 선택하세요</div>'; return; }
-  detail.innerHTML = '<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px">불러오는 중...</div>';
+  if (!s) { detail.innerHTML = '<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px">'+t('학생을 선택하세요','Select a student')+'</div>'; return; }
+  detail.innerHTML = '<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px">'+t('불러오는 중...','Loading...')+'</div>';
   const d = await loadStudent360(s360Id);
   s360AllowEntries = d.allowAll || [];
   s360DepEntries = d.deposits || [];
@@ -11692,34 +11692,34 @@ async function renderS360Detail() {
   const rate = total ? Math.round((c.present+c.late+c.early)/total*100) : 0;
   const unpaid = d.bills.filter(b=>!b.paid);
   const unpaidSum = unpaid.reduce((a,b)=>a+(Number(b.amount)||0),0);
-  const monthLabel = (d.month||'').slice(5,7) + '월';
+  const monthLabel = t((d.month||'').slice(5,7) + '월', 'Month ' + Number((d.month||'').slice(5,7)));
 
   const assignedT = homeroomTeachers(s.id);
-  const hrChips = assignedT.map(tid => `<span style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;color:#1d3a5f;background:var(--asoft);padding:4px 6px 4px 10px;border-radius:99px">${escHtml(s360TeacherName(tid)||'?')}<b onclick="removeHomeroom('${s.id}','${tid}')" title="해제" style="cursor:pointer;color:#c0392b;font-size:13px;line-height:1">✕</b></span>`).join('');
+  const hrChips = assignedT.map(tid => `<span style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;color:#1d3a5f;background:var(--asoft);padding:4px 6px 4px 10px;border-radius:99px">${escHtml(s360TeacherName(tid)||'?')}<b onclick="removeHomeroom('${s.id}','${tid}')" title="${t('해제','Remove')}" style="cursor:pointer;color:#c0392b;font-size:13px;line-height:1">✕</b></span>`).join('');
   const addableT = schoolTeachers.filter(t => !assignedT.includes(t.id));
-  const hrAdd = `<select onchange="if(this.value){addHomeroom('${s.id}',this.value)}" style="height:30px;padding:0 8px;border:1px solid var(--border);border-radius:9px;font:600 12px var(--font);background:var(--surface);color:var(--ink2)"><option value="">＋ 담당 추가</option>${addableT.map(t=>`<option value="${t.id}">${escHtml(t.name)}</option>`).join('')}</select>`;
+  const hrAdd = `<select onchange="if(this.value){addHomeroom('${s.id}',this.value)}" style="height:30px;padding:0 8px;border:1px solid var(--border);border-radius:9px;font:600 12px var(--font);background:var(--surface);color:var(--ink2)"><option value="">${t('＋ 담당 추가','＋ Add teacher')}</option>${addableT.map(t=>`<option value="${t.id}">${escHtml(t.name)}</option>`).join('')}</select>`;
 
   const attBadges = ATT_STATUSES.map(st=>`<span style="font-size:12px;color:${st.color};font-weight:600">${st.label} ${c[st.key]}</span>`).join('<span style="color:var(--border)">|</span>');
 
   const billRows = d.bills.slice(0,5).map(b=>`<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--border)">
       <span style="font-size:12.5px;color:var(--ink2);flex:1">${escHtml(b.title||'')}</span>
       <span style="font-size:12.5px;font-weight:600;color:var(--ink)">${tuiWon(b.amount)}</span>
-      <span style="font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:6px;background:${b.paid?'#e8f5ee':'#fdecea'};color:${b.paid?'#2a7a5a':'#c0392b'}">${b.paid?'완료':'미납'}</span>
-    </div>`).join('') || '<div style="font-size:12px;color:var(--ink3);padding:8px 0">청구 내역이 없어요.</div>';
+      <span style="font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:6px;background:${b.paid?'#e8f5ee':'#fdecea'};color:${b.paid?'#2a7a5a':'#c0392b'}">${b.paid?t('완료','Paid'):t('미납','Unpaid')}</span>
+    </div>`).join('') || '<div style="font-size:12px;color:var(--ink3);padding:8px 0">'+t('청구 내역이 없어요.','No bills yet.')+'</div>';
 
   const allowReq = d.allowReq || [];
   const allowReqCard = allowReq.length ? `
     <div style="background:#fff8e1;border:1px solid #f0d98c;border-radius:14px;padding:16px 18px;margin-bottom:14px">
-      <div style="font-size:14px;font-weight:700;color:#8a6d00;margin-bottom:4px">🐷 용돈 삭제 요청 (${allowReq.length})</div>
-      <div style="font-size:11.5px;color:#8a6d00;margin-bottom:6px">학생이 삭제를 요청한 용돈 기록이에요. 승인하면 완전히 삭제됩니다.</div>
+      <div style="font-size:14px;font-weight:700;color:#8a6d00;margin-bottom:4px">${t('🐷 용돈 삭제 요청','🐷 Allowance deletion requests')} (${allowReq.length})</div>
+      <div style="font-size:11.5px;color:#8a6d00;margin-bottom:6px">${t('학생이 삭제를 요청한 용돈 기록이에요. 승인하면 완전히 삭제됩니다.','Allowance entries the student asked to delete. Approving removes them permanently.')}</div>
       ${allowReq.map(e=>`
         <div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid #f0e0a8">
           <div style="flex:1;min-width:0">
             <div style="font-size:13px;font-weight:600;color:var(--ink)">${e.type==='income'?'➕':'➖'} ${escHtml(e.category||'기타')}${e.memo?` · ${escHtml(e.memo)}`:''} <span style="color:${e.type==='income'?'#2a7a5a':'#c0392b'};font-weight:700">${e.type==='income'?'+':'-'}${allowMoney(e.amount, e.currency||'원')}</span></div>
             <div style="font-size:11px;color:var(--ink3)">${e.date||''}</div>
           </div>
-          <button onclick="approveAllowDelete('${e.id}')" style="height:28px;padding:0 12px;border:none;background:#c0392b;color:#fff;border-radius:8px;cursor:pointer;font:700 11px var(--font)">삭제 승인</button>
-          <button onclick="rejectAllowDelete('${e.id}')" style="height:28px;padding:0 12px;border:1px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:8px;cursor:pointer;font:600 11px var(--font)">거부</button>
+          <button onclick="approveAllowDelete('${e.id}')" style="height:28px;padding:0 12px;border:none;background:#c0392b;color:#fff;border-radius:8px;cursor:pointer;font:700 11px var(--font)">${t('삭제 승인','Approve delete')}</button>
+          <button onclick="rejectAllowDelete('${e.id}')" style="height:28px;padding:0 12px;border:1px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:8px;cursor:pointer;font:600 11px var(--font)">${t('거부','Reject')}</button>
         </div>`).join('')}
     </div>` : '';
 
@@ -11729,41 +11729,41 @@ async function renderS360Detail() {
         <div style="width:48px;height:48px;border-radius:13px;background:${s.color||'#1d3a5f'};display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px;font-weight:700;flex-shrink:0">${s.initials||s.name?.[0]||'?'}</div>
         <div style="flex:1;min-width:0">
           <div style="font-size:19px;font-weight:800;color:var(--ink)">${s.name}</div>
-          <div style="font-size:12.5px;color:var(--ink3)">${s.grade||'학년 미정'}${s360GroupName(s.group_id)?` · ${s360GroupName(s.group_id)}`:''}</div>
+          <div style="font-size:12.5px;color:var(--ink3)">${s.grade||t('학년 미정','Grade N/A')}${s360GroupName(s.group_id)?` · ${s360GroupName(s.group_id)}`:''}</div>
         </div>
         <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;justify-content:flex-end">
-          <span style="font-size:11.5px;font-weight:600;color:var(--ink2)">그룹</span>
+          <span style="font-size:11.5px;font-weight:600;color:var(--ink2)">${t('그룹','Group')}</span>
           <select onchange="s360AssignGroup('${s.id}',this.value)" style="height:30px;padding:0 8px;border:1px solid var(--border);border-radius:9px;font:600 12px var(--font);background:var(--surface);color:var(--ink2)">
-            <option value="" ${!s.group_id?'selected':''}>미지정</option>
+            <option value="" ${!s.group_id?'selected':''}>${t('미지정','Unassigned')}</option>
             ${tcsGroups.map(g=>`<option value="${g.id}" ${s.group_id===g.id?'selected':''}>${escHtml(g.name)}</option>`).join('')}
-            <option value="__new__">＋ 새 그룹 만들기…</option>
+            <option value="__new__">${t('＋ 새 그룹 만들기…','＋ Create new group…')}</option>
           </select>
           <span style="width:1px;height:18px;background:var(--border)"></span>
-          <span style="font-size:11.5px;font-weight:600;color:var(--ink2)">담당교사</span>
+          <span style="font-size:11.5px;font-weight:600;color:var(--ink2)">${t('담당교사','Teacher')}</span>
           ${hrChips}
           ${hrAdd}
         </div>
       </div>
       <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap">
-        ${s360Stat(`${monthLabel} 출석률`, total?`${rate}%`:'기록 없음')}
-        ${s360Stat(`${monthLabel} 결석/지각`, `${c.absent} / ${c.late}`)}
-        ${s360Stat('미납액', tuiWon(unpaidSum), unpaidSum>0)}
+        ${s360Stat(`${monthLabel} ${t('출석률','attendance')}`, total?`${rate}%`:t('기록 없음','No records'))}
+        ${s360Stat(`${monthLabel} ${t('결석/지각','absent/late')}`, `${c.absent} / ${c.late}`)}
+        ${s360Stat(t('미납액','Unpaid'), tuiWon(unpaidSum), unpaidSum>0)}
       </div>
     </div>
 
     ${allowReqCard}
 
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin-bottom:14px">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><div style="font-size:14px;font-weight:700;color:var(--ink)">📋 출결 (${monthLabel})</div><div style="flex:1"></div>
-        <button onclick="setSchoolSubMode('attendance')" style="height:28px;padding:0 11px;border:1px solid var(--border);background:var(--surface);border-radius:8px;cursor:pointer;font:600 11px var(--font);color:var(--ink2)">출석부 열기 →</button></div>
-      <div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap;padding:10px 12px;background:var(--s2);border-radius:9px">${total?attBadges:'<span style="font-size:12px;color:var(--ink3)">이번 달 출석 기록이 없어요.</span>'}</div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><div style="font-size:14px;font-weight:700;color:var(--ink)">📋 ${t('출결','Attendance')} (${monthLabel})</div><div style="flex:1"></div>
+        <button onclick="setSchoolSubMode('attendance')" style="height:28px;padding:0 11px;border:1px solid var(--border);background:var(--surface);border-radius:8px;cursor:pointer;font:600 11px var(--font);color:var(--ink2)">${t('출석부 열기 →','Open attendance →')}</button></div>
+      <div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap;padding:10px 12px;background:var(--s2);border-radius:9px">${total?attBadges:'<span style="font-size:12px;color:var(--ink3)">'+t('이번 달 출석 기록이 없어요.','No attendance records this month.')+'</span>'}</div>
     </div>
 
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin-bottom:14px">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><div style="font-size:14px;font-weight:700;color:var(--ink)">💰 학비</div>
-        ${unpaidSum>0?`<span style="font-size:11px;font-weight:700;color:#c0392b;background:#fdecea;padding:2px 8px;border-radius:6px">미납 ${unpaid.length}건 · ${tuiWon(unpaidSum)}</span>`:'<span style="font-size:11px;font-weight:700;color:#2a7a5a;background:#e8f5ee;padding:2px 8px;border-radius:6px">미납 없음</span>'}
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><div style="font-size:14px;font-weight:700;color:var(--ink)">💰 ${t('학비','Tuition')}</div>
+        ${unpaidSum>0?`<span style="font-size:11px;font-weight:700;color:#c0392b;background:#fdecea;padding:2px 8px;border-radius:6px">${t('미납','Unpaid')} ${unpaid.length}${t('건','')} · ${tuiWon(unpaidSum)}</span>`:'<span style="font-size:11px;font-weight:700;color:#2a7a5a;background:#e8f5ee;padding:2px 8px;border-radius:6px">'+t('미납 없음','No unpaid')+'</span>'}
         <div style="flex:1"></div>
-        <button onclick="setSchoolSubMode('tuition')" style="height:28px;padding:0 11px;border:1px solid var(--border);background:var(--surface);border-radius:8px;cursor:pointer;font:600 11px var(--font);color:var(--ink2)">학비 열기 →</button></div>
+        <button onclick="setSchoolSubMode('tuition')" style="height:28px;padding:0 11px;border:1px solid var(--border);background:var(--surface);border-radius:8px;cursor:pointer;font:600 11px var(--font);color:var(--ink2)">${t('학비 열기 →','Open tuition →')}</button></div>
       ${billRows}
     </div>
 
@@ -11780,11 +11780,11 @@ async function renderS360Detail() {
 
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin-bottom:14px">
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        <div style="font-size:14px;font-weight:700;color:var(--ink)">🗂 생활기록부 (종합기록부)</div>
-        <span style="font-size:11.5px;color:var(--ink3)">성적·발달·진로 등 공식 기록부</span>
+        <div style="font-size:14px;font-weight:700;color:var(--ink)">🗂 ${t('생활기록부 (종합기록부)','Student Record (Cumulative)')}</div>
+        <span style="font-size:11.5px;color:var(--ink3)">${t('성적·발달·진로 등 공식 기록부','Official record: grades, development, career, etc.')}</span>
         <div style="flex:1"></div>
-        <button onclick="setSchoolSubMode('record')" style="height:32px;padding:0 14px;border:1.5px solid var(--accent);background:white;color:var(--accent);border-radius:9px;cursor:pointer;font:700 12px var(--font)">✏️ 편집 →</button>
-        <button onclick="openTcsForStudent('${s.id}')" style="height:32px;padding:0 14px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 12px var(--font)">📄 미리보기 / 출력</button>
+        <button onclick="setSchoolSubMode('record')" style="height:32px;padding:0 14px;border:1.5px solid var(--accent);background:white;color:var(--accent);border-radius:9px;cursor:pointer;font:700 12px var(--font)">${t('✏️ 편집 →','✏️ Edit →')}</button>
+        <button onclick="openTcsForStudent('${s.id}')" style="height:32px;padding:0 14px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 12px var(--font)">${t('📄 미리보기 / 출력','📄 Preview / Print')}</button>
       </div>
     </div>`;
 }
@@ -11822,9 +11822,9 @@ function s360AllowCard(entries) {
     const tin  = entries.filter(e=>e.type==='income'  && (e.currency||'원')===cur).reduce((a,e)=>a+(Number(e.amount)||0),0);
     const tout = entries.filter(e=>e.type==='expense' && (e.currency||'원')===cur).reduce((a,e)=>a+(Number(e.amount)||0),0);
     return `<div style="flex:1;min-width:150px;background:linear-gradient(135deg,#2a7a5a,#2a5298);border-radius:12px;padding:12px 14px;color:#fff">
-      <div style="font-size:10.5px;opacity:.85">잔액 ${cur==='$'?'(달러)':'(원)'}</div>
+      <div style="font-size:10.5px;opacity:.85">${t('잔액','Balance')} ${cur==='$'?t('(달러)','(USD)'):t('(원)','(KRW)')}</div>
       <div style="font-size:20px;font-weight:800;letter-spacing:-.02em">${allowMoney(tin-tout,cur)}</div>
-      <div style="font-size:10.5px;opacity:.92;margin-top:3px">수입 ${allowMoney(tin,cur)} · 지출 ${allowMoney(tout,cur)}</div>
+      <div style="font-size:10.5px;opacity:.92;margin-top:3px">${t('수입','Income')} ${allowMoney(tin,cur)} · ${t('지출','Expense')} ${allowMoney(tout,cur)}</div>
     </div>`;
   }).join('');
 
@@ -11833,17 +11833,17 @@ function s360AllowCard(entries) {
   const tBtn = (t,label,color)=>`<button onclick="s360SetAllowType('${t}')" style="flex:1;height:34px;border:none;border-radius:8px;font:700 12px var(--font);cursor:pointer;background:${s360AllowType===t?color:'var(--s2)'};color:${s360AllowType===t?'#fff':'var(--ink2)'}">${label}</button>`;
   const cBtn = (c,label)=>`<button onclick="s360SetAllowCur('${c}')" style="height:34px;padding:0 10px;border:1px solid ${s360AllowCur===c?'#1d3a5f':'var(--border)'};border-radius:8px;font:700 12px var(--font);cursor:pointer;background:${s360AllowCur===c?'#1d3a5f':'var(--surface)'};color:${s360AllowCur===c?'#fff':'var(--ink2)'}">${label}</button>`;
   const form = `<div style="background:var(--s2);border:1px solid var(--border);border-radius:11px;padding:12px;margin-bottom:12px">
-    <div style="font-size:11.5px;font-weight:700;color:var(--ink2);margin-bottom:8px">➕ 선생님이 대신 기록</div>
-    <div style="display:flex;gap:6px;margin-bottom:8px">${tBtn('income','수입 ➕','#2a7a5a')}${tBtn('expense','지출 ➖','#c0392b')}</div>
+    <div style="font-size:11.5px;font-weight:700;color:var(--ink2);margin-bottom:8px">${t('➕ 선생님이 대신 기록','➕ Record on behalf of student')}</div>
+    <div style="display:flex;gap:6px;margin-bottom:8px">${tBtn('income',t('수입 ➕','Income ➕'),'#2a7a5a')}${tBtn('expense',t('지출 ➖','Expense ➖'),'#c0392b')}</div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;align-items:center">
       <input id="s360al-date" type="date" value="${attTodayStr()}" style="${inp}"/>
       <select id="s360al-cat" style="${inp}">${catOpts}</select>
       <div style="display:flex;gap:4px">${cBtn('원','₩')}${cBtn('$','$')}</div>
-      <input id="s360al-amount" type="number" min="0" step="${s360AllowCur==='$'?'0.01':'100'}" placeholder="금액" style="${inp};width:96px"/>
+      <input id="s360al-amount" type="number" min="0" step="${s360AllowCur==='$'?'0.01':'100'}" placeholder="${t('금액','Amount')}" style="${inp};width:96px"/>
     </div>
     <div style="display:flex;gap:6px">
-      <input id="s360al-memo" placeholder="내용 (예: 간식비)" style="${inp};flex:1" onkeydown="if(event.key==='Enter')teacherAddAllow()"/>
-      <button onclick="teacherAddAllow()" style="height:34px;padding:0 16px;border:none;background:#1d3a5f;color:#fff;border-radius:8px;cursor:pointer;font:700 12.5px var(--font)">＋ 기록</button>
+      <input id="s360al-memo" placeholder="${t('내용 (예: 간식비)','Note (e.g. snacks)')}" style="${inp};flex:1" onkeydown="if(event.key==='Enter')teacherAddAllow()"/>
+      <button onclick="teacherAddAllow()" style="height:34px;padding:0 16px;border:none;background:#1d3a5f;color:#fff;border-radius:8px;cursor:pointer;font:700 12.5px var(--font)">${t('＋ 기록','＋ Record')}</button>
     </div>
   </div>`;
 
@@ -11856,35 +11856,35 @@ function s360AllowCard(entries) {
       <span style="font-size:14px">${income?'➕':'➖'}</span>
       <div style="flex:1;min-width:0">
         <div style="font-size:12.5px;font-weight:600;color:var(--ink)">${escHtml(e.category||'기타')}${e.memo?` <span style="font-weight:400;color:var(--ink3)">· ${escHtml(e.memo)}</span>`:''}</div>
-        <div style="font-size:10.5px;color:var(--ink3)">${e.date||''}${wd?` (${wd})`:''}${pending?' · <span style="color:#b8860b;font-weight:600">🕓 삭제요청</span>':''}</div>
+        <div style="font-size:10.5px;color:var(--ink3)">${e.date||''}${wd?` (${wd})`:''}${pending?' · <span style="color:#b8860b;font-weight:600">'+t('🕓 삭제요청','🕓 Delete requested')+'</span>':''}</div>
       </div>
       <span style="font-size:13px;font-weight:700;color:${income?'#2a7a5a':'#c0392b'};white-space:nowrap">${income?'+':'-'}${allowMoney(e.amount,cur)}</span>
-      <button onclick="teacherEditAllow('${e.id}')" title="수정" style="border:none;background:transparent;cursor:pointer;color:var(--ink3);font-size:13px;flex-shrink:0">✏️</button>
-      <button onclick="teacherDeleteAllow('${e.id}')" title="삭제" style="border:none;background:transparent;cursor:pointer;color:#c0392b;font-size:13px;flex-shrink:0">✕</button>
+      <button onclick="teacherEditAllow('${e.id}')" title="${t('수정','Edit')}" style="border:none;background:transparent;cursor:pointer;color:var(--ink3);font-size:13px;flex-shrink:0">✏️</button>
+      <button onclick="teacherDeleteAllow('${e.id}')" title="${t('삭제','Delete')}" style="border:none;background:transparent;cursor:pointer;color:#c0392b;font-size:13px;flex-shrink:0">✕</button>
     </div>`;
   }).join('');
   const moreBtn = entries.length > 12
-    ? `<div style="text-align:center;margin-top:8px"><button onclick="s360ToggleAllowAll()" style="height:28px;padding:0 14px;border:1px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:8px;cursor:pointer;font:600 11px var(--font)">${s360AllowShowAll?'접기':`전체 ${entries.length}건 보기`}</button></div>`
+    ? `<div style="text-align:center;margin-top:8px"><button onclick="s360ToggleAllowAll()" style="height:28px;padding:0 14px;border:1px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:8px;cursor:pointer;font:600 11px var(--font)">${s360AllowShowAll?t('접기','Collapse'):t(`전체 ${entries.length}건 보기`,`View all ${entries.length}`)}</button></div>`
     : '';
 
   return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin-bottom:14px">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
-      <div style="font-size:14px;font-weight:700;color:var(--ink)">🐷 용돈기입장</div>
-      <span style="font-size:11px;color:var(--ink3)">확인 · 대신 기록 · 수정</span>
+      <div style="font-size:14px;font-weight:700;color:var(--ink)">🐷 ${t('용돈기입장','Allowance Book')}</div>
+      <span style="font-size:11px;color:var(--ink3)">${t('확인 · 대신 기록 · 수정','Review · record on behalf · edit')}</span>
       <div style="flex:1"></div>
-      <span style="font-size:11px;color:var(--ink3)">전체 ${entries.length}건</span>
+      <span style="font-size:11px;color:var(--ink3)">${t(`전체 ${entries.length}건`,`${entries.length} total`)}</span>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">${bal}</div>
     <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:8px 10px;margin-bottom:12px">
-      <span style="font-size:11.5px;font-weight:700;color:var(--ink2)">📄 기간 PDF</span>
+      <span style="font-size:11.5px;font-weight:700;color:var(--ink2)">${t('📄 기간 PDF','📄 Period PDF')}</span>
       <input id="s360al-pdf-from" type="date" value="${(attTodayStr()).slice(0,8)}01" style="${inp}"/>
       <span style="color:var(--ink3);font-size:12px">~</span>
       <input id="s360al-pdf-to" type="date" value="${attTodayStr()}" style="${inp}"/>
-      <button onclick="printAllowancePdf()" style="height:34px;padding:0 14px;border:none;background:#1d3a5f;color:#fff;border-radius:8px;cursor:pointer;font:700 12px var(--font)">내보내기</button>
+      <button onclick="printAllowancePdf()" style="height:34px;padding:0 14px;border:none;background:#1d3a5f;color:#fff;border-radius:8px;cursor:pointer;font:700 12px var(--font)">${t('내보내기','Export')}</button>
     </div>
     ${form}
-    <div style="font-size:11.5px;font-weight:700;color:var(--ink2);margin-bottom:2px">내역</div>
-    ${entries.length ? rows : '<div style="font-size:12px;color:var(--ink3);padding:10px 0">아직 용돈 기록이 없어요.</div>'}
+    <div style="font-size:11.5px;font-weight:700;color:var(--ink2);margin-bottom:2px">${t('내역','History')}</div>
+    ${entries.length ? rows : '<div style="font-size:12px;color:var(--ink3);padding:10px 0">'+t('아직 용돈 기록이 없어요.','No allowance entries yet.')+'</div>'}
     ${moreBtn}
   </div>`;
 }
@@ -11905,25 +11905,25 @@ function s360DepCard(entries) {
     const tin  = entries.filter(e=>e.type==='in'  && (e.currency||'원')===cur).reduce((a,e)=>a+(Number(e.amount)||0),0);
     const tout = entries.filter(e=>e.type==='out' && (e.currency||'원')===cur).reduce((a,e)=>a+(Number(e.amount)||0),0);
     return `<div style="flex:1;min-width:150px;background:linear-gradient(135deg,#5A7C8B,#1d3a5f);border-radius:12px;padding:12px 14px;color:#fff">
-      <div style="font-size:10.5px;opacity:.85">예치금 잔액 ${cur==='$'?'(달러)':'(원)'}</div>
+      <div style="font-size:10.5px;opacity:.85">${t('예치금 잔액','Deposit balance')} ${cur==='$'?t('(달러)','(USD)'):t('(원)','(KRW)')}</div>
       <div style="font-size:20px;font-weight:800;letter-spacing:-.02em">${allowMoney(tin-tout,cur)}</div>
-      <div style="font-size:10.5px;opacity:.92;margin-top:3px">입금 ${allowMoney(tin,cur)} · 출금 ${allowMoney(tout,cur)}</div>
+      <div style="font-size:10.5px;opacity:.92;margin-top:3px">${t('입금','Deposit')} ${allowMoney(tin,cur)} · ${t('출금','Withdraw')} ${allowMoney(tout,cur)}</div>
     </div>`;
   }).join('');
   const inp = 'height:34px;padding:0 9px;border:1px solid var(--border);border-radius:8px;font:600 12.5px var(--font);color:var(--ink);background:var(--surface)';
   const tBtn = (t,label,color)=>`<button onclick="s360SetDepType('${t}')" style="flex:1;height:34px;border:none;border-radius:8px;font:700 12px var(--font);cursor:pointer;background:${s360DepType===t?color:'var(--s2)'};color:${s360DepType===t?'#fff':'var(--ink2)'}">${label}</button>`;
   const cBtn = (c,label)=>`<button onclick="s360SetDepCur('${c}')" style="height:34px;padding:0 10px;border:1px solid ${s360DepCur===c?'#1d3a5f':'var(--border)'};border-radius:8px;font:700 12px var(--font);cursor:pointer;background:${s360DepCur===c?'#1d3a5f':'var(--surface)'};color:${s360DepCur===c?'#fff':'var(--ink2)'}">${label}</button>`;
   const form = `<div style="background:var(--s2);border:1px solid var(--border);border-radius:11px;padding:12px;margin-bottom:12px">
-    <div style="font-size:11.5px;font-weight:700;color:var(--ink2);margin-bottom:8px">🏦 입금 / 출금 기록</div>
-    <div style="display:flex;gap:6px;margin-bottom:8px">${tBtn('in','입금 ＋','#2a7a5a')}${tBtn('out','출금 －','#c0392b')}</div>
+    <div style="font-size:11.5px;font-weight:700;color:var(--ink2);margin-bottom:8px">${t('🏦 입금 / 출금 기록','🏦 Deposit / Withdraw record')}</div>
+    <div style="display:flex;gap:6px;margin-bottom:8px">${tBtn('in',t('입금 ＋','Deposit ＋'),'#2a7a5a')}${tBtn('out',t('출금 －','Withdraw －'),'#c0392b')}</div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;align-items:center">
       <input id="s360dep-date" type="date" value="${attTodayStr()}" style="${inp}"/>
       <div style="display:flex;gap:4px">${cBtn('원','₩')}${cBtn('$','$')}</div>
-      <input id="s360dep-amount" type="number" min="0" step="${s360DepCur==='$'?'0.01':'100'}" placeholder="금액" style="${inp};width:110px"/>
+      <input id="s360dep-amount" type="number" min="0" step="${s360DepCur==='$'?'0.01':'100'}" placeholder="${t('금액','Amount')}" style="${inp};width:110px"/>
     </div>
     <div style="display:flex;gap:6px">
-      <input id="s360dep-memo" placeholder="내용 (예: 부모님 입금, 교재비 지출)" style="${inp};flex:1" onkeydown="if(event.key==='Enter')teacherAddDep()"/>
-      <button onclick="teacherAddDep()" style="height:34px;padding:0 16px;border:none;background:#1d3a5f;color:#fff;border-radius:8px;cursor:pointer;font:700 12.5px var(--font)">＋ 기록</button>
+      <input id="s360dep-memo" placeholder="${t('내용 (예: 부모님 입금, 교재비 지출)','Note (e.g. parent deposit, textbook expense)')}" style="${inp};flex:1" onkeydown="if(event.key==='Enter')teacherAddDep()"/>
+      <button onclick="teacherAddDep()" style="height:34px;padding:0 16px;border:none;background:#1d3a5f;color:#fff;border-radius:8px;cursor:pointer;font:700 12.5px var(--font)">${t('＋ 기록','＋ Record')}</button>
     </div>
   </div>`;
   const shown = s360DepShowAll ? entries : entries.slice(0,12);
@@ -11932,27 +11932,27 @@ function s360DepCard(entries) {
     return `<div style="display:flex;align-items:center;gap:9px;padding:8px 2px;border-top:1px solid var(--border)">
       <span style="font-size:14px">${isIn?'📥':'📤'}</span>
       <div style="flex:1;min-width:0">
-        <div style="font-size:12.5px;font-weight:600;color:var(--ink)">${isIn?'입금':'출금'}${e.memo?` <span style="font-weight:400;color:var(--ink3)">· ${escHtml(e.memo)}</span>`:''}</div>
+        <div style="font-size:12.5px;font-weight:600;color:var(--ink)">${isIn?t('입금','Deposit'):t('출금','Withdraw')}${e.memo?` <span style="font-weight:400;color:var(--ink3)">· ${escHtml(e.memo)}</span>`:''}</div>
         <div style="font-size:10.5px;color:var(--ink3)">${e.date||''}</div>
       </div>
       <span style="font-size:13px;font-weight:700;color:${isIn?'#2a7a5a':'#c0392b'};white-space:nowrap">${isIn?'+':'-'}${allowMoney(e.amount,cur)}</span>
-      <button onclick="teacherEditDep('${e.id}')" title="수정" style="border:none;background:transparent;cursor:pointer;color:var(--ink3);font-size:13px;flex-shrink:0">✏️</button>
-      <button onclick="teacherDeleteDep('${e.id}')" title="삭제" style="border:none;background:transparent;cursor:pointer;color:#c0392b;font-size:13px;flex-shrink:0">✕</button>
+      <button onclick="teacherEditDep('${e.id}')" title="${t('수정','Edit')}" style="border:none;background:transparent;cursor:pointer;color:var(--ink3);font-size:13px;flex-shrink:0">✏️</button>
+      <button onclick="teacherDeleteDep('${e.id}')" title="${t('삭제','Delete')}" style="border:none;background:transparent;cursor:pointer;color:#c0392b;font-size:13px;flex-shrink:0">✕</button>
     </div>`;
   }).join('');
   const moreBtn = entries.length > 12
-    ? `<div style="text-align:center;margin-top:8px"><button onclick="s360ToggleDepAll()" style="height:28px;padding:0 14px;border:1px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:8px;cursor:pointer;font:600 11px var(--font)">${s360DepShowAll?'접기':`전체 ${entries.length}건 보기`}</button></div>` : '';
+    ? `<div style="text-align:center;margin-top:8px"><button onclick="s360ToggleDepAll()" style="height:28px;padding:0 14px;border:1px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:8px;cursor:pointer;font:600 11px var(--font)">${s360DepShowAll?t('접기','Collapse'):t(`전체 ${entries.length}건 보기`,`View all ${entries.length}`)}</button></div>` : '';
   return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin-bottom:14px">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
-      <div style="font-size:14px;font-weight:700;color:var(--ink)">🏦 예치금</div>
-      <span style="font-size:11px;color:var(--ink3)">학교가 맡아두는 돈 · 입금/출금 기록</span>
+      <div style="font-size:14px;font-weight:700;color:var(--ink)">🏦 ${t('예치금','Deposits')}</div>
+      <span style="font-size:11px;color:var(--ink3)">${t('학교가 맡아두는 돈 · 입금/출금 기록','Money held by the school · deposit/withdraw record')}</span>
       <div style="flex:1"></div>
-      <span style="font-size:11px;color:var(--ink3)">전체 ${entries.length}건</span>
+      <span style="font-size:11px;color:var(--ink3)">${t(`전체 ${entries.length}건`,`${entries.length} total`)}</span>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">${bal}</div>
     ${form}
-    <div style="font-size:11.5px;font-weight:700;color:var(--ink2);margin-bottom:2px">내역</div>
-    ${entries.length ? rows : '<div style="font-size:12px;color:var(--ink3);padding:10px 0">아직 예치금 기록이 없어요.</div>'}
+    <div style="font-size:11.5px;font-weight:700;color:var(--ink2);margin-bottom:2px">${t('내역','History')}</div>
+    ${entries.length ? rows : '<div style="font-size:12px;color:var(--ink3);padding:10px 0">'+t('아직 예치금 기록이 없어요.','No deposit records yet.')+'</div>'}
     ${moreBtn}
   </div>`;
 }
@@ -11967,11 +11967,11 @@ async function teacherAddDep() {
   const date = document.getElementById('s360dep-date')?.value || attTodayStr();
   const memo = (document.getElementById('s360dep-memo')?.value || '').trim();
   const amount = parseFloat(document.getElementById('s360dep-amount')?.value) || 0;
-  if (!(amount > 0)) { showUploadToast('금액을 입력하세요'); return; }
+  if (!(amount > 0)) { showUploadToast(t('금액을 입력하세요','Enter an amount')); return; }
   const s = schoolStudents.find(x=>x.id===s360Id);
   const { error } = await sb.from('deposit_entries').insert({ member_id: s360Id, community_id: (s&&s.community_id)||CID(), date, type: s360DepType, amount, currency: s360DepCur, memo, created_by: ME.id });
-  if (error) { if (schoolTableMissing(error)) { showUploadToast('예치금 테이블이 없어요. db/예치금_DB설치.sql 을 먼저 실행하세요'); return; } showUploadToast('저장 실패: '+error.message); return; }
-  showUploadToast(s360DepType==='in' ? '📥 입금 기록됨' : '📤 출금 기록됨');
+  if (error) { if (schoolTableMissing(error)) { showUploadToast(t('예치금 테이블이 없어요. db/예치금_DB설치.sql 을 먼저 실행하세요','The deposits table is missing. Run db/예치금_DB설치.sql first')); return; } showUploadToast(t('저장 실패: ','Save failed: ')+error.message); return; }
+  showUploadToast(s360DepType==='in' ? t('📥 입금 기록됨','📥 Deposit recorded') : t('📤 출금 기록됨','📤 Withdrawal recorded'));
   await s360ReloadDep();
   const A=document.getElementById('s360dep-amount'); if(A)A.value='';
   const M=document.getElementById('s360dep-memo'); if(M){M.value='';M.focus();}
@@ -11979,18 +11979,18 @@ async function teacherAddDep() {
 async function teacherEditDep(id) {
   const e = (s360DepEntries||[]).find(x=>x.id===id); if (!e) return;
   const cur = e.currency || '원';
-  const amtStr = prompt(`금액 수정 (${cur})`, e.amount); if (amtStr === null) return;
-  const amount = parseFloat(amtStr); if (!(amount > 0)) { showUploadToast('올바른 금액을 입력하세요'); return; }
-  const memo = prompt('내용 수정', e.memo || ''); if (memo === null) return;
+  const amtStr = prompt(`${t('금액 수정','Edit amount')} (${cur})`, e.amount); if (amtStr === null) return;
+  const amount = parseFloat(amtStr); if (!(amount > 0)) { showUploadToast(t('올바른 금액을 입력하세요','Enter a valid amount')); return; }
+  const memo = prompt(t('내용 수정','Edit note'), e.memo || ''); if (memo === null) return;
   const { error } = await sb.from('deposit_entries').update({ amount, memo: memo.trim() }).eq('id', id);
-  if (error) { showUploadToast('수정 실패: '+error.message); return; }
-  showUploadToast('✏️ 수정됐어요'); await s360ReloadDep();
+  if (error) { showUploadToast(t('수정 실패: ','Edit failed: ')+error.message); return; }
+  showUploadToast(t('✏️ 수정됐어요','✏️ Updated')); await s360ReloadDep();
 }
 async function teacherDeleteDep(id) {
-  if (!confirm('이 예치금 기록을 삭제할까요?')) return;
+  if (!confirm(t('이 예치금 기록을 삭제할까요?','Delete this deposit record?'))) return;
   const { error } = await sb.from('deposit_entries').delete().eq('id', id);
-  if (error) { showUploadToast('삭제 실패: '+error.message); return; }
-  showUploadToast('🗑 삭제됐어요'); await s360ReloadDep();
+  if (error) { showUploadToast(t('삭제 실패: ','Delete failed: ')+error.message); return; }
+  showUploadToast(t('🗑 삭제됐어요','🗑 Deleted')); await s360ReloadDep();
 }
 
 // 용돈 내역만 다시 불러와 카드만 갱신(전체 화면 새로고침/스크롤 튐 없음)
@@ -12008,17 +12008,17 @@ async function teacherAddAllow() {
   const category = document.getElementById('s360al-cat')?.value || '기타';
   const memo = (document.getElementById('s360al-memo')?.value || '').trim();
   const amount = parseFloat(document.getElementById('s360al-amount')?.value) || 0;
-  if (!(amount > 0)) { showUploadToast('금액을 입력하세요'); return; }
+  if (!(amount > 0)) { showUploadToast(t('금액을 입력하세요','Enter an amount')); return; }
   const s = schoolStudents.find(x=>x.id===s360Id);
   const { error } = await sb.from('allowance_entries').insert({
     member_id: s360Id, community_id: (s&&s.community_id)||CID(),
     date, type: s360AllowType, category, memo, amount, currency: s360AllowCur,
   });
   if (error) {
-    if (schoolTableMissing(error)) { showUploadToast('용돈 테이블이 없어요. db/용돈기입장_DB설치.sql 을 먼저 실행해주세요'); return; }
-    showUploadToast('저장 실패: ' + error.message + ' (권한이면 최신 db/용돈기입장_DB설치.sql 재실행)'); return;
+    if (schoolTableMissing(error)) { showUploadToast(t('용돈 테이블이 없어요. db/용돈기입장_DB설치.sql 을 먼저 실행해주세요','The allowance table is missing. Run db/용돈기입장_DB설치.sql first')); return; }
+    showUploadToast(t('저장 실패: ','Save failed: ') + error.message + t(' (권한이면 최신 db/용돈기입장_DB설치.sql 재실행)',' (if a permissions issue, re-run the latest db/용돈기입장_DB설치.sql)')); return;
   }
-  showUploadToast(s360AllowType==='income' ? '➕ 수입 기록됨' : '➖ 지출 기록됨');
+  showUploadToast(s360AllowType==='income' ? t('➕ 수입 기록됨','➕ Income recorded') : t('➖ 지출 기록됨','➖ Expense recorded'));
   await s360ReloadAllow();
   // 다음 입력을 위해 금액·메모만 비움 (날짜·타입·통화는 유지)
   const a = document.getElementById('s360al-amount'); if (a) a.value = '';
@@ -12026,25 +12026,25 @@ async function teacherAddAllow() {
 }
 
 async function teacherDeleteAllow(id) {
-  if (!confirm('이 용돈 기록을 삭제할까요? 되돌릴 수 없어요.')) return;
+  if (!confirm(t('이 용돈 기록을 삭제할까요? 되돌릴 수 없어요.','Delete this allowance entry? This cannot be undone.'))) return;
   const { error } = await sb.from('allowance_entries').delete().eq('id', id);
-  if (error) { showUploadToast('삭제 실패: ' + error.message); return; }
-  showUploadToast('🗑 삭제됐어요');
+  if (error) { showUploadToast(t('삭제 실패: ','Delete failed: ') + error.message); return; }
+  showUploadToast(t('🗑 삭제됐어요','🗑 Deleted'));
   await s360ReloadAllow();
 }
 
 async function teacherEditAllow(id) {
   const e = (s360AllowEntries||[]).find(x=>x.id===id); if (!e) return;
   const cur = e.currency || '원';
-  const amtStr = prompt(`금액 수정 (${cur})`, e.amount);
+  const amtStr = prompt(`${t('금액 수정','Edit amount')} (${cur})`, e.amount);
   if (amtStr === null) return;
   const amount = parseFloat(amtStr);
-  if (!(amount > 0)) { showUploadToast('올바른 금액을 입력하세요'); return; }
-  const memo = prompt('내용 수정', e.memo || '');
+  if (!(amount > 0)) { showUploadToast(t('올바른 금액을 입력하세요','Enter a valid amount')); return; }
+  const memo = prompt(t('내용 수정','Edit note'), e.memo || '');
   if (memo === null) return;
   const { error } = await sb.from('allowance_entries').update({ amount, memo: memo.trim() }).eq('id', id);
-  if (error) { showUploadToast('수정 실패: ' + error.message); return; }
-  showUploadToast('✏️ 수정됐어요');
+  if (error) { showUploadToast(t('수정 실패: ','Edit failed: ') + error.message); return; }
+  showUploadToast(t('✏️ 수정됐어요','✏️ Updated'));
   await s360ReloadAllow();
 }
 
@@ -12052,14 +12052,14 @@ async function teacherEditAllow(id) {
 function printAllowancePdf() {
   const from = document.getElementById('s360al-pdf-from')?.value;
   const to   = document.getElementById('s360al-pdf-to')?.value;
-  if (!from || !to) { showUploadToast('기간을 선택하세요'); return; }
-  if (from > to) { showUploadToast('시작일이 종료일보다 늦어요'); return; }
+  if (!from || !to) { showUploadToast(t('기간을 선택하세요','Select a period')); return; }
+  if (from > to) { showUploadToast(t('시작일이 종료일보다 늦어요','Start date is later than end date')); return; }
   const s = schoolStudents.find(x => x.id === s360Id);
-  const name = (s && s.name) || '학생';
+  const name = (s && s.name) || t('학생','Student');
   const list = (s360AllowEntries || [])
     .filter(e => (e.date || '') >= from && (e.date || '') <= to && e.delete_status !== 'requested')
     .sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.created_at || '').localeCompare(b.created_at || ''));
-  if (!list.length) { showUploadToast('해당 기간에 내역이 없어요'); return; }
+  if (!list.length) { showUploadToast(t('해당 기간에 내역이 없어요','No entries in this period')); return; }
 
   // 통화별 합계
   const curs = [...new Set(list.map(e => e.currency || '원'))];
@@ -12067,10 +12067,10 @@ function printAllowancePdf() {
     const inc = list.filter(e => e.type === 'income'  && (e.currency||'원') === cur).reduce((a,e)=>a+(Number(e.amount)||0), 0);
     const exp = list.filter(e => e.type === 'expense' && (e.currency||'원') === cur).reduce((a,e)=>a+(Number(e.amount)||0), 0);
     return `<div class="sumcard">
-      <div class="sc-cur">${cur === '$' ? '달러($)' : (cur === '₱' ? '페소(₱)' : '원(₩)')}</div>
-      <div class="sc-row"><span>수입</span><b style="color:#15803d">${allowMoney(inc,cur)}</b></div>
-      <div class="sc-row"><span>지출</span><b style="color:#c0392b">${allowMoney(exp,cur)}</b></div>
-      <div class="sc-row sc-bal"><span>잔액</span><b>${allowMoney(inc-exp,cur)}</b></div>
+      <div class="sc-cur">${cur === '$' ? t('달러($)','USD($)') : (cur === '₱' ? t('페소(₱)','PHP(₱)') : t('원(₩)','KRW(₩)'))}</div>
+      <div class="sc-row"><span>${t('수입','Income')}</span><b style="color:#15803d">${allowMoney(inc,cur)}</b></div>
+      <div class="sc-row"><span>${t('지출','Expense')}</span><b style="color:#c0392b">${allowMoney(exp,cur)}</b></div>
+      <div class="sc-row sc-bal"><span>${t('잔액','Balance')}</span><b>${allowMoney(inc-exp,cur)}</b></div>
     </div>`;
   }).join('');
 
@@ -12079,7 +12079,7 @@ function printAllowancePdf() {
     const wd = allowWeekday(e.date);
     return `<tr>
       <td>${e.date||''}${wd?` (${wd})`:''}</td>
-      <td class="c" style="color:${income?'#15803d':'#c0392b'};font-weight:700">${income?'수입':'지출'}</td>
+      <td class="c" style="color:${income?'#15803d':'#c0392b'};font-weight:700">${income?t('수입','Income'):t('지출','Expense')}</td>
       <td>${escHtml(e.category||'')}</td>
       <td>${escHtml(e.memo||'')}</td>
       <td class="r" style="color:${income?'#15803d':'#c0392b'};font-weight:700">${income?'+':'−'}${allowMoney(e.amount,cur)}</td>
@@ -12088,9 +12088,9 @@ function printAllowancePdf() {
 
   const gen = attTodayStr();
   const win = window.open('', '_blank');
-  if (!win) { showUploadToast('팝업이 차단되었어요. 팝업 허용 후 다시 시도해주세요'); return; }
+  if (!win) { showUploadToast(t('팝업이 차단되었어요. 팝업 허용 후 다시 시도해주세요','Popup blocked. Allow popups and try again')); return; }
   win.document.write(`<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"/>
-    <title>용돈 내역 — ${escHtml(name)} (${from}~${to})</title>
+    <title>${t('용돈 내역','Allowance History')} — ${escHtml(name)} (${from}~${to})</title>
     <style>
       *{box-sizing:border-box;margin:0;padding:0}
       body{font-family:'Malgun Gothic',Arial,sans-serif;color:#1a2332;padding:16mm 14mm}
@@ -12112,15 +12112,15 @@ function printAllowancePdf() {
       .foot{margin-top:14px;font-size:11px;color:#889;text-align:right}
       .btn{position:fixed;top:12px;right:12px;padding:9px 16px;background:#1d3a5f;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer}
     </style></head><body>
-    <button class="btn noprint" onclick="window.print()">🖨 인쇄 / PDF 저장</button>
-    <h1>🐷 용돈 사용 내역서</h1>
-    <div class="sub"><b>${escHtml(name)}</b> 학생 · 기간 ${from} ~ ${to} · 총 ${list.length}건</div>
+    <button class="btn noprint" onclick="window.print()">${t('🖨 인쇄 / PDF 저장','🖨 Print / Save PDF')}</button>
+    <h1>${t('🐷 용돈 사용 내역서','🐷 Allowance Statement')}</h1>
+    <div class="sub"><b>${escHtml(name)}</b> ${t('학생 · 기간','· Period')} ${from} ~ ${to} · ${t(`총 ${list.length}건`,`${list.length} entries`)}</div>
     <div class="summary">${sumCards}</div>
     <table>
-      <thead><tr><th>날짜</th><th class="c">구분</th><th>분류</th><th>내용</th><th class="r">금액</th></tr></thead>
+      <thead><tr><th>${t('날짜','Date')}</th><th class="c">${t('구분','Type')}</th><th>${t('분류','Category')}</th><th>${t('내용','Note')}</th><th class="r">${t('금액','Amount')}</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
-    <div class="foot">발행일 ${gen} · TCS Total Care System</div>
+    <div class="foot">${t('발행일','Issued')} ${gen} · TCS Total Care System</div>
   </body></html>`);
   win.document.close();
   setTimeout(() => { try { win.print(); } catch(_){} }, 500);
@@ -12133,10 +12133,10 @@ let lastAssessmentDraft = '';
 function s360AssessmentCard() {
   return `<div style="background:linear-gradient(135deg,#f5f3ff,#eef2ff);border:1px solid #ddd6fe;border-radius:14px;padding:16px 18px;margin-bottom:14px">
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-      <div style="font-size:14px;font-weight:700;color:#5b21b6">🤖 생기부 종합의견 AI 초안</div>
-      <span style="font-size:11px;color:#7c6ba0">관찰기록·출결·상담·독서·활동을 모아 종합의견 초안을 만들어요</span>
+      <div style="font-size:14px;font-weight:700;color:#5b21b6">${t('🤖 생기부 종합의견 AI 초안','🤖 AI Draft: Record Summary')}</div>
+      <span style="font-size:11px;color:#7c6ba0">${t('관찰기록·출결·상담·독서·활동을 모아 종합의견 초안을 만들어요','Gathers observations, attendance, counseling, reading, and activities into a draft summary')}</span>
       <div style="flex:1"></div>
-      <button id="assess-btn" onclick="generateAssessmentDraft()" style="height:34px;padding:0 16px;border:none;background:#6d28d9;color:#fff;border-radius:9px;cursor:pointer;font:700 12.5px var(--font)">✨ 초안 생성</button>
+      <button id="assess-btn" onclick="generateAssessmentDraft()" style="height:34px;padding:0 16px;border:none;background:#6d28d9;color:#fff;border-radius:9px;cursor:pointer;font:700 12.5px var(--font)">${t('✨ 초안 생성','✨ Generate draft')}</button>
     </div>
     <div id="assess-result" style="margin-top:10px"></div>
   </div>`;
@@ -12146,8 +12146,8 @@ async function generateAssessmentDraft() {
   const s = schoolStudents.find(x=>x.id===s360Id); if (!s) return;
   const btn = document.getElementById('assess-btn');
   const box = document.getElementById('assess-result');
-  if (btn) { btn.disabled = true; btn.textContent = '⏳ 생성 중…'; }
-  if (box) box.innerHTML = '<div style="font-size:12px;color:#7c6ba0;padding:8px 2px">AI가 기록을 읽고 종합의견을 작성 중이에요… (최대 1분)</div>';
+  if (btn) { btn.disabled = true; btn.textContent = t('⏳ 생성 중…','⏳ Generating…'); }
+  if (box) box.innerHTML = '<div style="font-size:12px;color:#7c6ba0;padding:8px 2px">'+t('AI가 기록을 읽고 종합의견을 작성 중이에요… (최대 1분)','AI is reading the records and writing the summary… (up to 1 minute)')+'</div>';
   try {
     const d = await loadStudent360(s360Id);
     const cc = {present:0,late:0,early:0,absent:0,sick:0,excused:0};
@@ -12167,15 +12167,15 @@ async function generateAssessmentDraft() {
     const invokeP = sb.functions.invoke(TCS_ASSESS_FN, { body: payload });
     const timeoutP = new Promise((_,rej)=>setTimeout(()=>rej(new Error('TIMEOUT')),120000));
     const { data, error } = await Promise.race([invokeP, timeoutP]);
-    if (error) throw new Error(error.message || '함수 호출 실패');
+    if (error) throw new Error(error.message || t('함수 호출 실패','Function call failed'));
     const draft = (data && (data.draft || data.result || data.text)) || '';
-    if (!draft) throw new Error('초안을 받지 못했어요');
+    if (!draft) throw new Error(t('초안을 받지 못했어요','No draft was returned'));
     renderAssessmentDraft(draft);
   } catch(e) {
-    const msg = e.message==='TIMEOUT' ? '응답이 너무 오래 걸려요. 잠시 후 다시 시도해주세요.' : '생성 실패: ' + e.message;
-    if (box) box.innerHTML = `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:9px;padding:12px;font-size:12.5px;color:#b91c1c">${msg}<br><span style="font-size:10.5px;color:#9ca3af">Edge Function(${TCS_ASSESS_FN}) 배포·Gemini 키 등록 여부를 확인해주세요.</span></div>`;
+    const msg = e.message==='TIMEOUT' ? t('응답이 너무 오래 걸려요. 잠시 후 다시 시도해주세요.','The response is taking too long. Please try again later.') : t('생성 실패: ','Generation failed: ') + e.message;
+    if (box) box.innerHTML = `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:9px;padding:12px;font-size:12.5px;color:#b91c1c">${msg}<br><span style="font-size:10.5px;color:#9ca3af">${t(`Edge Function(${TCS_ASSESS_FN}) 배포·Gemini 키 등록 여부를 확인해주세요.`,`Check that the Edge Function (${TCS_ASSESS_FN}) is deployed and the Gemini key is registered.`)}</span></div>`;
   } finally {
-    if (btn) { btn.disabled=false; btn.textContent='✨ 초안 생성'; }
+    if (btn) { btn.disabled=false; btn.textContent=t('✨ 초안 생성','✨ Generate draft'); }
   }
 }
 
@@ -12185,21 +12185,21 @@ function renderAssessmentDraft(text) {
   box.innerHTML = `
     <textarea id="assess-text" style="width:100%;min-height:150px;padding:12px;border:1px solid #ddd6fe;border-radius:10px;font:400 13.5px var(--font);color:var(--ink);line-height:1.85;background:#fff;resize:vertical">${escHtml(text)}</textarea>
     <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;margin-top:8px">
-      <button onclick="copyAssessment()" style="height:32px;padding:0 13px;border:1px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:8px;cursor:pointer;font:600 12px var(--font)">📋 복사</button>
-      <button onclick="applyAssessmentToRecord()" style="height:32px;padding:0 14px;border:none;background:#6d28d9;color:#fff;border-radius:8px;cursor:pointer;font:700 12px var(--font)">📄 생기부 종합의견에 넣기</button>
+      <button onclick="copyAssessment()" style="height:32px;padding:0 13px;border:1px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:8px;cursor:pointer;font:600 12px var(--font)">${t('📋 복사','📋 Copy')}</button>
+      <button onclick="applyAssessmentToRecord()" style="height:32px;padding:0 14px;border:none;background:#6d28d9;color:#fff;border-radius:8px;cursor:pointer;font:700 12px var(--font)">${t('📄 생기부 종합의견에 넣기','📄 Insert into record summary')}</button>
     </div>
-    <div style="font-size:10.5px;color:#7c6ba0;margin-top:6px">※ AI 초안입니다. 반드시 담임 선생님이 확인·수정한 뒤 사용하세요.</div>`;
+    <div style="font-size:10.5px;color:#7c6ba0;margin-top:6px">${t('※ AI 초안입니다. 반드시 담임 선생님이 확인·수정한 뒤 사용하세요.','※ This is an AI draft. The homeroom teacher must review and edit it before use.')}</div>`;
 }
 
 function copyAssessment() {
   const t = document.getElementById('assess-text')?.value || lastAssessmentDraft;
-  if (navigator.clipboard) navigator.clipboard.writeText(t).then(()=>showUploadToast('📋 복사됐어요'), ()=>showUploadToast('복사 실패'));
+  if (navigator.clipboard) navigator.clipboard.writeText(t).then(()=>showUploadToast(window.t('📋 복사됐어요','📋 Copied')), ()=>showUploadToast(window.t('복사 실패','Copy failed')));
 }
 
 async function applyAssessmentToRecord() {
   const text = (document.getElementById('assess-text')?.value || lastAssessmentDraft).trim();
   if (!text) return;
-  if (!confirm('생기부 종합의견(담임 종합의견)에 이 내용을 저장할까요?\n기존 내용이 있으면 덮어씁니다.')) return;
+  if (!confirm(t('생기부 종합의견(담임 종합의견)에 이 내용을 저장할까요?\n기존 내용이 있으면 덮어씁니다.','Save this into the record summary (homeroom teacher summary)?\nAny existing content will be overwritten.'))) return;
   const { data: rec } = await sb.from('tcs_records').select('data').eq('community_id',CID()).eq('student_id',s360Id).eq('section','comment').maybeSingle();
   const data = (rec && rec.data) || {};
   data.comment_ko = text;
@@ -12208,14 +12208,14 @@ async function applyAssessmentToRecord() {
     student_id: s360Id, community_id: CID(), section:'comment', data,
     updated_at: new Date().toISOString(), updated_by: ME.id,
   }, { onConflict: 'student_id,section' });
-  if (error) { showUploadToast('저장 실패: ' + error.message); return; }
-  showUploadToast('✅ 생기부 종합의견에 저장됐어요');
+  if (error) { showUploadToast(t('저장 실패: ','Save failed: ') + error.message); return; }
+  showUploadToast(t('✅ 생기부 종합의견에 저장됐어요','✅ Saved into the record summary'));
 }
 
 function renderS360TcsNav() {
   const nav = document.getElementById('s360-tcs-nav'); if (!nav) return;
   const t = (m,label) => `<button onclick="s360TcsTab('${m}')" style="height:28px;padding:0 11px;border:none;border-radius:7px;font:600 11.5px var(--font);cursor:pointer;background:${s360TcsMode===m?'#1d3a5f':'transparent'};color:${s360TcsMode===m?'#fff':'var(--ink2)'}">${label}</button>`;
-  nav.innerHTML = t('record','생활기록부') + t('mock','🧠 모의고사') + t('reading','📖 Triple School');
+  nav.innerHTML = t('record',window.t('생활기록부','Records')) + t('mock',window.t('🧠 모의고사','🧠 Mock Exam')) + t('reading','📖 Triple School');
 }
 
 function s360TcsTab(which) {
@@ -12255,21 +12255,21 @@ async function addHomeroom(studentId, teacherId) {
   if (!teacherId) return;
   const { error } = await sb.from('student_homerooms').insert({ community_id: CID(), student_id: studentId, teacher_id: teacherId });
   if (error) {
-    if (schoolTableMissing(error)) { showUploadToast('다중담당 테이블이 없어요. db/학사_다중담당_개인시간표_DB설치.sql 을 실행해주세요'); return; }
-    if (!/duplicate|unique/i.test(error.message||'')) { showUploadToast('추가 실패: ' + error.message); return; }
+    if (schoolTableMissing(error)) { showUploadToast(t('다중담당 테이블이 없어요. db/학사_다중담당_개인시간표_DB설치.sql 을 실행해주세요','The multi-teacher table is missing. Run db/학사_다중담당_개인시간표_DB설치.sql')); return; }
+    if (!/duplicate|unique/i.test(error.message||'')) { showUploadToast(t('추가 실패: ','Add failed: ') + error.message); return; }
   }
   const arr = homeroomMap[studentId] = homeroomMap[studentId] || [];
   if (!arr.includes(teacherId)) arr.push(teacherId);
   await syncPrimaryHomeroom(studentId);
-  showUploadToast(`✅ 담당 추가: ${s360TeacherName(teacherId)}`);
+  showUploadToast(`✅ ${t('담당 추가','Teacher added')}: ${s360TeacherName(teacherId)}`);
   renderS360Detail(); renderS360List();
 }
 async function removeHomeroom(studentId, teacherId) {
   const { error } = await sb.from('student_homerooms').delete().eq('student_id', studentId).eq('teacher_id', teacherId);
-  if (error) { showUploadToast('해제 실패: ' + error.message); return; }
+  if (error) { showUploadToast(t('해제 실패: ','Remove failed: ') + error.message); return; }
   homeroomMap[studentId] = (homeroomMap[studentId] || []).filter(x => x !== teacherId);
   await syncPrimaryHomeroom(studentId);
-  showUploadToast('담당 해제됨');
+  showUploadToast(t('담당 해제됨','Teacher removed'));
   renderS360Detail(); renderS360List();
 }
 
@@ -12279,21 +12279,21 @@ async function addStudentLog(kind) {
   const date = document.getElementById(`s360-${kind}-date`).value || attTodayStr();
   const title = document.getElementById(`s360-${kind}-title`).value.trim();
   const content = document.getElementById(`s360-${kind}-content`).value.trim();
-  if (!title && !content) { showUploadToast('제목이나 내용을 입력하세요'); return; }
+  if (!title && !content) { showUploadToast(t('제목이나 내용을 입력하세요','Enter a title or content')); return; }
   const { error } = await sb.from(spec.table).insert({
     community_id: CID(), student_id: s360Id, date, category, title, content,
     author_name: ME.name, created_by: ME.id,
   });
-  if (error) { if (schoolTableMissing(error)) return schoolSetupNeeded(error, spec.file); showUploadToast('저장 실패: ' + error.message); return; }
-  showUploadToast('✅ 기록이 추가됐어요');
+  if (error) { if (schoolTableMissing(error)) return schoolSetupNeeded(error, spec.file); showUploadToast(t('저장 실패: ','Save failed: ') + error.message); return; }
+  showUploadToast(t('✅ 기록이 추가됐어요','✅ Entry added'));
   renderS360Detail();
 }
 
 async function deleteStudentLog(kind, id) {
   const spec = LOG_SPECS[kind];
-  if (!confirm('이 기록을 삭제할까요?')) return;
+  if (!confirm(t('이 기록을 삭제할까요?','Delete this entry?'))) return;
   const { error } = await sb.from(spec.table).delete().eq('id', id);
-  if (error) { showUploadToast('삭제 실패: ' + error.message); return; }
+  if (error) { showUploadToast(t('삭제 실패: ','Delete failed: ') + error.message); return; }
   renderS360Detail();
 }
 
