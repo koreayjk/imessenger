@@ -8806,21 +8806,21 @@ function renderGisHome() {
 //  전자결재(서류 결재) — 상신 → 결재선 승인 → 최종 완료 → 공유
 // ═══════════════════════════════════════════════════════════════════
 const APPR_BUILTINS = [
-  { id:'builtin:expense', name:'지출결의서', category:'재정', kind:'form', description:'물품 구입·상환 등 지출 요청',
+  { id:'builtin:expense', name:t('지출결의서','Expense Report'), category:'재정', kind:'form', description:t('물품 구입·상환 등 지출 요청','Request for purchases, reimbursements, etc.'),
     fields:[
-      {key:'dept', label:'부서', type:'text', ph:'예: 선교한국팀'},
-      {key:'pay_method', label:'결제 수단', type:'select', options:['계좌','현금','카드']},
-      {key:'bank', label:'은행', type:'text', ph:'예: 농협'},
-      {key:'account', label:'계좌번호', type:'text'},
-      {key:'note', label:'사용/상환 목적', type:'textarea', ph:'예: 위 내역을 상환 요청합니다.'},
+      {key:'dept', label:t('부서','Department'), type:'text', ph:t('예: 선교한국팀','e.g. Missions Korea Team')},
+      {key:'pay_method', label:t('결제 수단','Payment method'), type:'select', options:['계좌','현금','카드']},
+      {key:'bank', label:t('은행','Bank'), type:'text', ph:t('예: 농협','e.g. Nonghyup')},
+      {key:'account', label:t('계좌번호','Account number'), type:'text'},
+      {key:'note', label:t('사용/상환 목적','Purpose of use/reimbursement'), type:'textarea', ph:t('예: 위 내역을 상환 요청합니다.','e.g. Requesting reimbursement for the above.')},
     ],
-    items:{ enabled:true, columns:[{key:'name',label:'내용',type:'text'},{key:'purpose',label:'사용 목적',type:'text'},{key:'amount',label:'금액',type:'number'}], sumKey:'amount', sumLabel:'지출 금액 합계' } },
-  { id:'builtin:proposal', name:'품의서', category:'일반', kind:'form', description:'일반 안건 상신',
-    fields:[{key:'purpose',label:'제목/안건',type:'text'},{key:'body',label:'내용',type:'textarea'},{key:'budget',label:'소요 예산(선택)',type:'text'}], items:{enabled:false} },
-  { id:'builtin:leave', name:'휴가·연가 신청서', category:'인사', kind:'form', description:'휴가·연가·외출 신청',
-    fields:[{key:'ltype',label:'종류',type:'select',options:['연가','병가','외출','조퇴','기타']},{key:'from',label:'시작일',type:'date'},{key:'to',label:'종료일',type:'date'},{key:'reason',label:'사유',type:'textarea'}], items:{enabled:false} },
-  { id:'builtin:blank', name:'자유 서식', category:'기타', kind:'form', description:'양식 없이 내용 작성 + 파일 첨부',
-    fields:[{key:'body',label:'내용',type:'textarea'}], items:{enabled:false} },
+    items:{ enabled:true, columns:[{key:'name',label:t('내용','Item'),type:'text'},{key:'purpose',label:t('사용 목적','Purpose'),type:'text'},{key:'amount',label:t('금액','Amount'),type:'number'}], sumKey:'amount', sumLabel:t('지출 금액 합계','Total expense') } },
+  { id:'builtin:proposal', name:t('품의서','Proposal'), category:'일반', kind:'form', description:t('일반 안건 상신','Submit a general proposal'),
+    fields:[{key:'purpose',label:t('제목/안건','Title/Agenda'),type:'text'},{key:'body',label:t('내용','Content'),type:'textarea'},{key:'budget',label:t('소요 예산(선택)','Budget (optional)'),type:'text'}], items:{enabled:false} },
+  { id:'builtin:leave', name:t('휴가·연가 신청서','Leave Request'), category:'인사', kind:'form', description:t('휴가·연가·외출 신청','Request leave, vacation, or outing'),
+    fields:[{key:'ltype',label:t('종류','Type'),type:'select',options:['연가','병가','외출','조퇴','기타']},{key:'from',label:t('시작일','Start date'),type:'date'},{key:'to',label:t('종료일','End date'),type:'date'},{key:'reason',label:t('사유','Reason'),type:'textarea'}], items:{enabled:false} },
+  { id:'builtin:blank', name:t('자유 서식','Free Form'), category:'기타', kind:'form', description:t('양식 없이 내용 작성 + 파일 첨부','Write freely and attach files'),
+    fields:[{key:'body',label:t('내용','Content'),type:'textarea'}], items:{enabled:false} },
 ];
 const apprInp = 'width:100%;height:40px;padding:0 12px;border:1.5px solid var(--border);border-radius:9px;font:14px var(--font);color:var(--ink);background:var(--surface);outline:none';
 const apprWon = n => (Number(n)||0).toLocaleString('ko-KR') + '원';
@@ -8833,18 +8833,18 @@ let apprDraft = null;          // 작성 중 문서
 let apprTplBuild = null;       // 양식 만들기 임시
 
 const apprStatusBadge = (st) => {
-  const m = { pending:['진행중','#b45309','#fef3c7'], approved:['완료','#15803d','#dcfce7'], rejected:['반려','#b91c1c','#fee2e2'], canceled:['회수','#64748b','#f1f5f9'] }[st] || ['',''];
+  const m = { pending:[t('진행중','In progress'),'#b45309','#fef3c7'], approved:[t('완료','Completed'),'#15803d','#dcfce7'], rejected:[t('반려','Rejected'),'#b91c1c','#fee2e2'], canceled:[t('회수','Withdrawn'),'#64748b','#f1f5f9'] }[st] || ['',''];
   return `<span style="font-size:11px;font-weight:700;padding:2px 9px;border-radius:99px;background:${m[2]};color:${m[1]}">${m[0]}</span>`;
 };
 const apprStepBadge = (st) => {
-  const m = { pending:['결재 대기','#b45309'], waiting:['대기','#8695ad'], approved:['승인','#15803d'], rejected:['반려','#b91c1c'] }[st] || ['','#8695ad'];
+  const m = { pending:[t('결재 대기','Pending'),'#b45309'], waiting:[t('대기','Waiting'),'#8695ad'], approved:[t('승인','Approved'),'#15803d'], rejected:[t('반려','Rejected'),'#b91c1c'] }[st] || ['','#8695ad'];
   return `<span style="font-size:11px;font-weight:700;color:${m[1]}">${m[0]}</span>`;
 };
 
 async function initApprovalPage() {
   apprDraft = null;
   const main = document.getElementById('approval-main');
-  if (main) main.innerHTML = '<div style="text-align:center;padding:60px;color:var(--ink3);font-size:13px">불러오는 중...</div>';
+  if (main) main.innerHTML = `<div style="text-align:center;padding:60px;color:var(--ink3);font-size:13px">${t('불러오는 중...','Loading...')}</div>`;
   // 양식 로드
   try {
     const { data, error } = await sb.from('approval_templates').select('*').eq('community_id', CID()).order('sort').order('created_at');
@@ -8870,7 +8870,7 @@ function apprSubnavHtml() {
     return `<button onclick="setApprSubMode('${m}')" style="height:30px;padding:0 13px;border:none;border-radius:8px;font:600 12px var(--font);cursor:pointer;background:${on?'#1d3a5f':'transparent'};color:${on?'#fff':'var(--ink2)'};display:inline-flex;align-items:center;gap:5px">${label}${badge?`<span style="background:#e53935;color:#fff;font-size:10px;font-weight:700;border-radius:99px;min-width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;padding:0 4px">${badge}</span>`:''}</button>`;
   };
   return `<div style="display:inline-flex;gap:2px;background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:3px">
-    ${tab('new','＋ 새 결재')}${tab('inbox','결재 대기', apprInboxCount||0)}${tab('sent','내 상신함')}${tab('shared','공유 문서')}${tab('templates','양식 관리')}
+    ${tab('new',t('＋ 새 결재','＋ New'))}${tab('inbox',t('결재 대기','Inbox'), apprInboxCount||0)}${tab('sent',t('내 상신함','Sent'))}${tab('shared',t('공유 문서','Shared'))}${tab('templates',t('양식 관리','Forms'))}
   </div>`;
 }
 function renderApprSubnav() { const sn = document.getElementById('subnav-approval'); if (sn) sn.innerHTML = apprSubnavHtml(); }
@@ -8879,8 +8879,8 @@ function setApprSubMode(m) { apprSubMode = m; apprDraft = null; renderApprSubnav
 function apprSetupHtml() {
   return `<div style="max-width:560px;margin:40px auto;text-align:center">
     <div style="font-size:40px;margin-bottom:12px">📋</div>
-    <div style="font-size:16px;font-weight:700;margin-bottom:8px">전자결재 DB 설정이 필요해요</div>
-    <div style="font-size:13px;color:var(--ink3);line-height:1.8">제공해드린 <b>db/서류결재_DB설치.sql</b> 을 Supabase → SQL Editor에서 실행해주세요.</div>
+    <div style="font-size:16px;font-weight:700;margin-bottom:8px">${t('전자결재 DB 설정이 필요해요','Approval database setup required')}</div>
+    <div style="font-size:13px;color:var(--ink3);line-height:1.8">${t('제공해드린 ','Run the provided ')}<b>db/서류결재_DB설치.sql</b>${t(' 을 Supabase → SQL Editor에서 실행해주세요.',' in Supabase → SQL Editor.')}</div>
   </div>`;
 }
 
@@ -8902,13 +8902,13 @@ function renderApprNew() {
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
         <span style="font-size:20px">${t.kind==='file'?'📄':'📝'}</span>
         <span style="font-size:14.5px;font-weight:700;color:var(--ink)">${escHtml(t.name)}</span>
-        ${t.builtin?'<span style="font-size:10px;font-weight:700;color:#1d3a5f;background:var(--asoft);padding:1px 7px;border-radius:99px">기본</span>':''}
+        ${t.builtin?`<span style="font-size:10px;font-weight:700;color:#1d3a5f;background:var(--asoft);padding:1px 7px;border-radius:99px">${window.t('기본','Default')}</span>`:''}
       </div>
       <div style="font-size:12px;color:var(--ink3);line-height:1.5">${escHtml(t.description||t.category||'')}</div>
     </button>`;
   main.innerHTML = `<div style="max-width:1000px;margin:0 auto">
-    <div style="font-size:16px;font-weight:800;color:var(--ink);margin-bottom:4px">어떤 서류를 올릴까요?</div>
-    <div style="font-size:12.5px;color:var(--ink3);margin-bottom:16px">양식을 고르면 내용을 채우고 결재선을 지정해 상신할 수 있어요. 새 양식은 <b>양식 관리</b>에서 추가하세요.</div>
+    <div style="font-size:16px;font-weight:800;color:var(--ink);margin-bottom:4px">${t('어떤 서류를 올릴까요?','Which document would you like to submit?')}</div>
+    <div style="font-size:12.5px;color:var(--ink3);margin-bottom:16px">${t('양식을 고르면 내용을 채우고 결재선을 지정해 상신할 수 있어요. 새 양식은 ','Pick a form to fill in the details and set an approval line. Add new forms in ')}<b>${t('양식 관리','Forms')}</b>${t('에서 추가하세요.','.')}</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px">${all.map(card).join('')}</div>
   </div>`;
 }
@@ -8917,7 +8917,7 @@ function startApprCompose(id, builtin) {
   let t;
   if (builtin) t = APPR_BUILTINS.find(x=>x.id===id);
   else { const db = apprTemplates.find(x=>x.id===id); if (db) t = { ...db }; }
-  if (!t) { showUploadToast('양식을 찾을 수 없어요'); return; }
+  if (!t) { showUploadToast(window.t('양식을 찾을 수 없어요','Form not found')); return; }
   let fields = t.fields || [], items = t.items || {enabled:false}, fileUrl = null;
   if (t.kind === 'file') { fields = [{key:'body',label:'내용 / 작성 안내',type:'textarea'}]; items = {enabled:false}; fileUrl = t.file_url || null; }
   apprDraft = {
@@ -8937,57 +8937,57 @@ function renderApprCompose() {
   const fieldsHtml = t.fields.map(f => `<div style="margin-bottom:12px"><label style="font-size:12px;font-weight:700;color:var(--ink3);display:block;margin-bottom:5px">${escHtml(f.label)}</label>${apprFieldHtml(f, '')}</div>`).join('');
   main.innerHTML = `<div style="max-width:1080px;margin:0 auto">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
-      <button onclick="apprDraft=null;renderApprMain()" style="height:34px;padding:0 12px;border:1.5px solid var(--border);background:var(--surface);border-radius:9px;cursor:pointer;font:600 12px var(--font);color:var(--ink2)">← 양식 선택</button>
-      <div style="font-size:16px;font-weight:800;color:var(--ink)">📝 ${escHtml(t.name)} 작성</div>
+      <button onclick="apprDraft=null;renderApprMain()" style="height:34px;padding:0 12px;border:1.5px solid var(--border);background:var(--surface);border-radius:9px;cursor:pointer;font:600 12px var(--font);color:var(--ink2)">${window.t('← 양식 선택','← Back')}</button>
+      <div style="font-size:16px;font-weight:800;color:var(--ink)">📝 ${escHtml(t.name)} ${window.t('작성','')}</div>
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:18px;align-items:start">
       <!-- 본문 -->
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px">
-        <div style="margin-bottom:12px"><label style="font-size:12px;font-weight:700;color:var(--ink3);display:block;margin-bottom:5px">제목 *</label>
+        <div style="margin-bottom:12px"><label style="font-size:12px;font-weight:700;color:var(--ink3);display:block;margin-bottom:5px">${window.t('제목 *','Title *')}</label>
           <input id="appr-title" value="${escAttr(t.name)}" style="${apprInp}"/></div>
-        ${t.fileUrl?`<div style="margin-bottom:12px;background:var(--s2);border:1px solid var(--border);border-radius:9px;padding:10px 12px;font-size:12.5px"><a href="${t.fileUrl}" target="_blank" style="color:var(--accent);font-weight:700">📄 양식 파일 내려받기</a> — 작성한 파일을 아래 첨부에 올려주세요.</div>`:''}
+        ${t.fileUrl?`<div style="margin-bottom:12px;background:var(--s2);border:1px solid var(--border);border-radius:9px;padding:10px 12px;font-size:12.5px"><a href="${t.fileUrl}" target="_blank" style="color:var(--accent);font-weight:700">${window.t('📄 양식 파일 내려받기','📄 Download form file')}</a>${window.t(' — 작성한 파일을 아래 첨부에 올려주세요.',' — Attach your completed file below.')}</div>`:''}
         ${fieldsHtml}
-        ${t.items.enabled?`<div style="margin-top:6px"><label style="font-size:12px;font-weight:700;color:var(--ink3);display:block;margin-bottom:6px">내역</label><div id="appr-items">${apprItemsHtml()}</div></div>`:''}
-        <div style="margin-top:14px"><label style="font-size:12px;font-weight:700;color:var(--ink3);display:block;margin-bottom:6px">첨부파일 (영수증 등)</label>
+        ${t.items.enabled?`<div style="margin-top:6px"><label style="font-size:12px;font-weight:700;color:var(--ink3);display:block;margin-bottom:6px">${window.t('내역','Items')}</label><div id="appr-items">${apprItemsHtml()}</div></div>`:''}
+        <div style="margin-top:14px"><label style="font-size:12px;font-weight:700;color:var(--ink3);display:block;margin-bottom:6px">${window.t('첨부파일 (영수증 등)','Attachments (receipts, etc.)')}</label>
           <div id="appr-attach">${apprAttachHtml()}</div>
           <input type="file" id="appr-attach-input" multiple style="display:none" onchange="apprAttachPick(this)"/>
-          <button onclick="document.getElementById('appr-attach-input').click()" style="margin-top:6px;height:32px;padding:0 12px;border:1px dashed var(--border);background:var(--surface);border-radius:8px;cursor:pointer;font:600 12px var(--font);color:var(--ink2)">＋ 파일 첨부</button>
+          <button onclick="document.getElementById('appr-attach-input').click()" style="margin-top:6px;height:32px;padding:0 12px;border:1px dashed var(--border);background:var(--surface);border-radius:8px;cursor:pointer;font:600 12px var(--font);color:var(--ink2)">${window.t('＋ 파일 첨부','＋ Attach file')}</button>
         </div>
       </div>
       <!-- 결재선 / 공유 -->
       <div style="display:flex;flex-direction:column;gap:16px">
         <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px">
-          <div style="font-size:13px;font-weight:800;color:var(--ink2);margin-bottom:4px">결재선 <span style="color:var(--ink3);font-weight:600;font-size:11px">(순서대로 승인)</span></div>
+          <div style="font-size:13px;font-weight:800;color:var(--ink2);margin-bottom:4px">${window.t('결재선','Approval line')} <span style="color:var(--ink3);font-weight:600;font-size:11px">${window.t('(순서대로 승인)','(approved in order)')}</span></div>
           <div id="appr-line" style="margin:8px 0">${apprLineHtml()}</div>
           <select id="appr-add-approver" onchange="apprLineAdd(this.value);this.value=''" style="${apprInp};height:38px">
-            <option value="">＋ 결재자 추가 (교감·교장 등)</option>
+            <option value="">${window.t('＋ 결재자 추가 (교감·교장 등)','＋ Add approver')}</option>
             ${approverCands.map(m=>`<option value="${m.id}">${escHtml(m.name)}${m.community_role?` · ${roleKo(m.community_role)}`:''}</option>`).join('')}
           </select>
         </div>
         <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px">
-          <div style="font-size:13px;font-weight:800;color:var(--ink2);margin-bottom:4px">공유자 <span style="color:var(--ink3);font-weight:600;font-size:11px">(최종 승인 후 열람)</span></div>
+          <div style="font-size:13px;font-weight:800;color:var(--ink2);margin-bottom:4px">${window.t('공유자','Viewers')} <span style="color:var(--ink3);font-weight:600;font-size:11px">${window.t('(최종 승인 후 열람)','(view after final approval)')}</span></div>
           <div id="appr-shares" style="margin:8px 0">${apprSharesHtml()}</div>
           <select id="appr-add-share" onchange="apprShareAdd(this.value);this.value=''" style="${apprInp};height:38px">
-            <option value="">＋ 공유자 추가</option>
-            <optgroup label="그룹으로 추가">
-              <option value="group:admin">👥 모든 관리자</option>
-              <option value="group:admin_officer">👥 모든 행정담당</option>
-              <option value="group:teacher">👥 모든 교사</option>
-              <option value="group:staff">👥 모든 간사</option>
-              <option value="group:all">👥 전체 교직원</option>
+            <option value="">${window.t('＋ 공유자 추가','＋ Add viewer')}</option>
+            <optgroup label="${window.t('그룹으로 추가','Add by group')}">
+              <option value="group:admin">${window.t('👥 모든 관리자','👥 All admins')}</option>
+              <option value="group:admin_officer">${window.t('👥 모든 행정담당','👥 All admin officers')}</option>
+              <option value="group:teacher">${window.t('👥 모든 교사','👥 All teachers')}</option>
+              <option value="group:staff">${window.t('👥 모든 간사','👥 All staff')}</option>
+              <option value="group:all">${window.t('👥 전체 교직원','👥 All faculty')}</option>
             </optgroup>
-            <optgroup label="개별 선택">
+            <optgroup label="${window.t('개별 선택','Select individually')}">
               ${memList.map(m=>`<option value="${m.id}">${escHtml(m.name)}${m.community_role?` · ${roleKo(m.community_role)}`:''}</option>`).join('')}
             </optgroup>
           </select>
         </div>
-        <button onclick="submitApprDoc()" style="height:48px;border:none;border-radius:12px;background:linear-gradient(135deg,#1d3a5f,#2a5298);color:#fff;font:800 15px var(--font);cursor:pointer">📤 상신하기</button>
+        <button onclick="submitApprDoc()" style="height:48px;border:none;border-radius:12px;background:linear-gradient(135deg,#1d3a5f,#2a5298);color:#fff;font:800 15px var(--font);cursor:pointer">${window.t('📤 상신하기','📤 Submit')}</button>
       </div>
     </div>
   </div>`;
 }
 
-function roleKo(r){ return {super_admin:'총관리자',community_admin:'관리자',admin_officer:'행정',teacher:'교사',staff:'간사',student:'학생',member:'멤버'}[r]||''; }
+function roleKo(r){ return {super_admin:t('총관리자','Super Admin'),community_admin:t('관리자','Admin'),admin_officer:t('행정','Officer'),teacher:t('교사','Teacher'),staff:t('간사','Staff'),student:t('학생','Student'),member:t('멤버','Member')}[r]||''; }
 
 function apprFieldHtml(f, val){
   val = val || '';
@@ -9008,7 +9008,7 @@ function apprItemsHtml(){
     <thead><tr>${cols.map(c=>`<th style="text-align:left;font-size:11px;color:var(--ink3);padding:2px 8px">${c.label}</th>`).join('')}<th></th></tr></thead>
     <tbody>${rows}</tbody></table>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
-      <button onclick="apprAddItem()" style="height:30px;padding:0 12px;border:1px dashed var(--border);background:var(--surface);border-radius:8px;cursor:pointer;font:600 12px var(--font);color:var(--ink2)">＋ 행 추가</button>
+      <button onclick="apprAddItem()" style="height:30px;padding:0 12px;border:1px dashed var(--border);background:var(--surface);border-radius:8px;cursor:pointer;font:600 12px var(--font);color:var(--ink2)">${t('＋ 행 추가','＋ Add row')}</button>
       <div style="font-size:13px;font-weight:700">${it.sumLabel}: <span id="appr-sum">${apprWon(sum)}</span></div>
     </div>`;
 }
@@ -9017,7 +9017,7 @@ function apprAddItem(){ apprDraft.items.push({}); document.getElementById('appr-
 function apprRemoveItem(i){ apprDraft.items.splice(i,1); if(!apprDraft.items.length) apprDraft.items.push({}); document.getElementById('appr-items').innerHTML=apprItemsHtml(); }
 
 function apprLineHtml(){
-  if(!apprDraft.line.length) return '<div style="font-size:12.5px;color:var(--ink3);padding:4px 0">아직 결재자가 없어요. 아래에서 순서대로 추가하세요.</div>';
+  if(!apprDraft.line.length) return `<div style="font-size:12.5px;color:var(--ink3);padding:4px 0">${t('아직 결재자가 없어요. 아래에서 순서대로 추가하세요.','No approvers yet. Add them in order below.')}</div>`;
   const b='width:26px;height:26px;border:1px solid var(--border);background:var(--surface);border-radius:7px;cursor:pointer;font-size:12px';
   return apprDraft.line.map((a,i)=>`<div style="display:flex;align-items:center;gap:6px;padding:5px 0">
     <div style="width:22px;height:22px;border-radius:50%;background:#1d3a5f;color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${i+1}</div>
@@ -9027,15 +9027,15 @@ function apprLineHtml(){
     <button onclick="apprLineRemove(${i})" style="${b};color:#c0392b">✕</button>
   </div>`).join('');
 }
-function apprLineAdd(id){ if(!id) return; if(apprDraft.line.some(a=>a.approver_id===id)){ showUploadToast('이미 결재선에 있어요'); return; } const m=members[id]; if(!m) return; apprDraft.line.push({approver_id:id, approver_name:m.name}); document.getElementById('appr-line').innerHTML=apprLineHtml(); }
+function apprLineAdd(id){ if(!id) return; if(apprDraft.line.some(a=>a.approver_id===id)){ showUploadToast(t('이미 결재선에 있어요','Already in the approval line')); return; } const m=members[id]; if(!m) return; apprDraft.line.push({approver_id:id, approver_name:m.name}); document.getElementById('appr-line').innerHTML=apprLineHtml(); }
 function apprLineMove(i,d){ const j=i+d; if(j<0||j>=apprDraft.line.length) return; const t=apprDraft.line[i]; apprDraft.line[i]=apprDraft.line[j]; apprDraft.line[j]=t; document.getElementById('appr-line').innerHTML=apprLineHtml(); }
 function apprLineRemove(i){ apprDraft.line.splice(i,1); document.getElementById('appr-line').innerHTML=apprLineHtml(); }
 
 function apprSharesHtml(){
-  if(!apprDraft.shares.length) return '<div style="font-size:12.5px;color:var(--ink3);padding:4px 0">공유자 없음 (선택)</div>';
+  if(!apprDraft.shares.length) return `<div style="font-size:12.5px;color:var(--ink3);padding:4px 0">${t('공유자 없음 (선택)','No viewers (optional)')}</div>`;
   return `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
-      <span style="font-size:11.5px;color:var(--ink3);font-weight:600">${apprDraft.shares.length}명</span>
-      <button onclick="apprDraft.shares=[];document.getElementById('appr-shares').innerHTML=apprSharesHtml()" style="border:none;background:transparent;color:#c0392b;font:600 11.5px var(--font);cursor:pointer">모두 지우기</button>
+      <span style="font-size:11.5px;color:var(--ink3);font-weight:600">${apprDraft.shares.length}${t('명',' people')}</span>
+      <button onclick="apprDraft.shares=[];document.getElementById('appr-shares').innerHTML=apprSharesHtml()" style="border:none;background:transparent;color:#c0392b;font:600 11.5px var(--font);cursor:pointer">${t('모두 지우기','Clear all')}</button>
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:6px">${apprDraft.shares.map((s,i)=>`<span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:#1d3a5f;background:var(--asoft);padding:3px 6px 3px 10px;border-radius:99px">${escHtml(s.member_name)}<b onclick="apprShareRemove(${i})" style="cursor:pointer;color:#c0392b;font-size:13px">✕</b></span>`).join('')}</div>`;
 }
@@ -9051,7 +9051,7 @@ function apprShareAdd(val){
     else sel = pool.filter(m => m.community_role===g);
     let added=0;
     sel.forEach(m => { if(!apprDraft.shares.some(s=>s.member_id===m.id)){ apprDraft.shares.push({member_id:m.id, member_name:m.name}); added++; } });
-    showUploadToast(added ? `${added}명이 공유자에 추가됐어요` : '추가할 대상이 없어요');
+    showUploadToast(added ? `${added}${t('명이 공유자에 추가됐어요',' people added as viewers')}` : t('추가할 대상이 없어요','No one to add'));
   } else {
     if(apprDraft.shares.some(s=>s.member_id===val)) return;
     const m=members[val]; if(!m) return;
@@ -9070,23 +9070,23 @@ async function apprUpload(file){
   return { name:file.name, url:data.publicUrl, size:file.size };
 }
 function apprAttachHtml(){
-  if(!apprDraft.attachments.length) return '<div style="font-size:12px;color:var(--ink3)">첨부 없음</div>';
+  if(!apprDraft.attachments.length) return `<div style="font-size:12px;color:var(--ink3)">${t('첨부 없음','No attachments')}</div>`;
   return apprDraft.attachments.map((f,i)=>`<div style="display:flex;align-items:center;gap:8px;font-size:12.5px;padding:3px 0"><a href="${f.url}" target="_blank" style="color:var(--ink);text-decoration:none;flex:1">📎 ${escHtml(f.name)}</a><button onclick="apprAttachRemove(${i})" style="border:none;background:transparent;color:#c0392b;cursor:pointer">✕</button></div>`).join('');
 }
 async function apprAttachPick(input){
   const files = Array.from(input.files||[]); input.value='';
   if(!files.length) return;
-  showUploadToast('첨부 업로드 중...');
-  for(const f of files){ try{ const meta=await apprUpload(f); apprDraft.attachments.push(meta); }catch(e){ showUploadToast('업로드 실패: '+(e.message||e)); } }
+  showUploadToast(t('첨부 업로드 중...','Uploading attachments...'));
+  for(const f of files){ try{ const meta=await apprUpload(f); apprDraft.attachments.push(meta); }catch(e){ showUploadToast(t('업로드 실패: ','Upload failed: ')+(e.message||e)); } }
   const el=document.getElementById('appr-attach'); if(el) el.innerHTML=apprAttachHtml();
-  showUploadToast('첨부 완료 ✅');
+  showUploadToast(t('첨부 완료 ✅','Attachments uploaded ✅'));
 }
 function apprAttachRemove(i){ apprDraft.attachments.splice(i,1); document.getElementById('appr-attach').innerHTML=apprAttachHtml(); }
 
 async function submitApprDoc(){
   const title = (document.getElementById('appr-title')?.value||'').trim();
-  if(!title){ showUploadToast('제목을 입력하세요'); return; }
-  if(!apprDraft.line.length){ showUploadToast('결재자를 1명 이상 지정하세요'); return; }
+  if(!title){ showUploadToast(window.t('제목을 입력하세요','Please enter a title')); return; }
+  if(!apprDraft.line.length){ showUploadToast(window.t('결재자를 1명 이상 지정하세요','Please add at least one approver')); return; }
   const t = apprDraft.template;
   const form_data = { _fields: t.fields };
   t.fields.forEach(f=>{ const el=document.getElementById('appr-f-'+f.key); if(el) form_data[f.key]=el.value; });
@@ -9097,8 +9097,8 @@ async function submitApprDoc(){
   const history = [{ ts:new Date().toISOString(), actor_id:ME.id, actor_name:ME.name, action:'상신', comment:'' }];
   const row = { community_id:CID(), template_id:t.dbId||null, template_name:t.name, title, form_data, attachments:apprDraft.attachments, line, shares, history, participant_ids, status:'pending', current_step:0, submitter_id:ME.id, submitter_name:ME.name };
   const { error } = await sb.from('approval_docs').insert(row);
-  if(error){ if(schoolTableMissing(error)){ showUploadToast('결재 테이블이 없어요. db/서류결재_DB설치.sql 실행 필요'); return; } showUploadToast('상신 실패: '+error.message); return; }
-  showUploadToast('✅ 상신되었어요');
+  if(error){ if(schoolTableMissing(error)){ showUploadToast(window.t('결재 테이블이 없어요. db/서류결재_DB설치.sql 실행 필요','Approval table missing. Run db/서류결재_DB설치.sql')); return; } showUploadToast(window.t('상신 실패: ','Submit failed: ')+error.message); return; }
+  showUploadToast(window.t('✅ 상신되었어요','✅ Submitted'));
   apprDraft=null; apprSubMode='sent'; renderApprSubnav(); renderApprMain();
 }
 
@@ -9117,12 +9117,12 @@ async function loadApprDocs(kind){
 
 async function renderApprList(kind){
   const main = document.getElementById('approval-main');
-  main.innerHTML = '<div style="text-align:center;padding:50px;color:var(--ink3);font-size:13px">불러오는 중...</div>';
+  main.innerHTML = `<div style="text-align:center;padding:50px;color:var(--ink3);font-size:13px">${t('불러오는 중...','Loading...')}</div>`;
   const r = await loadApprDocs(kind);
   if(r.missing){ apprTblMissing=true; main.innerHTML=apprSetupHtml(); return; }
   const docs = r.docs;
-  const title = { inbox:'결재 대기', sent:'내 상신함', shared:'공유 문서' }[kind];
-  const empty = { inbox:'결재할 문서가 없어요.', sent:'상신한 문서가 없어요.', shared:'공유받은 문서가 없어요.' }[kind];
+  const title = { inbox:t('결재 대기','Inbox'), sent:t('내 상신함','Sent'), shared:t('공유 문서','Shared') }[kind];
+  const empty = { inbox:t('결재할 문서가 없어요.','No documents to approve.'), sent:t('상신한 문서가 없어요.','No submitted documents.'), shared:t('공유받은 문서가 없어요.','No shared documents.') }[kind];
   const rows = docs.map(d => {
     const approved = (d.line||[]).filter(a=>a.status==='approved').length;
     const prog = `${approved}/${(d.line||[]).length}`;
@@ -9131,68 +9131,68 @@ async function renderApprList(kind){
       <span style="font-size:20px">${d.form_data&&d.form_data._itemsMeta?'💰':'📄'}</span>
       <div style="flex:1;min-width:0">
         <div style="font-size:14px;font-weight:700;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(d.title)}</div>
-        <div style="font-size:11.5px;color:var(--ink3)">${escHtml(d.template_name||'')} · 상신 ${escHtml(d.submitter_name||'')} · ${(d.created_at||'').slice(0,10)}</div>
+        <div style="font-size:11.5px;color:var(--ink3)">${escHtml(d.template_name||'')} · ${t('상신','By')} ${escHtml(d.submitter_name||'')} · ${(d.created_at||'').slice(0,10)}</div>
       </div>
       <div style="text-align:right;flex-shrink:0">
         ${apprStatusBadge(d.status)}
-        <div style="font-size:11px;color:var(--ink3);margin-top:3px">결재 ${prog}</div>
+        <div style="font-size:11px;color:var(--ink3);margin-top:3px">${t('결재','Approvals')} ${prog}</div>
       </div>
     </div>`;
   }).join('');
   main.innerHTML = `<div style="max-width:900px;margin:0 auto">
-    <div style="font-size:16px;font-weight:800;color:var(--ink);margin-bottom:14px">${title} <span style="font-size:12px;color:var(--ink3)">${docs.length}건</span></div>
+    <div style="font-size:16px;font-weight:800;color:var(--ink);margin-bottom:14px">${title} <span style="font-size:12px;color:var(--ink3)">${docs.length}${t('건',' items')}</span></div>
     ${docs.length ? rows : `<div style="text-align:center;padding:50px;color:var(--ink3);font-size:13px">${empty}</div>`}
   </div>`;
 }
 
 async function openApprDoc(id){
   const main = document.getElementById('approval-main');
-  main.innerHTML = '<div style="text-align:center;padding:50px;color:var(--ink3);font-size:13px">불러오는 중...</div>';
+  main.innerHTML = `<div style="text-align:center;padding:50px;color:var(--ink3);font-size:13px">${t('불러오는 중...','Loading...')}</div>`;
   const { data:d } = await sb.from('approval_docs').select('*').eq('id', id).single();
-  if(!d){ showUploadToast('문서를 찾을 수 없어요'); renderApprMain(); return; }
+  if(!d){ showUploadToast(t('문서를 찾을 수 없어요','Document not found')); renderApprMain(); return; }
   const myTurn = d.status==='pending' && d.line[d.current_step] && d.line[d.current_step].approver_id===ME.id;
   const lineHtml = (d.line||[]).map((a,i)=>`<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
     <div style="width:22px;height:22px;border-radius:50%;background:${a.status==='approved'?'#15803d':a.status==='rejected'?'#c0392b':a.status==='pending'?'#b45309':'#cbd5e1'};color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">${i+1}</div>
     <div style="flex:1"><div style="font-size:13.5px;font-weight:600">${escHtml(a.approver_name)}</div>${a.comment?`<div style="font-size:11.5px;color:var(--ink3)">"${escHtml(a.comment)}"</div>`:''}</div>
     <div style="text-align:right">${apprStepBadge(a.status)}${a.acted_at?`<div style="font-size:10.5px;color:var(--ink3)">${a.acted_at.slice(0,16).replace('T',' ')}</div>`:''}</div>
   </div>`).join('');
-  const shareHtml = (d.shares||[]).length ? (d.shares.map(s=>`<span style="font-size:11.5px;color:#1d3a5f;background:var(--asoft);padding:2px 9px;border-radius:99px">${escHtml(s.member_name)}</span>`).join(' ')) : '<span style="font-size:12px;color:var(--ink3)">없음</span>';
-  const attachHtml = (d.attachments||[]).length ? d.attachments.map(f=>`<a href="${f.url}" target="_blank" style="display:inline-flex;align-items:center;gap:5px;font-size:12.5px;color:var(--accent);text-decoration:none;margin-right:10px">📎 ${escHtml(f.name)}</a>`).join('') : '<span style="font-size:12px;color:var(--ink3)">없음</span>';
+  const shareHtml = (d.shares||[]).length ? (d.shares.map(s=>`<span style="font-size:11.5px;color:#1d3a5f;background:var(--asoft);padding:2px 9px;border-radius:99px">${escHtml(s.member_name)}</span>`).join(' ')) : `<span style="font-size:12px;color:var(--ink3)">${t('없음','None')}</span>`;
+  const attachHtml = (d.attachments||[]).length ? d.attachments.map(f=>`<a href="${f.url}" target="_blank" style="display:inline-flex;align-items:center;gap:5px;font-size:12.5px;color:var(--accent);text-decoration:none;margin-right:10px">📎 ${escHtml(f.name)}</a>`).join('') : `<span style="font-size:12px;color:var(--ink3)">${t('없음','None')}</span>`;
   const histHtml = (d.history||[]).map(h=>`<div style="font-size:11.5px;color:var(--ink3);padding:2px 0">${(h.ts||'').slice(0,16).replace('T',' ')} · <b style="color:var(--ink2)">${escHtml(h.actor_name)}</b> ${escHtml(h.action)}${h.comment?` — ${escHtml(h.comment)}`:''}</div>`).join('');
 
   main.innerHTML = `<div style="max-width:820px;margin:0 auto">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
-      <button onclick="renderApprMain()" style="height:34px;padding:0 12px;border:1.5px solid var(--border);background:var(--surface);border-radius:9px;cursor:pointer;font:600 12px var(--font);color:var(--ink2)">← 목록</button>
+      <button onclick="renderApprMain()" style="height:34px;padding:0 12px;border:1.5px solid var(--border);background:var(--surface);border-radius:9px;cursor:pointer;font:600 12px var(--font);color:var(--ink2)">${t('← 목록','← List')}</button>
       ${apprStatusBadge(d.status)}
       <div style="flex:1"></div>
-      ${d.submitter_id===ME.id && d.status==='pending' ? `<button onclick="cancelApprDoc('${d.id}')" style="height:34px;padding:0 12px;border:1.5px solid var(--border);background:var(--surface);border-radius:9px;cursor:pointer;font:600 12px var(--font);color:#c0392b">상신 취소</button>` : ''}
+      ${d.submitter_id===ME.id && d.status==='pending' ? `<button onclick="cancelApprDoc('${d.id}')" style="height:34px;padding:0 12px;border:1.5px solid var(--border);background:var(--surface);border-radius:9px;cursor:pointer;font:600 12px var(--font);color:#c0392b">${t('상신 취소','Cancel')}</button>` : ''}
       <button onclick="printApprDoc('${d.id}')" style="height:34px;padding:0 14px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 12px var(--font)">📄 PDF</button>
     </div>
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:22px;margin-bottom:16px">
       <div style="font-size:19px;font-weight:800;color:var(--ink)">${escHtml(d.title)}</div>
-      <div style="font-size:12px;color:var(--ink3);margin:4px 0 16px">${escHtml(d.template_name||'')} · 상신 ${escHtml(d.submitter_name||'')} · ${(d.created_at||'').slice(0,16).replace('T',' ')}</div>
+      <div style="font-size:12px;color:var(--ink3);margin:4px 0 16px">${escHtml(d.template_name||'')} · ${t('상신','By')} ${escHtml(d.submitter_name||'')} · ${(d.created_at||'').slice(0,16).replace('T',' ')}</div>
       ${apprFormReadHtml(d.form_data||{})}
-      <div style="margin-top:16px"><div style="font-size:11px;color:var(--ink3);font-weight:700;margin-bottom:5px">첨부</div>${attachHtml}</div>
+      <div style="margin-top:16px"><div style="font-size:11px;color:var(--ink3);font-weight:700;margin-bottom:5px">${t('첨부','Attachments')}</div>${attachHtml}</div>
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;align-items:start">
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px">
-        <div style="font-size:13px;font-weight:800;color:var(--ink2);margin-bottom:8px">결재선</div>${lineHtml}
+        <div style="font-size:13px;font-weight:800;color:var(--ink2);margin-bottom:8px">${t('결재선','Approval line')}</div>${lineHtml}
       </div>
       <div style="display:flex;flex-direction:column;gap:16px">
         <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px">
-          <div style="font-size:13px;font-weight:800;color:var(--ink2);margin-bottom:8px">공유자</div>${shareHtml}
+          <div style="font-size:13px;font-weight:800;color:var(--ink2);margin-bottom:8px">${t('공유자','Viewers')}</div>${shareHtml}
         </div>
         <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px">
-          <div style="font-size:13px;font-weight:800;color:var(--ink2);margin-bottom:8px">진행 이력</div>${histHtml||'<span style="font-size:12px;color:var(--ink3)">없음</span>'}
+          <div style="font-size:13px;font-weight:800;color:var(--ink2);margin-bottom:8px">${t('진행 이력','History')}</div>${histHtml||`<span style="font-size:12px;color:var(--ink3)">${t('없음','None')}</span>`}
         </div>
       </div>
     </div>
     ${myTurn ? `<div style="background:linear-gradient(135deg,#eef4fb,#e3edf9);border:1px solid #c9ddf2;border-radius:14px;padding:16px 18px;margin-top:16px">
-      <div style="font-size:13px;font-weight:800;color:#1d3a5f;margin-bottom:8px">✍️ 내 결재 차례예요</div>
-      <textarea id="appr-act-comment" placeholder="의견 (선택 · 반려 시 필수)" style="width:100%;min-height:54px;padding:9px 11px;border:1.5px solid var(--border);border-radius:9px;font:13.5px var(--font);resize:vertical;margin-bottom:10px"></textarea>
+      <div style="font-size:13px;font-weight:800;color:#1d3a5f;margin-bottom:8px">${t('✍️ 내 결재 차례예요','✍️ It is your turn to approve')}</div>
+      <textarea id="appr-act-comment" placeholder="${t('의견 (선택 · 반려 시 필수)','Comment (optional · required if rejecting)')}" style="width:100%;min-height:54px;padding:9px 11px;border:1.5px solid var(--border);border-radius:9px;font:13.5px var(--font);resize:vertical;margin-bottom:10px"></textarea>
       <div style="display:flex;gap:8px">
-        <button onclick="rejectApprDoc('${d.id}')" style="flex:1;height:44px;border:1.5px solid #c0392b;background:#fff;color:#c0392b;border-radius:10px;font:800 14px var(--font);cursor:pointer">✕ 반려</button>
-        <button onclick="approveApprDoc('${d.id}')" style="flex:2;height:44px;border:none;background:linear-gradient(135deg,#15803d,#0f6a31);color:#fff;border-radius:10px;font:800 14px var(--font);cursor:pointer">✓ 승인${d.current_step>=d.line.length-1?' (최종)':''}</button>
+        <button onclick="rejectApprDoc('${d.id}')" style="flex:1;height:44px;border:1.5px solid #c0392b;background:#fff;color:#c0392b;border-radius:10px;font:800 14px var(--font);cursor:pointer">${t('✕ 반려','✕ Reject')}</button>
+        <button onclick="approveApprDoc('${d.id}')" style="flex:2;height:44px;border:none;background:linear-gradient(135deg,#15803d,#0f6a31);color:#fff;border-radius:10px;font:800 14px var(--font);cursor:pointer">${t('✓ 승인','✓ Approve')}${d.current_step>=d.line.length-1?' '+t('(최종)','(Final)'):''}</button>
       </div>
     </div>` : ''}
   </div>`;
@@ -9208,7 +9208,7 @@ function apprFormReadHtml(fd){
       <tbody>${fd._items.map(r=>`<tr>${cols.map(c=>`<td style="padding:7px 9px;border-bottom:1px solid var(--border);${c.type==='number'?'text-align:right':''}">${escHtml(c.type==='number'?apprWon(r[c.key]||0):(r[c.key]||''))}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
       <div style="text-align:right;font-weight:800;margin-top:8px;font-size:15px;color:var(--adeep)">${it.sumLabel}: ${apprWon((fd._items||[]).reduce((a,r)=>a+(Number(r[it.sumKey])||0),0))}</div>`;
   }
-  return h || '<div style="color:var(--ink3);font-size:12.5px">내용 없음</div>';
+  return h || `<div style="color:var(--ink3);font-size:12.5px">${t('내용 없음','No content')}</div>`;
 }
 
 async function approveApprDoc(id){
@@ -9216,7 +9216,7 @@ async function approveApprDoc(id){
   const { data:d } = await sb.from('approval_docs').select('*').eq('id',id).single();
   if(!d) return;
   const step = d.current_step;
-  if(d.status!=='pending' || !d.line[step] || d.line[step].approver_id!==ME.id){ showUploadToast('지금 결재할 차례가 아니에요'); return; }
+  if(d.status!=='pending' || !d.line[step] || d.line[step].approver_id!==ME.id){ showUploadToast(t('지금 결재할 차례가 아니에요','It is not your turn to approve right now')); return; }
   const line = d.line.map(x=>({...x}));
   line[step] = {...line[step], status:'approved', comment, acted_at:new Date().toISOString()};
   const history = (d.history||[]).concat([{ ts:new Date().toISOString(), actor_id:ME.id, actor_name:ME.name, action:'승인', comment }]);
@@ -9225,29 +9225,29 @@ async function approveApprDoc(id){
   if(isFinal) update = { line, history, status:'approved', completed_at:new Date().toISOString() };
   else { line[step+1] = {...line[step+1], status:'pending'}; update = { line, history, current_step: step+1 }; }
   const { error } = await sb.from('approval_docs').update(update).eq('id', id);
-  if(error){ showUploadToast('승인 실패: '+error.message); return; }
-  showUploadToast(isFinal ? '✅ 최종 승인 — 공유자에게 공유돼요' : '✅ 승인했어요');
+  if(error){ showUploadToast(t('승인 실패: ','Approval failed: ')+error.message); return; }
+  showUploadToast(isFinal ? t('✅ 최종 승인 — 공유자에게 공유돼요','✅ Final approval — now shared with viewers') : t('✅ 승인했어요','✅ Approved'));
   apprSubMode='inbox'; await initApprovalPage();
 }
 async function rejectApprDoc(id){
   const comment = (document.getElementById('appr-act-comment')?.value||'').trim();
-  if(!comment){ showUploadToast('반려 사유를 입력하세요'); return; }
+  if(!comment){ showUploadToast(t('반려 사유를 입력하세요','Please enter a reason for rejection')); return; }
   const { data:d } = await sb.from('approval_docs').select('*').eq('id',id).single();
   if(!d) return;
   const step = d.current_step;
-  if(d.status!=='pending' || !d.line[step] || d.line[step].approver_id!==ME.id){ showUploadToast('지금 결재할 차례가 아니에요'); return; }
+  if(d.status!=='pending' || !d.line[step] || d.line[step].approver_id!==ME.id){ showUploadToast(t('지금 결재할 차례가 아니에요','It is not your turn to approve right now')); return; }
   const line = d.line.map(x=>({...x}));
   line[step] = {...line[step], status:'rejected', comment, acted_at:new Date().toISOString()};
   const history = (d.history||[]).concat([{ ts:new Date().toISOString(), actor_id:ME.id, actor_name:ME.name, action:'반려', comment }]);
   const { error } = await sb.from('approval_docs').update({ line, history, status:'rejected' }).eq('id', id);
-  if(error){ showUploadToast('반려 실패: '+error.message); return; }
-  showUploadToast('반려했어요'); apprSubMode='inbox'; await initApprovalPage();
+  if(error){ showUploadToast(t('반려 실패: ','Rejection failed: ')+error.message); return; }
+  showUploadToast(t('반려했어요','Rejected')); apprSubMode='inbox'; await initApprovalPage();
 }
 async function cancelApprDoc(id){
-  if(!confirm('상신을 취소할까요?')) return;
+  if(!confirm(t('상신을 취소할까요?','Cancel this submission?'))) return;
   const { error } = await sb.from('approval_docs').update({ status:'canceled' }).eq('id', id);
-  if(error){ showUploadToast('취소 실패: '+error.message); return; }
-  showUploadToast('상신을 취소했어요'); apprSubMode='sent'; await initApprovalPage();
+  if(error){ showUploadToast(t('취소 실패: ','Cancel failed: ')+error.message); return; }
+  showUploadToast(t('상신을 취소했어요','Submission canceled')); apprSubMode='sent'; await initApprovalPage();
 }
 
 function printApprDoc(id){
@@ -9258,8 +9258,8 @@ function printApprDoc(id){
     let itemsTbl='';
     if(fd._items && fd._itemsMeta && fd._items.length){ const it=fd._itemsMeta,cols=it.columns;
       itemsTbl=`<table class="items"><thead><tr>${cols.map(c=>`<th>${c.label}</th>`).join('')}</tr></thead><tbody>${fd._items.map(r=>`<tr>${cols.map(c=>`<td class="${c.type==='number'?'r':''}">${escHtml(c.type==='number'?apprWon(r[c.key]||0):(r[c.key]||''))}</td>`).join('')}</tr>`).join('')}</tbody></table><div class="sum">${it.sumLabel}: ${apprWon((fd._items||[]).reduce((a,r)=>a+(Number(r[it.sumKey])||0),0))}</div>`; }
-    const lineBoxes=(d.line||[]).map(a=>`<div class="appr-box"><div class="al">${escHtml(a.approver_name)}</div><div class="ast ${a.status}">${({approved:'승인',rejected:'반려',pending:'대기',waiting:'대기'})[a.status]||''}</div><div class="ad">${a.acted_at?a.acted_at.slice(0,10):''}</div></div>`).join('');
-    const win=window.open('','_blank'); if(!win){ showUploadToast('팝업 허용 필요'); return; }
+    const lineBoxes=(d.line||[]).map(a=>`<div class="appr-box"><div class="al">${escHtml(a.approver_name)}</div><div class="ast ${a.status}">${({approved:t('승인','Approved'),rejected:t('반려','Rejected'),pending:t('대기','Pending'),waiting:t('대기','Waiting')})[a.status]||''}</div><div class="ad">${a.acted_at?a.acted_at.slice(0,10):''}</div></div>`).join('');
+    const win=window.open('','_blank'); if(!win){ showUploadToast(t('팝업 허용 필요','Please allow pop-ups')); return; }
     win.document.write(`<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"/><title>${escHtml(d.title)}</title><style>
       *{box-sizing:border-box;margin:0;padding:0}body{font-family:'Malgun Gothic',Arial,sans-serif;color:#1a2332;padding:16mm 14mm}@page{size:A4;margin:14mm}@media print{.noprint{display:none}}
       h1{font-size:22px;text-align:center;margin-bottom:4px}.meta{text-align:center;font-size:12px;color:#667;margin-bottom:18px}
@@ -9269,13 +9269,13 @@ function printApprDoc(id){
       .btn{position:fixed;top:12px;right:12px;padding:9px 16px;background:#1d3a5f;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer}
       .att{font-size:12px;color:#555;margin-top:10px}
     </style></head><body>
-      <button class="btn noprint" onclick="window.print()">🖨 인쇄 / PDF</button>
+      <button class="btn noprint" onclick="window.print()">${t('🖨 인쇄 / PDF','🖨 Print / PDF')}</button>
       <div class="appr-line">${lineBoxes}</div>
       <h1>${escHtml(d.title)}</h1>
-      <div class="meta">${escHtml(d.template_name||'')} · 상신 ${escHtml(d.submitter_name||'')} · ${(d.created_at||'').slice(0,10)}</div>
+      <div class="meta">${escHtml(d.template_name||'')} · ${t('상신','By')} ${escHtml(d.submitter_name||'')} · ${(d.created_at||'').slice(0,10)}</div>
       ${fieldsRows?`<table>${fieldsRows}</table>`:''}
       ${itemsTbl}
-      ${(d.attachments||[]).length?`<div class="att">첨부: ${d.attachments.map(f=>escHtml(f.name)).join(', ')}</div>`:''}
+      ${(d.attachments||[]).length?`<div class="att">${t('첨부','Attachments')}: ${d.attachments.map(f=>escHtml(f.name)).join(', ')}</div>`:''}
     </body></html>`);
     win.document.close(); setTimeout(()=>{try{win.print()}catch(_){}}, 500);
   });
@@ -9287,21 +9287,21 @@ function renderApprTemplates(){
   const builtinCards = APPR_BUILTINS.map(t=>`<div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border:1px solid var(--border);border-radius:11px;margin-bottom:8px;background:var(--surface)">
     <span style="font-size:18px">📝</span>
     <div style="flex:1"><div style="font-size:13.5px;font-weight:700">${escHtml(t.name)}</div><div style="font-size:11.5px;color:var(--ink3)">${escHtml(t.description||'')}</div></div>
-    <span style="font-size:10px;font-weight:700;color:#1d3a5f;background:var(--asoft);padding:2px 8px;border-radius:99px">기본</span>
+    <span style="font-size:10px;font-weight:700;color:#1d3a5f;background:var(--asoft);padding:2px 8px;border-radius:99px">${window.t('기본','Default')}</span>
   </div>`).join('');
   const commCards = apprTemplates.length ? apprTemplates.map(t=>`<div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border:1px solid var(--border);border-radius:11px;margin-bottom:8px;background:var(--surface)">
     <span style="font-size:18px">${t.kind==='file'?'📄':'📝'}</span>
     <div style="flex:1"><div style="font-size:13.5px;font-weight:700">${escHtml(t.name)}</div><div style="font-size:11.5px;color:var(--ink3)">${escHtml(t.description||t.category||'')} · ${escHtml(t.created_name||'')}</div></div>
-    ${t.file_url?`<a href="${t.file_url}" target="_blank" style="font-size:12px;color:var(--accent);text-decoration:none">파일</a>`:''}
-    <button onclick="deleteApprTemplate('${t.id}','${escAttr(t.name)}')" style="border:none;background:transparent;color:#c0392b;cursor:pointer;font-size:13px">삭제</button>
-  </div>`).join('') : '<div style="font-size:12.5px;color:var(--ink3);padding:8px 0">등록한 양식이 없어요.</div>';
+    ${t.file_url?`<a href="${t.file_url}" target="_blank" style="font-size:12px;color:var(--accent);text-decoration:none">${window.t('파일','File')}</a>`:''}
+    <button onclick="deleteApprTemplate('${t.id}','${escAttr(t.name)}')" style="border:none;background:transparent;color:#c0392b;cursor:pointer;font-size:13px">${window.t('삭제','Delete')}</button>
+  </div>`).join('') : `<div style="font-size:12.5px;color:var(--ink3);padding:8px 0">${t('등록한 양식이 없어요.','No registered forms.')}</div>`;
   main.innerHTML = `<div style="max-width:760px;margin:0 auto">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-      <div style="font-size:16px;font-weight:800;color:var(--ink)">양식 관리</div>
-      <button onclick="openApprTemplateModal()" style="height:38px;padding:0 16px;border:none;background:linear-gradient(135deg,#1d3a5f,#2a5298);color:#fff;border-radius:10px;cursor:pointer;font:700 12.5px var(--font)">＋ 양식 추가</button>
+      <div style="font-size:16px;font-weight:800;color:var(--ink)">${t('양식 관리','Manage forms')}</div>
+      <button onclick="openApprTemplateModal()" style="height:38px;padding:0 16px;border:none;background:linear-gradient(135deg,#1d3a5f,#2a5298);color:#fff;border-radius:10px;cursor:pointer;font:700 12.5px var(--font)">${t('＋ 양식 추가','＋ Add form')}</button>
     </div>
-    <div style="font-size:12.5px;font-weight:800;color:var(--ink2);margin-bottom:8px">기본 제공 양식</div>${builtinCards}
-    <div style="font-size:12.5px;font-weight:800;color:var(--ink2);margin:16px 0 8px">우리 공동체 양식</div>${commCards}
+    <div style="font-size:12.5px;font-weight:800;color:var(--ink2);margin-bottom:8px">${t('기본 제공 양식','Built-in forms')}</div>${builtinCards}
+    <div style="font-size:12.5px;font-weight:800;color:var(--ink2);margin:16px 0 8px">${t('우리 공동체 양식','Our community forms')}</div>${commCards}
   </div>`;
 }
 
@@ -9312,18 +9312,18 @@ function openApprTemplateModal(){
   wrap.style.cssText='position:fixed;inset:0;z-index:500;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:20px';
   wrap.onclick=e=>{ if(e.target===wrap) wrap.remove(); };
   wrap.innerHTML=`<div style="background:var(--surface);border-radius:18px;padding:22px;width:100%;max-width:520px;max-height:90vh;overflow:auto" onclick="event.stopPropagation()">
-    <div style="font-size:17px;font-weight:800;margin-bottom:14px">＋ 새 양식 추가</div>
+    <div style="font-size:17px;font-weight:800;margin-bottom:14px">${t('＋ 새 양식 추가','＋ Add new form')}</div>
     <div style="display:flex;gap:8px;margin-bottom:14px">
-      <button id="apprtpl-tab-form" onclick="apprTplSetKind('form')" style="flex:1;height:38px;border-radius:9px;border:1.5px solid #1d3a5f;background:var(--asoft);color:#1d3a5f;font:700 12.5px var(--font);cursor:pointer">📝 직접 만들기</button>
-      <button id="apprtpl-tab-file" onclick="apprTplSetKind('file')" style="flex:1;height:38px;border-radius:9px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);font:700 12.5px var(--font);cursor:pointer">📄 파일 업로드</button>
+      <button id="apprtpl-tab-form" onclick="apprTplSetKind('form')" style="flex:1;height:38px;border-radius:9px;border:1.5px solid #1d3a5f;background:var(--asoft);color:#1d3a5f;font:700 12.5px var(--font);cursor:pointer">${t('📝 직접 만들기','📝 Build it')}</button>
+      <button id="apprtpl-tab-file" onclick="apprTplSetKind('file')" style="flex:1;height:38px;border-radius:9px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);font:700 12.5px var(--font);cursor:pointer">${t('📄 파일 업로드','📄 Upload file')}</button>
     </div>
-    <div style="margin-bottom:10px"><label style="font-size:12px;font-weight:700;color:var(--ink3);display:block;margin-bottom:5px">양식 이름 *</label><input id="apprtpl-name" placeholder="예: 물품구입 품의서" style="${apprInp}"/></div>
-    <div style="margin-bottom:10px"><label style="font-size:12px;font-weight:700;color:var(--ink3);display:block;margin-bottom:5px">분류 / 설명</label><input id="apprtpl-desc" placeholder="예: 재정 · 물품 구입 요청" style="${apprInp}"/></div>
+    <div style="margin-bottom:10px"><label style="font-size:12px;font-weight:700;color:var(--ink3);display:block;margin-bottom:5px">${t('양식 이름 *','Form name *')}</label><input id="apprtpl-name" placeholder="${t('예: 물품구입 품의서','e.g. Purchase proposal')}" style="${apprInp}"/></div>
+    <div style="margin-bottom:10px"><label style="font-size:12px;font-weight:700;color:var(--ink3);display:block;margin-bottom:5px">${t('분류 / 설명','Category / description')}</label><input id="apprtpl-desc" placeholder="${t('예: 재정 · 물품 구입 요청','e.g. Finance · purchase request')}" style="${apprInp}"/></div>
     <div id="apprtpl-body"></div>
     <div id="apprtpl-err" style="display:none;color:#b91c1c;font-size:12.5px;font-weight:600;margin:8px 0"></div>
     <div style="display:flex;gap:8px;margin-top:14px">
-      <button onclick="document.getElementById('appr-tpl-modal').remove()" style="flex:1;height:42px;border:1.5px solid var(--border);background:var(--surface);border-radius:10px;font:700 13px var(--font);color:var(--ink2);cursor:pointer">취소</button>
-      <button onclick="saveApprTemplate()" style="flex:1;height:42px;border:none;background:#1d3a5f;color:#fff;border-radius:10px;font:700 13px var(--font);cursor:pointer">저장</button>
+      <button onclick="document.getElementById('appr-tpl-modal').remove()" style="flex:1;height:42px;border:1.5px solid var(--border);background:var(--surface);border-radius:10px;font:700 13px var(--font);color:var(--ink2);cursor:pointer">${t('취소','Cancel')}</button>
+      <button onclick="saveApprTemplate()" style="flex:1;height:42px;border:none;background:#1d3a5f;color:#fff;border-radius:10px;font:700 13px var(--font);cursor:pointer">${t('저장','Save')}</button>
     </div>
   </div>`;
   document.body.appendChild(wrap);
@@ -9338,25 +9338,25 @@ function apprTplRenderBody(){
   const box=document.getElementById('apprtpl-body');
   if(apprTplBuild.kind==='file'){
     box.innerHTML=`<div style="background:var(--s2);border:1px dashed var(--border);border-radius:10px;padding:14px;text-align:center">
-      <input type="file" id="apprtpl-file" onchange="apprTplBuild.file=this.files[0]||null;document.getElementById('apprtpl-fname').textContent=apprTplBuild.file?apprTplBuild.file.name:'선택된 파일 없음'" style="display:none"/>
-      <button onclick="document.getElementById('apprtpl-file').click()" style="height:36px;padding:0 16px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 12.5px var(--font)">📄 양식 파일 선택</button>
-      <div id="apprtpl-fname" style="font-size:12px;color:var(--ink3);margin-top:8px">선택된 파일 없음</div>
-      <div style="font-size:11px;color:var(--ink3);margin-top:6px">엑셀·PDF·한글·이미지 등 (구성원이 내려받아 작성 후 첨부)</div>
+      <input type="file" id="apprtpl-file" onchange="apprTplBuild.file=this.files[0]||null;document.getElementById('apprtpl-fname').textContent=apprTplBuild.file?apprTplBuild.file.name:'${t('선택된 파일 없음','No file selected')}'" style="display:none"/>
+      <button onclick="document.getElementById('apprtpl-file').click()" style="height:36px;padding:0 16px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 12.5px var(--font)">${t('📄 양식 파일 선택','📄 Choose form file')}</button>
+      <div id="apprtpl-fname" style="font-size:12px;color:var(--ink3);margin-top:8px">${t('선택된 파일 없음','No file selected')}</div>
+      <div style="font-size:11px;color:var(--ink3);margin-top:6px">${t('엑셀·PDF·한글·이미지 등 (구성원이 내려받아 작성 후 첨부)','Excel, PDF, HWP, images, etc. (members download, fill in, and attach)')}</div>
     </div>`;
   } else {
     const fieldRows=apprTplBuild.fields.map((f,i)=>`<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
-      <input value="${escAttr(f.label)}" oninput="apprTplBuild.fields[${i}].label=this.value;apprTplBuild.fields[${i}].key='f'+${i}" placeholder="항목 이름 (예: 부서)" style="flex:1;height:34px;padding:0 10px;border:1px solid var(--border);border-radius:8px;font:13px var(--font)"/>
+      <input value="${escAttr(f.label)}" oninput="apprTplBuild.fields[${i}].label=this.value;apprTplBuild.fields[${i}].key='f'+${i}" placeholder="${t('항목 이름 (예: 부서)','Field name (e.g. Department)')}" style="flex:1;height:34px;padding:0 10px;border:1px solid var(--border);border-radius:8px;font:13px var(--font)"/>
       <select onchange="apprTplBuild.fields[${i}].type=this.value" style="height:34px;padding:0 8px;border:1px solid var(--border);border-radius:8px;font:13px var(--font)">
-        <option value="text" ${f.type==='text'?'selected':''}>한 줄</option>
-        <option value="textarea" ${f.type==='textarea'?'selected':''}>여러 줄</option>
-        <option value="number" ${f.type==='number'?'selected':''}>숫자</option>
-        <option value="date" ${f.type==='date'?'selected':''}>날짜</option>
+        <option value="text" ${f.type==='text'?'selected':''}>${t('한 줄','Single line')}</option>
+        <option value="textarea" ${f.type==='textarea'?'selected':''}>${t('여러 줄','Multi-line')}</option>
+        <option value="number" ${f.type==='number'?'selected':''}>${t('숫자','Number')}</option>
+        <option value="date" ${f.type==='date'?'selected':''}>${t('날짜','Date')}</option>
       </select>
       <button onclick="apprTplBuild.fields.splice(${i},1);apprTplRenderBody()" style="width:30px;height:34px;border:1px solid var(--border);background:var(--surface);border-radius:8px;color:#c0392b;cursor:pointer">✕</button>
     </div>`).join('');
-    box.innerHTML=`<div style="font-size:12px;font-weight:700;color:var(--ink3);margin-bottom:6px">입력 항목</div>${fieldRows}
-      <button onclick="apprTplBuild.fields.push({key:'f'+apprTplBuild.fields.length,label:'',type:'text'});apprTplRenderBody()" style="height:32px;padding:0 12px;border:1px dashed var(--border);background:var(--surface);border-radius:8px;cursor:pointer;font:600 12px var(--font);color:var(--ink2);margin-bottom:12px">＋ 항목 추가</button>
-      <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--ink2);cursor:pointer"><input type="checkbox" ${apprTplBuild.itemsOn?'checked':''} onchange="apprTplBuild.itemsOn=this.checked" style="width:16px;height:16px"/> 품목(내역) 표 포함 — 내용·사용 목적·금액 + 합계</label>`;
+    box.innerHTML=`<div style="font-size:12px;font-weight:700;color:var(--ink3);margin-bottom:6px">${t('입력 항목','Input fields')}</div>${fieldRows}
+      <button onclick="apprTplBuild.fields.push({key:'f'+apprTplBuild.fields.length,label:'',type:'text'});apprTplRenderBody()" style="height:32px;padding:0 12px;border:1px dashed var(--border);background:var(--surface);border-radius:8px;cursor:pointer;font:600 12px var(--font);color:var(--ink2);margin-bottom:12px">${t('＋ 항목 추가','＋ Add field')}</button>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--ink2);cursor:pointer"><input type="checkbox" ${apprTplBuild.itemsOn?'checked':''} onchange="apprTplBuild.itemsOn=this.checked" style="width:16px;height:16px"/> ${t('품목(내역) 표 포함 — 내용·사용 목적·금액 + 합계','Include an items table — item · purpose · amount + total')}</label>`;
   }
 }
 async function saveApprTemplate(){
@@ -9364,28 +9364,28 @@ async function saveApprTemplate(){
   const desc=(document.getElementById('apprtpl-desc')?.value||'').trim();
   const err=document.getElementById('apprtpl-err');
   const fail=(m)=>{ err.textContent=m; err.style.display='block'; };
-  if(!name){ fail('양식 이름을 입력하세요'); return; }
+  if(!name){ fail(t('양식 이름을 입력하세요','Please enter a form name')); return; }
   const row={ community_id:CID(), name, category:desc||null, description:desc||null, kind:apprTplBuild.kind, created_by:ME.id, created_name:ME.name, sort:apprTemplates.length };
   if(apprTplBuild.kind==='file'){
-    if(!apprTplBuild.file){ fail('양식 파일을 선택하세요'); return; }
-    try{ const meta=await apprUpload(apprTplBuild.file); row.file_url=meta.url; }catch(e){ fail('파일 업로드 실패: '+(e.message||e)); return; }
+    if(!apprTplBuild.file){ fail(t('양식 파일을 선택하세요','Please choose a form file')); return; }
+    try{ const meta=await apprUpload(apprTplBuild.file); row.file_url=meta.url; }catch(e){ fail(t('파일 업로드 실패: ','File upload failed: ')+(e.message||e)); return; }
   } else {
     const fields=apprTplBuild.fields.filter(f=>f.label.trim()).map((f,i)=>({key:'f'+i,label:f.label.trim(),type:f.type}));
-    if(!fields.length){ fail('입력 항목을 1개 이상 만드세요'); return; }
+    if(!fields.length){ fail(t('입력 항목을 1개 이상 만드세요','Please create at least one input field')); return; }
     row.fields=fields;
     if(apprTplBuild.itemsOn) row.items={ enabled:true, columns:[{key:'name',label:'내용',type:'text'},{key:'purpose',label:'사용 목적',type:'text'},{key:'amount',label:'금액',type:'number'}], sumKey:'amount', sumLabel:'합계' };
   }
   const { error } = await sb.from('approval_templates').insert(row);
-  if(error){ if(schoolTableMissing(error)){ fail('결재 테이블이 없어요. db/서류결재_DB설치.sql 실행 필요'); return; } fail('저장 실패: '+error.message); return; }
+  if(error){ if(schoolTableMissing(error)){ fail(t('결재 테이블이 없어요. db/서류결재_DB설치.sql 실행 필요','Approval table missing. Run db/서류결재_DB설치.sql')); return; } fail(t('저장 실패: ','Save failed: ')+error.message); return; }
   document.getElementById('appr-tpl-modal')?.remove();
-  showUploadToast('✅ 양식이 추가됐어요');
+  showUploadToast(t('✅ 양식이 추가됐어요','✅ Form added'));
   initApprovalPage();
 }
 async function deleteApprTemplate(id,name){
-  if(!confirm(`'${name}' 양식을 삭제할까요?`)) return;
+  if(!confirm(t(`'${name}' 양식을 삭제할까요?`,`Delete the form '${name}'?`))) return;
   const { error } = await sb.from('approval_templates').delete().eq('id', id);
-  if(error){ showUploadToast('삭제 실패: '+error.message); return; }
-  showUploadToast('삭제됐어요'); initApprovalPage();
+  if(error){ showUploadToast(t('삭제 실패: ','Delete failed: ')+error.message); return; }
+  showUploadToast(t('삭제됐어요','Deleted')); initApprovalPage();
 }
 
 // ═══════════════════════════════════════════════════════════════════
