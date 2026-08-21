@@ -225,6 +225,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
   border-top-left-radius: 4px;
 }
 .mine .bubble { background: var(--asoft); color: var(--adeep); border-top-left-radius: 16px; border-top-right-radius: 4px; }
+.bubble.poll-bubble, .mine .bubble.poll-bubble { background: transparent !important; padding: 0 !important; border-radius: 0; white-space: normal; }
 .msg-row + .msg-row.same-sender { padding-top: 1px; }
 .msg-row.same-sender .msg-avatar { visibility: hidden; }
 .msg-row.same-sender .msg-meta { display: none; }
@@ -809,8 +810,8 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
             </div>
             <input type="file" id="fileInput" style="display:none" accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt" onchange="handleFileUpload(this)" multiple/>
             <input type="file" id="schedFileInput" style="display:none" accept="image/*" onchange="handleScheduleFile(this)"/>
-            <div class="icon-btn">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--ink3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8.5 14.5a4.5 4.5 0 007 0"/><circle cx="9" cy="10" r="1" fill="var(--ink3)"/><circle cx="15" cy="10" r="1" fill="var(--ink3)"/></svg>
+            <div class="icon-btn" id="poll-btn" onclick="openPollModal()" title="투표 만들기">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--ink3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="20" x2="6" y2="11"/><line x1="12" y1="20" x2="12" y2="5"/><line x1="18" y1="20" x2="18" y2="14"/></svg>
             </div>
             <div class="send-btn" id="sendBtn" onclick="sendMsg()">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12L20 4l-6 16-3-7-7-1z"/></svg>
@@ -1190,8 +1191,40 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
       <div style="font-size:16px;font-weight:700;margin-bottom:8px">메시지를 삭제할까요?</div>
       <div style="font-size:13px;color:var(--ink3);margin-bottom:24px">삭제된 메시지는 복구할 수 없어요</div>
       <div style="display:flex;gap:10px">
-        <div onclick="document.getElementById('delete-modal').style.display='none'" style="flex:1;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:var(--s3);color:var(--ink2);cursor:pointer;font-size:14px">취소</div>
-        <div onclick="confirmDeleteMsg()" style="flex:1;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:var(--rose);color:white;cursor:pointer;font-size:14px;font-weight:600">삭제</div>
+        <div onclick="document.getElementById('delete-modal').style.display='none'" style="flex:1;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:var(--s3);color:var(--ink2);cursor:pointer;font-size:14px" data-ko="취소" data-en="Cancel">취소</div>
+        <div onclick="confirmDeleteMsg()" style="flex:1;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:var(--rose);color:white;cursor:pointer;font-size:14px;font-weight:600" data-ko="삭제" data-en="Delete">삭제</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 투표 만들기 모달 -->
+  <div id="poll-modal" style="display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.45);align-items:center;justify-content:center">
+    <div style="background:var(--surface);border-radius:20px;padding:26px;width:440px;max-width:94vw;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.2)">
+      <div style="font-size:17px;font-weight:700;margin-bottom:4px" data-ko="📊 투표 만들기" data-en="📊 Create Poll">📊 투표 만들기</div>
+      <div style="font-size:12.5px;color:var(--ink3);margin-bottom:18px" data-ko="질문과 항목을 입력하세요" data-en="Enter a question and options">질문과 항목을 입력하세요</div>
+
+      <div style="font-size:11.5px;color:var(--ink3);margin-bottom:5px" data-ko="질문" data-en="Question">질문</div>
+      <input id="poll-q" placeholder="예: 이번 수련회 언제가 좋을까요?" data-ko-ph="예: 이번 수련회 언제가 좋을까요?" data-en-ph="e.g. When works best for the retreat?" style="width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none;margin-bottom:14px"/>
+
+      <div style="font-size:11.5px;color:var(--ink3);margin-bottom:5px" data-ko="항목" data-en="Options">항목</div>
+      <div id="poll-options"></div>
+      <div onclick="addPollOption()" style="display:inline-flex;align-items:center;gap:6px;margin:2px 0 16px;padding:8px 12px;border:1.5px dashed var(--border);border-radius:10px;cursor:pointer;font-size:13px;color:var(--ink2);font-weight:600" data-ko="＋ 항목 추가" data-en="＋ Add option">＋ 항목 추가</div>
+
+      <label style="display:flex;align-items:center;gap:9px;margin-bottom:10px;cursor:pointer">
+        <input type="checkbox" id="poll-multi" style="width:17px;height:17px;cursor:pointer"/>
+        <span style="font-size:13.5px;color:var(--ink)" data-ko="복수 선택 허용" data-en="Allow multiple choices">복수 선택 허용</span>
+      </label>
+      <label style="display:flex;align-items:center;gap:9px;margin-bottom:14px;cursor:pointer">
+        <input type="checkbox" id="poll-anon" style="width:17px;height:17px;cursor:pointer"/>
+        <span style="font-size:13.5px;color:var(--ink)" data-ko="익명 투표 (누가 선택했는지 숨김)" data-en="Anonymous (hide who voted)">익명 투표 (누가 선택했는지 숨김)</span>
+      </label>
+
+      <div style="font-size:11.5px;color:var(--ink3);margin-bottom:5px" data-ko="마감 시간 (선택)" data-en="Deadline (optional)">마감 시간 (선택)</div>
+      <input id="poll-deadline" type="datetime-local" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none;margin-bottom:20px"/>
+
+      <div style="display:flex;gap:8px">
+        <div onclick="closePollModal()" style="flex:1;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:var(--s3);color:var(--ink2);cursor:pointer;font-size:14px" data-ko="취소" data-en="Cancel">취소</div>
+        <div onclick="createPoll()" style="flex:2;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:var(--accent);color:white;cursor:pointer;font-size:14px;font-weight:600" data-ko="투표 만들기" data-en="Create Poll">투표 만들기</div>
       </div>
     </div>
   </div>
@@ -2451,6 +2484,14 @@ async function openChannel(id) {
     });
   }
 
+  // 투표(poll) 표 로드
+  pollVotesByMsg = {}; pollMsgCache = {};
+  const pollIds = (msgs||[]).filter(m => m.kind === 'poll').map(m => m.id);
+  if (pollIds.length) {
+    const { data: pv } = await sb.from('poll_votes').select('*').in('message_id', pollIds);
+    (pv||[]).forEach(v => { (pollVotesByMsg[v.message_id] = pollVotesByMsg[v.message_id] || []).push(v); });
+  }
+
   await markAllRead(msgs||[]);
   renderMessages(msgsWithReactions, readMap);
 
@@ -2470,6 +2511,15 @@ async function openChannel(id) {
       async () => { await refreshReadCounts(); })
     .on('postgres_changes', { event:'*', schema:'public', table:'message_reactions' },
       async () => { await refreshReactions(); })
+    .on('postgres_changes', { event:'*', schema:'public', table:'poll_votes' },
+      async (payload) => {
+        const mid = payload.new?.message_id || payload.old?.message_id;
+        if (mid && pollMsgCache[mid]) { await reloadPollVotes(mid); rerenderPoll(mid); }
+      })
+    .on('postgres_changes', { event:'UPDATE', schema:'public', table:'messages', filter:`channel_id=eq.${id}` },
+      (payload) => {
+        if (payload.new && payload.new.kind === 'poll') { pollMsgCache[payload.new.id] = payload.new; rerenderPoll(payload.new.id); }
+      })
     .subscribe();
 }
 
@@ -2666,12 +2716,12 @@ function msgHtml(m, prev, readMap={}) {
       <div onclick="showReactionPicker('${m.id}',this)" title="리액션"
         style="width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:15px"
         onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background=''">😊</div>
-      ${m.kind !== 'file' ? `<div onclick="copyMsgText('${m.id}')" title="전체 복사"
+      ${(m.kind !== 'file' && m.kind !== 'poll') ? `<div onclick="copyMsgText('${m.id}')" title="전체 복사"
         style="width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:13px"
         onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background=''">📋</div>` : ''}
-      <div onclick="startReply('${m.id}','${escAttr(m.text)}','${escAttr(sender.name)}')" title="답장"
+      ${m.kind !== 'poll' ? `<div onclick="startReply('${m.id}','${escAttr(m.text)}','${escAttr(sender.name)}')" title="답장"
         style="width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px"
-        onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background=''">↩️</div>
+        onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background=''">↩️</div>` : ''}
       ${isMine ? `<div onclick="askDeleteMsg('${m.id}')" title="삭제"
         style="width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:11px;color:var(--rose)"
         onmouseover="this.style.background='#FEE2E2'" onmouseout="this.style.background=''">✕</div>` : ''}
@@ -2743,6 +2793,7 @@ function msgHtml(m, prev, readMap={}) {
       }
     } catch(e) { bubbleContent = escHtml(m.text); }
   }
+  if (m.kind === 'poll') { bubbleContent = renderPollCard(m); }
 
   if (isMine) {
     return `<div class="msg-row mine${sameAsPrev?' same-sender':''}" data-sender="${m.sender_id}" data-id="${m.id}" data-date="${m.created_at ? new Date(m.created_at).toDateString() : ''}" style="position:relative">
@@ -2751,7 +2802,7 @@ function msgHtml(m, prev, readMap={}) {
       <div class="msg-body">
         ${!sameAsPrev ? `<div class="msg-meta"><span class="name">${sender.name}</span><span class="time">${fmtTime(m.created_at)}</span></div>` : ''}
         ${replyQuote}
-        <div class="bubble"${memHi?' style="box-shadow:inset 3px 0 0 #F0B429;background:rgba(240,180,41,.12)"':''}>${bubbleContent}</div>
+        <div class="bubble${m.kind==='poll'?' poll-bubble':''}"${memHi?' style="box-shadow:inset 3px 0 0 #F0B429;background:rgba(240,180,41,.12)"':''}>${bubbleContent}</div>
         ${reactions}
         ${readLabel}
       </div>
@@ -2773,6 +2824,183 @@ function escAttr(s) {
   return String(s||'').replace(/'/g,"\\'").replace(/\n/g,' ').slice(0,100);
 }
 
+
+// ══════════════════════════════════════════════════════════════════
+//  채팅 투표(poll) — 카카오톡/잔디 스타일
+// ══════════════════════════════════════════════════════════════════
+let pollVotesByMsg = {};   // message_id -> [{option_index, member_id, member_name}]
+let pollMsgCache   = {};   // message_id -> 메시지 row (재렌더용)
+
+function openPollModal() {
+  if (!currentChannel) { showUploadToast(t('먼저 채팅방을 선택하세요','Open a chat first')); return; }
+  document.getElementById('poll-q').value = '';
+  document.getElementById('poll-multi').checked = false;
+  document.getElementById('poll-anon').checked = false;
+  document.getElementById('poll-deadline').value = '';
+  const wrap = document.getElementById('poll-options');
+  wrap.innerHTML = '';
+  addPollOption(); addPollOption();
+  document.getElementById('poll-modal').style.display = 'flex';
+  setTimeout(() => document.getElementById('poll-q').focus(), 50);
+}
+function closePollModal() { document.getElementById('poll-modal').style.display = 'none'; }
+function pollOptionRowHtml() {
+  return `<div class="poll-opt-row" style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
+    <input class="poll-opt" maxlength="120" placeholder="${t('항목 입력','Option')}" onkeydown="if(event.key==='Enter'){event.preventDefault();addPollOption();}"
+      style="flex:1;padding:10px 13px;border:1.5px solid var(--border);border-radius:10px;font:14px var(--font);outline:none"/>
+    <div onclick="removePollOption(this)" title="${t('삭제','Remove')}" style="width:30px;height:30px;flex-shrink:0;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--ink3);font-size:14px" onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background=''">✕</div>
+  </div>`;
+}
+function addPollOption() {
+  const wrap = document.getElementById('poll-options');
+  if (wrap.querySelectorAll('.poll-opt').length >= 15) { showUploadToast(t('항목은 최대 15개예요','Up to 15 options')); return; }
+  wrap.insertAdjacentHTML('beforeend', pollOptionRowHtml());
+}
+function removePollOption(el) {
+  const wrap = document.getElementById('poll-options');
+  if (wrap.querySelectorAll('.poll-opt').length <= 2) { showUploadToast(t('최소 2개 항목이 필요해요','At least 2 options required')); return; }
+  el.closest('.poll-opt-row').remove();
+}
+
+async function createPoll() {
+  if (!currentChannel) return;
+  const q = document.getElementById('poll-q').value.trim();
+  const opts = [...document.querySelectorAll('#poll-options .poll-opt')].map(i => i.value.trim()).filter(Boolean);
+  if (!q) { showUploadToast(t('질문을 입력하세요','Enter a question')); return; }
+  if (opts.length < 2) { showUploadToast(t('항목을 2개 이상 입력하세요','Enter at least 2 options')); return; }
+  const multi = document.getElementById('poll-multi').checked;
+  const anon  = document.getElementById('poll-anon').checked;
+  const dlVal = document.getElementById('poll-deadline').value;
+  const meta = { type:'poll', q, opts, multi, anon, deadline: dlVal ? new Date(dlVal).toISOString() : null, closed:false };
+  const { data: ins, error } = await sb.from('messages').insert({
+    channel_id: currentChannel.id, sender_id: ME.id, sender_name: ME.name,
+    text: JSON.stringify(meta), kind: 'poll',
+  }).select().single();
+  if (error) { showUploadToast(t('투표 생성 실패 😥','Failed to create poll 😥')); return; }
+  closePollModal();
+  if (ins) { pollVotesByMsg[ins.id] = []; appendMessage({ ...ins, reactions: [] }, {}); }
+  // 1:1 최신순용 마지막 활동시각 갱신
+  const nowIso = new Date().toISOString();
+  currentChannel.last_message_at = nowIso;
+  const ch = channels.find(c => c.id === currentChannel.id); if (ch) ch.last_message_at = nowIso;
+  sb.from('channels').update({ last_message_at: nowIso }).eq('id', currentChannel.id).then(()=>{}, ()=>{});
+}
+
+function pollIsClosed(meta) {
+  return !!(meta.closed || (meta.deadline && Date.now() > new Date(meta.deadline).getTime()));
+}
+function fmtPollDeadline(iso) {
+  const d = new Date(iso);
+  if (APP_LANG === 'en') {
+    return d.toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
+  }
+  const mm = d.getMonth()+1, dd = d.getDate();
+  let h = d.getHours(); const min = String(d.getMinutes()).padStart(2,'0');
+  const ap = h < 12 ? '오전' : '오후'; h = h % 12 || 12;
+  return `${mm}월 ${dd}일 ${ap} ${h}:${min}`;
+}
+
+function renderPollCard(m) {
+  let meta; try { meta = JSON.parse(m.text); } catch(e) { return escHtml(m.text); }
+  pollMsgCache[m.id] = m;
+  const votes = pollVotesByMsg[m.id] || [];
+  const voterIds = new Set(votes.map(v => v.member_id));
+  const total = voterIds.size;
+  const closed = pollIsClosed(meta);
+  const myOpts = new Set(votes.filter(v => v.member_id === ME.id).map(v => v.option_index));
+  const isCreator = m.sender_id === ME.id;
+  const isMine = m.sender_id === ME.id;
+
+  const badges = [];
+  if (meta.multi) badges.push(t('복수 선택','Multiple choice'));
+  if (meta.anon)  badges.push(t('익명','Anonymous'));
+  if (meta.deadline) badges.push((closed ? t('마감 · ','Ended · ') : t('~','until ')) + fmtPollDeadline(meta.deadline));
+  const badgeHtml = badges.map(b => `<span style="font-size:10.5px;font-weight:700;color:var(--ink3);background:var(--s3);padding:2px 8px;border-radius:99px">${escHtml(b)}</span>`).join(' ');
+
+  const optsHtml = meta.opts.map((o, idx) => {
+    const ov = votes.filter(v => v.option_index === idx);
+    const cnt = ov.length;
+    const pct = total ? Math.round(cnt / total * 100) : 0;
+    const mine = myOpts.has(idx);
+    let voterHtml = '';
+    if (!meta.anon && cnt) {
+      const shown = ov.slice(0, 6).map(v => {
+        const mem = members[v.member_id] || { initials:(v.member_name||'?')[0], color:'#999', name:v.member_name };
+        return `<div title="${escAttr(mem.name||v.member_name||'')}" style="width:20px;height:20px;border-radius:6px;background:${mem.color||'#999'};color:#fff;display:flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:700;margin-left:-4px;border:1.5px solid var(--surface)">${escHtml(mem.initials||'?')}</div>`;
+      }).join('');
+      const more = cnt > 6 ? `<span style="font-size:10.5px;color:var(--ink3);margin-left:4px">+${cnt-6}</span>` : '';
+      voterHtml = `<div style="display:flex;align-items:center;padding-left:4px;margin-top:5px">${shown}${more}</div>`;
+    }
+    return `<div onclick="${closed ? '' : `votePoll('${m.id}',${idx})`}"
+      style="position:relative;border:1.5px solid ${mine?'var(--accent)':'var(--border)'};border-radius:11px;padding:9px 12px;margin-bottom:7px;overflow:hidden;cursor:${closed?'default':'pointer'};background:var(--surface)">
+      <div style="position:absolute;left:0;top:0;bottom:0;width:${pct}%;background:${mine?'rgba(42,82,152,.16)':'rgba(120,130,150,.12)'};transition:width .3s"></div>
+      <div style="position:relative;display:flex;align-items:center;gap:8px">
+        <div style="width:17px;height:17px;flex-shrink:0;border-radius:${meta.multi?'5px':'50%'};border:2px solid ${mine?'var(--accent)':'var(--border)'};background:${mine?'var(--accent)':'transparent'};display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px">${mine?'✓':''}</div>
+        <div style="flex:1;min-width:0;font-size:13.5px;font-weight:${mine?'700':'500'};color:var(--ink);word-break:break-word">${escHtml(o)}</div>
+        <div style="flex-shrink:0;font-size:12px;font-weight:700;color:var(--ink2)">${pct}%</div>
+        <div style="flex-shrink:0;font-size:11.5px;color:var(--ink3);min-width:34px;text-align:right">${t(cnt+'명', cnt+'')}</div>
+      </div>
+      ${voterHtml}
+    </div>`;
+  }).join('');
+
+  const footer = `<div style="display:flex;align-items:center;justify-content:space-between;margin-top:4px">
+    <div style="font-size:11.5px;color:var(--ink3)">${t('참여 '+total+'명', total+' voted')}</div>
+    ${isCreator && !closed ? `<div onclick="closePoll('${m.id}')" style="font-size:11.5px;font-weight:700;color:var(--rose);cursor:pointer;padding:3px 8px;border-radius:7px" onmouseover="this.style.background='#FEE2E2'" onmouseout="this.style.background=''">${t('투표 종료','End poll')}</div>` : ''}
+    ${closed ? `<span style="font-size:11px;font-weight:700;color:var(--ink3)">${t('🔒 마감됨','🔒 Ended')}</span>` : ''}
+  </div>`;
+
+  return `<div style="width:300px;max-width:78vw;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px 15px;box-shadow:0 1px 4px rgba(0,0,0,.05)">
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px"><span style="font-size:15px">📊</span><span style="font-size:11px;font-weight:700;color:var(--accent)">${t('투표','POLL')}</span></div>
+    <div style="font-size:14.5px;font-weight:700;color:var(--ink);margin-bottom:7px;word-break:break-word;white-space:normal">${escHtml(meta.q)}</div>
+    ${badgeHtml ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:11px">${badgeHtml}</div>` : '<div style="height:4px"></div>'}
+    ${optsHtml}
+    ${footer}
+  </div>`;
+}
+
+async function votePoll(messageId, optionIndex) {
+  const m = pollMsgCache[messageId]; if (!m) return;
+  let meta; try { meta = JSON.parse(m.text); } catch(e) { return; }
+  if (pollIsClosed(meta)) { showUploadToast(t('마감된 투표예요','This poll has ended')); return; }
+  const votes = pollVotesByMsg[messageId] || [];
+  const mine = votes.filter(v => v.member_id === ME.id);
+  const already = mine.find(v => v.option_index === optionIndex);
+  try {
+    if (already) {
+      await sb.from('poll_votes').delete().eq('message_id', messageId).eq('member_id', ME.id).eq('option_index', optionIndex);
+    } else {
+      if (!meta.multi && mine.length) {
+        await sb.from('poll_votes').delete().eq('message_id', messageId).eq('member_id', ME.id);
+      }
+      await sb.from('poll_votes').insert({ message_id: messageId, option_index: optionIndex, member_id: ME.id, member_name: ME.name });
+    }
+  } catch(e) { showUploadToast(t('투표 처리 실패 😥','Vote failed 😥')); return; }
+  await reloadPollVotes(messageId);
+  rerenderPoll(messageId);
+}
+
+async function closePoll(messageId) {
+  const m = pollMsgCache[messageId]; if (!m) return;
+  if (m.sender_id !== ME.id) return;
+  let meta; try { meta = JSON.parse(m.text); } catch(e) { return; }
+  meta.closed = true;
+  const newText = JSON.stringify(meta);
+  const { error } = await sb.from('messages').update({ text: newText }).eq('id', messageId);
+  if (error) { showUploadToast(t('종료 실패 😥','Failed to end 😥')); return; }
+  m.text = newText; pollMsgCache[messageId] = m;
+  rerenderPoll(messageId);
+}
+
+async function reloadPollVotes(messageId) {
+  const { data } = await sb.from('poll_votes').select('*').eq('message_id', messageId);
+  pollVotesByMsg[messageId] = data || [];
+}
+function rerenderPoll(messageId) {
+  const bubble = document.querySelector(`.msg-row[data-id="${messageId}"] .bubble`);
+  const m = pollMsgCache[messageId];
+  if (bubble && m) bubble.innerHTML = renderPollCard(m);
+}
 
 function copyMsgText(id) {
   const el = document.querySelector(`[data-id="${id}"] .bubble`);
