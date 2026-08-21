@@ -753,7 +753,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
           <div class="header-action" onclick="toggleTodoPanel()" title="To-Do List" id="todo-btn"
             style="display:flex;align-items:center;gap:4px;padding:0 10px;width:auto;border-radius:10px">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ink3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
-            <span style="font-size:12.5px;font-weight:600;color:var(--ink3)">To-Do</span>
+            <span style="font-size:12.5px;font-weight:600;color:var(--ink3)" data-ko="할 일" data-en="To-Do">할 일</span>
           </div>
           <div class="header-action" onclick="toggleRightPanel()">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--ink3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="9" r="3.5"/><path d="M3 19c0-3 3-5 6-5s6 2 6 5"/><circle cx="17" cy="8" r="2.5"/><path d="M15 19c0-2 2-3.5 4-3.5"/></svg>
@@ -766,22 +766,22 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
         <div id="todo-panel" style="display:none;border-bottom:1px solid var(--border);background:var(--s2);flex-shrink:0;max-height:320px;overflow-y:auto">
           <div style="padding:14px 20px 10px;display:flex;align-items:center;justify-content:space-between">
             <div style="font-size:14px;font-weight:700;display:flex;align-items:center;gap:7px">
-              ✅ To-Do List
+              <span data-ko="✅ 할 일" data-en="✅ To-Do List">✅ 할 일</span>
               <span id="todo-count" style="font-size:11px;background:var(--accent);color:white;padding:1px 7px;border-radius:999px;font-weight:600"></span>
             </div>
-            <button onclick="showTodoForm()" style="height:30px;padding:0 12px;border-radius:9px;border:none;background:var(--accent);color:white;font:600 12px var(--font);cursor:pointer">+ 추가</button>
+            <button onclick="showTodoForm()" style="height:30px;padding:0 12px;border-radius:9px;border:none;background:var(--accent);color:white;font:600 12px var(--font);cursor:pointer" data-ko="+ 추가" data-en="+ Add">+ 추가</button>
           </div>
           <!-- 추가 폼 -->
           <div id="todo-form" style="display:none;padding:0 20px 12px">
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-              <input id="todo-input" placeholder="할 일을 입력하세요" onkeydown="if(event.key==='Enter')submitTodo()"
+              <input id="todo-input" placeholder="할 일을 입력하세요" data-ko-ph="할 일을 입력하세요" data-en-ph="Enter a task" onkeydown="if(event.key==='Enter')submitTodo()"
                 style="flex:1;min-width:160px;padding:8px 12px;border:1.5px solid var(--border);border-radius:10px;font:13px var(--font);outline:none"/>
               <select id="todo-assignee" style="height:34px;padding:0 10px;border:1.5px solid var(--border);border-radius:10px;font:13px var(--font);outline:none;background:white;cursor:pointer">
-                <option value="">담당자 선택</option>
+                <option value="" data-ko="담당자 선택" data-en="Assignee">담당자 선택</option>
               </select>
               <input id="todo-due" type="date" style="height:34px;padding:0 10px;border:1.5px solid var(--border);border-radius:10px;font:13px var(--font);outline:none"/>
-              <button onclick="submitTodo()" style="height:34px;padding:0 14px;border-radius:10px;border:none;background:var(--sage);color:white;font:600 13px var(--font);cursor:pointer">저장</button>
-              <button onclick="document.getElementById('todo-form').style.display='none'" style="height:34px;padding:0 12px;border-radius:10px;border:none;background:var(--s3);color:var(--ink2);font:13px var(--font);cursor:pointer">취소</button>
+              <button onclick="submitTodo()" style="height:34px;padding:0 14px;border-radius:10px;border:none;background:var(--sage);color:white;font:600 13px var(--font);cursor:pointer" data-ko="저장" data-en="Save">저장</button>
+              <button onclick="document.getElementById('todo-form').style.display='none'" style="height:34px;padding:0 12px;border-radius:10px;border:none;background:var(--s3);color:var(--ink2);font:13px var(--font);cursor:pointer" data-ko="취소" data-en="Cancel">취소</button>
             </div>
           </div>
           <!-- To-Do 목록 -->
@@ -7750,6 +7750,7 @@ async function saveGoals(id, monthStr) {
 // ── To-Do List ──
 let todos = [];
 let todoSub = null;
+let todoTableMissing = false;
 
 function toggleTodoPanel() {
   const panel = document.getElementById('todo-panel');
@@ -7762,22 +7763,36 @@ function toggleTodoPanel() {
   if (!isOpen) loadTodos();
 }
 
-async function loadTodos() {
+function todoTableIsMissing(err) {
+  const m = (err && (err.message || err.code || '')) + '';
+  return /relation .*todos.* does not exist|could not find the table|schema cache|42P01/i.test(m);
+}
+
+// 채널의 할 일 재조회 + 렌더 (구독 재설정 없음 — 즉시 반영용)
+async function refreshTodos() {
   if (!currentChannel) return;
-  const { data } = await sb.from('todos').select('*').eq('community_id', CID())
-    .eq('channel_id', currentChannel.id)
+  const { data, error } = await sb.from('todos').select('*')
+    .eq('community_id', CID()).eq('channel_id', currentChannel.id)
     .order('completed').order('created_at', {ascending:false});
+  if (error) {
+    if (todoTableIsMissing(error)) { todoTableMissing = true; renderTodos(); }
+    return;
+  }
+  todoTableMissing = false;
   todos = data || [];
   renderTodos();
+}
 
-  if (todoSub) sb.removeChannel(todoSub);
+async function loadTodos() {
+  if (!currentChannel) return;
+  const list = document.getElementById('todo-list');
+  if (list && !todos.length) list.innerHTML = `<div style="text-align:center;padding:16px;color:var(--ink3);font-size:13px">${t('불러오는 중...','Loading...')}</div>`;
+  await refreshTodos();
+
+  if (todoSub) { try { sb.removeChannel(todoSub); } catch(_) {} }
   todoSub = sb.channel(`todos:${currentChannel.id}`)
     .on('postgres_changes', { event:'*', schema:'public', table:'todos', filter:`channel_id=eq.${currentChannel.id}` },
-      async () => {
-        const { data } = await sb.from('todos').select('*').eq('channel_id', currentChannel.id).eq('community_id', CID()).order('completed').order('created_at',{ascending:false});
-        todos = data||[];
-        renderTodos();
-      })
+      async () => { await refreshTodos(); })
     .subscribe();
 }
 
@@ -7785,27 +7800,41 @@ function renderTodos() {
   const list = document.getElementById('todo-list');
   const count = document.getElementById('todo-count');
   if (!list) return;
-  const remaining = todos.filter(t => !t.completed).length;
+
+  if (todoTableMissing) {
+    if (count) count.textContent = '';
+    list.innerHTML = `<div style="padding:14px 16px;background:#FFF8E7;border:1px solid #F0D080;border-radius:12px;font-size:12.5px;color:#8B6914;line-height:1.7">
+      ${t('⚠️ 할 일 기능을 사용하려면 관리자가 DB 설치가 필요해요.','⚠️ To use To-Do, an admin needs to run the DB setup.')}<br>
+      <b>Supabase → SQL Editor</b> ${t('에서','→ run')} <code style="background:#fff;padding:1px 5px;border-radius:4px">db/할일_DB설치.sql</code> ${t('를 실행하세요.','')}</div>`;
+    return;
+  }
+
+  const remaining = todos.filter(t2 => !t2.completed).length;
   if (count) count.textContent = `${remaining}/${todos.length}`;
 
   if (!todos.length) {
-    list.innerHTML = `<div style="text-align:center;padding:16px;color:var(--ink3);font-size:13px">할 일을 추가해보세요! ✅</div>`;
+    list.innerHTML = `<div style="text-align:center;padding:16px;color:var(--ink3);font-size:13px">${t('할 일을 추가해보세요! ✅','Add your first task! ✅')}</div>`;
     return;
   }
-  list.innerHTML = todos.map(t => `
+  list.innerHTML = todos.map(t2 => {
+    const canDelete = t2.created_by === ME.id || ME.email === 'koreayjk@gmail.com';
+    const overdue = t2.due_date && new Date(t2.due_date) < new Date(new Date().toDateString()) && !t2.completed;
+    return `
     <div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--bs)">
-      <div onclick="toggleTodo('${t.id}',${t.completed})" style="width:22px;height:22px;border-radius:6px;border:2px solid ${t.completed?'var(--sage)':'var(--border)'};background:${t.completed?'var(--sage)':'transparent'};display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:all .15s">
-        ${t.completed?'<span style="color:white;font-size:12px">✓</span>':''}
+      <div onclick="toggleTodo('${t2.id}',${t2.completed})" style="width:22px;height:22px;border-radius:6px;border:2px solid ${t2.completed?'var(--sage)':'var(--border)'};background:${t2.completed?'var(--sage)':'transparent'};display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:all .15s">
+        ${t2.completed?'<span style="color:white;font-size:12px">✓</span>':''}
       </div>
       <div style="flex:1;min-width:0">
-        <div style="font-size:13.5px;font-weight:500;${t.completed?'text-decoration:line-through;color:var(--ink3)':''}">${escHtml(t.title)}</div>
+        <div style="font-size:13.5px;font-weight:500;${t2.completed?'text-decoration:line-through;color:var(--ink3)':''}">${escHtml(t2.title)}</div>
         <div style="display:flex;gap:8px;margin-top:2px;flex-wrap:wrap">
-          ${t.assigned_name?`<span style="font-size:11px;color:var(--ink3)">👤 ${t.assigned_name}</span>`:''}
-          ${t.due_date?`<span style="font-size:11px;color:${new Date(t.due_date)<new Date()&&!t.completed?'var(--rose)':'var(--ink3)'}">📅 ${t.due_date}</span>`:''}
+          ${t2.assigned_name?`<span style="font-size:11px;color:var(--adeep);font-weight:600">👤 ${escHtml(t2.assigned_name)}</span>`:''}
+          ${t2.due_date?`<span style="font-size:11px;color:${overdue?'var(--rose)':'var(--ink3)'};font-weight:${overdue?'700':'400'}">📅 ${t2.due_date}${overdue?' '+t(' (지남)',' (overdue)'):''}</span>`:''}
+          ${t2.created_by_name?`<span style="font-size:10.5px;color:var(--ink3)">· ${escHtml(t2.created_by_name)}</span>`:''}
         </div>
       </div>
-      ${t.created_by===ME.id||ME.email==='koreayjk@gmail.com'?`<div onclick="deleteTodo('${t.id}')" style="width:24px;height:24px;border-radius:7px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--ink3);font-size:13px" onmouseover="this.style.background='#FEE2E2';this.style.color='var(--rose)'" onmouseout="this.style.background='';this.style.color='var(--ink3)'">✕</div>`:''}
-    </div>`).join('');
+      ${canDelete?`<div onclick="deleteTodo('${t2.id}')" title="${t('삭제','Delete')}" style="width:24px;height:24px;border-radius:7px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--ink3);font-size:13px" onmouseover="this.style.background='#FEE2E2';this.style.color='var(--rose)'" onmouseout="this.style.background='';this.style.color='var(--ink3)'">✕</div>`:''}
+    </div>`;
+  }).join('');
 }
 
 async function showTodoForm() {
@@ -7814,7 +7843,7 @@ async function showTodoForm() {
   if (form.style.display === 'none') return;
   document.getElementById('todo-input').focus();
   const sel = document.getElementById('todo-assignee');
-  sel.innerHTML = '<option value="">담당자 선택</option>';
+  sel.innerHTML = `<option value="">${t('담당자 선택','Assignee')}</option>`;
 
   // 담당자 후보: 이 채널 참여자를 위로, 그다음 공동체 구성원
   let pool = Object.values(members).filter(m => m.community_role !== 'store_bot');
@@ -7837,37 +7866,52 @@ async function showTodoForm() {
 
   const opt = m => `<option value="${m.id}" data-name="${escAttr(m.name)}">${escHtml(m.name)}</option>`;
   if (chMembers.length && others.length) {
-    sel.innerHTML += `<optgroup label="이 채널 참여자">${chMembers.map(opt).join('')}</optgroup>`
-                   + `<optgroup label="다른 구성원">${others.map(opt).join('')}</optgroup>`;
+    sel.innerHTML += `<optgroup label="${t('이 채널 참여자','This channel')}">${chMembers.map(opt).join('')}</optgroup>`
+                   + `<optgroup label="${t('다른 구성원','Others')}">${others.map(opt).join('')}</optgroup>`;
   } else {
     sel.innerHTML += ordered.map(opt).join('');
   }
 }
 
 async function submitTodo() {
+  if (!currentChannel) return;
   const title = document.getElementById('todo-input').value.trim();
-  if (!title) return;
+  if (!title) { showUploadToast(t('할 일 내용을 입력하세요','Enter a task')); return; }
   const sel = document.getElementById('todo-assignee');
   const assignedTo = sel.value || null;
   const assignedName = assignedTo ? sel.options[sel.selectedIndex].dataset.name : null;
   const dueDate = document.getElementById('todo-due').value || null;
-  await sb.from('todos').insert({community_id: CID(),
+  const { error } = await sb.from('todos').insert({community_id: CID(),
     channel_id: currentChannel.id, title,
     assigned_to: assignedTo, assigned_name: assignedName,
     due_date: dueDate, created_by: ME.id, created_by_name: ME.name,
   });
+  if (error) {
+    if (todoTableIsMissing(error)) { todoTableMissing = true; renderTodos(); }
+    else showUploadToast(t('추가 실패: ','Failed: ') + (error.message || error));
+    return;
+  }
   document.getElementById('todo-input').value = '';
   document.getElementById('todo-assignee').value = '';
   document.getElementById('todo-due').value = '';
   document.getElementById('todo-form').style.display = 'none';
+  await refreshTodos();   // 즉시 반영 (실시간 미설정이어도 보이도록)
 }
 
 async function toggleTodo(id, completed) {
-  await sb.from('todos').update({ completed: !completed }).eq('id', id);
+  // 낙관적 업데이트 → 즉시 반응
+  const item = todos.find(t2 => t2.id === id);
+  if (item) { item.completed = !completed; renderTodos(); }
+  const { error } = await sb.from('todos').update({ completed: !completed }).eq('id', id);
+  if (error) { showUploadToast(t('변경 실패 😥','Update failed 😥')); }
+  await refreshTodos();
 }
 
 async function deleteTodo(id) {
-  await sb.from('todos').delete().eq('id', id);
+  todos = todos.filter(t2 => t2.id !== id); renderTodos();   // 낙관적 제거
+  const { error } = await sb.from('todos').delete().eq('id', id);
+  if (error) { showUploadToast(t('삭제 실패 😥','Delete failed 😥')); }
+  await refreshTodos();
 }
 
 // ── 채널 수정 ──
