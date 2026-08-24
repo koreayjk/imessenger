@@ -2430,6 +2430,7 @@ function filterChannels(q) {
 async function openChannel(id) {
   currentChannel = channels.find(c=>c.id===id);
   if (!currentChannel) return;
+  setupReactionInteractions();
 
   sessionStorage.setItem('last_channel_id', id);
   sessionStorage.setItem('last_mode', 'chat');
@@ -2542,14 +2543,7 @@ async function refreshReactions() {
     const reactionData = map[id] || [];
     const html = reactionData.length ? `
       <div class="msg-reactions" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px">
-        ${groupReactions(reactionData).map(r => `
-          <div onclick="toggleReaction('${id}','${r.emoji}')"
-            style="display:flex;align-items:center;gap:3px;padding:2px 7px;border-radius:999px;
-            background:${r.mine?'rgba(42,82,152,.15)':'var(--s3)'};
-            border:1.5px solid ${r.mine?'var(--accent)':'transparent'};
-            cursor:pointer;font-size:13px">
-            ${r.emoji}<span style="font-size:11px;font-weight:600;color:var(--ink2)">${r.count}</span>
-          </div>`).join('')}
+        ${reactionChipsHtml(id, reactionData)}
       </div>` : '';
     if (reactionEl) {
       reactionEl.outerHTML = html;
@@ -2737,14 +2731,7 @@ function msgHtml(m, prev, readMap={}) {
   // 리액션 표시
   const reactions = (m.reactions && m.reactions.length) ? `
     <div class="msg-reactions" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px">
-      ${groupReactions(m.reactions).map(r => `
-        <div onclick="toggleReaction('${m.id}','${r.emoji}')"
-          style="display:flex;align-items:center;gap:3px;padding:2px 7px;border-radius:999px;
-          background:${r.mine?'rgba(42,82,152,.15)':'var(--s3)'};
-          border:1.5px solid ${r.mine?'var(--accent)':'transparent'};
-          cursor:pointer;font-size:13px;transition:all .1s">
-          ${r.emoji}<span style="font-size:11px;font-weight:600;color:var(--ink2)">${r.count}</span>
-        </div>`).join('')}
+      ${reactionChipsHtml(m.id, m.reactions)}
     </div>` : '';
 
   // 파일 메시지
@@ -3022,11 +3009,32 @@ function copyMsgText(id) {
 function groupReactions(reactions) {
   const map = {};
   (reactions||[]).forEach(r => {
-    if (!map[r.emoji]) map[r.emoji] = { emoji: r.emoji, count: 0, mine: false };
+    if (!map[r.emoji]) map[r.emoji] = { emoji: r.emoji, count: 0, mine: false, ids: [] };
     map[r.emoji].count++;
+    map[r.emoji].ids.push(r.member_id);
     if (r.member_id === ME.id) map[r.emoji].mine = true;
   });
   return Object.values(map);
+}
+
+// 리액션한 사람 이름 목록 (내 것은 '나'로)
+function reactionNamesFromIds(ids) {
+  return (ids||[]).map(id => id === ME.id ? t('나','You') : (members[id]?.name || t('알 수 없음','Unknown')));
+}
+
+// 리액션 칩 묶음 HTML (초기 렌더 + 새로고침 공용)
+function reactionChipsHtml(msgId, reactionData) {
+  return groupReactions(reactionData).map(r => {
+    const names = reactionNamesFromIds(r.ids);
+    const title = names.join(', ') + '  ·  ' + t('길게 눌러 전체 보기','long-press to see all');
+    return `<div class="reaction-chip" data-msg="${msgId}" onclick="toggleReaction('${msgId}','${r.emoji}')" title="${escAttr(title)}"
+      style="display:flex;align-items:center;gap:3px;padding:2px 7px;border-radius:999px;
+      background:${r.mine?'rgba(42,82,152,.15)':'var(--s3)'};
+      border:1.5px solid ${r.mine?'var(--accent)':'transparent'};
+      cursor:pointer;font-size:13px;transition:all .1s">
+      ${r.emoji}<span style="font-size:11px;font-weight:600;color:var(--ink2)">${r.count}</span>
+    </div>`;
+  }).join('');
 }
 
 // ── 리액션 ──
@@ -3057,6 +3065,65 @@ async function toggleReaction(msgId, emoji) {
   } else {
     await sb.from('message_reactions').insert({ message_id: msgId, member_id: ME.id, emoji });
   }
+}
+
+// ── 리액션 누가 눌렀는지 상세 보기 (카카오톡 스타일) ──
+async function showReactionDetails(msgId) {
+  document.querySelectorAll('.reaction-detail-pop').forEach(p => p.remove());
+  const { data } = await sb.from('message_reactions').select('*').eq('message_id', msgId);
+  const groups = groupReactions(data || []);
+  if (!groups.length) return;
+  const total = (data || []).length;
+  const pop = document.createElement('div');
+  pop.className = 'reaction-detail-pop';
+  pop.style.cssText = 'position:fixed;z-index:300;background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:0 8px 30px rgba(0,0,0,.18);padding:8px;min-width:210px;max-width:290px;max-height:60vh;overflow-y:auto';
+  pop.innerHTML = `
+    <div style="font-size:12px;font-weight:700;color:var(--ink3);padding:4px 8px 8px">${t('공감한 사람','Who reacted')} · ${total}</div>
+    ${groups.map(g => `
+      <div style="padding:7px 8px;border-top:1px solid var(--bs)">
+        <div style="display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;color:var(--ink2);margin-bottom:7px">${g.emoji}<span>${g.count}</span></div>
+        <div style="display:flex;flex-direction:column;gap:7px">
+          ${g.ids.map(id => {
+            const mem = members[id] || { name: t('알 수 없음','Unknown'), initials:'?', color:'#999' };
+            const meMark = id === ME.id ? ` (${t('나','You')})` : '';
+            return `<div style="display:flex;align-items:center;gap:8px">
+              <div style="width:26px;height:26px;border-radius:8px;background:${mem.color||'#999'};color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${escHtml(mem.initials||(mem.name||'?')[0])}</div>
+              <div style="font-size:13px;color:var(--ink)">${escHtml(mem.name||'')}${meMark}</div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`).join('')}`;
+  document.body.appendChild(pop);
+  const w = pop.offsetWidth, h = pop.offsetHeight;
+  pop.style.left = Math.max(10, (window.innerWidth - w) / 2) + 'px';
+  pop.style.top  = Math.max(10, (window.innerHeight - h) / 2) + 'px';
+  setTimeout(() => document.addEventListener('click', function onc(e){ if (!pop.contains(e.target)) { pop.remove(); document.removeEventListener('click', onc, true); } }, true), 60);
+}
+
+// 리액션 칩: 데스크탑 우클릭 / 모바일 롱프레스 → 상세 보기
+let _reactLPTimer = null, _reactLPFired = false;
+function setupReactionInteractions() {
+  if (window.__reactionInit) return; window.__reactionInit = true;
+  document.addEventListener('contextmenu', (e) => {
+    const chip = e.target.closest && e.target.closest('.reaction-chip');
+    if (chip) { e.preventDefault(); showReactionDetails(chip.dataset.msg); }
+  });
+  document.addEventListener('touchstart', (e) => {
+    const chip = e.target.closest && e.target.closest('.reaction-chip');
+    if (!chip) return;
+    _reactLPFired = false;
+    _reactLPTimer = setTimeout(() => {
+      _reactLPFired = true;
+      showReactionDetails(chip.dataset.msg);
+      setTimeout(() => { _reactLPFired = false; }, 800);
+    }, 450);
+  }, { passive: true });
+  const cancelLP = () => { if (_reactLPTimer) { clearTimeout(_reactLPTimer); _reactLPTimer = null; } };
+  document.addEventListener('touchend', cancelLP);
+  document.addEventListener('touchmove', cancelLP);
+  document.addEventListener('click', (e) => {
+    if (_reactLPFired) { e.stopPropagation(); e.preventDefault(); _reactLPFired = false; }
+  }, true);
 }
 
 // ── 답장 ──
