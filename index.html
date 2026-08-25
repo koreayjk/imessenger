@@ -3661,22 +3661,22 @@ function svmDdayCardHtml() {
   const digits = String(n).split('').map(flip).join('');
   const bigBlock = isDday
     ? `<div style="font-size:30px;font-weight:900;color:#fff;font-family:'Arial Black',Arial,sans-serif;letter-spacing:.02em">D-DAY 🎉</div>`
-    : `<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+    : `<div style="display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap">
         <div style="display:flex;gap:6px">${digits}</div>
-        <div style="display:flex;flex-direction:column;gap:3px;line-height:1;font-family:'Arial Black',Arial,sans-serif;letter-spacing:.04em">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;line-height:1;font-family:'Arial Black',Arial,sans-serif;letter-spacing:.04em">
           <span style="font-size:18px;font-weight:900;color:#fff">DAYS</span>
-          <span style="font-size:18px;font-weight:900;color:#fff;background:#000;padding:1px 7px;align-self:flex-start">${passed ? 'AGO' : 'TO GO'}</span>
+          <span style="font-size:18px;font-weight:900;color:#fff;background:#000;padding:1px 7px">${passed ? 'AGO' : 'TO GO'}</span>
         </div>
       </div>`;
   const sub = isDday ? t('오늘이 바로 그날이에요! 🎉','The day is finally here! 🎉')
     : passed ? t(`${n}일 지났어요`, `${n} days ago`)
     : t(`${n}일 남았어요`, `${n} days to go`);
-  return `<div style="border-radius:18px;background:linear-gradient(155deg,#0f172a,#243247);border:1px solid #0f172a;padding:18px 22px;height:100%;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;position:relative;overflow:hidden">
+  return `<div style="border-radius:18px;background:linear-gradient(155deg,#0f172a,#243247);border:1px solid #0f172a;padding:20px 22px;height:100%;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;position:relative;overflow:hidden">
     <div style="position:absolute;top:-16px;right:-6px;font-size:74px;color:rgba(255,255,255,.05);line-height:1;font-weight:900">✈</div>
     <div style="font-size:11px;font-weight:800;color:rgba(255,255,255,.55);letter-spacing:.14em;margin-bottom:2px">✦ ${t('SVM 컨퍼런스','SVM CONFERENCE')}</div>
-    <div style="font-size:12.5px;font-weight:600;color:rgba(255,255,255,.8);margin-bottom:15px">${dateStr}${isDday ? '' : ' · ' + ddayTag}</div>
+    <div style="font-size:12.5px;font-weight:600;color:rgba(255,255,255,.8);margin-bottom:16px">${dateStr}${isDday ? '' : ' · ' + ddayTag}</div>
     ${bigBlock}
-    <div style="font-size:13px;font-weight:800;color:#c5d9ef;margin-top:14px;letter-spacing:.03em">${isDday ? '' : ddayTag + ' · '}${sub}</div>
+    <div style="font-size:13px;font-weight:800;color:#c5d9ef;margin-top:15px;letter-spacing:.03em">${isDday ? '' : ddayTag + ' · '}${sub}</div>
   </div>`;
 }
 
