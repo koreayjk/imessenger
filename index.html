@@ -3490,7 +3490,7 @@ async function renderMembers() {
   memberList.innerHTML = list.map(m => {
     const isOnline = onlineUsers.has(m.id);
     const isSelf = m.id === ME.id;
-    return `<div class="member-row" ${!isSelf ? `ondblclick="openDMwith('${m.id}')" title="더블클릭으로 1:1 대화"` : ''} style="cursor:${isSelf?'default':'pointer'}">
+    return `<div class="member-row" ${!isSelf ? `onclick="openDMwith('${m.id}')" title="${t('클릭하면 1:1 대화','Click to open 1:1 chat')}"` : ''} style="cursor:${isSelf?'default':'pointer'}">
       <div class="member-av-wrap">
         <div class="member-av" style="background:${m.color||'#999'}">${m.initials||m.name[0]}</div>
         ${isOnline ? '<div class="online-dot"></div>' : ''}
