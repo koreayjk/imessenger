@@ -3233,6 +3233,17 @@ function escReport(s) { return escHtml(stripPastedHtml(s)); }
 // textarea 안에 넣을 때: 줄바꿈은 유지하고 <,>,&만 이스케이프
 function escTa(s) { return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
+// 단어 수 세기 (영문: 공백 단위, 한글/CJK: 글자 단위) — 최종 독후감 분량 검사용
+const MIN_REPORT_WORDS = 800;
+const _CJK_RE = /[가-힣ㄱ-ㆎ一-鿿぀-ヿ]/g;
+function countWords(s) {
+  if (!s) return 0;
+  s = String(s);
+  const cjk = (s.match(_CJK_RE) || []).length;
+  const latin = (s.replace(_CJK_RE, ' ').match(/[A-Za-z0-9'’]+/g) || []).length;
+  return cjk + latin;
+}
+
 function linkify(s) {
   // URL을 클릭 가능한 링크로 변환
   const escaped = escHtml(s);
@@ -6136,6 +6147,8 @@ async function openReadingLog(bookId) {
 function renderReadingLog(bookId) {
   const book = readingBooks.find(b => b.id === bookId);
   const log = readingMyLogs.find(l => l.book_id === bookId);
+  const wc0 = countWords(log?.report || '');
+  const submitted = !!log && wc0 >= MIN_REPORT_WORDS;
   const today = new Date().toISOString().slice(0, 10);
   const inputCss = 'width:100%;padding:10px 13px;border-radius:10px;border:1.5px solid var(--border);background:var(--s2);font:14px var(--font);color:var(--ink);outline:none';
   const inp = 'height:32px;padding:0 9px;border:1px solid var(--border);border-radius:8px;font:600 12px var(--font);background:var(--surface);color:var(--ink)';
@@ -6178,18 +6191,39 @@ function renderReadingLog(bookId) {
 
       <div style="border-top:2px solid var(--border);padding-top:16px">
         <div style="font-size:12.5px;font-weight:800;color:var(--ink);margin-bottom:3px">✍️ ${t('최종 독후감','Final Book Report')} <span style="color:var(--ink3);font-weight:600;font-size:11px">${t('· 다 읽은 뒤 마무리','· wrap up after finishing')}</span></div>
-        <div style="font-size:11px;color:var(--ink3);margin-bottom:12px">${t("쌓은 메모를 바탕으로 이 책의 소감을 정리하고 '읽음'으로 저장하세요. (PDF엔 이 마무리만 담겨요)",'Based on your notes, summarize your thoughts on this book and save it as read. (Only this summary goes into the PDF)')}</div>
+        ${submitted
+          ? `<div style="display:flex;align-items:center;gap:8px;background:#e8f5ee;border:1.5px solid #7ec9a3;border-radius:11px;padding:11px 14px;margin-bottom:12px">
+              <span style="font-size:18px">✅</span>
+              <div><div style="font-size:13px;font-weight:800;color:#15803d">${t('제출 완료','Submitted')}</div>
+              <div style="font-size:11.5px;color:#2a7a5a">${t('최종 독후감이 제출되었어요','Your final book report has been submitted')} · ${wc0}${t('단어',' words')}</div></div>
+            </div>`
+          : (log
+            ? `<div style="display:flex;align-items:center;gap:8px;background:#fdf6e3;border:1.5px solid #f0d080;border-radius:11px;padding:11px 14px;margin-bottom:12px">
+              <span style="font-size:18px">⏳</span>
+              <div><div style="font-size:13px;font-weight:800;color:#8b6914">${t('작성 중 (미제출)','In progress (not submitted)')}</div>
+              <div style="font-size:11.5px;color:#8b6914">${t('제출하려면 최소','At least')} ${MIN_REPORT_WORDS}${t('단어가 필요해요',' words required')} · ${t('현재','now')} ${wc0}${t('단어',' words')}</div></div>
+            </div>`
+            : '')}
+        <div style="font-size:11px;color:var(--ink3);margin-bottom:12px">${t(`쌓은 메모를 바탕으로 이 책의 소감을 정리해 제출하세요. 최소 ${MIN_REPORT_WORDS}단어 이상이어야 제출돼요. (PDF엔 이 마무리만 담겨요)`,`Based on your notes, write and submit your thoughts on this book. At least ${MIN_REPORT_WORDS} words are required to submit. (Only this summary goes into the PDF)`)}</div>
         <label style="font-size:12px;font-weight:600;color:var(--ink3);display:block;margin-bottom:6px">${t('완독한 날짜','Date finished')}</label>
         <input id="rd-date" type="date" value="${log?.read_date || today}" style="${inputCss};margin-bottom:14px"/>
-        <textarea id="rd-report" rows="6" placeholder="${t('이 책에서 배운 점, 느낀 점을 자유롭게 정리해 보세요','Freely summarize what you learned and felt from this book')}" style="${inputCss};resize:vertical;line-height:1.6;margin-bottom:14px">${escTa(stripPastedHtml(log?.report || ''))}</textarea>
+        <textarea id="rd-report" rows="8" oninput="updateReadingWC()" placeholder="${t('이 책에서 배운 점, 느낀 점을 자유롭게 정리해 보세요','Freely summarize what you learned and felt from this book')}" style="${inputCss};resize:vertical;line-height:1.6;margin-bottom:6px">${escTa(stripPastedHtml(log?.report || ''))}</textarea>
+        <div id="rd-wc" style="font-size:12px;font-weight:700;text-align:right;margin-bottom:12px;color:${wc0>=MIN_REPORT_WORDS?'#15803d':'var(--ink3)'}">${wc0} / ${MIN_REPORT_WORDS} ${t('단어','words')}</div>
         <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink);cursor:pointer;margin-bottom:16px">
           <input id="rd-include" type="checkbox" ${log?.include_in_record ? 'checked' : ''} style="width:17px;height:17px"/> ${t('학생종합기록부(PDF)에 포함하기','Include in student record (PDF)')}
         </label>
-        <button onclick="saveReadingLog('${bookId}')" style="width:100%;height:42px;border-radius:11px;border:none;background:#1d3a5f;color:white;font:700 14px var(--font);cursor:pointer;margin-bottom:${log ? '10px' : '0'}">${t('💾 읽음으로 저장','💾 Save as Read')}</button>
+        <button onclick="saveReadingLog('${bookId}')" style="width:100%;height:42px;border-radius:11px;border:none;background:#1d3a5f;color:white;font:700 14px var(--font);cursor:pointer;margin-bottom:${log ? '10px' : '0'}">${submitted ? t('💾 다시 제출','💾 Re-submit') : t('📤 제출하기','📤 Submit')}</button>
         ${log ? `<button onclick="deleteReadingLog('${bookId}')" style="width:100%;height:38px;border-radius:10px;border:1.5px solid var(--border);background:white;color:#ef4444;font:600 13px var(--font);cursor:pointer">${t('읽음 취소','Undo Read')}</button>` : ''}
       </div>
     </div>
   </div>`;
+}
+function updateReadingWC() {
+  const ta = document.getElementById('rd-report'); const el = document.getElementById('rd-wc');
+  if (!ta || !el) return;
+  const n = countWords(stripPastedHtml(ta.value));
+  el.textContent = n + ' / ' + MIN_REPORT_WORDS + ' ' + t('단어','words');
+  el.style.color = n >= MIN_REPORT_WORDS ? '#15803d' : (n >= MIN_REPORT_WORDS*0.6 ? '#b8860b' : 'var(--ink3)');
 }
 async function addReadingNote(bookId) {
   const date = document.getElementById('rn-date')?.value || new Date().toISOString().slice(0,10);
@@ -6219,14 +6253,20 @@ async function deleteReadingNote(id, bookId) {
 async function saveReadingLog(bookId) {
   const read_date = document.getElementById('rd-date').value || new Date().toISOString().slice(0, 10);
   const report = stripPastedHtml(document.getElementById('rd-report').value);
+  const wc = countWords(report);
+  if (wc < MIN_REPORT_WORDS) {
+    showUploadToast(t(`최종 독후감은 최소 ${MIN_REPORT_WORDS}단어 이상이어야 제출돼요 (현재 ${wc}단어)`, `Final report needs at least ${MIN_REPORT_WORDS} words to submit (currently ${wc})`));
+    const el = document.getElementById('rd-wc'); if (el) { el.style.color = '#ef4444'; el.textContent = `${wc} / ${MIN_REPORT_WORDS} ${t('단어','words')} — ${t('부족','short')}`; }
+    return;
+  }
   const include = document.getElementById('rd-include').checked;
   const { error } = await sb.from('reading_logs').upsert({
     student_id: ME.id, book_id: bookId, community_id: CID(),
     report, read_date, include_in_record: include,
     updated_at: new Date().toISOString(), updated_by: ME.id,
   }, { onConflict: 'student_id,book_id' });
-  if (error) { showUploadToast(t('저장 실패 😥 ','Save failed 😥 ') + error.message); return; }
-  showUploadToast(t('✅ 저장됐어요!','✅ Saved!'));
+  if (error) { showUploadToast(t('제출 실패 😥 ','Submit failed 😥 ') + error.message); return; }
+  showUploadToast(t('📤 제출됐어요!','📤 Submitted!'));
   try { const { data: logs } = await sb.from('reading_logs').select('*').eq('student_id', ME.id); readingMyLogs = logs || []; } catch(_) {}
   openReadingLog(bookId);
 }
@@ -6347,6 +6387,10 @@ async function renderTcsReadingUnified() {
   let myLogs = [];
   try { const { data: lg } = await sb.from('reading_logs').select('*').eq('student_id', sid); myLogs = lg || []; } catch (e) {}
   const readMap = {}; myLogs.forEach(l => readMap[l.book_id] = l);
+  // 학생의 매일 메모(reading_notes) 작성 횟수 — 책별 (개별 내용은 안 보이고 횟수만)
+  const noteCounts = {};
+  try { const { data: notes } = await sb.from('reading_notes').select('book_id').eq('member_id', sid); (notes||[]).forEach(n => { noteCounts[n.book_id] = (noteCounts[n.book_id]||0) + 1; }); } catch (e) {}
+  window._adminReadLogs = readMap; window._adminReadNoteCounts = noteCounts;
 
   // 전체 공동체 합산
   let allLogs = [];
@@ -6360,10 +6404,31 @@ async function renderTcsReadingUnified() {
   const catCards = READING_CATEGORIES.map(c => { const s = catStat(c); return `<div style="flex:1;min-width:0;background:var(--s2);border-radius:11px;padding:11px 12px"><div style="font-size:12px;font-weight:700;color:var(--adeep)">${READING_CAT_SHORT[c] || c}</div><div style="font-size:16px;font-weight:800;color:var(--ink);margin:2px 0 6px">${s.read}<span style="font-size:12px;font-weight:500;color:var(--ink3)">/${s.total}</span></div><div style="background:var(--s3);border-radius:99px;height:6px;overflow:hidden"><div style="height:100%;width:${s.pct}%;background:#2a5298"></div></div></div>`; }).join('');
 
   const readBooks = readingBooks.filter(b => readMap[b.id]);
-  const readRows = readBooks.length ? readBooks.map(b => { const l = readMap[b.id]; return `<div style="border:1.5px solid #bfdbfe;background:#f0f7ff;border-radius:11px;padding:11px 13px;margin-bottom:8px">
-    <div style="display:flex;align-items:center;gap:8px"><div style="flex:1;font-size:13.5px;font-weight:700;color:var(--ink)">${b.title} <span style="font-size:11px;font-weight:500;color:var(--ink3)">${READING_CAT_SHORT[b.category] || b.category}</span></div><div style="font-size:11px;color:#1d4ed8">${l.read_date || ''}${l.include_in_record ? t(' · 📋기록부',' · 📋Record') : ''}</div></div>
-    ${l.report ? `<div style="margin-top:6px;font-size:12.5px;color:var(--ink2);line-height:1.6;white-space:pre-wrap">${escReport(l.report || '')}</div>` : `<div style="margin-top:4px;font-size:12px;color:var(--ink3)">${t('독후감 없음','No report')}</div>`}
+  const readRows = readBooks.length ? readBooks.map(b => {
+    const l = readMap[b.id];
+    const wc = countWords(l.report || '');
+    const nc = noteCounts[b.id] || 0;
+    const ok = wc >= MIN_REPORT_WORDS;
+    return `<div style="border:1.5px solid #bfdbfe;background:#f0f7ff;border-radius:11px;padding:11px 13px;margin-bottom:8px">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><div style="flex:1;min-width:0;font-size:13.5px;font-weight:700;color:var(--ink)">${b.title} <span style="font-size:11px;font-weight:500;color:var(--ink3)">${READING_CAT_SHORT[b.category] || b.category}</span></div><div style="font-size:11px;color:#1d4ed8">${l.read_date || ''}${l.include_in_record ? t(' · 📋기록부',' · 📋Record') : ''}</div></div>
+    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px">
+      <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;background:#e0edff;color:#1d4ed8">📝 ${t('메모','Notes')} ${nc}${t('회','×')}</span>
+      <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;background:${ok?'#e8f5ee':'#fdf6e3'};color:${ok?'#15803d':'#8b6914'}">${ok?'✅':'⏳'} ${wc}${t('단어',' words')}</span>
+      <div style="flex:1"></div>
+      ${l.report ? `<button onclick="analyzeReadingReport('${b.id}',this)" style="height:28px;padding:0 12px;border:1.5px solid #c4b5fd;background:#f5f3ff;color:#6d28d9;border-radius:8px;font:700 11.5px var(--font);cursor:pointer">🤖 ${t('AI 분석','AI Check')}</button>` : ''}
+    </div>
+    ${l.report ? `<div style="margin-top:8px;font-size:12.5px;color:var(--ink2);line-height:1.6;white-space:pre-wrap">${escReport(l.report || '')}</div>` : `<div style="margin-top:4px;font-size:12px;color:var(--ink3)">${t('독후감 없음','No report')}</div>`}
+    <div id="ai-result-${b.id}"></div>
   </div>`; }).join('') : `<div style="font-size:13px;color:var(--ink3);padding:12px 0">${t('아직 읽은 책 기록이 없어요','No reading records yet')}</div>`;
+
+  // 메모만 있고 아직 최종 제출 안 한 책 (진행 중) — 횟수만 표시
+  const notedUnfinished = readingBooks.filter(b => (noteCounts[b.id]||0) > 0 && !readMap[b.id]);
+  const notedRows = notedUnfinished.length ? notedUnfinished.map(b => `
+    <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;border:1px dashed var(--border);border-radius:9px;margin-bottom:6px">
+      <div style="flex:1;min-width:0;font-size:12.5px;color:var(--ink)">${b.title} <span style="font-size:11px;color:var(--ink3)">${READING_CAT_SHORT[b.category] || b.category}</span></div>
+      <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;background:#e0edff;color:#1d4ed8">📝 ${noteCounts[b.id]}${t('회','×')}</span>
+      <span style="font-size:10.5px;color:#8b6914;font-weight:700">${t('미제출','Not submitted')}</span>
+    </div>`).join('') : '';
 
   const bookList = groupBooksByStep(readingBooks).map(({ step, books }) => {
     const cats = {}; books.forEach(b => { (cats[b.category] = cats[b.category] || []).push(b); });
@@ -6388,7 +6453,9 @@ async function renderTcsReadingUnified() {
     </div>
     <div style="display:flex;gap:8px;margin-bottom:16px">${catCards}</div>
     <div style="font-size:13px;font-weight:700;color:var(--adeep);margin:0 0 8px">📖 ${t(`${tcsCurrentStudent.name} 학생이 읽은 책 · 독후감`, `Books ${tcsCurrentStudent.name} has read · Reports`)}</div>
-    <div style="margin-bottom:22px">${readRows}</div>
+    <div style="margin-bottom:${notedRows?'14px':'22px'}">${readRows}</div>
+    ${notedRows ? `<div style="font-size:12.5px;font-weight:700;color:var(--ink2);margin:0 0 6px">✍️ ${t('진행 중 (메모만 작성, 최종 미제출)','In progress (notes only, not submitted)')}</div>
+    <div style="margin-bottom:22px">${notedRows}</div>` : ''}
 
     <div style="font-size:14px;font-weight:700;color:var(--adeep);margin:0 0 10px">📚 ${t('책 관리','Manage Books')} <span style="font-size:11px;font-weight:500;color:var(--ink3)">${t('(전 공동체 공통 목록)','(shared list for all communities)')}</span></div>
     <div class="adm-card" style="margin-bottom:22px">
@@ -6405,6 +6472,61 @@ async function renderTcsReadingUnified() {
 
     <div style="font-size:14px;font-weight:700;color:var(--adeep);margin:0 0 8px">🔥 ${t('많이 읽은 책 TOP 10','Most Read Books TOP 10')} <span style="font-size:11px;font-weight:500;color:var(--ink3)">${t('(전 공동체 합산)','(all communities combined)')}</span></div>
     <div class="adm-card" style="margin-bottom:4px">${popularRows}</div>
+  </div>`;
+}
+
+// ── AI 감지: 최종 독후감을 분석해 의심 정황 + 후속 질문 제시 (교사/관리자용) ──
+const READING_AI_FN = 'analyze-reading';   // Supabase Edge Function 이름
+async function analyzeReadingReport(bookId, btn) {
+  const log = (window._adminReadLogs || {})[bookId];
+  const box = document.getElementById('ai-result-' + bookId);
+  if (!log || !box) return;
+  if (btn) { btn.disabled = true; btn.style.opacity = '.6'; }
+  box.innerHTML = `<div style="margin-top:8px;font-size:12px;color:#6d28d9;padding:10px 12px;background:#f5f3ff;border:1.5px solid #ddd6fe;border-radius:10px">🤖 ${t('AI가 독후감을 분석하고 있어요...','Analyzing the report...')}</div>`;
+  const book = readingBooks.find(b => b.id === bookId);
+  try {
+    const { data, error } = await sb.functions.invoke(READING_AI_FN, { body: {
+      report: log.report || '',
+      bookTitle: book ? book.title : '',
+      noteCount: (window._adminReadNoteCounts || {})[bookId] || 0,
+      lang: APP_LANG,
+    }});
+    if (error) throw error;
+    if (data && data.error) throw new Error(data.error);
+    box.innerHTML = renderAiAnalysis(data);
+  } catch (e) {
+    box.innerHTML = `<div style="margin-top:8px;background:#fef2f2;border:1.5px solid #fecaca;border-radius:10px;padding:12px;font-size:12.5px;color:#b91c1c">
+      ${t('분석 실패','Analysis failed')}: ${escHtml(String(e.message || e)).slice(0,300)}
+      <div style="font-size:11px;color:#9ca3af;margin-top:6px">${t(`AI 분석을 쓰려면 Edge Function(${READING_AI_FN}) 배포와 Gemini 키 등록이 필요해요. 저장소의 supabase/functions/${READING_AI_FN} 폴더를 배포하세요.`,`To use AI Check, deploy the Edge Function (${READING_AI_FN}) and set the Gemini key. Deploy supabase/functions/${READING_AI_FN}.`)}</div>
+    </div>`;
+  } finally { if (btn) { btn.disabled = false; btn.style.opacity = '1'; } }
+}
+function renderAiAnalysis(d) {
+  d = d || {};
+  const lv = (d.likelihood || 'unknown').toLowerCase();
+  const meta = {
+    high:   { c:'#b91c1c', bg:'#fef2f2', bd:'#fecaca', label:t('AI 작성 가능성 높음','High AI likelihood') },
+    medium: { c:'#b45309', bg:'#fffbeb', bd:'#fde68a', label:t('AI 작성 가능성 있음','Some AI likelihood') },
+    low:    { c:'#15803d', bg:'#f0fdf4', bd:'#bbf7d0', label:t('AI 작성 가능성 낮음','Low AI likelihood') },
+    unknown:{ c:'#6b7280', bg:'#f9fafb', bd:'#e5e7eb', label:t('판단 보류','Inconclusive') },
+  }[lv] || { c:'#6b7280', bg:'#f9fafb', bd:'#e5e7eb', label:t('판단 보류','Inconclusive') };
+  const score = (typeof d.score === 'number') ? Math.max(0, Math.min(100, Math.round(d.score))) : null;
+  const list = (arr, empty) => (Array.isArray(arr) && arr.length)
+    ? arr.map(x => `<li style="margin-bottom:5px;line-height:1.55">${escHtml(String(x))}</li>`).join('')
+    : `<li style="color:var(--ink3);list-style:none">${empty}</li>`;
+  return `<div style="margin-top:8px;background:${meta.bg};border:1.5px solid ${meta.bd};border-radius:12px;padding:13px 15px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+      <span style="font-size:13px;font-weight:800;color:${meta.c}">🤖 ${meta.label}</span>
+      ${score!==null?`<span style="font-size:11px;font-weight:700;color:${meta.c};background:#fff;border:1px solid ${meta.bd};padding:1px 8px;border-radius:99px">${score}/100</span>`:''}
+    </div>
+    ${d.summary?`<div style="font-size:12.5px;color:var(--ink);line-height:1.6;margin-bottom:10px">${escHtml(String(d.summary))}</div>`:''}
+    <div style="font-size:11.5px;font-weight:800;color:var(--ink2);margin:8px 0 4px">🔎 ${t('의심되는 정황','Signals')}</div>
+    <ul style="margin:0 0 8px 18px;padding:0;font-size:12px;color:var(--ink)">${list(d.signals, t('특이사항 없음','None noted'))}</ul>
+    ${(Array.isArray(d.excerpts)&&d.excerpts.length)?`<div style="font-size:11.5px;font-weight:800;color:var(--ink2);margin:8px 0 4px">✍️ ${t('의심 문장 예시','Suspicious excerpts')}</div>
+    <ul style="margin:0 0 8px 18px;padding:0;font-size:12px;color:var(--ink2)">${list(d.excerpts,'')}</ul>`:''}
+    <div style="font-size:11.5px;font-weight:800;color:var(--ink2);margin:8px 0 4px">💬 ${t('학생에게 이렇게 물어보세요','Ask the student')}</div>
+    <ol style="margin:0 0 2px 18px;padding:0;font-size:12px;color:var(--ink)">${list(d.questions, t('제안 없음','No suggestions'))}</ol>
+    <div style="font-size:10.5px;color:var(--ink3);margin-top:8px;line-height:1.5">${t('※ AI 분석은 참고용이에요. 확정 증거가 아니며, 오탐이 있을 수 있으니 학생과의 대화로 확인하세요.','※ AI analysis is a reference only — not proof. It can produce false positives, so confirm through conversation.')}</div>
   </div>`;
 }
 
