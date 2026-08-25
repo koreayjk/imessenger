@@ -1793,23 +1793,20 @@ function enterApp() {
 }
 
 async function restoreLastState() {
-  // 마지막 상태 복원 (단, 비어 보일 수 있는 탭은 시작 시 홈으로 — 빈 화면 방지)
-  const SAFE_RESTORE = ['home', 'chat', 'prayer', 'calendar'];
+  // 마지막 상태 복원 — 새로고침하면 보던 페이지로 돌아오게.
+  // (권한·컨텍스트가 안 맞는 모드는 setMode 내부에서 자동으로 홈으로 우회함)
   const saved = sessionStorage.getItem('last_mode') || 'home';
-  const lastMode = SAFE_RESTORE.includes(saved) ? saved : 'home';
   const lastChannelId = sessionStorage.getItem('last_channel_id');
 
-  if (lastMode === 'chat' && lastChannelId) {
+  if (saved === 'chat' && lastChannelId) {
     setMode('chat');
     // 채널이 로드될 때까지 잠깐 기다렸다가 열기
     const ch = channels.find(c => c.id === lastChannelId);
     if (ch && myChannelIds.has(lastChannelId)) {
       await openChannel(lastChannelId);
-    } else {
-      setMode('home');
     }
   } else {
-    setMode(lastMode);
+    try { setMode(saved); } catch(_) { setMode('home'); }
   }
 }
 
@@ -2079,6 +2076,7 @@ async function init() {
 // ── 사이드바 모드 전환 ──
 function setMode(m) {
   mode = m;
+  sessionStorage.setItem('last_mode', m);   // 새로고침 시 현재 페이지 복원용 (early return 전에 저장)
   // 화면 전환 시 대화방 전체화면 해제(하단 탭바 복귀) — 대화 열면 openChannel이 다시 설정
   document.body.classList.remove('in-chat');
   ['chat','prayer','home','calendar','admin','school','allowance','store','approval','improve'].forEach(x => {
@@ -2144,7 +2142,6 @@ function setMode(m) {
   if (m==='bookreport') { writingKind='book'; initWritingPage(); }
   if (m==='review') { writingKind='activity'; initWritingPage(); }
   if (m==='profile') { renderProfilePage(); }
-  sessionStorage.setItem('last_mode', m);
   document.getElementById('panel-title').textContent = {
     chat:t('채팅','Chat'), prayer:t('기도제목','Prayer'), home:t('홈','Home'), calendar:t('일정','Calendar'),
     admin:t('관리자','Admin'), tcs:t('생기부','Records'), mock:t('모의고사 분석','Mock Exam'), reading:'Triple School',
