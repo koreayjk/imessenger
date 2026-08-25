@@ -3646,6 +3646,40 @@ async function submitPrayer(btn) {
 }
 
 // ── 홈 대시보드 ──
+// SVM 컨퍼런스 D-DAY 카운트다운 (매일 자동으로 바뀜 — 오늘 날짜 기준 계산)
+const SVM_DDAY = { y: 2026, m: 11, d: 20 };   // 2026년 11월 20일
+function svmDdayCardHtml() {
+  const target = new Date(SVM_DDAY.y, SVM_DDAY.m - 1, SVM_DDAY.d);
+  const now = new Date();
+  const t0 = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const diff = Math.round((target - t0) / 86400000);
+  const isDday = diff === 0, passed = diff < 0, n = Math.abs(diff);
+  const dateStr = `${SVM_DDAY.y}. ${String(SVM_DDAY.m).padStart(2,'0')}. ${String(SVM_DDAY.d).padStart(2,'0')}`;
+  const ddayTag = isDday ? 'D-DAY' : (passed ? 'D+' + n : 'D-' + n);
+  // 스코어보드(플립) 스타일 숫자 카드
+  const flip = ch => `<div style="position:relative;min-width:40px;height:60px;border-radius:7px;background:#fff;box-shadow:0 5px 14px rgba(0,0,0,.30);display:flex;align-items:center;justify-content:center;font-family:'Arial Black','Helvetica Neue',Arial,sans-serif;font-weight:900;font-size:38px;color:#111;padding:0 7px">${ch}<div style="position:absolute;left:0;right:0;top:50%;height:2px;background:rgba(0,0,0,.14);margin-top:-1px"></div><div style="position:absolute;left:-2px;top:50%;width:4px;height:9px;background:#cfcfcf;border-radius:2px;transform:translateY(-50%)"></div><div style="position:absolute;right:-2px;top:50%;width:4px;height:9px;background:#cfcfcf;border-radius:2px;transform:translateY(-50%)"></div></div>`;
+  const digits = String(n).split('').map(flip).join('');
+  const bigBlock = isDday
+    ? `<div style="font-size:30px;font-weight:900;color:#fff;font-family:'Arial Black',Arial,sans-serif;letter-spacing:.02em">D-DAY 🎉</div>`
+    : `<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+        <div style="display:flex;gap:6px">${digits}</div>
+        <div style="display:flex;flex-direction:column;gap:3px;line-height:1;font-family:'Arial Black',Arial,sans-serif;letter-spacing:.04em">
+          <span style="font-size:18px;font-weight:900;color:#fff">DAYS</span>
+          <span style="font-size:18px;font-weight:900;color:#fff;background:#000;padding:1px 7px;align-self:flex-start">${passed ? 'AGO' : 'TO GO'}</span>
+        </div>
+      </div>`;
+  const sub = isDday ? t('오늘이 바로 그날이에요! 🎉','The day is finally here! 🎉')
+    : passed ? t(`${n}일 지났어요`, `${n} days ago`)
+    : t(`${n}일 남았어요`, `${n} days to go`);
+  return `<div style="border-radius:18px;background:linear-gradient(155deg,#0f172a,#243247);border:1px solid #0f172a;padding:18px 22px;height:100%;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;position:relative;overflow:hidden">
+    <div style="position:absolute;top:-16px;right:-6px;font-size:74px;color:rgba(255,255,255,.05);line-height:1;font-weight:900">✈</div>
+    <div style="font-size:11px;font-weight:800;color:rgba(255,255,255,.55);letter-spacing:.14em;margin-bottom:2px">✦ ${t('SVM 컨퍼런스','SVM CONFERENCE')}</div>
+    <div style="font-size:12.5px;font-weight:600;color:rgba(255,255,255,.8);margin-bottom:15px">${dateStr}${isDday ? '' : ' · ' + ddayTag}</div>
+    ${bigBlock}
+    <div style="font-size:13px;font-weight:800;color:#c5d9ef;margin-top:14px;letter-spacing:.03em">${isDday ? '' : ddayTag + ' · '}${sub}</div>
+  </div>`;
+}
+
 async function renderHome() {
   const el = document.getElementById('home-view');
   const area = el ? el.querySelector('#content-area') : null;
@@ -3654,9 +3688,6 @@ async function renderHome() {
   const wk = ['일','월','화','수','목','금','토'];
   const isAdmin = isCommunityAdmin();
   const todayStr = d.toISOString().slice(0,10);
-
-  // 오늘의 묵상 로드
-  const { data: wordData } = await sb.from('daily_word').select('*').eq('date', todayStr).eq('community_id', CID()).maybeSingle();
 
   // 주간 일정표 로드 (가장 최근 것)
   const { data: schedImgs } = await sb.from('schedule_images').select('*').eq('community_id', CID())
@@ -3710,7 +3741,6 @@ async function renderHome() {
         <div style="font-size:clamp(20px,2.5vw,26px);font-weight:700;letter-spacing:-.02em">${t('샬롬','Shalom')}, <span style="color:var(--adeep)">${ME.name}</span> 님 👋</div>
       </div>
       ${isAdmin ? `<div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button onclick="showDailyWordForm('${todayStr}')" style="height:34px;padding:0 14px;border-radius:10px;border:1.5px solid var(--accent);background:white;color:var(--accent);font:600 12px var(--font);cursor:pointer;white-space:nowrap">✏️ ${t('묵상 등록','Add Devotion')}</button>
         <button onclick="showScheduleImageForm()" style="height:34px;padding:0 14px;border-radius:10px;border:1.5px solid var(--sage);background:white;color:var(--sage);font:600 12px var(--font);cursor:pointer;white-space:nowrap">📷 ${t('주간일정 등록','Add Schedule')}</button>
       </div>` : ''}
     </div>
@@ -3735,29 +3765,8 @@ async function renderHome() {
         </div>
       </div>
 
-      <!-- 오늘의 묵상 -->
-      <div>
-        ${wordData ? `
-        <div style="border-radius:18px;background:linear-gradient(160deg,#1d3a5f,#2a5298);border:1px solid #1d3a5f;padding:20px 24px;position:relative;overflow:hidden;height:100%;box-sizing:border-box">
-          <div style="position:absolute;top:-20px;right:-10px;font-size:80px;color:rgba(255,255,255,.06);line-height:1">"</div>
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
-            <div style="font-size:11px;font-weight:600;color:rgba(255,255,255,.7);letter-spacing:.05em">✦ ${t('오늘의 묵상','Devotion')} — Tabletalk</div>
-            ${isAdmin ? `<div onclick="showDailyWordForm('${todayStr}')" style="font-size:11.5px;color:#c5d9ef;cursor:pointer;font-weight:600">수정</div>` : ''}
-          </div>
-          ${wordData.title ? `<div style="font-size:15px;font-weight:600;color:white;margin-bottom:12px">${wordData.title}</div>` : ''}
-          <a href="${wordData.url}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 14px;border-radius:9px;background:rgba(255,255,255,.2);color:white;font:600 12px var(--font);text-decoration:none">${t('Tabletalk에서 읽기','Read on Tabletalk')} →</a>
-          ${wordData.scripture_text ? `
-          <div style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,.15)">
-            <div style="font-size:11px;color:rgba(255,255,255,.6);font-weight:600;margin-bottom:6px">📖 ${wordData.verse||''} (ESV)</div>
-            <div style="font-size:13px;line-height:1.8;color:rgba(255,255,255,.85);white-space:pre-wrap">${wordData.scripture_text}</div>
-          </div>` : wordData.verse ? `<div style="font-size:12px;font-weight:600;color:rgba(255,255,255,.7);margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,.15)">📖 ${wordData.verse}</div>` : ''}
-        </div>` : `
-        <div style="border-radius:18px;background:linear-gradient(160deg,#1d3a5f,#2a5298);border:1px solid #1d3a5f;padding:20px 24px;text-align:center;height:100%;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center">
-          <div style="font-size:11px;font-weight:600;color:rgba(255,255,255,.6);letter-spacing:.05em;margin-bottom:10px">✦ ${t('오늘의 묵상','Devotion')}</div>
-          <div style="font-size:14px;line-height:1.7;color:rgba(255,255,255,.7);font-style:italic">${t('오늘의 묵상이 아직 등록되지 않았어요',"Today's devotion hasn't been added yet")}</div>
-          ${isAdmin ? `<button onclick="showDailyWordForm('${todayStr}')" style="margin-top:12px;height:32px;padding:0 14px;border-radius:9px;border:none;background:rgba(255,255,255,.2);color:white;font:600 12px var(--font);cursor:pointer">+ ${t('지금 등록하기','Add now')}</button>` : ''}
-        </div>`}
-      </div>
+      <!-- SVM 컨퍼런스 D-DAY 카운트다운 -->
+      <div>${svmDdayCardHtml()}</div>
 
     </div>
 
