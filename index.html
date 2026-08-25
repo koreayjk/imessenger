@@ -502,6 +502,44 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
   /* 재정 허브 그룹 필터가 좁은 화면에서 줄바꿈되도록 */
   #school-main { padding: 16px 14px !important; }
 }
+
+/* ============================================================
+   모바일 전반 최적화 — 가로 넘침·2열 그리드·모달 폭 전수 대응
+   ============================================================ */
+@media (max-width: 900px) {
+  /* 페이지 자체가 가로로 스크롤되지 않도록 */
+  html, body { overflow-x: hidden; max-width: 100%; }
+  #app, #main, #panel, #chat-view, #home-view, #calendar-view, #admin-view,
+  #tcs-view, #mock-view, #reading-view, #prayer-view { max-width: 100vw; }
+  /* 주요 스크롤 영역: 가로 넘침 차단(세로만 스크롤) */
+  #content-area, #home-main, #tcs-main, #school-main, #gishome-main, #store-main,
+  #approval-main, #allowance-main, #leave-main, #writing-main, #mytt-main, #deposit-main,
+  #improve-main, #profile-content, #admin-content, #mock-main, #reading-main,
+  #panel-body, #msg-area, #calendar-main { overflow-x: hidden; }
+  /* flex 자식이 긴 텍스트로 부모를 밀어내지 않도록(말줄임/줄바꿈 허용) */
+  .adm-card, .msg-body, .ch-row, .chat-header-info { min-width: 0; }
+  .chat-header-name, .chat-header-desc, .ch-name, .ch-preview { overflow: hidden; text-overflow: ellipsis; }
+  /* 긴 단어/URL이 칸을 넘지 않도록 */
+  .bubble, .adm-card, .ch-preview { overflow-wrap: anywhere; word-break: break-word; }
+}
+
+@media (max-width: 620px) {
+  /* 2·3열 그리드 → 모바일에서 축소 (인라인 스타일 전역 대응) */
+  [style*="grid-template-columns:1fr 1fr"] { grid-template-columns: 1fr !important; }
+  [style*="grid-template-columns: 1fr 1fr"] { grid-template-columns: 1fr !important; }
+  [style*="grid-template-columns:repeat(2"] { grid-template-columns: 1fr !important; }
+  [style*="grid-template-columns:repeat(3"] { grid-template-columns: repeat(2, 1fr) !important; }
+  [style*="grid-template-columns:repeat(4"] { grid-template-columns: repeat(2, 1fr) !important; }
+  /* 모달 카드: 화면 안으로 (이미지 뷰어 제외) */
+  #add-modal > div, #delete-modal > div, #poll-modal > div, #edit-channel-modal > div,
+  #daily-word-modal > div, #event-modal > div { max-width: 94vw !important; }
+  /* 카드·컨텐츠 패딩 축소로 실내폭 확보 */
+  .adm-card { padding: 15px !important; }
+  #content-area { padding: 14px !important; }
+  /* flex 자식이 긴 텍스트로 부모 밖으로 밀려나지 않게(축소 허용) — 넘침 방지 안전망 */
+  #main [style*="display:flex"] > * { min-width: 0; }
+  .adm-row { min-width: 0; }
+}
 .s360-mobile-back { display: none; }
 .mention { color:#1d4ed8; font-weight:700; background:rgba(29,78,216,.10); border-radius:5px; padding:0 3px; }
 .mention-me { background:rgba(240,180,41,.18); }
