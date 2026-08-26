@@ -12028,42 +12028,85 @@ async function ledgerImport() {
   const rows = ledgerPending || []; if (!rows.length) return;
   const replace = !!document.getElementById('lg-replace')?.checked;
   const btn = document.getElementById('lg-import-btn'); if (btn) { btn.disabled = true; btn.textContent = t('가져오는 중...','Importing...'); }
-  // 겹치는 달의 기존 업로드(import) 내역 정리 — 직접입력(manual)은 보존
-  if (replace) {
-    const months = [...new Set(rows.map(r => r.month).filter(Boolean))];
-    for (const mth of months) {
-      await sb.from('finance_transactions').delete()
+
+  // 달별로 묶어 처리 → 어느 달이 몇 건 들어갔는지 정확히 집계
+  const groups = {};
+  rows.forEach(r => { const m = r.month || '?'; (groups[m] = groups[m] || []).push(r); });
+  const months = Object.keys(groups).sort();
+  const results = [];   // { month, total, ok, fail, err }
+  let totalDone = 0;
+
+  for (const mth of months) {
+    const arr = groups[mth];
+    // 겹치는 달의 기존 업로드(import) 내역 정리 — 직접입력(manual)은 보존
+    if (replace) {
+      const { error: delErr } = await sb.from('finance_transactions').delete()
         .eq('community_id', CID()).eq('month', mth).eq('source', 'import');
+      if (delErr) console.warn('[ledger import] delete 실패', mth, delErr.message);
     }
+    const payload = arr.map(r => ({
+      community_id: CID(), tx_date: r.tx_date, month: r.month, description: r.description,
+      amount: r.amount, category: r.category, source: 'import', created_by: ME.id, created_by_name: ME.name,
+    }));
+    let ok = 0, fail = 0, err = '';
+    // 청크 삽입 — 실패 시 이분 분할 재시도(문제 행 1개로 수백 건이 통째로 누락되지 않도록)
+    async function ins(chunk) {
+      if (!chunk.length) return;
+      const { error } = await sb.from('finance_transactions').insert(chunk);
+      if (!error) { ok += chunk.length; return; }
+      if (chunk.length === 1) { fail += 1; if (!err) err = error.message || ''; return; }
+      const mid = Math.floor(chunk.length/2);
+      await ins(chunk.slice(0, mid)); await ins(chunk.slice(mid));
+    }
+    for (let i=0; i<payload.length; i+=400) {
+      await ins(payload.slice(i, i+400));
+      totalDone += Math.min(400, payload.length - i);
+      if (btn) btn.textContent = t(`가져오는 중... ${totalDone}/${rows.length}`, `Importing... ${totalDone}/${rows.length}`);
+    }
+    results.push({ month: mth, total: arr.length, ok, fail, err });
   }
-  const payload = rows.map(r => ({
-    community_id: CID(), tx_date: r.tx_date, month: r.month, description: r.description,
-    amount: r.amount, category: r.category, source: 'import', created_by: ME.id, created_by_name: ME.name,
-  }));
-  let ok = 0, fail = 0; const failMsgs = [];
-  // 청크 삽입 — 실패 시 이분 분할로 재시도해 '문제 행 1개' 때문에 400건이 통째로 날아가는 것을 방지
-  async function insertResilient(chunk) {
-    if (!chunk.length) return;
-    const { error } = await sb.from('finance_transactions').insert(chunk);
-    if (!error) { ok += chunk.length; return; }
-    if (chunk.length === 1) { fail += 1; if (failMsgs.length < 3) failMsgs.push(error.message||''); return; }
-    const mid = Math.floor(chunk.length/2);
-    await insertResilient(chunk.slice(0, mid));
-    await insertResilient(chunk.slice(mid));
-  }
-  for (let i=0; i<payload.length; i+=400) {
-    await insertResilient(payload.slice(i, i+400));
-    if (btn) btn.textContent = t(`가져오는 중... ${Math.min(i+400,payload.length)}/${payload.length}`, `Importing... ${Math.min(i+400,payload.length)}/${payload.length}`);
-  }
+
   ledgerPending = [];
-  document.querySelector('.ledger-import-modal')?.remove();
-  if (fail && failMsgs[0]) console.warn('[ledger import] 실패 예시:', failMsgs);
-  showUploadToast(fail ? t(`${ok}건 완료, ${fail}건 실패`, `${ok} imported, ${fail} failed`) : t(`✅ ${ok}건을 가져왔어요`, `✅ Imported ${ok} items`));
-  // 가장 많은 달로 이동
-  const byMonth = {}; rows.forEach(r => { byMonth[r.month] = (byMonth[r.month]||0)+1; });
-  const top = Object.keys(byMonth).sort((a,b)=>byMonth[b]-byMonth[a])[0];
-  if (top) ledgerMonth = top;
+  const grandOk = results.reduce((s,r)=>s+r.ok,0), grandFail = results.reduce((s,r)=>s+r.fail,0);
+  const firstErr = (results.find(r=>r.err)||{}).err || '';
+  if (grandFail) console.warn('[ledger import] 실패', results.filter(r=>r.fail));
+  ledgerShowImportResult(results, grandOk, grandFail, firstErr);
+  // 가장 많은 건수의 달로 이동
+  const top = results.slice().sort((a,b)=>b.ok-a.ok)[0];
+  if (top && top.month !== '?') ledgerMonth = top.month;
   renderLedgerHub();
+}
+
+// 가져오기 결과 — 달별 몇 건 들어갔는지 + 실패 사유 표시
+function ledgerShowImportResult(results, grandOk, grandFail, firstErr) {
+  document.querySelectorAll('.ledger-import-modal').forEach(x=>x.remove());
+  const modal = document.createElement('div');
+  modal.className = 'ledger-import-modal';
+  modal.style.cssText = 'position:fixed;inset:0;z-index:260;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px';
+  modal.onclick = (e)=>{ if(e.target===modal) modal.remove(); };
+  const rowsHtml = results.map(r => {
+    const bad = r.fail > 0;
+    return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--bs);font-size:12.5px">
+      <span style="font-weight:700;min-width:74px">${r.month}</span>
+      <span style="color:#15803d;font-weight:700">${r.ok}${t('건','')}</span>
+      ${bad?`<span style="color:#dc2626;font-weight:700">· ${t('실패','fail')} ${r.fail}</span>`:''}
+      <span style="color:var(--ink3);margin-left:auto">${t('파일','file')} ${r.total}</span>
+    </div>`;
+  }).join('');
+  modal.innerHTML = `<div style="background:var(--surface);border-radius:18px;width:460px;max-width:94vw;max-height:84vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.25)">
+    <div style="padding:16px 18px;border-bottom:1px solid var(--border);font-size:15px;font-weight:800">${grandFail?'⚠️':'✅'} ${t('가져오기 결과','Import result')}</div>
+    <div style="padding:14px 18px;overflow-y:auto;flex:1">
+      <div style="font-size:13px;font-weight:700;margin-bottom:10px">${t('총','Total')} <span style="color:#15803d">${grandOk}${t('건 저장','saved')}</span>${grandFail?` · <span style="color:#dc2626">${grandFail}${t('건 실패','failed')}</span>`:''}</div>
+      <div style="font-size:11.5px;color:var(--ink3);margin-bottom:6px">${t('월별 저장 결과','By month')}</div>
+      ${rowsHtml}
+      ${firstErr?`<div style="margin-top:12px;background:#fef2f2;border:1px solid #fecaca;border-radius:9px;padding:9px 11px;font-size:11.5px;color:#b91c1c;word-break:break-word"><b>${t('실패 사유','Error')}:</b> ${escHtml(firstErr)}</div>`:''}
+      ${grandFail?`<div style="margin-top:8px;font-size:11px;color:var(--ink3);line-height:1.6">${t('실패가 있으면 위 사유를 확인하세요. DB 설치(재정_입출금_DB설치.sql)가 안 되어 있거나 권한 문제일 수 있어요.','If some failed, check the reason above — the DB table may not be installed (재정_입출금_DB설치.sql) or a permission issue.')}</div>`:''}
+    </div>
+    <div style="padding:12px 16px;border-top:1px solid var(--border)">
+      <button onclick="this.closest('.ledger-import-modal').remove()" style="width:100%;height:44px;border-radius:11px;border:none;background:#1d3a5f;color:#fff;font:700 14px var(--font);cursor:pointer">${t('확인','OK')}</button>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
 }
 
 // (student_id, month) → 납부 기록(있으면)
