@@ -3484,7 +3484,13 @@ async function renderMembers() {
     return aOnline - bOnline;
   });
 
-  memberList.innerHTML = list.map(m => {
+  // 채팅방에 멤버 추가 버튼 (1:1 제외, 학생 제외 — 간사 이상)
+  const canAddMembers = currentChannel && currentChannel.kind !== 'dm' && !isStudentMember(ME);
+  const addBtn = canAddMembers
+    ? `<div onclick="openAddMemberModal()" style="display:flex;align-items:center;justify-content:center;gap:6px;margin:0 0 10px;padding:9px;border:1.5px dashed var(--accent);border-radius:10px;color:var(--accent);font:700 12.5px var(--font);cursor:pointer">＋ ${t('멤버 추가','Add member')}</div>`
+    : '';
+
+  memberList.innerHTML = addBtn + list.map(m => {
     const isOnline = onlineUsers.has(m.id);
     const isSelf = m.id === ME.id;
     return `<div class="member-row" ${!isSelf ? `onclick="openDMwith('${m.id}')" title="${t('클릭하면 1:1 대화','Click to open 1:1 chat')}"` : ''} style="cursor:${isSelf?'default':'pointer'}">
@@ -3504,6 +3510,47 @@ async function renderMembers() {
 function toggleRightPanel() {
   const rp = document.getElementById('right-panel');
   rp.style.display = rp.style.display === 'none' ? 'flex' : 'none';
+}
+
+// ── 채팅방에 멤버 추가 (간사 이상 · 학생 제외) ──
+async function openAddMemberModal() {
+  if (!currentChannel || isStudentMember(ME) || currentChannel.kind === 'dm') return;
+  document.querySelectorAll('.add-member-modal').forEach(x => x.remove());
+  const inCh = currentChannelMemberIds || new Set();
+  const cand = Object.values(members).filter(m =>
+    m && m.id !== ME.id && !inCh.has(m.id) &&
+    m.community_role !== 'store_bot' && (m.status ? m.status !== 'removed' : true))
+    .sort((a,b) => (a.name||'').localeCompare(b.name||''));
+  const modal = document.createElement('div');
+  modal.className = 'add-member-modal';
+  modal.style.cssText = 'position:fixed;inset:0;z-index:250;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px';
+  modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+  const rows = cand.length ? cand.map(m => `
+    <label style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:10px;cursor:pointer" onmouseover="this.style.background='var(--s2)'" onmouseout="this.style.background=''">
+      <input type="checkbox" class="am-pick" value="${m.id}" style="width:17px;height:17px;flex-shrink:0"/>
+      <div style="width:30px;height:30px;border-radius:9px;background:${m.color||'#999'};color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0">${m.initials||(m.name||'?')[0]}</div>
+      <div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(m.name||'')}</div><div style="font-size:11px;color:var(--ink3)">${escHtml(m.role||'')}</div></div>
+    </label>`).join('') : `<div style="text-align:center;color:var(--ink3);font-size:13px;padding:24px">${t('추가할 수 있는 멤버가 없어요','No members available to add')}</div>`;
+  modal.innerHTML = `<div style="background:var(--surface);border-radius:18px;width:420px;max-width:94vw;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.25)">
+    <div style="padding:16px 18px;border-bottom:1px solid var(--border);font-size:15px;font-weight:700">＋ ${t('채팅방에 멤버 추가','Add members to chat')}</div>
+    <div style="padding:8px 12px;overflow-y:auto;flex:1">${rows}</div>
+    <div style="padding:12px 16px;border-top:1px solid var(--border);display:flex;gap:8px">
+      <button onclick="this.closest('.add-member-modal').remove()" style="flex:1;height:42px;border-radius:11px;border:none;background:var(--s3);color:var(--ink2);font:600 14px var(--font);cursor:pointer">${t('취소','Cancel')}</button>
+      <button onclick="confirmAddMembers()" style="flex:2;height:42px;border-radius:11px;border:none;background:var(--accent);color:#fff;font:700 14px var(--font);cursor:pointer">${t('추가','Add')}</button>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+}
+async function confirmAddMembers() {
+  if (!currentChannel) return;
+  const picks = [...document.querySelectorAll('.add-member-modal .am-pick:checked')];
+  if (!picks.length) { showUploadToast(t('추가할 멤버를 선택하세요','Select members to add')); return; }
+  const rows = picks.map(p => ({ channel_id: currentChannel.id, member_id: p.value }));
+  const { error } = await sb.from('channel_members').insert(rows);
+  if (error) { showUploadToast(t('추가 실패: ','Add failed: ') + error.message); return; }
+  document.querySelector('.add-member-modal')?.remove();
+  showUploadToast(t(`${rows.length}명을 추가했어요`, `Added ${rows.length} member(s)`));
+  renderMembers();
 }
 
 async function openDMwith(memberId) {
@@ -6010,10 +6057,10 @@ async function initReadingPage() {
     if (bErr) { renderReadingSetupNeeded(bErr); return; }
     readingBooks = sortReadingBooks(books || []);
 
-    if (isTeacher()) {
+    if (canAccessSchool()) {   // 교직원(간사 포함) → 현황·책 관리 뷰
       if (sub) sub.textContent = t('전체 현황 · 책 관리','Overview · Manage Books');
       await renderReadingAdmin();
-    } else {
+    } else {                   // 학생 → 내 독서 뷰
       if (sub) sub.textContent = t('내가 읽은 필독서','My Reading List');
       const { data: logs } = await sb.from('reading_logs').select('*').eq('student_id', ME.id);
       readingMyLogs = logs || [];
@@ -6302,7 +6349,7 @@ async function renderReadingAdmin() {
   logs.forEach(l => { if (byStudent[l.student_id] !== undefined) byStudent[l.student_id]++; if (byBook[l.book_id] !== undefined) byBook[l.book_id]++; });
   const avg = studs.length ? (logs.length / studs.length) : 0;
 
-  const canManage = isTeacher();
+  const canManage = canAccessSchool();   // 간사 포함 전 교직원이 책 관리 가능
 
   const summary = `
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px">
@@ -6546,6 +6593,7 @@ async function refreshReadingAfterBookChange() {
 }
 
 async function addReadingBook() {
+  if (!canAccessSchool()) { showUploadToast(t('책을 추가할 권한이 없어요','You do not have permission to add books')); return; }
   const cat = document.getElementById('rb-cat').value;
   const title = document.getElementById('rb-title').value.trim();
   const author = document.getElementById('rb-author').value.trim();
