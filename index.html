@@ -11432,6 +11432,9 @@ async function renderTuitionHub() {
 const FIN_TX_INCOME_CATS = ['Students\' Living Cost Donation','Special Donations','Moving Donations','Church Donations','Scholarships','Repayment'];
 const FIN_TX_EXPENSE_CATS = ['Grocery','Fuel (Oil)','Eating Out','Housing fee','Utilities','Monthly payment','Office&School Supply','Auto Payment','Auto Insurance','Car Maintenance','EZ Pass','Travel','Air Fair','Activity','Basic necessities','Build up Project','Books/Christian Education','MultiMedia Supply','Staff Wage','MJ Wage','Kitchen Supply','Local Mission','CPA','Credit Card','Misc. Exp.'];
 const FIN_TX_CATEGORIES = [...FIN_TX_INCOME_CATS, ...FIN_TX_EXPENSE_CATS];
+// 대소문자만 다른 중복 분류를 표준 표기로 통일 (예: "students' Living..." → "Students' Living...")
+const _FIN_CAT_CANON = (() => { const m = {}; FIN_TX_CATEGORIES.forEach(c => m[c.toLowerCase()] = c); return m; })();
+function finCanonCat(c) { const s = String(c==null?'':c).trim(); return _FIN_CAT_CANON[s.toLowerCase()] || s; }
 
 // ── 자동 분류 (IMTX 규칙집 기반: 방향판정 → 설명정규화 → 키워드/인물 규칙) ──
 // 지출(OUT) 키워드 규칙 — 위에서부터 우선 (주유가 식료품보다 먼저: H-E-B GAS 등 대응)
@@ -11566,6 +11569,7 @@ async function renderLedgerHub() {
         return;
       }
       ledgerYearTx = data || [];
+      await ledgerHealCategories(ledgerYearTx);
       ledgerRenderYear();
       return;
     }
@@ -11579,9 +11583,24 @@ async function renderLedgerHub() {
       return;
     }
     ledgerTx = data || [];
+    await ledgerHealCategories(ledgerTx);
   } catch(e) { ledgerTx = []; ledgerYearTx = []; }
   if (ledgerView === 'day') ledgerRenderDay();
   else ledgerRenderInto();
+}
+
+// 저장된 분류의 대소문자 중복을 표준 표기로 자동 정리 (커뮤니티 전체 대상 1회 UPDATE)
+async function ledgerHealCategories(rows) {
+  const fixes = new Map();   // 잘못된표기 -> 표준표기
+  for (const r of rows) {
+    const canon = finCanonCat(r.category);
+    if (canon !== r.category) { fixes.set(r.category, canon); r.category = canon; }
+  }
+  if (!fixes.size) return false;
+  for (const [wrong, canon] of fixes) {
+    try { await sb.from('finance_transactions').update({ category: canon }).eq('community_id', CID()).eq('category', wrong); } catch(e) {}
+  }
+  return true;
 }
 
 function ledgerRenderInto() {
@@ -11960,6 +11979,7 @@ async function ledgerPickFile(input) {
         if (tx_date) { const _c = new Date(tx_date + 'T00:00:00'); if (isNaN(_c) || (tx_date.length !== 10)) tx_date = (month || tx_date.slice(0,7)) + '-01'; }
         let category = cols.cat >= 0 ? String(row[cols.cat]==null?'':row[cols.cat]).trim() : '';
         if (!category || category.toLowerCase()==='none') category = classifyTx(description, amount);
+        category = finCanonCat(category);   // 대소문자 표준화(중복 분류 방지)
         out.push({ tx_date, month, description, amount, category });
       }
     });
