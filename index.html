@@ -11945,8 +11945,19 @@ async function ledgerPickFile(input) {
         let month = dObj ? (dObj.getFullYear()+'-'+String(dObj.getMonth()+1).padStart(2,'0')) : sheetMonth;
         let tx_date = dObj ? (dObj.getFullYear()+'-'+String(dObj.getMonth()+1).padStart(2,'0')+'-'+String(dObj.getDate()).padStart(2,'0')) : (sheetMonth ? sheetMonth+'-01' : null);
         // 시트명이 월을 명시하면 우선(과거 리포트의 날짜 오기입 대응)
-        if (sheetMonth) { month = sheetMonth; if (!dObj || tx_date.slice(0,7)!==sheetMonth) tx_date = sheetMonth + '-' + (dObj?String(dObj.getDate()).padStart(2,'0'):'01'); }
+        // 날짜를 그 달로 옮길 때 '일(day)'을 해당 월의 마지막 날로 보정 → 2026-04-31 같은 불가능한 날짜 방지
+        if (sheetMonth) {
+          month = sheetMonth;
+          if (!dObj || tx_date.slice(0,7) !== sheetMonth) {
+            const [sy, sm] = sheetMonth.split('-').map(Number);
+            const lastDay = new Date(sy, sm, 0).getDate();
+            const day = dObj ? Math.min(dObj.getDate(), lastDay) : 1;
+            tx_date = sheetMonth + '-' + String(day).padStart(2,'0');
+          }
+        }
         if (!month) continue;
+        // 안전장치: tx_date 가 실제 유효한 날짜가 아니면 그 달 1일로
+        if (tx_date) { const _c = new Date(tx_date + 'T00:00:00'); if (isNaN(_c) || (tx_date.length !== 10)) tx_date = (month || tx_date.slice(0,7)) + '-01'; }
         let category = cols.cat >= 0 ? String(row[cols.cat]==null?'':row[cols.cat]).trim() : '';
         if (!category || category.toLowerCase()==='none') category = classifyTx(description, amount);
         out.push({ tx_date, month, description, amount, category });
@@ -11979,6 +11990,10 @@ function ledgerShowImportPreview(rows) {
       </div>
       <div style="font-size:12px;color:var(--ink3);margin-bottom:8px">${t('월별','By month')}: ${months.map(m=>`${m} (${byMonth[m]})`).join(' · ')}</div>
       <div style="border:1px solid var(--border);border-radius:10px;padding:8px 12px;margin-bottom:6px">${sample}${rows.length>6?`<div style="font-size:11px;color:var(--ink3);text-align:center;padding-top:6px">… ${t('외','and')} ${rows.length-6}${t('건',' more')}</div>`:''}</div>
+      <label style="display:flex;align-items:flex-start;gap:8px;font-size:12px;color:var(--ink2);background:var(--s2);border-radius:9px;padding:9px 11px;margin-bottom:8px;cursor:pointer">
+        <input type="checkbox" id="lg-replace" checked style="width:16px;height:16px;margin-top:1px;cursor:pointer"/>
+        <span>${t('겹치는 달의 기존 업로드 내역을 지우고 새로 넣기 <b>(중복 방지, 권장)</b>','Replace previously-uploaded rows for the same months <b>(prevents duplicates, recommended)</b>')}<br><span style="color:var(--ink3)">${t('※ 직접 추가한 항목은 지우지 않아요.','※ Manually-added entries are kept.')}</span></span>
+      </label>
       <div style="font-size:11px;color:var(--ink3);line-height:1.6">${t('분류는 자동 추정된 값이에요. 가져온 뒤 목록에서 각 항목의 분류를 바꿀 수 있어요.','Categories are auto-estimated. You can change each one in the list after importing.')}</div>
     </div>
     <div style="padding:12px 16px;border-top:1px solid var(--border);display:flex;gap:8px">
@@ -11991,20 +12006,38 @@ function ledgerShowImportPreview(rows) {
 
 async function ledgerImport() {
   const rows = ledgerPending || []; if (!rows.length) return;
+  const replace = !!document.getElementById('lg-replace')?.checked;
   const btn = document.getElementById('lg-import-btn'); if (btn) { btn.disabled = true; btn.textContent = t('가져오는 중...','Importing...'); }
+  // 겹치는 달의 기존 업로드(import) 내역 정리 — 직접입력(manual)은 보존
+  if (replace) {
+    const months = [...new Set(rows.map(r => r.month).filter(Boolean))];
+    for (const mth of months) {
+      await sb.from('finance_transactions').delete()
+        .eq('community_id', CID()).eq('month', mth).eq('source', 'import');
+    }
+  }
   const payload = rows.map(r => ({
     community_id: CID(), tx_date: r.tx_date, month: r.month, description: r.description,
     amount: r.amount, category: r.category, source: 'import', created_by: ME.id, created_by_name: ME.name,
   }));
-  let ok = 0, fail = 0;
-  for (let i=0; i<payload.length; i+=400) {
-    const chunk = payload.slice(i, i+400);
+  let ok = 0, fail = 0; const failMsgs = [];
+  // 청크 삽입 — 실패 시 이분 분할로 재시도해 '문제 행 1개' 때문에 400건이 통째로 날아가는 것을 방지
+  async function insertResilient(chunk) {
+    if (!chunk.length) return;
     const { error } = await sb.from('finance_transactions').insert(chunk);
-    if (error) { fail += chunk.length; } else { ok += chunk.length; }
+    if (!error) { ok += chunk.length; return; }
+    if (chunk.length === 1) { fail += 1; if (failMsgs.length < 3) failMsgs.push(error.message||''); return; }
+    const mid = Math.floor(chunk.length/2);
+    await insertResilient(chunk.slice(0, mid));
+    await insertResilient(chunk.slice(mid));
+  }
+  for (let i=0; i<payload.length; i+=400) {
+    await insertResilient(payload.slice(i, i+400));
     if (btn) btn.textContent = t(`가져오는 중... ${Math.min(i+400,payload.length)}/${payload.length}`, `Importing... ${Math.min(i+400,payload.length)}/${payload.length}`);
   }
   ledgerPending = [];
   document.querySelector('.ledger-import-modal')?.remove();
+  if (fail && failMsgs[0]) console.warn('[ledger import] 실패 예시:', failMsgs);
   showUploadToast(fail ? t(`${ok}건 완료, ${fail}건 실패`, `${ok} imported, ${fail} failed`) : t(`✅ ${ok}건을 가져왔어요`, `✅ Imported ${ok} items`));
   // 가장 많은 달로 이동
   const byMonth = {}; rows.forEach(r => { byMonth[r.month] = (byMonth[r.month]||0)+1; });
