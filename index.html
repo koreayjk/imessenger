@@ -11515,21 +11515,61 @@ function loadXLSX() {
 }
 
 let ledgerMonth = null;      // 'YYYY-MM'
+let ledgerDay = null;        // 'YYYY-MM-DD'
+let ledgerView = 'month';    // 'day' | 'month' | 'year'
 let ledgerTx = [];
+let ledgerYearTx = [];
 function ledgerCurMonth() { if (!ledgerMonth) { const d = new Date(); ledgerMonth = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'); } return ledgerMonth; }
+function ledgerCurYear() { return ledgerCurMonth().split('-')[0]; }
+function ledgerCurDay() {
+  if (!ledgerDay) { const d = new Date(); ledgerDay = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); ledgerMonth = ledgerDay.slice(0,7); }
+  return ledgerDay;
+}
 function fmtUsd(n) { const v = Number(n)||0; return (v<0?'-':'') + '$' + Math.abs(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function fmtUsd0(n) { const v = Number(n)||0; return (v<0?'-':'') + '$' + Math.abs(Math.round(v)).toLocaleString('en-US'); }
+function ledgerSetView(v) { ledgerView = v; if (v==='day') ledgerCurDay(); renderLedgerHub(); }
 function ledgerShiftMonth(delta) {
   const [y,m] = ledgerCurMonth().split('-').map(Number);
   const d = new Date(y, m-1+delta, 1);
   ledgerMonth = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
   renderLedgerHub();
 }
+function ledgerShiftDay(delta) {
+  const d = new Date(ledgerCurDay()+'T00:00:00'); d.setDate(d.getDate()+delta);
+  ledgerDay = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  ledgerMonth = ledgerDay.slice(0,7);
+  renderLedgerHub();
+}
+function ledgerShiftYear(delta) {
+  const y = Number(ledgerCurYear()) + delta;
+  ledgerMonth = y + '-' + ledgerCurMonth().split('-')[1];
+  renderLedgerHub();
+}
+// 뷰 전환 세그먼트 컨트롤 (일 · 월 · 년)
+function ledgerViewToggle() {
+  const seg = (v,ko,en) => `<button onclick="ledgerSetView('${v}')" style="height:32px;padding:0 15px;border:none;border-radius:8px;font:700 12.5px var(--font);cursor:pointer;transition:.12s;${ledgerView===v?'background:#1d3a5f;color:#fff':'background:transparent;color:var(--ink2)'}">${t(ko,en)}</button>`;
+  return `<div style="display:inline-flex;gap:2px;background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:3px">${seg('day','일','Day')}${seg('month','월','Month')}${seg('year','년','Year')}</div>`;
+}
 
 async function renderLedgerHub() {
   const main = document.getElementById('school-main');
   main.innerHTML = finTabBar() + '<div style="text-align:center;padding:40px;color:var(--ink3);font-size:13px">'+t('불러오는 중...','Loading...')+'</div>';
-  const month = ledgerCurMonth();
   try {
+    if (ledgerView === 'year') {
+      const y = ledgerCurYear();
+      const { data, error } = await sb.from('finance_transactions').select('*')
+        .eq('community_id', CID()).gte('month', y+'-01').lte('month', y+'-12')
+        .order('tx_date', {ascending:true});
+      if (error) {
+        if (schoolTableMissing(error)) return schoolSetupNeeded(error, 'db/재정_입출금_DB설치.sql');
+        main.innerHTML = finTabBar() + `<div style="color:#b91c1c;padding:30px;text-align:center;font-size:13px">${t('불러오기 실패: ','Failed to load: ')}${escHtml(error.message||'')}</div>`;
+        return;
+      }
+      ledgerYearTx = data || [];
+      ledgerRenderYear();
+      return;
+    }
+    const month = ledgerCurMonth();
     const { data, error } = await sb.from('finance_transactions').select('*')
       .eq('community_id', CID()).eq('month', month)
       .order('tx_date', {ascending:true}).order('created_at', {ascending:true});
@@ -11539,8 +11579,9 @@ async function renderLedgerHub() {
       return;
     }
     ledgerTx = data || [];
-  } catch(e) { ledgerTx = []; }
-  ledgerRenderInto();
+  } catch(e) { ledgerTx = []; ledgerYearTx = []; }
+  if (ledgerView === 'day') ledgerRenderDay();
+  else ledgerRenderInto();
 }
 
 function ledgerRenderInto() {
@@ -11571,8 +11612,9 @@ function ledgerRenderInto() {
   }).join('') : `<tr><td colspan="5" style="padding:26px;text-align:center;color:var(--ink3);font-size:13px">${t('이 달의 거래내역이 없어요. 은행 엑셀을 올리거나 직접 추가하세요.','No transactions this month. Upload a bank Excel or add one manually.')}</td></tr>`;
 
   main.innerHTML = finTabBar() + `<div style="max-width:920px">
-    <!-- 월 이동 + 요약 -->
+    <!-- 뷰 전환 + 월 이동 + 업로드 -->
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+      ${ledgerViewToggle()}
       <div style="display:flex;align-items:center;gap:8px">
         <button onclick="ledgerShiftMonth(-1)" style="width:32px;height:32px;border:1.5px solid var(--border);background:white;border-radius:9px;cursor:pointer;font-size:15px">‹</button>
         <div style="font-size:16px;font-weight:800;color:var(--adeep);min-width:120px;text-align:center">${monthLabel}</div>
@@ -11623,6 +11665,195 @@ function ledgerRenderInto() {
     </div>
     <div style="font-size:11px;color:var(--ink3);margin-top:8px;line-height:1.6">${t('※ 은행 파일에 Posting Date · Description · Amount 열이 있으면 자동으로 인식·분류해 저장해요. 지난 엑셀(월별 시트) 전체도 한 번에 가져올 수 있어요.','※ If the bank file has Posting Date · Description · Amount columns, they are auto-detected, classified, and saved. You can also import your whole past workbook (monthly sheets) at once.')} · ${ledgerTx.length}${t('건',' items')}</div>
   </div>`;
+}
+
+// ── 일(Day) 뷰 : 하루치 거래만 ──
+function ledgerRenderDay() {
+  const main = document.getElementById('school-main');
+  const day = ledgerCurDay();
+  const dayTx = ledgerTx.filter(x => (x.tx_date||'') === day);
+  const income = dayTx.filter(x => Number(x.amount) > 0).reduce((s,x)=>s+Number(x.amount),0);
+  const expense = dayTx.filter(x => Number(x.amount) < 0).reduce((s,x)=>s+Number(x.amount),0);
+  const net = income + expense;
+  const catOpts = (sel) => FIN_TX_CATEGORIES.map(c => `<option value="${escAttr(c)}" ${sel===c?'selected':''}>${escHtml(c)}</option>`).join('');
+  const dd = new Date(day+'T00:00:00');
+  const dayLabel = APP_LANG==='en'
+    ? dd.toLocaleDateString('en-US',{weekday:'short',month:'long',day:'numeric',year:'numeric'})
+    : `${day.slice(0,4)}년 ${+day.slice(5,7)}월 ${+day.slice(8,10)}일 (${'일월화수목금토'[dd.getDay()]})`;
+
+  const rows = dayTx.length ? dayTx.map(x => {
+    const amt = Number(x.amount)||0; const isIn = amt >= 0;
+    const isCustom = x.category && !FIN_TX_CATEGORIES.includes(x.category);
+    return `<tr style="border-bottom:1px solid var(--bs)">
+      <td style="padding:7px 8px;font-size:12.5px;color:var(--ink);max-width:360px;word-break:break-word">${escHtml((x.description||'').slice(0,180))}</td>
+      <td style="padding:7px 8px;text-align:right;font-size:12.5px;font-weight:700;white-space:nowrap;color:${isIn?'#15803d':'#dc2626'}">${fmtUsd(amt)}</td>
+      <td style="padding:7px 8px">
+        <select onchange="ledgerUpdateCategory('${x.id}',this.value)" style="height:30px;max-width:170px;padding:0 8px;border:1.5px solid var(--border);border-radius:8px;font:12px var(--font);background:white;cursor:pointer">
+          ${isCustom?`<option value="${escAttr(x.category)}" selected>${escHtml(x.category)}</option>`:''}
+          ${catOpts(x.category)}
+        </select>
+      </td>
+      <td style="padding:7px 4px;text-align:center"><button onclick="ledgerDeleteTx('${x.id}')" title="${t('삭제','Delete')}" style="width:26px;height:26px;border:none;background:transparent;color:var(--ink3);cursor:pointer;font-size:13px;border-radius:6px" onmouseover="this.style.background='#FEE2E2';this.style.color='#dc2626'" onmouseout="this.style.background='';this.style.color='var(--ink3)'">✕</button></td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="4" style="padding:26px;text-align:center;color:var(--ink3);font-size:13px">${t('이 날의 거래내역이 없어요.','No transactions on this day.')}</td></tr>`;
+
+  main.innerHTML = finTabBar() + `<div style="max-width:920px">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+      ${ledgerViewToggle()}
+      <div style="display:flex;align-items:center;gap:8px">
+        <button onclick="ledgerShiftDay(-1)" style="width:32px;height:32px;border:1.5px solid var(--border);background:white;border-radius:9px;cursor:pointer;font-size:15px">‹</button>
+        <div style="font-size:15px;font-weight:800;color:var(--adeep);min-width:150px;text-align:center">${dayLabel}</div>
+        <button onclick="ledgerShiftDay(1)" style="width:32px;height:32px;border:1.5px solid var(--border);background:white;border-radius:9px;cursor:pointer;font-size:15px">›</button>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <label style="height:36px;padding:0 14px;border-radius:9px;border:none;background:#1d3a5f;color:#fff;font:700 13px var(--font);cursor:pointer;display:inline-flex;align-items:center;gap:6px">📤 ${t('업로드','Upload')}
+          <input type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="ledgerPickFile(this)"/></label>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">
+      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:12px 14px"><div style="font-size:11.5px;color:#15803d;font-weight:700">${t('수입(입금)','Income')}</div><div style="font-size:18px;font-weight:800;color:#15803d">${fmtUsd(income)}</div></div>
+      <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:12px;padding:12px 14px"><div style="font-size:11.5px;color:#dc2626;font-weight:700">${t('지출(출금)','Expense')}</div><div style="font-size:18px;font-weight:800;color:#dc2626">${fmtUsd(expense)}</div></div>
+      <div style="background:var(--s2);border:1px solid var(--border);border-radius:12px;padding:12px 14px"><div style="font-size:11.5px;color:var(--ink3);font-weight:700">${t('순액(합계)','Net')}</div><div style="font-size:18px;font-weight:800;color:${net>=0?'#15803d':'#dc2626'}">${fmtUsd(net)}</div></div>
+    </div>
+
+    <div class="adm-card" style="padding:0;overflow:hidden">
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;min-width:480px">
+          <thead><tr style="background:var(--s2)">
+            <th style="padding:9px 8px;text-align:left;font-size:11.5px;color:var(--ink3);font-weight:700">${t('설명','Description')}</th>
+            <th style="padding:9px 8px;text-align:right;font-size:11.5px;color:var(--ink3);font-weight:700">${t('금액','Amount')}</th>
+            <th style="padding:9px 8px;text-align:left;font-size:11.5px;color:var(--ink3);font-weight:700">${t('분류','Category')}</th>
+            <th style="padding:9px 4px;width:34px"></th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>
+    <div style="font-size:11px;color:var(--ink3);margin-top:8px">${dayTx.length}${t('건',' items')}</div>
+  </div>`;
+}
+
+// ── 년(Year) 뷰 : 카테고리 × 1~12월 매트릭스 + 꺾은선 그래프 ──
+function ledgerRenderYear() {
+  const main = document.getElementById('school-main');
+  const y = ledgerCurYear();
+  const MON_KO = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'];
+  const MON_EN = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const MON = APP_LANG==='en' ? MON_EN : MON_KO;
+  const inc = Array(12).fill(0), exp = Array(12).fill(0);
+  const agg = {};   // cat -> [12]
+  for (const x of ledgerYearTx) {
+    const mkey = (x.month || (x.tx_date||'').slice(0,7) || '');
+    const mi = Number(mkey.slice(5,7)) - 1;
+    if (mi < 0 || mi > 11) continue;
+    const amt = Number(x.amount) || 0;
+    const cat = x.category || t('미분류','Uncategorized');
+    (agg[cat] = agg[cat] || Array(12).fill(0))[mi] += amt;
+    if (amt >= 0) inc[mi] += amt; else exp[mi] += amt;
+  }
+  const cats = Object.keys(agg);
+  const catTotal = c => agg[c].reduce((s,v)=>s+v,0);
+  const incomeCats  = cats.filter(c => catTotal(c) >= 0).sort((a,b)=>catTotal(b)-catTotal(a));
+  const expenseCats = cats.filter(c => catTotal(c) <  0).sort((a,b)=>catTotal(a)-catTotal(b));
+  const totIncome = inc.reduce((s,v)=>s+v,0);
+  const totExpense = exp.reduce((s,v)=>s+v,0);
+
+  const cellColor = v => v>0 ? '#15803d' : (v<0 ? '#dc2626' : 'var(--ink3)');
+  const rowHtml = (label, arr, strong) => {
+    const tot = arr.reduce((s,v)=>s+v,0);
+    return `<tr style="border-bottom:1px solid var(--bs)">
+      <td style="position:sticky;left:0;background:${strong?'var(--s2)':'#fff'};padding:6px 10px;font-size:11.5px;font-weight:${strong?800:600};color:var(--ink);white-space:nowrap;border-right:1px solid var(--bs);z-index:1">${escHtml(label)}</td>
+      ${arr.map(v => `<td style="padding:6px 8px;text-align:right;font-size:11px;white-space:nowrap;color:${cellColor(v)};font-weight:${strong?700:500}">${v?fmtUsd0(v):'·'}</td>`).join('')}
+      <td style="padding:6px 10px;text-align:right;font-size:11.5px;font-weight:800;white-space:nowrap;color:${cellColor(tot)};background:${strong?'var(--s2)':'#faf8f4'};border-left:1px solid var(--bs)">${fmtUsd0(tot)}</td>
+    </tr>`;
+  };
+  const sectionHead = (label) => `<tr><td colspan="14" style="position:sticky;left:0;background:var(--adeep);color:#fff;padding:5px 10px;font-size:11px;font-weight:800;letter-spacing:.3px">${escHtml(label)}</td></tr>`;
+  const netRow = () => {
+    const netArr = inc.map((v,i)=>v+exp[i]);
+    return rowHtml(t('월별 순액','Net'), netArr, true);
+  };
+
+  const body =
+    sectionHead(t('▸ 수입 (Income)','▸ Income')) +
+    (incomeCats.length ? incomeCats.map(c => rowHtml(c, agg[c], false)).join('') : `<tr><td colspan="14" style="padding:10px;color:var(--ink3);font-size:11.5px">${t('수입 없음','No income')}</td></tr>`) +
+    rowHtml(t('수입 합계','Income total'), inc, true) +
+    sectionHead(t('▸ 지출 (Expense)','▸ Expense')) +
+    (expenseCats.length ? expenseCats.map(c => rowHtml(c, agg[c], false)).join('') : `<tr><td colspan="14" style="padding:10px;color:var(--ink3);font-size:11.5px">${t('지출 없음','No expense')}</td></tr>`) +
+    rowHtml(t('지출 합계','Expense total'), exp, true) +
+    netRow();
+
+  main.innerHTML = finTabBar() + `<div style="max-width:1080px">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+      ${ledgerViewToggle()}
+      <div style="display:flex;align-items:center;gap:8px">
+        <button onclick="ledgerShiftYear(-1)" style="width:32px;height:32px;border:1.5px solid var(--border);background:white;border-radius:9px;cursor:pointer;font-size:15px">‹</button>
+        <div style="font-size:16px;font-weight:800;color:var(--adeep);min-width:80px;text-align:center">${y}${t('년','')}</div>
+        <button onclick="ledgerShiftYear(1)" style="width:32px;height:32px;border:1.5px solid var(--border);background:white;border-radius:9px;cursor:pointer;font-size:15px">›</button>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <label style="height:36px;padding:0 14px;border-radius:9px;border:none;background:#1d3a5f;color:#fff;font:700 13px var(--font);cursor:pointer;display:inline-flex;align-items:center;gap:6px">📤 ${t('업로드','Upload')}
+          <input type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="ledgerPickFile(this)"/></label>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">
+      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:12px 14px"><div style="font-size:11.5px;color:#15803d;font-weight:700">${t('연간 수입','Year Income')}</div><div style="font-size:18px;font-weight:800;color:#15803d">${fmtUsd(totIncome)}</div></div>
+      <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:12px;padding:12px 14px"><div style="font-size:11.5px;color:#dc2626;font-weight:700">${t('연간 지출','Year Expense')}</div><div style="font-size:18px;font-weight:800;color:#dc2626">${fmtUsd(totExpense)}</div></div>
+      <div style="background:var(--s2);border:1px solid var(--border);border-radius:12px;padding:12px 14px"><div style="font-size:11.5px;color:var(--ink3);font-weight:700">${t('연간 순액','Year Net')}</div><div style="font-size:18px;font-weight:800;color:${(totIncome+totExpense)>=0?'#15803d':'#dc2626'}">${fmtUsd(totIncome+totExpense)}</div></div>
+    </div>
+
+    <!-- 꺾은선 그래프 -->
+    <div class="adm-card" style="margin-bottom:16px">
+      <div style="font-size:12.5px;font-weight:700;color:var(--adeep);margin-bottom:6px">📈 ${t('월별 수입·지출 추이','Monthly Income vs Expense')}</div>
+      <div style="overflow-x:auto">${ledgerLineChart(inc, exp.map(v=>Math.abs(v)), MON)}</div>
+      <div style="display:flex;gap:16px;justify-content:center;margin-top:6px;font-size:11.5px">
+        <span style="display:inline-flex;align-items:center;gap:5px"><span style="width:16px;height:3px;background:#15803d;display:inline-block;border-radius:2px"></span>${t('수입','Income')}</span>
+        <span style="display:inline-flex;align-items:center;gap:5px"><span style="width:16px;height:3px;background:#dc2626;display:inline-block;border-radius:2px"></span>${t('지출','Expense')}</span>
+      </div>
+    </div>
+
+    <!-- 카테고리 × 월 매트릭스 -->
+    <div class="adm-card" style="padding:0;overflow:hidden">
+      <div style="overflow-x:auto">
+        <table style="border-collapse:collapse;min-width:900px;width:100%">
+          <thead><tr style="background:var(--s2)">
+            <th style="position:sticky;left:0;background:var(--s2);padding:8px 10px;text-align:left;font-size:11px;color:var(--ink3);font-weight:800;border-right:1px solid var(--bs);z-index:2">${t('카테고리','Category')}</th>
+            ${MON.map(m=>`<th style="padding:8px 8px;text-align:right;font-size:10.5px;color:var(--ink3);font-weight:700">${m}</th>`).join('')}
+            <th style="padding:8px 10px;text-align:right;font-size:11px;color:var(--ink3);font-weight:800;border-left:1px solid var(--bs)">${t('합계','Total')}</th>
+          </tr></thead>
+          <tbody>${body}</tbody>
+        </table>
+      </div>
+    </div>
+    <div style="font-size:11px;color:var(--ink3);margin-top:8px;line-height:1.6">${t('※ 카테고리별로 1~12월 수입·지출을 한 페이지에서 볼 수 있어요. 셀 값은 반올림 표시입니다.','※ Income/expense by category across Jan–Dec on one page. Cell values are rounded.')} · ${ledgerYearTx.length}${t('건',' items')}</div>
+  </div>`;
+}
+
+// 월별 수입·지출 SVG 꺾은선 그래프
+function ledgerLineChart(income, expense, labels) {
+  const W = 880, H = 220, padL = 52, padR = 16, padT = 14, padB = 26;
+  const n = 12;
+  const maxV = Math.max(1, ...income, ...expense);
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  const xAt = i => padL + (n===1?0:(plotW * i / (n-1)));
+  const yAt = v => padT + plotH - (plotH * v / maxV);
+  const pts = arr => arr.map((v,i)=>`${xAt(i).toFixed(1)},${yAt(v).toFixed(1)}`).join(' ');
+  // y 눈금 4단계
+  const ticks = [0,.25,.5,.75,1].map(f => {
+    const v = maxV*f, yy = yAt(v);
+    return `<line x1="${padL}" y1="${yy.toFixed(1)}" x2="${W-padR}" y2="${yy.toFixed(1)}" stroke="var(--bs)" stroke-width="1"/>
+      <text x="${padL-6}" y="${(yy+3).toFixed(1)}" text-anchor="end" font-size="9" fill="var(--ink3)">${fmtUsd0(v)}</text>`;
+  }).join('');
+  const dots = (arr,color) => arr.map((v,i)=>`<circle cx="${xAt(i).toFixed(1)}" cy="${yAt(v).toFixed(1)}" r="2.6" fill="${color}"/>`).join('');
+  const xlabels = labels.map((m,i)=>`<text x="${xAt(i).toFixed(1)}" y="${H-8}" text-anchor="middle" font-size="9" fill="var(--ink3)">${m}</text>`).join('');
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="min-width:640px;display:block" preserveAspectRatio="xMidYMid meet">
+    ${ticks}
+    <polyline points="${pts(income)}" fill="none" stroke="#15803d" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>
+    <polyline points="${pts(expense)}" fill="none" stroke="#dc2626" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>
+    ${dots(income,'#15803d')}${dots(expense,'#dc2626')}
+    ${xlabels}
+  </svg>`;
 }
 
 async function ledgerAddTx() {
