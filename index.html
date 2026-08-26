@@ -11560,15 +11560,24 @@ async function renderLedgerHub() {
   try {
     if (ledgerView === 'year') {
       const y = ledgerCurYear();
-      const { data, error } = await sb.from('finance_transactions').select('*')
-        .eq('community_id', CID()).gte('month', y+'-01').lte('month', y+'-12')
-        .order('tx_date', {ascending:true});
-      if (error) {
-        if (schoolTableMissing(error)) return schoolSetupNeeded(error, 'db/재정_입출금_DB설치.sql');
-        main.innerHTML = finTabBar() + `<div style="color:#b91c1c;padding:30px;text-align:center;font-size:13px">${t('불러오기 실패: ','Failed to load: ')}${escHtml(error.message||'')}</div>`;
+      // 1년치는 1000행(PostgREST 기본 상한)을 넘을 수 있어 페이지 단위로 모두 가져온다
+      const PAGE = 1000; let from = 0; let all = []; let yerr = null;
+      while (true) {
+        const { data, error } = await sb.from('finance_transactions').select('*')
+          .eq('community_id', CID()).gte('month', y+'-01').lte('month', y+'-12')
+          .order('tx_date', {ascending:true}).order('created_at', {ascending:true})
+          .range(from, from + PAGE - 1);
+        if (error) { yerr = error; break; }
+        all = all.concat(data || []);
+        if (!data || data.length < PAGE) break;
+        from += PAGE;
+      }
+      if (yerr) {
+        if (schoolTableMissing(yerr)) return schoolSetupNeeded(yerr, 'db/재정_입출금_DB설치.sql');
+        main.innerHTML = finTabBar() + `<div style="color:#b91c1c;padding:30px;text-align:center;font-size:13px">${t('불러오기 실패: ','Failed to load: ')}${escHtml(yerr.message||'')}</div>`;
         return;
       }
-      ledgerYearTx = data || [];
+      ledgerYearTx = all;
       await ledgerHealCategories(ledgerYearTx);
       ledgerRenderYear();
       return;
