@@ -11201,7 +11201,7 @@ let finTab = 'tuition';      // 재정 허브 하위탭: 'tuition' | 'allowance'
 function setFinTab(t) { finTab = t; renderTuitionHub(); }
 function finTabBar() {
   const t = (id,icon,label) => `<button onclick="setFinTab('${id}')" style="height:36px;padding:0 16px;border:none;border-radius:9px;font:700 13px var(--font);cursor:pointer;background:${finTab===id?'#1d3a5f':'transparent'};color:${finTab===id?'#fff':'var(--ink2)'}">${icon} ${label}</button>`;
-  return `<div style="display:inline-flex;gap:3px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:4px;margin-bottom:16px">${t('tuition','💰',window.t('학비','Tuition'))}${t('allowance','🐷',window.t('용돈','Allowance'))}${t('deposit','🏦',window.t('예치금','Deposit'))}</div>`;
+  return `<div style="display:inline-flex;gap:3px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:4px;margin-bottom:16px;flex-wrap:wrap">${t('tuition','💰',window.t('학비','Tuition'))}${t('allowance','🐷',window.t('용돈','Allowance'))}${t('deposit','🏦',window.t('예치금','Deposit'))}${t('ledger','📒',window.t('입출금','Cash Book'))}</div>`;
 }
 function finGroupChips() {
   const chip = (id,label) => { const on = id==='all'?tuiGroups.size===0:tuiGroups.has(id); const oc = id==='all'?'tuiClearGroups()':`tuiToggleGroup('${id}')`;
@@ -11415,6 +11415,7 @@ async function renderTuitionHub() {
   const main = document.getElementById('school-main');
   if (finTab === 'allowance') return renderFinBalances('allowance');
   if (finTab === 'deposit')   return renderFinBalances('deposit');
+  if (finTab === 'ledger')    return renderLedgerHub();
   main.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink3);font-size:13px">'+t('불러오는 중...','Loading...')+'</div>';
   try { await loadTuition(); }
   catch(e) {
@@ -11423,6 +11424,324 @@ async function renderTuitionHub() {
     return;
   }
   renderTuition();
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  재정 · 입출금(거래내역) — 은행 엑셀 업로드 + 자동분류 + 월별 관리
+// ══════════════════════════════════════════════════════════════════
+const FIN_TX_INCOME_CATS = ['Students\' Living Cost Donation','Special Donations','Moving Donations','Church Donations','Scholarships','Repayment'];
+const FIN_TX_EXPENSE_CATS = ['Grocery','Fuel (Oil)','Eating Out','Housing fee','Utilities','Monthly payment','Office&School Supply','Auto Payment','Auto Insurance','Car Maintenance','EZ Pass','Travel','Air Fair','Activity','Basic necessities','Build up Project','Books/Christian Education','MultiMedia Supply','Staff Wage','MJ Wage','Kitchen Supply','Local Mission','CPA','Credit Card','Misc. Exp.'];
+const FIN_TX_CATEGORIES = [...FIN_TX_INCOME_CATS, ...FIN_TX_EXPENSE_CATS];
+
+// 설명(Description) 키워드 → 분류 (지출)
+const FIN_TX_RULES = [
+  [/FUEL|SUNOCO|BUC-?EE|EXXON|SHELL|CHEVRON|VALERO|QUIKTRIP|RACEWAY|GAS #|GAS#|H-E-B GAS|HEB GAS|KROGER FUEL/i,'Fuel (Oil)'],
+  [/KROGER|COSTCO|SAM'?S ?CLUB|SAMSCLUB|WM SUPERCENTER|WALMART SUPERCENTER|H-E-B|HEB|ALDI|TRADER JOE|FOOD MARKET|BCS FOOD|GROCER|SUPERMARKET/i,'Grocery'],
+  [/MCDONALD|CHICKEN|BBQ|RESTAURANT|CAFE|STARBUCKS|CHICK-?FIL|PIZZA|TACO|BURGER|SUSHI|GRILL|DABB|DINER|KOREAN BBQ|CHIPOTLE|PANDA|SONIC|WHATABURGER/i,'Eating Out'],
+  [/FIFTEEN12|APARTMENT|LEASING|\bRENT\b/i,'Housing fee'],
+  [/UTILIT|BRYAN TEXAS UTIL|ELECTRIC|\bWATER\b|ATMOS|TXU|GAS COMPANY|BTU /i,'Utilities'],
+  [/VERIZON|AT&?T|T-?MOBILE|GOOGLE|ANTHROPIC|NETFLIX|ADOBE|SPOTIFY|MICROSOFT|APPLE\.COM|ZOOM|PURE WATER|OPENAI|CLAUDE|SUBSCRIPTION|MONTHLY/i,'Monthly payment'],
+  [/WALMART\.COM|COLLEGEBOARD|STAPLES|OFFICE DEPOT|OFFICEMAX|SCHOOL SUPPLY/i,'Office&School Supply'],
+  [/PROPRESENTER|MULTIMEDIA|BEST BUY|B&H PHOTO/i,'MultiMedia Supply'],
+  [/CREDITACCEPTANCE|CREDIT ACCEPTANCE|\bCAC\b|AUTO PAYMENT|CAR PAYMENT/i,'Auto Payment'],
+  [/EZ ?PASS|\bTOLL\b|NTTA|TXTAG|EZTAG/i,'EZ Pass'],
+  [/INSURANCE|GEICO|PROGRESSIVE|STATE FARM|ALLSTATE/i,'Auto Insurance'],
+  [/BARNES ?& ?NOBLE|BOOKSTORE|CHRISTIAN BOOK/i,'Books/Christian Education'],
+  [/LAUNDRY|PHARMACY|CVS|WALGREENS|BASIC/i,'Basic necessities'],
+  [/AIRLINE|DELTA AIR|AMERICAN AIR|UNITED AIR|SOUTHWEST|EXPEDIA|AIR FAIR|AIRFARE/i,'Air Fair'],
+];
+function classifyTx(desc, amount) {
+  const d = (desc || '').toString();
+  if ((amount || 0) > 0) {
+    if (/FEDWIRE|WIRE|INTERNATIONAL MISSION|B\/O:/i.test(d)) return 'Students\' Living Cost Donation';
+    if (/ZELLE PAYMENT FROM|TRANSFER FROM|FROM CHK|FROM GMR/i.test(d)) return 'Special Donations';
+    return 'Special Donations';
+  }
+  for (const [re, cat] of FIN_TX_RULES) if (re.test(d)) return cat;
+  return 'Misc. Exp.';
+}
+
+// SheetJS(xlsx) 지연 로드
+let _xlsxLoading = null;
+function loadXLSX() {
+  if (window.XLSX) return Promise.resolve(window.XLSX);
+  if (_xlsxLoading) return _xlsxLoading;
+  _xlsxLoading = new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+    s.onload = () => res(window.XLSX);
+    s.onerror = () => rej(new Error('XLSX 로드 실패'));
+    document.head.appendChild(s);
+  });
+  return _xlsxLoading;
+}
+
+let ledgerMonth = null;      // 'YYYY-MM'
+let ledgerTx = [];
+function ledgerCurMonth() { if (!ledgerMonth) { const d = new Date(); ledgerMonth = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'); } return ledgerMonth; }
+function fmtUsd(n) { const v = Number(n)||0; return (v<0?'-':'') + '$' + Math.abs(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function ledgerShiftMonth(delta) {
+  const [y,m] = ledgerCurMonth().split('-').map(Number);
+  const d = new Date(y, m-1+delta, 1);
+  ledgerMonth = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+  renderLedgerHub();
+}
+
+async function renderLedgerHub() {
+  const main = document.getElementById('school-main');
+  main.innerHTML = finTabBar() + '<div style="text-align:center;padding:40px;color:var(--ink3);font-size:13px">'+t('불러오는 중...','Loading...')+'</div>';
+  const month = ledgerCurMonth();
+  try {
+    const { data, error } = await sb.from('finance_transactions').select('*')
+      .eq('community_id', CID()).eq('month', month)
+      .order('tx_date', {ascending:true}).order('created_at', {ascending:true});
+    if (error) {
+      if (schoolTableMissing(error)) return schoolSetupNeeded(error, 'db/재정_입출금_DB설치.sql');
+      main.innerHTML = finTabBar() + `<div style="color:#b91c1c;padding:30px;text-align:center;font-size:13px">${t('불러오기 실패: ','Failed to load: ')}${escHtml(error.message||'')}</div>`;
+      return;
+    }
+    ledgerTx = data || [];
+  } catch(e) { ledgerTx = []; }
+  ledgerRenderInto();
+}
+
+function ledgerRenderInto() {
+  const main = document.getElementById('school-main');
+  const month = ledgerCurMonth();
+  const income = ledgerTx.filter(x => Number(x.amount) > 0).reduce((s,x)=>s+Number(x.amount),0);
+  const expense = ledgerTx.filter(x => Number(x.amount) < 0).reduce((s,x)=>s+Number(x.amount),0);
+  const net = income + expense;
+  const catOpts = (sel) => FIN_TX_CATEGORIES.map(c => `<option value="${escAttr(c)}" ${sel===c?'selected':''}>${escHtml(c)}</option>`).join('');
+  const [yy,mm] = month.split('-');
+  const monthLabel = APP_LANG==='en' ? new Date(+yy,+mm-1,1).toLocaleDateString('en-US',{month:'long',year:'numeric'}) : `${yy}년 ${+mm}월`;
+
+  const rows = ledgerTx.length ? ledgerTx.map(x => {
+    const amt = Number(x.amount)||0; const isIn = amt >= 0;
+    const isCustom = x.category && !FIN_TX_CATEGORIES.includes(x.category);
+    return `<tr style="border-bottom:1px solid var(--bs)">
+      <td style="padding:7px 8px;font-size:12px;color:var(--ink2);white-space:nowrap">${x.tx_date||''}</td>
+      <td style="padding:7px 8px;font-size:12.5px;color:var(--ink);max-width:340px;word-break:break-word">${escHtml((x.description||'').slice(0,180))}</td>
+      <td style="padding:7px 8px;text-align:right;font-size:12.5px;font-weight:700;white-space:nowrap;color:${isIn?'#15803d':'#dc2626'}">${fmtUsd(amt)}</td>
+      <td style="padding:7px 8px">
+        <select onchange="ledgerUpdateCategory('${x.id}',this.value)" style="height:30px;max-width:170px;padding:0 8px;border:1.5px solid var(--border);border-radius:8px;font:12px var(--font);background:white;cursor:pointer">
+          ${isCustom?`<option value="${escAttr(x.category)}" selected>${escHtml(x.category)}</option>`:''}
+          ${catOpts(x.category)}
+        </select>
+      </td>
+      <td style="padding:7px 4px;text-align:center"><button onclick="ledgerDeleteTx('${x.id}')" title="${t('삭제','Delete')}" style="width:26px;height:26px;border:none;background:transparent;color:var(--ink3);cursor:pointer;font-size:13px;border-radius:6px" onmouseover="this.style.background='#FEE2E2';this.style.color='#dc2626'" onmouseout="this.style.background='';this.style.color='var(--ink3)'">✕</button></td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="5" style="padding:26px;text-align:center;color:var(--ink3);font-size:13px">${t('이 달의 거래내역이 없어요. 은행 엑셀을 올리거나 직접 추가하세요.','No transactions this month. Upload a bank Excel or add one manually.')}</td></tr>`;
+
+  main.innerHTML = finTabBar() + `<div style="max-width:920px">
+    <!-- 월 이동 + 요약 -->
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <button onclick="ledgerShiftMonth(-1)" style="width:32px;height:32px;border:1.5px solid var(--border);background:white;border-radius:9px;cursor:pointer;font-size:15px">‹</button>
+        <div style="font-size:16px;font-weight:800;color:var(--adeep);min-width:120px;text-align:center">${monthLabel}</div>
+        <button onclick="ledgerShiftMonth(1)" style="width:32px;height:32px;border:1.5px solid var(--border);background:white;border-radius:9px;cursor:pointer;font-size:15px">›</button>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <label style="height:36px;padding:0 14px;border-radius:9px;border:none;background:#1d3a5f;color:#fff;font:700 13px var(--font);cursor:pointer;display:inline-flex;align-items:center;gap:6px">📤 ${t('은행 엑셀/CSV 올리기','Upload Bank Excel/CSV')}
+          <input type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="ledgerPickFile(this)"/></label>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">
+      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:12px 14px"><div style="font-size:11.5px;color:#15803d;font-weight:700">${t('수입(입금)','Income')}</div><div style="font-size:18px;font-weight:800;color:#15803d">${fmtUsd(income)}</div></div>
+      <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:12px;padding:12px 14px"><div style="font-size:11.5px;color:#dc2626;font-weight:700">${t('지출(출금)','Expense')}</div><div style="font-size:18px;font-weight:800;color:#dc2626">${fmtUsd(expense)}</div></div>
+      <div style="background:var(--s2);border:1px solid var(--border);border-radius:12px;padding:12px 14px"><div style="font-size:11.5px;color:var(--ink3);font-weight:700">${t('순액(합계)','Net')}</div><div style="font-size:18px;font-weight:800;color:${net>=0?'#15803d':'#dc2626'}">${fmtUsd(net)}</div></div>
+    </div>
+
+    <!-- 직접 추가 -->
+    <div class="adm-card" style="margin-bottom:16px">
+      <div style="font-size:12.5px;font-weight:700;color:var(--adeep);margin-bottom:10px">➕ ${t('직접 추가','Add manually')}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <input id="lg-date" type="date" value="${month}-01" style="height:36px;padding:0 10px;border:1.5px solid var(--border);border-radius:9px;font:13px var(--font)"/>
+        <select id="lg-sign" style="height:36px;padding:0 10px;border:1.5px solid var(--border);border-radius:9px;font:13px var(--font);background:white;cursor:pointer">
+          <option value="expense">${t('지출(-)','Expense (-)')}</option>
+          <option value="income">${t('수입(+)','Income (+)')}</option>
+        </select>
+        <input id="lg-amount" type="number" step="0.01" placeholder="${t('금액','Amount')}" style="width:120px;height:36px;padding:0 10px;border:1.5px solid var(--border);border-radius:9px;font:13px var(--font)"/>
+        <input id="lg-desc" placeholder="${t('설명 (Description)','Description')}" style="flex:1;min-width:160px;height:36px;padding:0 10px;border:1.5px solid var(--border);border-radius:9px;font:13px var(--font)"/>
+        <select id="lg-cat" style="height:36px;padding:0 10px;border:1.5px solid var(--border);border-radius:9px;font:13px var(--font);background:white;cursor:pointer">${catOpts('')}</select>
+        <button onclick="ledgerAddTx()" style="height:36px;padding:0 16px;border:none;background:var(--sage);color:#fff;border-radius:9px;font:700 13px var(--font);cursor:pointer">${t('추가','Add')}</button>
+      </div>
+    </div>
+
+    <!-- 거래 목록 -->
+    <div class="adm-card" style="padding:0;overflow:hidden">
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;min-width:560px">
+          <thead><tr style="background:var(--s2)">
+            <th style="padding:9px 8px;text-align:left;font-size:11.5px;color:var(--ink3);font-weight:700">${t('날짜','Date')}</th>
+            <th style="padding:9px 8px;text-align:left;font-size:11.5px;color:var(--ink3);font-weight:700">${t('설명','Description')}</th>
+            <th style="padding:9px 8px;text-align:right;font-size:11.5px;color:var(--ink3);font-weight:700">${t('금액','Amount')}</th>
+            <th style="padding:9px 8px;text-align:left;font-size:11.5px;color:var(--ink3);font-weight:700">${t('분류','Category')}</th>
+            <th style="padding:9px 4px;width:34px"></th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>
+    <div style="font-size:11px;color:var(--ink3);margin-top:8px;line-height:1.6">${t('※ 은행 파일에 Posting Date · Description · Amount 열이 있으면 자동으로 인식·분류해 저장해요. 지난 엑셀(월별 시트) 전체도 한 번에 가져올 수 있어요.','※ If the bank file has Posting Date · Description · Amount columns, they are auto-detected, classified, and saved. You can also import your whole past workbook (monthly sheets) at once.')} · ${ledgerTx.length}${t('건',' items')}</div>
+  </div>`;
+}
+
+async function ledgerAddTx() {
+  const date = document.getElementById('lg-date').value;
+  const sign = document.getElementById('lg-sign').value;
+  let amt = parseFloat(document.getElementById('lg-amount').value);
+  const desc = (document.getElementById('lg-desc').value||'').trim();
+  const cat = document.getElementById('lg-cat').value;
+  if (!date || isNaN(amt)) { showUploadToast(t('날짜와 금액을 입력하세요','Enter date and amount')); return; }
+  amt = Math.abs(amt) * (sign==='income' ? 1 : -1);
+  const month = date.slice(0,7);
+  const { error } = await sb.from('finance_transactions').insert({
+    community_id: CID(), tx_date: date, month, description: desc, amount: amt,
+    category: cat, source: 'manual', created_by: ME.id, created_by_name: ME.name,
+  });
+  if (error) { showUploadToast(t('추가 실패: ','Add failed: ') + error.message); return; }
+  document.getElementById('lg-amount').value = ''; document.getElementById('lg-desc').value = '';
+  ledgerMonth = month;
+  renderLedgerHub();
+}
+async function ledgerDeleteTx(id) {
+  const { error } = await sb.from('finance_transactions').delete().eq('id', id);
+  if (error) { showUploadToast(t('삭제 실패','Delete failed')); return; }
+  ledgerTx = ledgerTx.filter(x => x.id !== id);
+  ledgerRenderInto();
+}
+async function ledgerUpdateCategory(id, val) {
+  const { error } = await sb.from('finance_transactions').update({ category: val }).eq('id', id);
+  if (error) { showUploadToast(t('변경 실패','Update failed')); return; }
+  const it = ledgerTx.find(x => x.id === id); if (it) it.category = val;
+}
+
+// 업로드 파일 파싱 (은행 엑셀/CSV + 지난 월별 리포트 양식 모두 대응)
+function _xlDate(v) {
+  if (v == null || v === '') return null;
+  if (v instanceof Date && !isNaN(v)) return v;
+  if (typeof v === 'number') { const d = new Date(Math.round((v - 25569) * 86400 * 1000)); return isNaN(d)?null:d; }
+  const s = String(v).trim();
+  let m = s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/); if (m) return new Date(+m[1],+m[2]-1,+m[3]);
+  m = s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})/); if (m) { let y=+m[3]; if(y<100)y+=2000; return new Date(y,+m[1]-1,+m[2]); }
+  const d = new Date(s); return isNaN(d)?null:d;
+}
+function _monthFromSheet(name) {
+  const M = {jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
+  const m = String(name||'').match(/(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s*(\d{4})/i);
+  if (m) return m[2] + '-' + String(M[m[1].toLowerCase()]).padStart(2,'0');
+  return null;
+}
+let ledgerPending = [];
+async function ledgerPickFile(input) {
+  const file = input.files && input.files[0]; if (!file) return;
+  input.value = '';
+  if (/\.pdf$/i.test(file.name)) { showUploadToast(t('PDF는 은행마다 형식이 달라 인식이 어려워요. 은행에서 Excel/CSV로 받아 올려주세요.','PDF layouts vary by bank. Please download Excel/CSV from your bank instead.')); return; }
+  showUploadToast(t('파일 분석 중...','Reading file...'));
+  let XLSX;
+  try { XLSX = await loadXLSX(); } catch(e) { showUploadToast(t('엑셀 라이브러리 로드 실패 (인터넷 연결 확인)','Failed to load spreadsheet library')); return; }
+  try {
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type:'array', cellDates:true });
+    const out = [];
+    wb.SheetNames.forEach(sheetName => {
+      const ws = wb.Sheets[sheetName]; if (!ws) return;
+      const aoa = XLSX.utils.sheet_to_json(ws, { header:1, raw:true, defval:null });
+      // 헤더행 찾기 (Description + Amount 포함)
+      let hdrIdx = -1, cols = null;
+      for (let i=0; i<Math.min(aoa.length, 15); i++) {
+        const row = (aoa[i]||[]).map(c => String(c==null?'':c).trim().toLowerCase());
+        const desc = row.findIndex(c => c==='description' || c==='memo' || c==='설명');
+        const amts = row.map((c,idx)=>({c,idx})).filter(o => o.c==='amount' || o.c==='금액' || o.c==='debit' || o.c==='credit').map(o=>o.idx);
+        if (desc >= 0 && amts.length) {
+          hdrIdx = i;
+          cols = {
+            cat: row.findIndex(c => c==='category' || c==='분류'),
+            date: row.findIndex(c => c.includes('posting date') || c==='date' || c==='날짜' || c==='transaction date' || c.includes('date')),
+            desc, amts,
+          };
+          break;
+        }
+      }
+      if (hdrIdx < 0) return;
+      const sheetMonth = _monthFromSheet(sheetName);
+      for (let i=hdrIdx+1; i<aoa.length; i++) {
+        const row = aoa[i] || [];
+        const description = String(row[cols.desc]==null?'':row[cols.desc]).trim();
+        let amount = 0; cols.amts.forEach(ci => { const n = parseFloat(String(row[ci]).replace(/[$,]/g,'')); if (!isNaN(n)) amount += n; });
+        if (!description && !amount) continue;
+        if (/^(category|posting date|description|amount)$/i.test(description)) continue;
+        const dObj = cols.date >= 0 ? _xlDate(row[cols.date]) : null;
+        let month = dObj ? (dObj.getFullYear()+'-'+String(dObj.getMonth()+1).padStart(2,'0')) : sheetMonth;
+        let tx_date = dObj ? (dObj.getFullYear()+'-'+String(dObj.getMonth()+1).padStart(2,'0')+'-'+String(dObj.getDate()).padStart(2,'0')) : (sheetMonth ? sheetMonth+'-01' : null);
+        // 시트명이 월을 명시하면 우선(과거 리포트의 날짜 오기입 대응)
+        if (sheetMonth) { month = sheetMonth; if (!dObj || tx_date.slice(0,7)!==sheetMonth) tx_date = sheetMonth + '-' + (dObj?String(dObj.getDate()).padStart(2,'0'):'01'); }
+        if (!month) continue;
+        let category = cols.cat >= 0 ? String(row[cols.cat]==null?'':row[cols.cat]).trim() : '';
+        if (!category || category.toLowerCase()==='none') category = classifyTx(description, amount);
+        out.push({ tx_date, month, description, amount, category });
+      }
+    });
+    if (!out.length) { showUploadToast(t('인식할 거래가 없어요. Posting Date · Description · Amount 열을 확인해주세요.','No transactions found. Check for Posting Date · Description · Amount columns.')); return; }
+    ledgerPending = out;
+    ledgerShowImportPreview(out);
+  } catch(e) { showUploadToast(t('분석 실패: ','Parse failed: ') + (e.message||e)); }
+}
+
+function ledgerShowImportPreview(rows) {
+  document.querySelectorAll('.ledger-import-modal').forEach(x=>x.remove());
+  const byMonth = {}; rows.forEach(r => { byMonth[r.month] = (byMonth[r.month]||0)+1; });
+  const income = rows.filter(r=>r.amount>0).reduce((s,r)=>s+r.amount,0);
+  const expense = rows.filter(r=>r.amount<0).reduce((s,r)=>s+r.amount,0);
+  const months = Object.keys(byMonth).sort();
+  const modal = document.createElement('div');
+  modal.className = 'ledger-import-modal';
+  modal.style.cssText = 'position:fixed;inset:0;z-index:260;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px';
+  modal.onclick = (e)=>{ if(e.target===modal) modal.remove(); };
+  const sample = rows.slice(0,6).map(r => `<div style="display:flex;gap:8px;font-size:11.5px;padding:4px 0;border-bottom:1px solid var(--bs)"><span style="color:var(--ink3);white-space:nowrap">${r.tx_date||r.month}</span><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(r.description.slice(0,50))}</span><span style="font-weight:700;color:${r.amount>=0?'#15803d':'#dc2626'};white-space:nowrap">${fmtUsd(r.amount)}</span><span style="color:#6d28d9;white-space:nowrap">${escHtml(r.category)}</span></div>`).join('');
+  modal.innerHTML = `<div style="background:var(--surface);border-radius:18px;width:520px;max-width:94vw;max-height:84vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.25)">
+    <div style="padding:16px 18px;border-bottom:1px solid var(--border);font-size:15px;font-weight:800">📥 ${t('가져오기 미리보기','Import preview')}</div>
+    <div style="padding:16px 18px;overflow-y:auto;flex:1">
+      <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+        <span style="font-size:12px;font-weight:700;background:var(--s2);border-radius:8px;padding:5px 10px">${t('총','Total')} ${rows.length}${t('건',' items')}</span>
+        <span style="font-size:12px;font-weight:700;background:#f0fdf4;color:#15803d;border-radius:8px;padding:5px 10px">${t('수입','Income')} ${fmtUsd(income)}</span>
+        <span style="font-size:12px;font-weight:700;background:#fef2f2;color:#dc2626;border-radius:8px;padding:5px 10px">${t('지출','Expense')} ${fmtUsd(expense)}</span>
+      </div>
+      <div style="font-size:12px;color:var(--ink3);margin-bottom:8px">${t('월별','By month')}: ${months.map(m=>`${m} (${byMonth[m]})`).join(' · ')}</div>
+      <div style="border:1px solid var(--border);border-radius:10px;padding:8px 12px;margin-bottom:6px">${sample}${rows.length>6?`<div style="font-size:11px;color:var(--ink3);text-align:center;padding-top:6px">… ${t('외','and')} ${rows.length-6}${t('건',' more')}</div>`:''}</div>
+      <div style="font-size:11px;color:var(--ink3);line-height:1.6">${t('분류는 자동 추정된 값이에요. 가져온 뒤 목록에서 각 항목의 분류를 바꿀 수 있어요.','Categories are auto-estimated. You can change each one in the list after importing.')}</div>
+    </div>
+    <div style="padding:12px 16px;border-top:1px solid var(--border);display:flex;gap:8px">
+      <button onclick="this.closest('.ledger-import-modal').remove()" style="flex:1;height:44px;border-radius:11px;border:none;background:var(--s3);color:var(--ink2);font:600 14px var(--font);cursor:pointer">${t('취소','Cancel')}</button>
+      <button id="lg-import-btn" onclick="ledgerImport()" style="flex:2;height:44px;border-radius:11px;border:none;background:#1d3a5f;color:#fff;font:700 14px var(--font);cursor:pointer">${t('가져오기','Import')} ${rows.length}${t('건',' items')}</button>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+}
+
+async function ledgerImport() {
+  const rows = ledgerPending || []; if (!rows.length) return;
+  const btn = document.getElementById('lg-import-btn'); if (btn) { btn.disabled = true; btn.textContent = t('가져오는 중...','Importing...'); }
+  const payload = rows.map(r => ({
+    community_id: CID(), tx_date: r.tx_date, month: r.month, description: r.description,
+    amount: r.amount, category: r.category, source: 'import', created_by: ME.id, created_by_name: ME.name,
+  }));
+  let ok = 0, fail = 0;
+  for (let i=0; i<payload.length; i+=400) {
+    const chunk = payload.slice(i, i+400);
+    const { error } = await sb.from('finance_transactions').insert(chunk);
+    if (error) { fail += chunk.length; } else { ok += chunk.length; }
+    if (btn) btn.textContent = t(`가져오는 중... ${Math.min(i+400,payload.length)}/${payload.length}`, `Importing... ${Math.min(i+400,payload.length)}/${payload.length}`);
+  }
+  ledgerPending = [];
+  document.querySelector('.ledger-import-modal')?.remove();
+  showUploadToast(fail ? t(`${ok}건 완료, ${fail}건 실패`, `${ok} imported, ${fail} failed`) : t(`✅ ${ok}건을 가져왔어요`, `✅ Imported ${ok} items`));
+  // 가장 많은 달로 이동
+  const byMonth = {}; rows.forEach(r => { byMonth[r.month] = (byMonth[r.month]||0)+1; });
+  const top = Object.keys(byMonth).sort((a,b)=>byMonth[b]-byMonth[a])[0];
+  if (top) ledgerMonth = top;
+  renderLedgerHub();
 }
 
 // (student_id, month) → 납부 기록(있으면)
