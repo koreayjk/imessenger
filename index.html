@@ -226,6 +226,9 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
 }
 .mine .bubble { background: var(--asoft); color: var(--adeep); border-top-left-radius: 16px; border-top-right-radius: 4px; }
 .bubble.poll-bubble, .mine .bubble.poll-bubble { background: transparent !important; padding: 0 !important; border-radius: 0; white-space: normal; }
+#announce-bar { flex-shrink: 0; }
+.announce-text { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; white-space: pre-wrap; word-break: break-word; }
+.announce-text.expanded { -webkit-line-clamp: unset; display: block; overflow: visible; }
 .msg-row + .msg-row.same-sender { padding-top: 1px; }
 .msg-row.same-sender .msg-avatar { visibility: hidden; }
 .msg-row.same-sender .msg-meta { display: none; }
@@ -825,6 +828,8 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
           <!-- To-Do 목록 -->
           <div id="todo-list" style="padding:0 20px 14px"></div>
         </div>
+        <!-- 공지글(고정) 배너 -->
+        <div id="announce-bar" style="display:none"></div>
         <div id="msg-area"></div>
         <div id="composer" style="position:relative">
           <!-- @멘션 자동완성 -->
@@ -2484,6 +2489,14 @@ async function openChannel(id) {
   document.getElementById('ch-name').textContent = currentChannel.name;
   document.getElementById('ch-desc').textContent = currentChannel.description || '';
 
+  // 공지글(고정) 배너 — 최신값 반영 후 렌더
+  _announceExpanded = false;
+  try {
+    const { data: chRow } = await sb.from('channels').select('announce_text,announce_name,announce_msg_id,announce_by,announce_at').eq('id', id).single();
+    if (chRow) { Object.assign(currentChannel, chRow); const ci = channels.find(c=>c.id===id); if (ci) Object.assign(ci, chRow); }
+  } catch(e) {}
+  renderAnnouncement();
+
   // 멤버 패널 업데이트 (DM이면 해당 멤버만)
   renderMembers();
 
@@ -2555,6 +2568,14 @@ async function openChannel(id) {
     .on('postgres_changes', { event:'UPDATE', schema:'public', table:'messages', filter:`channel_id=eq.${id}` },
       (payload) => {
         if (payload.new && payload.new.kind === 'poll') { pollMsgCache[payload.new.id] = payload.new; rerenderPoll(payload.new.id); }
+      })
+    .on('postgres_changes', { event:'UPDATE', schema:'public', table:'channels', filter:`id=eq.${id}` },
+      (payload) => {
+        if (!payload.new || !currentChannel || currentChannel.id !== id) return;
+        const cur = currentChannel.announce_text || '', next = payload.new.announce_text || '';
+        Object.assign(currentChannel, payload.new);
+        const ci = channels.find(c=>c.id===id); if (ci) Object.assign(ci, payload.new);
+        if (cur !== next || (currentChannel.announce_at||'') !== (payload.new.announce_at||'')) { _announceExpanded = false; renderAnnouncement(); }
       })
     .subscribe();
 }
@@ -2748,6 +2769,9 @@ function msgHtml(m, prev, readMap={}) {
       ${(m.kind !== 'file' && m.kind !== 'poll') ? `<div onclick="copyMsgText('${m.id}')" title="전체 복사"
         style="width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:13px"
         onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background=''">📋</div>` : ''}
+      ${(canManageAnnounce() && m.kind !== 'file' && m.kind !== 'poll') ? `<div onclick="setAnnouncement('${m.id}')" title="${t('공지로 등록','Pin as notice')}"
+        style="width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:13px"
+        onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background=''">📢</div>` : ''}
       ${m.kind !== 'poll' ? `<div onclick="startReply('${m.id}','${escAttr(m.text)}','${escAttr(sender.name)}')" title="답장"
         style="width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px"
         onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background=''">↩️</div>` : ''}
@@ -3039,6 +3063,108 @@ function copyMsgText(id) {
   };
   if (navigator.clipboard?.writeText) navigator.clipboard.writeText(txt).then(done).catch(fallback);
   else fallback();
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  채팅 공지글(고정) — 간사 이상만 등록/해제, 상단 2줄 고정 + 더보기
+// ══════════════════════════════════════════════════════════════════
+function canManageAnnounce() { return ME && !isStudentMember(ME); }   // 학생 제외 = 간사 이상
+
+let _announceExpanded = false;
+
+// 메시지를 공지로 등록
+async function setAnnouncement(msgId) {
+  if (!currentChannel) return;
+  if (!canManageAnnounce()) { showUploadToast(t('공지 등록 권한이 없어요 (간사 이상)','Only staff and above can pin notices')); return; }
+  // 메시지 내용 확보 (DOM 우선, 없으면 DB)
+  let text = '', name = '';
+  const bubble = document.querySelector(`[data-id="${msgId}"] .bubble`);
+  if (bubble) text = (bubble.innerText || '').trim();
+  const nameEl = document.querySelector(`[data-id="${msgId}"] .msg-meta .name`);
+  if (nameEl) name = (nameEl.innerText || '').trim();
+  if (!text || !name) {
+    try {
+      const { data } = await sb.from('messages').select('text,sender_name,kind').eq('id', msgId).single();
+      if (data) { if (!text) text = (data.kind==='file'||data.kind==='poll') ? '' : (data.text||''); if (!name) name = data.sender_name || ''; }
+    } catch(e) {}
+  }
+  text = (text||'').trim();
+  if (!text) { showUploadToast(t('공지로 만들 텍스트가 없어요','No text to pin')); return; }
+
+  const patch = { announce_text: text, announce_name: name, announce_msg_id: msgId, announce_by: ME.id, announce_at: new Date().toISOString() };
+  const { error } = await sb.from('channels').update(patch).eq('id', currentChannel.id);
+  if (error) {
+    if (/announce_/.test(error.message||'') || /column/.test(error.message||'')) { showUploadToast(t('공지 기능 DB 설치가 필요해요 (db/채팅_공지_DB설치.sql)','Notice DB not installed (db/채팅_공지_DB설치.sql)')); return; }
+    showUploadToast(t('공지 등록 실패: ','Failed: ') + (error.message||'')); return;
+  }
+  Object.assign(currentChannel, patch);
+  const ch = channels.find(c => c.id === currentChannel.id); if (ch) Object.assign(ch, patch);
+  _announceExpanded = false;
+  renderAnnouncement();
+  showUploadToast(t('📢 공지로 등록했어요','📢 Pinned as notice'));
+}
+
+// 공지 해제
+async function clearAnnouncement() {
+  if (!currentChannel) return;
+  if (!canManageAnnounce()) { showUploadToast(t('공지 해제 권한이 없어요','No permission')); return; }
+  if (!confirm(t('상단 공지를 해제할까요?','Remove the pinned notice?'))) return;
+  const patch = { announce_text: null, announce_name: null, announce_msg_id: null, announce_by: null, announce_at: null };
+  const { error } = await sb.from('channels').update(patch).eq('id', currentChannel.id);
+  if (error) { showUploadToast(t('해제 실패: ','Failed: ') + (error.message||'')); return; }
+  Object.assign(currentChannel, patch);
+  const ch = channels.find(c => c.id === currentChannel.id); if (ch) Object.assign(ch, patch);
+  renderAnnouncement();
+}
+
+function toggleAnnounceExpand() {
+  _announceExpanded = !_announceExpanded;
+  renderAnnouncement();
+}
+
+// 공지 배너 렌더
+function renderAnnouncement() {
+  const bar = document.getElementById('announce-bar');
+  if (!bar || !currentChannel) return;
+  const text = (currentChannel.announce_text || '').trim();
+  if (!text) { bar.style.display = 'none'; bar.innerHTML = ''; return; }
+  const name = currentChannel.announce_name || '';
+  const when = currentChannel.announce_at ? fmtAnnounceDate(currentChannel.announce_at) : '';
+  const canManage = canManageAnnounce();
+  bar.style.display = 'block';
+  bar.innerHTML = `
+    <div style="background:linear-gradient(0deg,var(--surface),var(--surface)),rgba(240,180,41,.10);background-blend-mode:normal;border-bottom:1px solid var(--border);padding:9px 14px">
+      <div style="display:flex;align-items:flex-start;gap:9px;max-width:100%">
+        <div style="font-size:15px;line-height:1.5;flex-shrink:0">📢</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:10.5px;font-weight:800;color:#B45309;letter-spacing:.3px;margin-bottom:2px">${t('공지','NOTICE')}${name?` · <span style="color:var(--ink3);font-weight:600">${escHtml(name)}${when?' · '+when:''}</span>`:''}</div>
+          <div id="announce-text" class="announce-text${_announceExpanded?' expanded':''}" style="font-size:12.5px;color:var(--ink);line-height:1.55">${escHtml(text)}</div>
+          <div style="display:flex;gap:12px;margin-top:3px">
+            <span id="announce-more" onclick="toggleAnnounceExpand()" style="display:none;font-size:11.5px;font-weight:700;color:var(--accent);cursor:pointer">${_announceExpanded?t('접기','Show less'):t('더보기','See more')}</span>
+          </div>
+        </div>
+        ${canManage ? `<div onclick="clearAnnouncement()" title="${t('공지 해제','Remove notice')}" style="flex-shrink:0;width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--ink3);font-size:14px" onmouseover="this.style.background='rgba(0,0,0,.06)'" onmouseout="this.style.background=''">✕</div>` : ''}
+      </div>
+    </div>`;
+  // 2줄 넘으면 더보기 표시 (측정 가능하면 실제 넘침 기준, 아니면 길이 휴리스틱)
+  requestAnimationFrame(() => {
+    const el = document.getElementById('announce-text');
+    const more = document.getElementById('announce-more');
+    if (!el || !more) return;
+    if (_announceExpanded) { more.style.display = 'inline'; return; }
+    let overflow;
+    if (el.clientHeight > 0) overflow = el.scrollHeight > el.clientHeight + 2;
+    else overflow = (text.length > 46) || ((text.match(/\n/g)||[]).length >= 2);   // 숨김 상태 폴백
+    more.style.display = overflow ? 'inline' : 'none';
+  });
+}
+
+function fmtAnnounceDate(iso) {
+  try {
+    const d = new Date(iso);
+    if (APP_LANG === 'en') return d.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+    return `${d.getMonth()+1}월 ${d.getDate()}일`;
+  } catch(e) { return ''; }
 }
 
 function groupReactions(reactions) {
