@@ -12461,12 +12461,16 @@ function renderTuition() {
     const s = smap[sid];
     const b = payMap[sid] && payMap[sid][mo];
     const paid = b && b.paid;
+    const amtNum = paid ? (Number(b.paid_amount ?? b.amount) || 0) : 0;
+    const exempt = paid && amtNum === 0;   // 0원 = 부재·면제
     const beforeStart = expects(s) && mo < (startM[sid]||1);
-    let bg='transparent', color='var(--ink3)', txt='';
-    if (paid) { bg='#e8f5ee'; color='#15803d'; const d=(b.paid_date||'').slice(5).replace('-','/').replace(/^0/,''); const amt=tuiNum(b.paid_amount ?? b.amount); txt=`<div style="font-size:10.5px;font-weight:800;line-height:1.15">${amt}</div>${d?`<div style="font-size:8px;color:#2a7a5a;font-weight:600">${d}</div>`:''}`; }
-    else if (beforeStart) { bg='var(--s2)'; color='var(--ink3)'; txt=`<span style="opacity:.45">–</span>`; }
+    let bg='transparent', color='var(--ink3)', txt='', ttl='';
+    if (exempt) { bg='var(--s2)'; color='var(--ink3)'; txt=`<span style="font-weight:800">0</span>`; ttl=t('부재·면제 (0원)','Away · exempt (0)'); }
+    else if (paid) { bg='#e8f5ee'; color='#15803d'; const d=(b.paid_date||'').slice(5).replace('-','/').replace(/^0/,''); const amt=tuiNum(amtNum); txt=`<div style="font-size:10.5px;font-weight:800;line-height:1.15">${amt}</div>${d?`<div style="font-size:8px;color:#2a7a5a;font-weight:600">${d}</div>`:''}`; }
+    else if (beforeStart) { bg='var(--s2)'; color='var(--ink3)'; txt=`<span style="opacity:.45">–</span>`; ttl=t('시작 전','Before start'); }
     else if (isPast(mo) && expects(s)) { bg='#fdecea'; color='#c0392b'; txt='·'; }
-    return `<td onclick="openTuiCell('${sid}',${mo})" style="padding:2px 4px;text-align:center;border:1px solid var(--border);cursor:pointer;background:${bg};color:${color};font-weight:700;font-size:11.5px;height:38px;min-width:60px" title="${beforeStart?t('시작 전','Before start'):(TUI_MONTHS.indexOf(mo)>=0?t(mo+'월',TUI_MON_EN[mo]):'')}">${txt}</td>`;
+    if (!ttl) ttl = TUI_MONTHS.indexOf(mo)>=0 ? t(mo+'월',TUI_MON_EN[mo]) : '';
+    return `<td onclick="openTuiCell('${sid}',${mo})" style="padding:2px 4px;text-align:center;border:1px solid var(--border);cursor:pointer;background:${bg};color:${color};font-weight:700;font-size:11.5px;height:38px;min-width:60px" title="${ttl}">${txt}</td>`;
   };
 
   const rows = students.map(s => {
@@ -12576,8 +12580,9 @@ function openTuiCell(sid, mo) {
       <div style="flex:1"><label style="font-size:12px;font-weight:700;color:var(--ink3);display:block;margin-bottom:5px">${t('방법','Method')}</label><select id="tui-c-method" style="${inp}">${['계좌','현금','카드','기타'].map(x=>`<option ${method===x?'selected':''}>${x}</option>`).join('')}</select></div>
     </div>
     <div id="tui-c-err" style="display:none;color:#b91c1c;font-size:12.5px;font-weight:600;margin-bottom:8px"></div>
-    <div style="display:flex;gap:8px;margin-top:6px">
-      ${existing&&existing.paid?`<button onclick="unmarkTuiCell('${existing.id}')" style="height:44px;padding:0 14px;border:1.5px solid #c0392b;background:#fff;color:#c0392b;border-radius:11px;font:700 13px var(--font);cursor:pointer">${t('미납 처리','Mark unpaid')}</button>`:''}
+    <button onclick="saveTuiExempt('${sid}',${mo},'${existing?existing.id:''}')" style="width:100%;height:40px;margin-bottom:8px;border:1.5px solid var(--border);background:var(--s2);color:var(--ink2);border-radius:11px;font:700 13px var(--font);cursor:pointer">0${tuiCur==='$'?'':t('원','')} · ${t('부재·면제 처리 (미납에서 제외)','Away · exempt (excluded from unpaid)')}</button>
+    <div style="display:flex;gap:8px;margin-top:2px">
+      ${existing&&existing.paid?`<button onclick="unmarkTuiCell('${existing.id}')" style="height:44px;padding:0 14px;border:1.5px solid #c0392b;background:#fff;color:#c0392b;border-radius:11px;font:700 13px var(--font);cursor:pointer">${t('지우기','Clear')}</button>`:''}
       <button onclick="document.getElementById('tui-cell-modal').remove()" style="flex:1;height:44px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:11px;font:700 13px var(--font);cursor:pointer">${t('닫기','Close')}</button>
       <button onclick="saveTuiCell('${sid}',${mo},'${existing?existing.id:''}')" style="flex:1.4;height:44px;border:none;background:linear-gradient(135deg,#15803d,#0f6a31);color:#fff;border-radius:11px;font:800 14px var(--font);cursor:pointer">${t('✓ 납부 저장','✓ Save payment')}</button>
     </div>
@@ -12607,7 +12612,24 @@ async function unmarkTuiCell(id) {
   const { error } = await sb.from('tuition_bills').delete().eq('id', id);
   if (error) { showUploadToast(t('처리 실패: ','Failed: ')+error.message); return; }
   document.getElementById('tui-cell-modal')?.remove();
-  showUploadToast(t('미납으로 되돌렸어요','Reverted to unpaid'));
+  showUploadToast(t('기록을 지웠어요','Cleared'));
+  await renderTuitionHub();
+}
+// 그 달을 0원(부재·면제)으로 표시 — 미납/미납액에서 제외, 합계엔 0
+async function saveTuiExempt(sid, mo, existingId) {
+  const mm = String(mo).padStart(2,'0');
+  const row = { community_id: CID(), student_id: sid, title: `${tuiYear}-${mm} ${t('학비(면제)','tuition (exempt)')}`, period: `${tuiYear}-${mm}`,
+    amount: 0, paid: true, paid_date: attTodayStr(), paid_amount: 0, method: '면제', currency: tuiCur, updated_at: new Date().toISOString() };
+  let error;
+  if (existingId) ({ error } = await sb.from('tuition_bills').update(row).eq('id', existingId));
+  else { row.created_by = ME.id; ({ error } = await sb.from('tuition_bills').insert(row)); }
+  if (error) {
+    if (schoolTableMissing(error)) return schoolSetupNeeded(error, 'db/학사_학비_DB설치.sql');
+    const err = document.getElementById('tui-c-err'); if (err) { err.textContent = t('저장 실패: ','Save failed: ')+error.message; err.style.display='block'; }
+    return;
+  }
+  document.getElementById('tui-cell-modal')?.remove();
+  showUploadToast(t('0원(부재·면제)으로 표시했어요','Marked as away · exempt (0)'));
   await renderTuitionHub();
 }
 
