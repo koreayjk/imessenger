@@ -11535,6 +11535,28 @@ async function saveTuiStudentAmount(sid, val) {
   const { error } = await sb.from('members').update({ tuition_monthly: amount }).eq('id', sid);
   if (error) { showUploadToast(t('저장 실패: ','Save failed: ') + error.message); return; }
   const s = schoolStudents.find(x=>x.id===sid); if (s) s.tuition_monthly = amount;
+  renderTuition();
+}
+// 납부 시작월 저장 ('' = 이전부터 / 전체, '1'~'12' = 그 해 해당 월부터)
+async function saveTuiStudentStart(sid, val) {
+  const ym = val==='' ? null : (tuiYear + '-' + String(+val).padStart(2,'0'));
+  const { error } = await sb.from('members').update({ tuition_start_ym: ym }).eq('id', sid);
+  if (error) {
+    if (/tuition_start_ym|column/.test(error.message||'')) { showUploadToast(t('시작월 기능 DB 설치가 필요해요 (db/학비_시작월_DB설치.sql)','Start-month DB not installed (db/학비_시작월_DB설치.sql)')); return; }
+    showUploadToast(t('저장 실패: ','Save failed: ') + error.message); return;
+  }
+  const s = schoolStudents.find(x=>x.id===sid); if (s) s.tuition_start_ym = ym;
+  renderTuition();
+}
+// 표시 중인 연도(tuiYear) 기준 이 학생이 학비를 내야 하는 '첫 달' (1~12, 13이면 올해는 아직 시작 안 함)
+function tuiStartMonth(s) {
+  const ym = s && s.tuition_start_ym;
+  if (!ym) return 1;
+  const [sy, sm] = String(ym).split('-').map(Number);
+  if (!sy || !sm) return 1;
+  if (tuiYear < sy) return 13;   // 아직 시작 전
+  if (tuiYear > sy) return 1;    // 이전 해부터 → 올해는 전체
+  return sm;
 }
 
 async function renderTuitionHub() {
@@ -12391,30 +12413,55 @@ function renderTuition() {
   const paidCount = tuiBills.filter(b=>b.paid).length;
   const expects = (s) => Number(s && s.tuition_monthly) > 0;   // 월 학비 설정된 사람만 미납 표시
   const smap = {}; students.forEach(s => smap[s.id] = s);
-  // 이번 달(현재 연도일 때) 미납 인원 — 월 학비 설정된 사람 기준
-  let curUnpaid = null;
-  if (tuiYear === nowY) curUnpaid = students.filter(s => expects(s) && !(payMap[s.id] && payMap[s.id][nowM] && payMap[s.id][nowM].paid)).length;
+  const startM = {}; students.forEach(s => startM[s.id] = tuiStartMonth(s));   // 학생별 시작월(tuiYear 기준)
 
   const isPast = (mo) => (tuiYear < nowY) || (tuiYear === nowY && mo <= nowM);
+  // 미납액(한 달) — 청구서가 있으면 그 금액, 없으면 월 학비. 납부됐거나 시작월 전이면 0
+  const owedFor = (s, mo) => {
+    if (!expects(s) || mo < (startM[s.id]||1) || !isPast(mo)) return 0;
+    const b = payMap[s.id] && payMap[s.id][mo];
+    if (b && b.paid) return 0;
+    const amt = (b && b.amount != null) ? Number(b.amount) : Number(s.tuition_monthly || 0);
+    return amt > 0 ? amt : 0;
+  };
+  // 누적 미납(1~현재월; 지난달 포함) — 인원수 + 총액
+  const lastOwedMonth = (tuiYear < nowY) ? 12 : (tuiYear === nowY ? nowM : 0);
+  let arrearsTotal = 0, arrearsStudents = 0;
+  if (lastOwedMonth > 0) {
+    students.forEach(s => {
+      if (!expects(s)) return;
+      let owe = 0; for (let mo = startM[s.id]; mo <= lastOwedMonth; mo++) owe += owedFor(s, mo);
+      if (owe > 0) { arrearsTotal += owe; arrearsStudents++; }
+    });
+  }
+
   const cell = (sid, mo) => {
+    const s = smap[sid];
     const b = payMap[sid] && payMap[sid][mo];
     const paid = b && b.paid;
+    const beforeStart = expects(s) && mo < (startM[sid]||1);
     let bg='transparent', color='var(--ink3)', txt='';
     if (paid) { bg='#e8f5ee'; color='#15803d'; const d=(b.paid_date||'').slice(5).replace('-','/').replace(/^0/,''); const amt=tuiNum(b.paid_amount ?? b.amount); txt=`<div style="font-size:10.5px;font-weight:800;line-height:1.15">${amt}</div>${d?`<div style="font-size:8px;color:#2a7a5a;font-weight:600">${d}</div>`:''}`; }
-    else if (isPast(mo) && expects(smap[sid])) { bg='#fdecea'; color='#c0392b'; txt='·'; }
-    return `<td onclick="openTuiCell('${sid}',${mo})" style="padding:2px 4px;text-align:center;border:1px solid var(--border);cursor:pointer;background:${bg};color:${color};font-weight:700;font-size:11.5px;height:38px;min-width:60px" title="${TUI_MONTHS.indexOf(mo)>=0?t(mo+'월',TUI_MON_EN[mo]):''}">${txt}</td>`;
+    else if (beforeStart) { bg='var(--s2)'; color='var(--ink3)'; txt=`<span style="opacity:.45">–</span>`; }
+    else if (isPast(mo) && expects(s)) { bg='#fdecea'; color='#c0392b'; txt='·'; }
+    return `<td onclick="openTuiCell('${sid}',${mo})" style="padding:2px 4px;text-align:center;border:1px solid var(--border);cursor:pointer;background:${bg};color:${color};font-weight:700;font-size:11.5px;height:38px;min-width:60px" title="${beforeStart?t('시작 전','Before start'):(TUI_MONTHS.indexOf(mo)>=0?t(mo+'월',TUI_MON_EN[mo]):'')}">${txt}</td>`;
   };
 
   const rows = students.map(s => {
     const rowTotal = TUI_MONTHS.reduce((a,mo)=>{ const b=payMap[s.id]&&payMap[s.id][mo]; return a+(b&&b.paid?(Number(b.paid_amount??b.amount)||0):0); },0);
     const paidN = TUI_MONTHS.filter(mo=>{ const b=payMap[s.id]&&payMap[s.id][mo]; return b&&b.paid; }).length;
     const unit = tuiCur==='$'?'$':'₩';
+    const startSelVal = (() => { const ym=s.tuition_start_ym; if(!ym) return ''; const p=String(ym).split('-').map(Number); return (p[0]===tuiYear)?p[1]:''; })();
     return `<tr>
       <td style="position:sticky;left:0;z-index:1;background:var(--surface);padding:6px 8px;white-space:nowrap;border:1px solid var(--border)">
         <div style="font-size:12.5px;font-weight:700;color:var(--ink)">${escHtml(s.name)} <span style="font-size:10px;color:var(--ink3);font-weight:500">${paidN}/12</span></div>
         <div style="display:flex;align-items:center;gap:3px;margin-top:3px">
           <span style="font-size:10px;color:var(--ink3)">${unit}</span>
           <input type="number" min="0" step="${tuiCur==='$'?'1':'1000'}" value="${s.tuition_monthly!=null?s.tuition_monthly:''}" placeholder="${t('월 학비','Monthly')}" onchange="saveTuiStudentAmount('${s.id}',this.value)" onclick="event.stopPropagation()" style="width:74px;height:22px;border:1px solid var(--border);border-radius:6px;padding:0 6px;font:600 11px var(--font);text-align:right;background:var(--s2)"/>
+          <select onchange="saveTuiStudentStart('${s.id}',this.value)" onclick="event.stopPropagation()" title="${t('납부 시작월','Start month')}" style="height:22px;border:1px solid var(--border);border-radius:6px;padding:0 2px;font:600 10px var(--font);background:var(--s2);color:var(--ink2);cursor:pointer">
+            <option value="" ${startSelVal===''?'selected':''}>${t('전부터','All yr')}</option>
+            ${TUI_MONTHS.map(mo=>`<option value="${mo}" ${startSelVal===mo?'selected':''}>${t(mo+'월~',TUI_MON_EN[mo]+'~')}</option>`).join('')}
+          </select>
         </div>
       </td>
       ${TUI_MONTHS.map(mo=>cell(s.id,mo)).join('')}
@@ -12461,7 +12508,13 @@ function renderTuition() {
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">
       <div style="flex:1;min-width:150px;background:#e8f5ee;border:1px solid #bfe3cf;border-radius:10px;padding:11px 14px"><div style="font-size:11px;color:#2a7a5a">${tuiYear}${t('년 수납 총액',' Total Received')}</div><div style="font-size:18px;font-weight:800;color:#2a7a5a">${tuiWon(yearReceived)}</div></div>
       <div style="flex:1;min-width:150px;background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:11px 14px"><div style="font-size:11px;color:var(--ink3)">${t('납부 건수','Payments')}</div><div style="font-size:18px;font-weight:800;color:var(--ink)">${paidCount}${t('건','')}</div></div>
-      ${curUnpaid!==null?`<div style="flex:1;min-width:150px;background:#fdecea;border:1px solid #f3c0bb;border-radius:10px;padding:11px 14px"><div style="font-size:11px;color:#c0392b">${t('이번 달(','This month (')}${t(nowM+'월',TUI_MON_EN[nowM])}${t(') 미납',') unpaid')}</div><div style="font-size:18px;font-weight:800;color:#c0392b">${curUnpaid}${t('명',' students')}</div></div>`:''}
+      ${lastOwedMonth>0?`<div style="flex:1;min-width:180px;background:#fdecea;border:1px solid #f3c0bb;border-radius:10px;padding:11px 14px">
+        <div style="font-size:11px;color:#c0392b">${t('누적 미납 (1~','Unpaid (through ')}${t(lastOwedMonth+'월)',TUI_MON_EN[lastOwedMonth]+')')}</div>
+        <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-top:1px">
+          <div style="font-size:18px;font-weight:800;color:#c0392b">${arrearsStudents}${t('명',' students')}</div>
+          <div style="font-size:15px;font-weight:800;color:#c0392b">${tuiWon(arrearsTotal)}</div>
+        </div>
+      </div>`:''}
     </div>
     ${students.length ? `<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow-x:auto">
       <table style="border-collapse:collapse;width:100%;min-width:980px">
