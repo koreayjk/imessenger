@@ -6183,9 +6183,17 @@ async function initReadingPage() {
     if (bErr) { renderReadingSetupNeeded(bErr); return; }
     readingBooks = sortReadingBooks(books || []);
 
-    if (canAccessSchool()) {   // 교직원(간사 포함) → 현황·책 관리 뷰
-      if (sub) sub.textContent = t('전체 현황 · 책 관리','Overview · Manage Books');
-      await renderReadingAdmin();
+    if (canAccessSchool()) {   // 교직원(간사 포함): 내 독서 ↔ 전체 현황·책 관리 전환 가능
+      // 내 독서 기록도 항상 로드 → 교직원도 직접 읽고 메모(이어쓰기)를 이어갈 수 있음
+      const { data: logs } = await sb.from('reading_logs').select('*').eq('student_id', ME.id);
+      readingMyLogs = logs || [];
+      if (readingAdminMode) {
+        if (sub) sub.textContent = t('전체 현황 · 책 관리','Overview · Manage Books');
+        await renderReadingAdmin();
+      } else {
+        if (sub) sub.textContent = t('내가 읽은 필독서','My Reading List');
+        renderReadingStudent();
+      }
     } else {                   // 학생 → 내 독서 뷰
       if (sub) sub.textContent = t('내가 읽은 필독서','My Reading List');
       const { data: logs } = await sb.from('reading_logs').select('*').eq('student_id', ME.id);
@@ -6219,6 +6227,18 @@ const READING_CAT_SHORT = { 'Gospel School': 'Gospel', 'Disciple School': 'Disci
 let readingStudentFilter = { cat: 'all', q: '' };
 let readingShowRead = false;
 let readingShowUnread = false;
+let readingAdminMode = false;   // 교직원(간사 포함): false=내 독서(직접 읽기/이어쓰기), true=전체 현황·책 관리
+
+// 교직원 전용: '내 독서' ↔ '전체 현황·책 관리' 전환 (학생에겐 표시 안 함)
+function setReadingMode(m) { readingAdminMode = (m === 'admin'); initReadingPage(); }
+function readingModeToggle() {
+  if (!canAccessSchool()) return '';
+  const seg = (mode, ko, en) => {
+    const on = (readingAdminMode ? 'admin' : 'mine') === mode;
+    return `<button onclick="setReadingMode('${mode}')" style="height:34px;padding:0 14px;border:none;border-radius:8px;cursor:pointer;font:700 12.5px var(--font);${on?'background:#1d3a5f;color:#fff':'background:transparent;color:var(--ink2)'}">${t(ko,en)}</button>`;
+  };
+  return `<div style="display:inline-flex;gap:2px;background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:3px;margin-bottom:14px">${seg('mine','📖 내 독서','📖 My Reading')}${seg('admin','📊 전체 현황·책 관리','📊 Overview · Manage')}</div>`;
+}
 
 function readingBookRow(b, log) {
   const done = !!log;
@@ -6277,7 +6297,7 @@ function renderReadingStudent() {
   const total = readingBooks.length;
 
   if (!total) {
-    page.innerHTML = `<div style="max-width:760px"><div style="text-align:center;color:var(--ink3);font-size:13px;padding:40px;line-height:1.8">${t('아직 등록된 필독서가 없어요.<br>선생님(관리자)이 [TCS → Triple School → 책 관리]에서 책을 추가하면<br>여기서 읽은 책을 눌러 기록할 수 있어요.','No reading books have been registered yet.<br>Once a teacher (admin) adds books under [TCS → Triple School → Manage Books],<br>you can tap a book here to log it.')}</div></div>`;
+    page.innerHTML = `<div style="max-width:760px">${readingModeToggle()}<div style="text-align:center;color:var(--ink3);font-size:13px;padding:40px;line-height:1.8">${t('아직 등록된 필독서가 없어요.<br>선생님(관리자)이 [TCS → Triple School → 책 관리]에서 책을 추가하면<br>여기서 읽은 책을 눌러 기록할 수 있어요.','No reading books have been registered yet.<br>Once a teacher (admin) adds books under [TCS → Triple School → Manage Books],<br>you can tap a book here to log it.')}</div></div>`;
     return;
   }
 
@@ -6299,6 +6319,7 @@ function renderReadingStudent() {
   };
 
   page.innerHTML = `<div style="max-width:760px">
+    ${readingModeToggle()}
     <div style="background:linear-gradient(135deg,#1d3a5f,#2a5298);border-radius:16px;padding:16px 20px;margin-bottom:12px;color:white">
       <div style="display:flex;justify-content:space-between;align-items:baseline"><div style="font-size:13px;opacity:.8">${t('나의 필독서 진도 (전체)','My Reading Progress (All)')}</div><div style="font-size:22px;font-weight:800">${readCount} / ${total}${t('권',' books')}</div></div>
       <div style="background:rgba(255,255,255,.25);border-radius:99px;height:8px;margin-top:10px;overflow:hidden"><div style="height:100%;width:${pct}%;background:white;border-radius:99px;transition:width .4s"></div></div>
@@ -6533,6 +6554,7 @@ async function renderReadingAdmin() {
   }
 
   page.innerHTML = `<div style="max-width:760px">
+    ${readingModeToggle()}
     ${summary}
     ${manageHtml}
     <div style="font-size:14px;font-weight:700;color:var(--adeep);margin:0 0 8px">👥 ${t('학생별 진도','Progress by Student')}</div>
