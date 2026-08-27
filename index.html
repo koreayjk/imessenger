@@ -11646,6 +11646,8 @@ function loadXLSX() {
 let ledgerMonth = null;      // 'YYYY-MM'
 let ledgerDay = null;        // 'YYYY-MM-DD'
 let ledgerView = 'month';    // 'day' | 'month' | 'year'
+let ledgerCatFilter = null;  // null = 전체 표시, 아니면 보여줄 카테고리 Set
+let ledgerFilterOpen = false;// 필터 패널 펼침 여부
 let ledgerTx = [];
 let ledgerYearTx = [];
 function ledgerCurMonth() { if (!ledgerMonth) { const d = new Date(); ledgerMonth = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'); } return ledgerMonth; }
@@ -11678,6 +11680,66 @@ function ledgerShiftYear(delta) {
 function ledgerViewToggle() {
   const seg = (v,ko,en) => `<button onclick="ledgerSetView('${v}')" style="height:32px;padding:0 15px;border:none;border-radius:8px;font:700 12.5px var(--font);cursor:pointer;transition:.12s;${ledgerView===v?'background:#1d3a5f;color:#fff':'background:transparent;color:var(--ink2)'}">${t(ko,en)}</button>`;
   return `<div style="display:inline-flex;gap:2px;background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:3px">${seg('day','일','Day')}${seg('month','월','Month')}${seg('year','년','Year')}</div>`;
+}
+
+// ── 카테고리 필터 (멀티 선택 · 전체선택/전체취소) ──
+function ledgerPresentCats() {
+  const src = ledgerView === 'year' ? ledgerYearTx : ledgerTx;
+  const s = new Set();
+  (src||[]).forEach(r => s.add(finCanonCat(r.category || t('미분류','Uncategorized'))));
+  return [...s].sort((a,b)=>a.localeCompare(b));
+}
+function ledgerFilterRows(rows) {
+  if (!ledgerCatFilter) return rows || [];
+  return (rows||[]).filter(r => ledgerCatFilter.has(finCanonCat(r.category || t('미분류','Uncategorized'))));
+}
+function ledgerRerender() {
+  if (ledgerView === 'year') ledgerRenderYear();
+  else if (ledgerView === 'day') ledgerRenderDay();
+  else ledgerRenderInto();
+}
+function ledgerToggleFilterPanel() { ledgerFilterOpen = !ledgerFilterOpen; ledgerRerender(); }
+function ledgerToggleCat(cat) {
+  const present = ledgerPresentCats();
+  if (!ledgerCatFilter) ledgerCatFilter = new Set(present);   // 전체 상태에서 첫 토글이면 전체에서 시작
+  if (ledgerCatFilter.has(cat)) ledgerCatFilter.delete(cat); else ledgerCatFilter.add(cat);
+  if (ledgerCatFilter.size === present.length) ledgerCatFilter = null;  // 다 선택되면 '전체'로
+  ledgerRerender();
+}
+function ledgerSelectAllCats() { ledgerCatFilter = null; ledgerRerender(); }
+function ledgerClearCats() { ledgerCatFilter = new Set(); ledgerRerender(); }
+function ledgerFilterBar() {
+  const cats = ledgerPresentCats();
+  if (!cats.length) return '';
+  const allSel = !ledgerCatFilter;
+  const activeCount = allSel ? cats.length : cats.filter(c => ledgerCatFilter.has(c)).length;
+  const label = allSel ? t('전체','All') : `${activeCount}/${cats.length}`;
+  if (!ledgerFilterOpen) {
+    return `<div style="margin-bottom:12px">
+      <button onclick="ledgerToggleFilterPanel()" style="height:34px;padding:0 14px;border:1.5px solid var(--border);background:white;border-radius:10px;font:600 12.5px var(--font);cursor:pointer;display:inline-flex;align-items:center;gap:7px;color:var(--ink2)">
+        🔎 ${t('카테고리 필터','Category filter')} <span style="font-weight:800;color:${allSel?'var(--ink3)':'var(--accent)'}">${label}</span> ▾
+      </button>
+    </div>`;
+  }
+  const chips = cats.map(c => {
+    const sel = allSel || ledgerCatFilter.has(c);
+    return `<button onclick="ledgerToggleCat('${escAttr(c)}')" style="height:30px;padding:0 11px;border-radius:999px;cursor:pointer;font:600 11.5px var(--font);white-space:nowrap;
+      border:1.5px solid ${sel?'var(--accent)':'var(--border)'};
+      background:${sel?'rgba(42,82,152,.12)':'white'};
+      color:${sel?'var(--adeep)':'var(--ink3)'}">
+      ${sel?'✓ ':''}${escHtml(c)}</button>`;
+  }).join('');
+  return `<div class="adm-card" style="margin-bottom:12px;padding:12px 14px">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+      <div style="font-size:12.5px;font-weight:700;color:var(--adeep)">🔎 ${t('카테고리 필터','Category filter')} <span style="color:${allSel?'var(--ink3)':'var(--accent)'};font-weight:800">${label}</span></div>
+      <div style="display:flex;gap:6px">
+        <button onclick="ledgerSelectAllCats()" style="height:30px;padding:0 11px;border:1.5px solid var(--border);background:white;border-radius:8px;font:700 11.5px var(--font);cursor:pointer;color:var(--ink2)">${t('전체선택','Select all')}</button>
+        <button onclick="ledgerClearCats()" style="height:30px;padding:0 11px;border:1.5px solid var(--border);background:white;border-radius:8px;font:700 11.5px var(--font);cursor:pointer;color:var(--ink2)">${t('전체취소','Clear')}</button>
+        <button onclick="ledgerToggleFilterPanel()" title="${t('접기','Collapse')}" style="height:30px;width:32px;border:1.5px solid var(--border);background:white;border-radius:8px;font:700 12px var(--font);cursor:pointer;color:var(--ink3)">▴</button>
+      </div>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px">${chips}</div>
+  </div>`;
 }
 
 async function renderLedgerHub() {
@@ -11741,14 +11803,16 @@ async function ledgerHealCategories(rows) {
 function ledgerRenderInto() {
   const main = document.getElementById('school-main');
   const month = ledgerCurMonth();
-  const income = ledgerTx.filter(x => Number(x.amount) > 0).reduce((s,x)=>s+Number(x.amount),0);
-  const expense = ledgerTx.filter(x => Number(x.amount) < 0).reduce((s,x)=>s+Number(x.amount),0);
+  const view = ledgerFilterRows(ledgerTx);
+  const income = view.filter(x => Number(x.amount) > 0).reduce((s,x)=>s+Number(x.amount),0);
+  const expense = view.filter(x => Number(x.amount) < 0).reduce((s,x)=>s+Number(x.amount),0);
   const net = income + expense;
   const catOpts = (sel) => FIN_TX_CATEGORIES.map(c => `<option value="${escAttr(c)}" ${sel===c?'selected':''}>${escHtml(c)}</option>`).join('');
   const [yy,mm] = month.split('-');
   const monthLabel = APP_LANG==='en' ? new Date(+yy,+mm-1,1).toLocaleDateString('en-US',{month:'long',year:'numeric'}) : `${yy}년 ${+mm}월`;
+  const filtered = !!ledgerCatFilter;
 
-  const rows = ledgerTx.length ? ledgerTx.map(x => {
+  const rows = view.length ? view.map(x => {
     const amt = Number(x.amount)||0; const isIn = amt >= 0;
     const isCustom = x.category && !FIN_TX_CATEGORIES.includes(x.category);
     return `<tr style="border-bottom:1px solid var(--bs)">
@@ -11763,7 +11827,7 @@ function ledgerRenderInto() {
       </td>
       <td style="padding:7px 4px;text-align:center"><button onclick="ledgerDeleteTx('${x.id}')" title="${t('삭제','Delete')}" style="width:26px;height:26px;border:none;background:transparent;color:var(--ink3);cursor:pointer;font-size:13px;border-radius:6px" onmouseover="this.style.background='#FEE2E2';this.style.color='#dc2626'" onmouseout="this.style.background='';this.style.color='var(--ink3)'">✕</button></td>
     </tr>`;
-  }).join('') : `<tr><td colspan="5" style="padding:26px;text-align:center;color:var(--ink3);font-size:13px">${t('이 달의 거래내역이 없어요. 은행 엑셀을 올리거나 직접 추가하세요.','No transactions this month. Upload a bank Excel or add one manually.')}</td></tr>`;
+  }).join('') : `<tr><td colspan="5" style="padding:26px;text-align:center;color:var(--ink3);font-size:13px">${filtered ? t('선택한 카테고리의 거래가 이 달에 없어요.','No transactions in the selected categories this month.') : t('이 달의 거래내역이 없어요. 은행 엑셀을 올리거나 직접 추가하세요.','No transactions this month. Upload a bank Excel or add one manually.')}</td></tr>`;
 
   main.innerHTML = finTabBar() + `<div style="max-width:920px">
     <!-- 뷰 전환 + 월 이동 + 업로드 -->
@@ -11779,6 +11843,8 @@ function ledgerRenderInto() {
           <input type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="ledgerPickFile(this)"/></label>
       </div>
     </div>
+
+    ${ledgerFilterBar()}
 
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">
       <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:12px 14px"><div style="font-size:11.5px;color:#15803d;font-weight:700">${t('수입(입금)','Income')}</div><div style="font-size:18px;font-weight:800;color:#15803d">${fmtUsd(income)}</div></div>
@@ -11818,7 +11884,7 @@ function ledgerRenderInto() {
       </div>
     </div>
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px">
-      <div style="font-size:11px;color:var(--ink3);line-height:1.6;flex:1;min-width:0">${t('※ 은행 파일에 Posting Date · Description · Amount 열이 있으면 자동으로 인식·분류해 저장해요. 지난 엑셀(월별 시트) 전체도 한 번에 가져올 수 있어요.','※ If the bank file has Posting Date · Description · Amount columns, they are auto-detected, classified, and saved. You can also import your whole past workbook (monthly sheets) at once.')} · ${ledgerTx.length}${t('건',' items')}</div>
+      <div style="font-size:11px;color:var(--ink3);line-height:1.6;flex:1;min-width:0">${t('※ 은행 파일에 Posting Date · Description · Amount 열이 있으면 자동으로 인식·분류해 저장해요. 지난 엑셀(월별 시트) 전체도 한 번에 가져올 수 있어요.','※ If the bank file has Posting Date · Description · Amount columns, they are auto-detected, classified, and saved. You can also import your whole past workbook (monthly sheets) at once.')} · ${view.length}${filtered?'/'+ledgerTx.length:''}${t('건',' items')}</div>
       <button onclick="ledgerClearImports()" style="height:30px;padding:0 12px;border:1px solid #fecaca;background:#fef2f2;color:#b91c1c;border-radius:8px;font:600 11.5px var(--font);cursor:pointer;white-space:nowrap">🗑 ${t('업로드 내역 초기화','Reset uploads')}</button>
     </div>
   </div>`;
@@ -11838,7 +11904,8 @@ async function ledgerClearImports() {
 function ledgerRenderDay() {
   const main = document.getElementById('school-main');
   const day = ledgerCurDay();
-  const dayTx = ledgerTx.filter(x => (x.tx_date||'') === day);
+  const filtered = !!ledgerCatFilter;
+  const dayTx = ledgerFilterRows(ledgerTx).filter(x => (x.tx_date||'') === day);
   const income = dayTx.filter(x => Number(x.amount) > 0).reduce((s,x)=>s+Number(x.amount),0);
   const expense = dayTx.filter(x => Number(x.amount) < 0).reduce((s,x)=>s+Number(x.amount),0);
   const net = income + expense;
@@ -11862,7 +11929,7 @@ function ledgerRenderDay() {
       </td>
       <td style="padding:7px 4px;text-align:center"><button onclick="ledgerDeleteTx('${x.id}')" title="${t('삭제','Delete')}" style="width:26px;height:26px;border:none;background:transparent;color:var(--ink3);cursor:pointer;font-size:13px;border-radius:6px" onmouseover="this.style.background='#FEE2E2';this.style.color='#dc2626'" onmouseout="this.style.background='';this.style.color='var(--ink3)'">✕</button></td>
     </tr>`;
-  }).join('') : `<tr><td colspan="4" style="padding:26px;text-align:center;color:var(--ink3);font-size:13px">${t('이 날의 거래내역이 없어요.','No transactions on this day.')}</td></tr>`;
+  }).join('') : `<tr><td colspan="4" style="padding:26px;text-align:center;color:var(--ink3);font-size:13px">${filtered ? t('선택한 카테고리의 거래가 이 날에 없어요.','No transactions in the selected categories on this day.') : t('이 날의 거래내역이 없어요.','No transactions on this day.')}</td></tr>`;
 
   main.innerHTML = finTabBar() + `<div style="max-width:920px">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:14px">
@@ -11877,6 +11944,8 @@ function ledgerRenderDay() {
           <input type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="ledgerPickFile(this)"/></label>
       </div>
     </div>
+
+    ${ledgerFilterBar()}
 
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">
       <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:12px 14px"><div style="font-size:11.5px;color:#15803d;font-weight:700">${t('수입(입금)','Income')}</div><div style="font-size:18px;font-weight:800;color:#15803d">${fmtUsd(income)}</div></div>
@@ -11910,7 +11979,8 @@ function ledgerRenderYear() {
   const MON = APP_LANG==='en' ? MON_EN : MON_KO;
   const inc = Array(12).fill(0), exp = Array(12).fill(0);
   const agg = {};   // cat -> [12]
-  for (const x of ledgerYearTx) {
+  const yearView = ledgerFilterRows(ledgerYearTx);
+  for (const x of yearView) {
     const mkey = (x.month || (x.tx_date||'').slice(0,7) || '');
     const mi = Number(mkey.slice(5,7)) - 1;
     if (mi < 0 || mi > 11) continue;
@@ -11963,6 +12033,8 @@ function ledgerRenderYear() {
           <input type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="ledgerPickFile(this)"/></label>
       </div>
     </div>
+
+    ${ledgerFilterBar()}
 
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">
       <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:12px 14px"><div style="font-size:11.5px;color:#15803d;font-weight:700">${t('연간 수입','Year Income')}</div><div style="font-size:18px;font-weight:800;color:#15803d">${fmtUsd(totIncome)}</div></div>
