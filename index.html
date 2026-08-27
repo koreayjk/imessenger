@@ -12457,6 +12457,20 @@ function renderTuition() {
     });
   }
 
+  // 다음 달 예상 수입 — 아직 안 낸(면제 아님) 학생 기준. 이미 낸 학생은 제외
+  const nd = new Date(nowY, nowM, 1);   // nowM(1-base)이 곧 다음 달 인덱스
+  const nextY = nd.getFullYear(), nextMo = nd.getMonth() + 1;
+  let expNextStudents = 0, expNextTotal = 0;
+  if (tuiYear === nextY) {
+    students.forEach(s => {
+      if (!expects(s)) return;
+      if (nextMo < (startM[s.id] || 1)) return;      // 아직 시작 전이면 제외
+      const b = payMap[s.id] && payMap[s.id][nextMo];
+      if (b && b.paid) return;                        // 이미 납부(또는 0원 면제)면 제외
+      expNextStudents++; expNextTotal += Number(s.tuition_monthly || 0);
+    });
+  }
+
   const cell = (sid, mo) => {
     const s = smap[sid];
     const b = payMap[sid] && payMap[sid][mo];
@@ -12539,6 +12553,13 @@ function renderTuition() {
         <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-top:1px">
           <div style="font-size:18px;font-weight:800;color:#c0392b">${arrearsStudents}${t('명',' students')}</div>
           <div style="font-size:15px;font-weight:800;color:#c0392b">${tuiWon(arrearsTotal)}</div>
+        </div>
+      </div>`:''}
+      ${tuiYear===nextY?`<div style="flex:1;min-width:180px;background:#eef4ff;border:1px solid #c7dbff;border-radius:10px;padding:11px 14px">
+        <div style="font-size:11px;color:#1d4ed8">${t('다음 달 예상 수입 (','Next month expected (')}${t(nextMo+'월)',TUI_MON_EN[nextMo]+')')}</div>
+        <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-top:1px">
+          <div style="font-size:18px;font-weight:800;color:#1d4ed8">${expNextStudents}${t('명',' students')}</div>
+          <div style="font-size:15px;font-weight:800;color:#1d4ed8">${tuiWon(expNextTotal)}</div>
         </div>
       </div>`:''}
     </div>
