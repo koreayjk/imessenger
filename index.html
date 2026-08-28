@@ -6082,6 +6082,7 @@ const READING_CAT_ORDER = { 'Gospel School': 0, 'Disciple School': 1, 'Calling S
 let readingBooks = [];
 let readingMyLogs = [];
 let readingNotes = [];   // 현재 여는 책의 '읽으며 쌓은 기록'(이어쓰기)
+let readingMyComments = [];   // 현재 여는 책에 달린 선생님 피드백(읽기 전용)
 
 // step(1~4, 없으면 뒤로) → 카테고리(Gospel/Disciple/Calling) → sort → 제목 순 정렬 (컬럼 없어도 안전)
 function readingBookSort(a, b) {
@@ -6342,6 +6343,13 @@ async function openReadingLog(bookId) {
       .order('date', { ascending: true }).order('created_at', { ascending: true });
     readingNotes = data || [];
   } catch(_) { readingNotes = []; }
+  // 선생님 피드백(댓글) — 학생은 자기 것만 읽을 수 있음
+  readingMyComments = [];
+  try {
+    const { data: rc } = await sb.from('reading_report_comments').select('*')
+      .eq('student_id', ME.id).eq('book_id', bookId).order('created_at', { ascending: true });
+    readingMyComments = rc || [];
+  } catch(_) { readingMyComments = []; }
   renderReadingLog(bookId);
 }
 function renderReadingLog(bookId) {
@@ -6415,6 +6423,19 @@ function renderReadingLog(bookId) {
         <button onclick="saveReadingLog('${bookId}')" style="width:100%;height:42px;border-radius:11px;border:none;background:#1d3a5f;color:white;font:700 14px var(--font);cursor:pointer;margin-bottom:${log ? '10px' : '0'}">${submitted ? t('💾 다시 제출','💾 Re-submit') : t('📤 제출하기','📤 Submit')}</button>
         ${log ? `<button onclick="deleteReadingLog('${bookId}')" style="width:100%;height:38px;border-radius:10px;border:1.5px solid var(--border);background:white;color:#ef4444;font:600 13px var(--font);cursor:pointer">${t('읽음 취소','Undo Read')}</button>` : ''}
       </div>
+      ${readingMyComments.length ? `<div style="border-top:2px solid var(--border);padding-top:16px;margin-top:16px">
+        <div style="font-size:12.5px;font-weight:800;color:var(--ink);margin-bottom:10px">💬 ${t('선생님 피드백','Teacher Feedback')} <span style="color:var(--ink3);font-weight:600">(${readingMyComments.length})</span></div>
+        ${readingMyComments.map(c => {
+          let when = '';
+          try { const d = new Date(c.created_at); when = APP_LANG==='en'
+            ? d.toLocaleDateString('en-US',{month:'short',day:'numeric'})
+            : `${d.getMonth()+1}월 ${d.getDate()}일`; } catch(e) {}
+          return `<div style="background:#f0f7ff;border:1px solid #bfdbfe;border-radius:10px;padding:10px 12px;margin-bottom:8px">
+            <div style="font-size:11px;color:var(--ink3);margin-bottom:3px"><b style="color:var(--adeep)">${escHtml(c.author_name||'')}</b>${when?' · '+when:''}</div>
+            <div style="font-size:13px;color:var(--ink);line-height:1.7;white-space:pre-wrap">${escReport(c.content||'')}</div>
+          </div>`;
+        }).join('')}
+      </div>` : ''}
     </div>
   </div>`;
 }
@@ -6592,6 +6613,21 @@ async function renderTcsReadingUnified() {
   const noteCounts = {};
   try { const { data: notes } = await sb.from('reading_notes').select('book_id').eq('member_id', sid); (notes||[]).forEach(n => { noteCounts[n.book_id] = (noteCounts[n.book_id]||0) + 1; }); } catch (e) {}
   window._adminReadLogs = readMap; window._adminReadNoteCounts = noteCounts;
+  // 저장된 AI 분석 결과 — 다시 들어와도 그대로 보이도록
+  const aiReviews = {};
+  try {
+    const { data: ar } = await sb.from('reading_ai_reviews').select('*').eq('student_id', sid);
+    (ar||[]).forEach(r => { aiReviews[r.book_id] = r; });
+  } catch (e) {}
+  window._adminAiReviews = aiReviews;
+  // 최종 독후감 댓글(교직원 피드백)
+  const repComments = {};
+  try {
+    const { data: rc } = await sb.from('reading_report_comments').select('*').eq('student_id', sid)
+      .order('created_at', { ascending: true });
+    (rc||[]).forEach(c => { (repComments[c.book_id] = repComments[c.book_id] || []).push(c); });
+  } catch (e) {}
+  window._adminRepComments = repComments; window._adminRepStudentId = sid;
 
   // 전체 공동체 합산
   let allLogs = [];
@@ -6619,7 +6655,8 @@ async function renderTcsReadingUnified() {
       ${l.report ? `<button onclick="analyzeReadingReport('${b.id}',this)" style="height:28px;padding:0 12px;border:1.5px solid #c4b5fd;background:#f5f3ff;color:#6d28d9;border-radius:8px;font:700 11.5px var(--font);cursor:pointer">🤖 ${t('AI 분석','AI Check')}</button>` : ''}
     </div>
     ${l.report ? `<div style="margin-top:8px;font-size:12.5px;color:var(--ink2);line-height:1.6;white-space:pre-wrap">${escReport(l.report || '')}</div>` : `<div style="margin-top:4px;font-size:12px;color:var(--ink3)">${t('독후감 없음','No report')}</div>`}
-    <div id="ai-result-${b.id}"></div>
+    <div id="ai-result-${b.id}">${aiReviews[b.id] ? renderAiAnalysis(aiReviews[b.id].result, aiReviews[b.id], wc) : ''}</div>
+    ${reportCommentsHtml(b.id, repComments[b.id] || [])}
   </div>`; }).join('') : `<div style="font-size:13px;color:var(--ink3);padding:12px 0">${t('아직 읽은 책 기록이 없어요','No reading records yet')}</div>`;
 
   // 메모만 있고 아직 최종 제출 안 한 책 (진행 중) — 횟수만 표시
@@ -6694,7 +6731,26 @@ async function analyzeReadingReport(bookId, btn) {
     }});
     if (error) throw await aiFnError(error);
     if (data && data.error) throw new Error(data.error);
-    box.innerHTML = renderAiAnalysis(data);
+    // 결과를 저장해 두면 다른 곳 갔다 돌아와도 그대로 보인다
+    const sid = window._adminRepStudentId;
+    const wc = countWords(log.report || '');
+    let saved = null;
+    if (sid) {
+      const row = {
+        book_id: bookId, student_id: sid, community_id: CID(), result: data,
+        word_count: wc, analyzed_by: ME.id, analyzed_by_name: ME.name,
+        created_at: new Date().toISOString(),
+      };
+      const { data: up, error: sErr } = await sb.from('reading_ai_reviews')
+        .upsert(row, { onConflict: 'book_id,student_id' }).select().single();
+      if (sErr) {
+        if (schoolTableMissing(sErr)) showUploadToast(t('결과 저장을 하려면 db/트리플스쿨_AI분석_댓글_DB설치.sql 을 실행해주세요','Run db/트리플스쿨_AI분석_댓글_DB설치.sql to save results'));
+      } else {
+        saved = up || row;
+        (window._adminAiReviews = window._adminAiReviews || {})[bookId] = saved;
+      }
+    }
+    box.innerHTML = renderAiAnalysis(data, saved, wc);
   } catch (e) {
     const msg = String((e && e.message) || e);
     const needKey = /GEMINI_API_KEY|api key|API key|401|403/i.test(msg);
@@ -6720,7 +6776,7 @@ async function aiFnError(error) {
   } catch (_) {}
   return (error instanceof Error) ? error : new Error(String(error));
 }
-function renderAiAnalysis(d) {
+function renderAiAnalysis(d, saveInfo, curWordCount) {
   d = d || {};
   const lv = (d.likelihood || 'unknown').toLowerCase();
   const meta = {
@@ -6745,8 +6801,116 @@ function renderAiAnalysis(d) {
     <ul style="margin:0 0 8px 18px;padding:0;font-size:12px;color:var(--ink2)">${list(d.excerpts,'')}</ul>`:''}
     <div style="font-size:11.5px;font-weight:800;color:var(--ink2);margin:8px 0 4px">💬 ${t('학생에게 이렇게 물어보세요','Ask the student')}</div>
     <ol style="margin:0 0 2px 18px;padding:0;font-size:12px;color:var(--ink)">${list(d.questions, t('제안 없음','No suggestions'))}</ol>
+    ${aiMetaLine(saveInfo, curWordCount)}
     <div style="font-size:10.5px;color:var(--ink3);margin-top:8px;line-height:1.5">${t('※ AI 분석은 참고용이에요. 확정 증거가 아니며, 오탐이 있을 수 있으니 학생과의 대화로 확인하세요.','※ AI analysis is a reference only — not proof. It can produce false positives, so confirm through conversation.')}</div>
   </div>`;
+}
+
+// 저장된 AI 분석의 부가정보 — 분석 시각 / 재제출로 내용이 바뀐 경우 안내
+function aiMetaLine(info, curWordCount) {
+  if (!info) return '';
+  let when = '';
+  try {
+    const d = new Date(info.created_at);
+    when = APP_LANG === 'en'
+      ? d.toLocaleDateString('en-US', { month:'short', day:'numeric' }) + ' ' + d.toTimeString().slice(0,5)
+      : `${d.getMonth()+1}월 ${d.getDate()}일 ${d.toTimeString().slice(0,5)}`;
+  } catch (e) {}
+  const by = info.analyzed_by_name ? ` · ${escHtml(info.analyzed_by_name)}` : '';
+  const stale = (typeof curWordCount === 'number' && typeof info.word_count === 'number' && curWordCount !== info.word_count);
+  return `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:9px;padding-top:8px;border-top:1px dashed rgba(0,0,0,.12)">
+    <span style="font-size:10.5px;color:var(--ink3)">🕒 ${when}${by} ${t('분석 결과 (저장됨)','analysis (saved)')}</span>
+    ${stale ? `<span style="font-size:10.5px;font-weight:700;color:#b45309;background:#fffbeb;border:1px solid #fde68a;padding:1px 7px;border-radius:99px">${t('독후감이 수정됐어요 — 다시 분석 권장','Report changed — re-analysis suggested')}</span>` : ''}
+    <div style="flex:1"></div>
+    <button onclick="deleteAiReview('${info.book_id}')" style="height:24px;padding:0 9px;border:1px solid var(--border);background:#fff;color:var(--ink3);border-radius:7px;font:600 10.5px var(--font);cursor:pointer">${t('결과 지우기','Clear')}</button>
+  </div>`;
+}
+
+async function deleteAiReview(bookId) {
+  if (!confirm(t('저장된 AI 분석 결과를 지울까요?','Delete the saved AI analysis?'))) return;
+  const sid = window._adminRepStudentId; if (!sid) return;
+  const { error } = await sb.from('reading_ai_reviews').delete().eq('book_id', bookId).eq('student_id', sid);
+  if (error) { showUploadToast(t('삭제 실패: ','Delete failed: ') + error.message); return; }
+  if (window._adminAiReviews) delete window._adminAiReviews[bookId];
+  const box = document.getElementById('ai-result-' + bookId); if (box) box.innerHTML = '';
+}
+
+// ── 최종 독후감 댓글 (간사 이상 작성) ──
+function canCommentReport() { return ME && !isStudentMember(ME); }
+
+function reportCommentsHtml(bookId, list) {
+  const items = (list || []).map(c => {
+    const mine = c.author_id === ME.id;
+    let when = '';
+    try { const d = new Date(c.created_at); when = APP_LANG==='en'
+      ? d.toLocaleDateString('en-US',{month:'short',day:'numeric'})
+      : `${d.getMonth()+1}/${d.getDate()}`; } catch (e) {}
+    return `<div style="display:flex;gap:8px;padding:7px 0;border-bottom:1px solid rgba(0,0,0,.06)">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:11px;color:var(--ink3);margin-bottom:2px">
+          <b style="color:var(--adeep)">${escHtml(c.author_name || '')}</b>${when ? ' · ' + when : ''}
+        </div>
+        <div style="font-size:12.5px;color:var(--ink);line-height:1.6;white-space:pre-wrap">${escReport(c.content || '')}</div>
+      </div>
+      ${mine ? `<button onclick="deleteReportComment('${c.id}','${bookId}')" title="${t('삭제','Delete')}" style="border:none;background:transparent;cursor:pointer;color:var(--ink3);font-size:12px;flex-shrink:0">✕</button>` : ''}
+    </div>`;
+  }).join('');
+
+  const form = canCommentReport() ? `
+    <div style="display:flex;gap:6px;margin-top:8px">
+      <textarea id="rc-input-${bookId}" rows="1" placeholder="${t('학생에게 남길 피드백을 적어주세요','Leave feedback for the student')}"
+        style="flex:1;min-width:0;padding:8px 10px;border:1.5px solid var(--border);border-radius:9px;font:13px var(--font);color:var(--ink);line-height:1.5;resize:vertical;outline:none"></textarea>
+      <button onclick="addReportComment('${bookId}')" style="height:36px;padding:0 14px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;font:700 12px var(--font);cursor:pointer;flex-shrink:0;align-self:flex-end">${t('등록','Post')}</button>
+    </div>` : '';
+
+  return `<div style="margin-top:10px;background:#fff;border:1px solid var(--border);border-radius:10px;padding:10px 12px">
+    <div style="font-size:11.5px;font-weight:800;color:var(--ink2);margin-bottom:${items?'4px':'0'}">💬 ${t('선생님 피드백','Teacher Feedback')} <span style="font-weight:600;color:var(--ink3)">${(list||[]).length}</span></div>
+    <div id="rc-list-${bookId}">${items}</div>
+    ${form}
+  </div>`;
+}
+
+async function addReportComment(bookId) {
+  if (!canCommentReport()) { showUploadToast(t('댓글 권한이 없어요 (간사 이상)','Only staff and above can comment')); return; }
+  const ta = document.getElementById('rc-input-' + bookId);
+  const content = (ta?.value || '').trim();
+  if (!content) { showUploadToast(t('내용을 입력하세요','Please enter a comment')); return; }
+  const sid = window._adminRepStudentId; if (!sid) return;
+  const { data, error } = await sb.from('reading_report_comments').insert({
+    book_id: bookId, student_id: sid, community_id: CID(),
+    author_id: ME.id, author_name: ME.name, content,
+  }).select().single();
+  if (error) {
+    if (schoolTableMissing(error)) { showUploadToast(t('댓글 기능 DB 설치가 필요해요 (db/트리플스쿨_AI분석_댓글_DB설치.sql)','Comment DB not installed (db/트리플스쿨_AI분석_댓글_DB설치.sql)')); return; }
+    showUploadToast(t('등록 실패: ','Post failed: ') + error.message); return;
+  }
+  const store = (window._adminRepComments = window._adminRepComments || {});
+  (store[bookId] = store[bookId] || []).push(data);
+  if (ta) ta.value = '';
+  refreshReportComments(bookId);
+  showUploadToast(t('💬 피드백을 남겼어요','💬 Feedback posted'));
+}
+
+async function deleteReportComment(id, bookId) {
+  if (!confirm(t('이 댓글을 삭제할까요?','Delete this comment?'))) return;
+  const { error } = await sb.from('reading_report_comments').delete().eq('id', id);
+  if (error) { showUploadToast(t('삭제 실패: ','Delete failed: ') + error.message); return; }
+  const store = window._adminRepComments || {};
+  store[bookId] = (store[bookId] || []).filter(c => c.id !== id);
+  refreshReportComments(bookId);
+}
+
+// 목록만 다시 그림 (입력창 내용/포커스 유지)
+function refreshReportComments(bookId) {
+  const box = document.getElementById('rc-list-' + bookId);
+  if (!box) return;
+  const list = (window._adminRepComments || {})[bookId] || [];
+  const tmp = document.createElement('div');
+  tmp.innerHTML = reportCommentsHtml(bookId, list);
+  const fresh = tmp.querySelector('#rc-list-' + bookId);
+  box.innerHTML = fresh ? fresh.innerHTML : '';
+  const head = box.previousElementSibling;
+  if (head) { const cnt = head.querySelector('span'); if (cnt) cnt.textContent = list.length; }
 }
 
 // 책 추가/삭제 후 화면 갱신 (교사 TCS-Triple School / 학생 reading-view 모두 대응)
