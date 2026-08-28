@@ -28,9 +28,51 @@ function extractJson(text: string): any {
   let t = text.replace(/```json/gi, "```").trim();
   const fence = t.match(/```([\s\S]*?)```/);
   if (fence) t = fence[1].trim();
-  const s = t.indexOf("{"), e = t.lastIndexOf("}");
-  if (s === -1 || e === -1) return null;
-  try { return JSON.parse(t.slice(s, e + 1)); } catch { return null; }
+
+  // 1) 통째로 JSON 이면 바로 파싱
+  try {
+    const whole = JSON.parse(t);
+    if (whole && typeof whole === "object") return whole;
+  } catch { /* 계속 */ }
+
+  // 2) 사고 과정 등 잡텍스트에 { } 가 섞여 있을 수 있으므로,
+  //    균형 잡힌 { ... } 후보를 모두 찾아 우리가 원하는 모양을 고른다.
+  const WANT = ["likelihood", "questions", "signals", "score", "summary"];
+  let best: any = null, bestScore = -1;
+
+  for (let start = 0; start < t.length; start++) {
+    if (t[start] !== "{") continue;
+    let depth = 0, inStr = false, esc = false;
+    for (let i = start; i < t.length; i++) {
+      const c = t[i];
+      if (inStr) {
+        if (esc) esc = false;
+        else if (c === "\\") esc = true;
+        else if (c === '"') inStr = false;
+        continue;
+      }
+      if (c === '"') inStr = true;
+      else if (c === "{") depth++;
+      else if (c === "}") {
+        depth--;
+        if (depth === 0) {
+          const chunk = t.slice(start, i + 1);
+          try {
+            const obj = JSON.parse(chunk);
+            if (obj && typeof obj === "object" && !Array.isArray(obj)) {
+              const hits = WANT.filter((k) => k in obj).length;
+              // 원하는 키가 많을수록 우선, 같으면 더 긴 쪽
+              const sc = hits * 1000 + Math.min(chunk.length, 999);
+              if (sc > bestScore) { bestScore = sc; best = obj; }
+              if (hits >= 3) return obj;   // 확실하면 즉시 채택
+            }
+          } catch { /* 다음 후보 */ }
+          break;   // 이 start 에서의 후보는 끝, 다음 { 로
+        }
+      }
+    }
+  }
+  return best;
 }
 
 Deno.serve(async (req) => {
@@ -89,7 +131,8 @@ ${report.slice(0, 8000)}
 
     const body = JSON.stringify({
       contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.2, maxOutputTokens: 900, responseMimeType: "application/json" },
+      // 생각(thinking) 모델은 추론에도 출력 토큰을 쓰므로 넉넉히 잡는다
+      generationConfig: { temperature: 0.2, maxOutputTokens: 4096, responseMimeType: "application/json" },
     });
 
     // 모델을 순서대로 시도. 404면 다음 모델로 넘어가고,
@@ -137,13 +180,25 @@ ${report.slice(0, 8000)}
       }, 400);
     }
 
-    const text =
-      (data?.candidates?.[0]?.content?.parts?.map((p: any) => p.text || "").join("") ?? "").trim();
-    const parsed = extractJson(text) || {};
+    // 생각(thinking) 파트는 제외하고 실제 답변 파트만 모은다
+    const parts: any[] = data?.candidates?.[0]?.content?.parts ?? [];
+    const answerParts = parts.filter((p: any) => p && p.thought !== true);
+    const text = ((answerParts.length ? answerParts : parts)
+      .map((p: any) => p.text || "").join("") ?? "").trim();
+    const finishReason = data?.candidates?.[0]?.finishReason || "";
 
     if (!text) {
-      const reason = data?.promptFeedback?.blockReason || data?.candidates?.[0]?.finishReason || "";
+      const reason = data?.promptFeedback?.blockReason || finishReason || "";
       return json({ error: `Gemini가 빈 응답을 돌려줬습니다${reason ? ` (${reason})` : ""}. 잠시 후 다시 시도해 주세요.` }, 400);
+    }
+
+    const parsed = extractJson(text);
+    if (!parsed) {
+      // 조용히 빈 결과를 보여주지 말고 원인을 드러낸다
+      return json({
+        error: `Gemini 응답을 해석하지 못했습니다 (모델: ${usedModel}` +
+               `${finishReason ? `, finishReason: ${finishReason}` : ""}). 응답 앞부분: ${text.slice(0, 300)}`,
+      }, 400);
     }
 
     return json({
