@@ -3357,7 +3357,7 @@ function escReport(s) { return escHtml(stripPastedHtml(s)); }
 function escTa(s) { return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
 // 단어 수 세기 (영문: 공백 단위, 한글/CJK: 글자 단위) — 최종 독후감 분량 검사용
-const MIN_REPORT_WORDS = 800;
+const MIN_REPORT_WORDS = 500;
 const _CJK_RE = /[가-힣ㄱ-ㆎ一-鿿぀-ヿ]/g;
 function countWords(s) {
   if (!s) return 0;
