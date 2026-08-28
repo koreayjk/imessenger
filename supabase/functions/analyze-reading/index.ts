@@ -6,12 +6,13 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 const GEMINI_API_KEY = (Deno.env.get("GEMINI_API_KEY") ?? "").trim();
 
-// 키/프로젝트에 따라 쓸 수 있는 모델이 달라서 순서대로 시도한다
+// 구글이 모델을 수시로 폐기하므로 최신 → 구버전 순으로 시도한다.
+// 404 응답에 "use models/XXX" 안내가 오면 그 모델을 자동으로 먼저 시도한다(자가 복구).
 const MODELS = [
-  "gemini-2.0-flash",
-  "gemini-2.0-flash-001",
-  "gemini-1.5-flash",
+  "gemini-3.6-flash",
   "gemini-flash-latest",
+  "gemini-2.5-flash",
+  "gemini-2.0-flash",
 ];
 
 const cors = {
@@ -91,18 +92,30 @@ ${report.slice(0, 8000)}
       generationConfig: { temperature: 0.2, maxOutputTokens: 900, responseMimeType: "application/json" },
     });
 
-    // 모델을 순서대로 시도 — 404/400(모델 없음)이면 다음 모델로
+    // 모델을 순서대로 시도. 404면 다음 모델로 넘어가고,
+    // 구글이 "use models/XXX" 로 대체 모델을 알려주면 그것을 최우선으로 시도한다.
     let data: any = null;
+    let usedModel = "";
     const tried: string[] = [];
-    for (const model of MODELS) {
+    const queue = [...MODELS];
+    const seen = new Set<string>();
+    let lastErr = "";
+
+    while (queue.length && tried.length < 8) {
+      const model = queue.shift()!;
+      if (!model || seen.has(model)) continue;
+      seen.add(model);
+
       const res = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`,
         { method: "POST", headers: { "Content-Type": "application/json" }, body },
       );
-      if (res.ok) { data = await res.json(); break; }
+      if (res.ok) { data = await res.json(); usedModel = model; break; }
 
       const errText = await res.text();
-      tried.push(`${model} → ${res.status}`);
+      lastErr = errText;
+      tried.push(`${model}→${res.status}`);
+
       // 키 자체가 잘못된 경우는 다른 모델을 시도해도 소용없으니 바로 안내
       if (res.status === 401 || res.status === 403) {
         return json({
@@ -113,11 +126,15 @@ ${report.slice(0, 8000)}
       if (res.status === 429) {
         return json({ error: `Gemini 사용량 한도(429)에 걸렸습니다. 잠시 후 다시 시도하세요. 상세: ${errText.slice(0, 200)}` }, 400);
       }
-      // 그 외(404 모델 없음 등)는 다음 모델로 계속
+      // 폐기 안내에서 대체 모델명을 뽑아 최우선으로 시도 (모델이 또 바뀌어도 자동 대응)
+      const hint = errText.match(/use\s+models\/([A-Za-z0-9._-]+)/);
+      if (hint && hint[1] && !seen.has(hint[1])) queue.unshift(hint[1]);
     }
 
     if (!data) {
-      return json({ error: `사용 가능한 Gemini 모델을 찾지 못했습니다. 시도: ${tried.join(", ")}` }, 400);
+      return json({
+        error: `사용 가능한 Gemini 모델을 찾지 못했습니다. 시도: ${tried.join(", ")}. 상세: ${lastErr.slice(0, 300)}`,
+      }, 400);
     }
 
     const text =
