@@ -6692,15 +6692,33 @@ async function analyzeReadingReport(bookId, btn) {
       noteCount: (window._adminReadNoteCounts || {})[bookId] || 0,
       lang: APP_LANG,
     }});
-    if (error) throw error;
+    if (error) throw await aiFnError(error);
     if (data && data.error) throw new Error(data.error);
     box.innerHTML = renderAiAnalysis(data);
   } catch (e) {
+    const msg = String((e && e.message) || e);
+    const needKey = /GEMINI_API_KEY|api key|API key|401|403/i.test(msg);
     box.innerHTML = `<div style="margin-top:8px;background:#fef2f2;border:1.5px solid #fecaca;border-radius:10px;padding:12px;font-size:12.5px;color:#b91c1c">
-      ${t('분석 실패','Analysis failed')}: ${escHtml(String(e.message || e)).slice(0,300)}
-      <div style="font-size:11px;color:#9ca3af;margin-top:6px">${t(`AI 분석을 쓰려면 Edge Function(${READING_AI_FN}) 배포와 Gemini 키 등록이 필요해요. 저장소의 supabase/functions/${READING_AI_FN} 폴더를 배포하세요.`,`To use AI Check, deploy the Edge Function (${READING_AI_FN}) and set the Gemini key. Deploy supabase/functions/${READING_AI_FN}.`)}</div>
+      ${t('분석 실패','Analysis failed')}: ${escHtml(msg).slice(0,500)}
+      <div style="font-size:11px;color:#9ca3af;margin-top:6px">${needKey
+        ? t(`Supabase → Edge Functions → ${READING_AI_FN} → Secrets 에 <b>GEMINI_API_KEY</b> 를 등록한 뒤 다시 시도하세요.`,`Add <b>GEMINI_API_KEY</b> under Supabase → Edge Functions → ${READING_AI_FN} → Secrets, then retry.`)
+        : t(`Edge Function(${READING_AI_FN})이 오류를 돌려줬어요. 위 메시지를 확인하세요.`,`The Edge Function (${READING_AI_FN}) returned an error. See the message above.`)}</div>
     </div>`;
   } finally { if (btn) { btn.disabled = false; btn.style.opacity = '1'; } }
+}
+
+// Edge Function 오류에서 실제 응답 본문(진짜 원인)을 꺼낸다 — supabase-js는 기본적으로 상태코드만 알려줌
+async function aiFnError(error) {
+  try {
+    const res = error && error.context;
+    if (res && typeof res.text === 'function') {
+      const raw = await res.text();
+      let detail = raw;
+      try { const j = JSON.parse(raw); detail = j.error || j.message || raw; } catch (_) {}
+      if (detail) return new Error(`[${res.status || '?'}] ${String(detail).slice(0, 600)}`);
+    }
+  } catch (_) {}
+  return (error instanceof Error) ? error : new Error(String(error));
 }
 function renderAiAnalysis(d) {
   d = d || {};

@@ -4,18 +4,26 @@
 // 응답: { likelihood:"low|medium|high", score:0-100, summary, signals[], excerpts[], questions[] }
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
-const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY") ?? "";
-const MODEL = "gemini-2.0-flash";
+const GEMINI_API_KEY = (Deno.env.get("GEMINI_API_KEY") ?? "").trim();
+
+// 키/프로젝트에 따라 쓸 수 있는 모델이 달라서 순서대로 시도한다
+const MODELS = [
+  "gemini-2.0-flash",
+  "gemini-2.0-flash-001",
+  "gemini-1.5-flash",
+  "gemini-flash-latest",
+];
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
 
 function extractJson(text: string): any {
   if (!text) return null;
-  // ```json ... ``` 코드펜스 제거
   let t = text.replace(/```json/gi, "```").trim();
   const fence = t.match(/```([\s\S]*?)```/);
   if (fence) t = fence[1].trim();
@@ -28,7 +36,13 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
 
   try {
-    if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY 가 설정되지 않았습니다");
+    if (!GEMINI_API_KEY) {
+      return json({
+        error: "GEMINI_API_KEY 가 이 Edge Function 에 설정되어 있지 않습니다. " +
+               "Supabase 대시보드 → Edge Functions → analyze-reading → Secrets 에서 " +
+               "이름을 정확히 GEMINI_API_KEY 로 추가한 뒤 다시 시도하세요.",
+      }, 400);
+    }
 
     const b = await req.json().catch(() => ({}));
     const report = (b.report || "").toString().trim();
@@ -37,11 +51,11 @@ Deno.serve(async (req) => {
     const lang = (b.lang === "en") ? "en" : "ko";
 
     if (!report || report.length < 20) {
-      return new Response(JSON.stringify({
+      return json({
         likelihood: "unknown", score: 0,
         summary: lang === "en" ? "The report is too short to analyze." : "분석하기에 글이 너무 짧습니다.",
         signals: [], excerpts: [], questions: [],
-      }), { headers: { ...cors, "Content-Type": "application/json" } });
+      });
     }
 
     const outLang = lang === "en" ? "English" : "Korean (한국어)";
@@ -72,29 +86,50 @@ FINAL BOOK REPORT:
 ${report.slice(0, 8000)}
 """`;
 
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${GEMINI_API_KEY}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.2, maxOutputTokens: 900, responseMimeType: "application/json" },
-        }),
-      },
-    );
+    const body = JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.2, maxOutputTokens: 900, responseMimeType: "application/json" },
+    });
 
-    if (!res.ok) {
-      const tt = await res.text();
-      throw new Error(`Gemini 오류 ${res.status}: ${tt.slice(0, 400)}`);
+    // 모델을 순서대로 시도 — 404/400(모델 없음)이면 다음 모델로
+    let data: any = null;
+    const tried: string[] = [];
+    for (const model of MODELS) {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`,
+        { method: "POST", headers: { "Content-Type": "application/json" }, body },
+      );
+      if (res.ok) { data = await res.json(); break; }
+
+      const errText = await res.text();
+      tried.push(`${model} → ${res.status}`);
+      // 키 자체가 잘못된 경우는 다른 모델을 시도해도 소용없으니 바로 안내
+      if (res.status === 401 || res.status === 403) {
+        return json({
+          error: `Gemini API key가 거부됐습니다 (${res.status}). Google AI Studio에서 키가 유효한지, ` +
+                 `Generative Language API 사용이 허용되어 있는지 확인하세요. 상세: ${errText.slice(0, 300)}`,
+        }, 400);
+      }
+      if (res.status === 429) {
+        return json({ error: `Gemini 사용량 한도(429)에 걸렸습니다. 잠시 후 다시 시도하세요. 상세: ${errText.slice(0, 200)}` }, 400);
+      }
+      // 그 외(404 모델 없음 등)는 다음 모델로 계속
     }
 
-    const data = await res.json();
+    if (!data) {
+      return json({ error: `사용 가능한 Gemini 모델을 찾지 못했습니다. 시도: ${tried.join(", ")}` }, 400);
+    }
+
     const text =
       (data?.candidates?.[0]?.content?.parts?.map((p: any) => p.text || "").join("") ?? "").trim();
     const parsed = extractJson(text) || {};
 
-    const out = {
+    if (!text) {
+      const reason = data?.promptFeedback?.blockReason || data?.candidates?.[0]?.finishReason || "";
+      return json({ error: `Gemini가 빈 응답을 돌려줬습니다${reason ? ` (${reason})` : ""}. 잠시 후 다시 시도해 주세요.` }, 400);
+    }
+
+    return json({
       likelihood: ["low", "medium", "high"].includes((parsed.likelihood || "").toLowerCase())
         ? parsed.likelihood.toLowerCase() : "unknown",
       score: typeof parsed.score === "number" ? parsed.score : 0,
@@ -102,15 +137,8 @@ ${report.slice(0, 8000)}
       signals: Array.isArray(parsed.signals) ? parsed.signals.slice(0, 6) : [],
       excerpts: Array.isArray(parsed.excerpts) ? parsed.excerpts.slice(0, 3) : [],
       questions: Array.isArray(parsed.questions) ? parsed.questions.slice(0, 6) : [],
-    };
-
-    return new Response(JSON.stringify(out), {
-      headers: { ...cors, "Content-Type": "application/json" },
     });
   } catch (e) {
-    return new Response(JSON.stringify({ error: String((e as Error)?.message || e) }), {
-      status: 400,
-      headers: { ...cors, "Content-Type": "application/json" },
-    });
+    return json({ error: String((e as Error)?.message || e) }, 400);
   }
 });
