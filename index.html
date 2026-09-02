@@ -3089,6 +3089,7 @@ function copyMsgText(id) {
 // ══════════════════════════════════════════════════════════════════
 //  자료실 — 구글 드라이브 공유 폴더 탐색 + 다운로드
 // ══════════════════════════════════════════════════════════════════
+let drivePath = [];          // 루트 아래로 내려온 폴더 id 경로 (루트 제외)
 let driveFolderId = '';      // 현재 폴더 (빈 값이면 루트)
 let driveRootId = '';
 let driveSearch = '';
@@ -3129,8 +3130,11 @@ function driveDate(iso) {
 // 구글 문서류는 내려받기 대신 열기로 안내
 function driveIsGoogleDoc(it) { return (it.mimeType || '').startsWith('application/vnd.google-apps.'); }
 
-function driveOpenFolder(id) { driveFolderId = id; driveSearch = ''; initDrivePage(); }
-function driveGoRoot() { driveFolderId = driveRootId || ''; driveSearch = ''; initDrivePage(); }
+// 하위 폴더로 진입 (현재 경로 뒤에 붙임)
+function driveOpenFolder(id) { drivePath = drivePath.concat([id]); driveSearch = ''; initDrivePage(); }
+// 브레드크럼에서 특정 단계로 이동 (0 = 루트)
+function driveGoCrumb(level) { drivePath = drivePath.slice(0, level); driveSearch = ''; initDrivePage(); }
+function driveGoRoot() { drivePath = []; driveSearch = ''; initDrivePage(); }
 function driveDoSearch(v) {
   driveSearch = v;
   clearTimeout(window._driveSearchT);
@@ -3147,7 +3151,7 @@ async function initDrivePage(keepFocus) {
   }
   try {
     const { data, error } = await sb.functions.invoke('drive-list', {
-      body: { folderId: driveFolderId || undefined, search: driveSearch || undefined },
+      body: { path: drivePath, search: driveSearch || undefined },
     });
     if (error) throw await driveFnError(error);
     if (data && data.error) throw new Error(data.error);
@@ -3155,6 +3159,8 @@ async function initDrivePage(keepFocus) {
     driveFolderId = data.folderId || driveFolderId;
     driveItems = data.files || [];
     driveCrumbs = data.breadcrumb || [];
+    // 서버가 확인해준 경로로 동기화 (루트 제외)
+    if (!driveSearch) drivePath = driveCrumbs.slice(1).map(c => c.id);
     renderDrivePage();
   } catch (e) {
     renderDriveError(String((e && e.message) || e));
@@ -3204,10 +3210,10 @@ function renderDrivePage() {
     ? `<span style="font-size:12.5px;color:var(--ink3)">${t('검색 결과','Search results')} · "${escHtml(driveSearch)}"</span>`
     : driveCrumbs.map((c, i) => {
         const last = i === driveCrumbs.length - 1;
-        const label = (i === 0) ? t('자료실','Files') : c.name;
+        const label = (i === 0) ? (c.name || t('자료실','Files')) : c.name;
         return last
           ? `<span style="font-size:12.5px;font-weight:700;color:var(--ink)">${escHtml(label)}</span>`
-          : `<span onclick="driveOpenFolder('${c.id}')" style="font-size:12.5px;color:var(--accent);cursor:pointer">${escHtml(label)}</span><span style="color:var(--ink3);font-size:11px">›</span>`;
+          : `<span onclick="driveGoCrumb(${i})" style="font-size:12.5px;color:var(--accent);cursor:pointer">${escHtml(label)}</span><span style="color:var(--ink3);font-size:11px">›</span>`;
       }).join('');
 
   const folders = driveItems.filter(x => x.isFolder);
