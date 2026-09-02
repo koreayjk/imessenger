@@ -3182,7 +3182,7 @@ async function driveFnError(error) {
 
 function renderDriveError(msg) {
   const main = document.getElementById('drive-main');
-  const notSetup = /GOOGLE_API_KEY|DRIVE_ROOT_FOLDER_ID|Failed to send|non-2xx/i.test(msg);
+  const notSetup = /DRIVE_API_KEY|GOOGLE_API_KEY|드라이브 API 키|DRIVE_ROOT_FOLDER_ID|Failed to send|non-2xx/i.test(msg);
   main.innerHTML = `<div style="max-width:620px;margin:30px auto;text-align:center">
     <div style="font-size:40px;margin-bottom:12px">📁</div>
     <div style="font-size:16px;font-weight:700;margin-bottom:8px">${notSetup ? t('자료실 연결 설정이 필요해요','Files setup required') : t('불러오지 못했어요','Could not load')}</div>
@@ -3191,7 +3191,7 @@ function renderDriveError(msg) {
       <b style="color:var(--ink2)">${t('설정 방법','Setup')}</b><br>
       1. ${t('구글 드라이브에서 공유할 폴더를 <b>링크가 있는 모든 사용자 · 뷰어</b>로 공유','Share the folder as <b>Anyone with the link · Viewer</b>')}<br>
       2. ${t('폴더 주소의 마지막 부분(폴더 ID)을 복사','Copy the folder ID from its URL')}<br>
-      3. ${t('Supabase → Edge Functions → <b>drive-list</b> → Secrets 에<br>&nbsp;&nbsp;&nbsp;<b>GOOGLE_API_KEY</b> 와 <b>DRIVE_ROOT_FOLDER_ID</b> 등록','Add <b>GOOGLE_API_KEY</b> and <b>DRIVE_ROOT_FOLDER_ID</b> under Supabase → Edge Functions → <b>drive-list</b> → Secrets')}
+      3. ${t('Supabase → Edge Functions → <b>drive-list</b> → Secrets 에<br>&nbsp;&nbsp;&nbsp;<b>DRIVE_API_KEY</b> 와 <b>DRIVE_ROOT_FOLDER_ID</b> 등록','Add <b>DRIVE_API_KEY</b> and <b>DRIVE_ROOT_FOLDER_ID</b> under Supabase → Edge Functions → <b>drive-list</b> → Secrets')}
     </div>
   </div>`;
 }

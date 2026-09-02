@@ -3,13 +3,16 @@
 // 앱(index.html)의 드라이브 화면에서 호출합니다.
 //
 // 필요한 Secrets (Edge Functions → drive-list → Secrets):
-//   GOOGLE_API_KEY        : Google Cloud 에서 만든 API 키 (Drive API 사용 설정 필요)
+//   DRIVE_API_KEY         : Google Cloud 에서 만든 API 키 (Drive API 사용 설정 필요)
+//                           ※ 없으면 GOOGLE_API_KEY 를 대신 사용합니다
 //   DRIVE_ROOT_FOLDER_ID  : 공유할 최상위 폴더 ID (드라이브 폴더 URL 의 마지막 부분)
 //
 // 폴더는 '링크가 있는 모든 사용자 - 뷰어' 로 공유되어 있어야 합니다.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
-const API_KEY = (Deno.env.get("GOOGLE_API_KEY") ?? "").trim();
+// DRIVE_API_KEY 를 우선 사용하고, 없으면 GOOGLE_API_KEY 를 씁니다.
+// (Supabase Secrets 는 프로젝트 전체 공용이라 기존 키와 충돌하지 않도록 분리 가능)
+const API_KEY = ((Deno.env.get("DRIVE_API_KEY") ?? Deno.env.get("GOOGLE_API_KEY")) ?? "").trim();
 const ROOT_ID = (Deno.env.get("DRIVE_ROOT_FOLDER_ID") ?? "").trim();
 const FOLDER_MIME = "application/vnd.google-apps.folder";
 
@@ -57,7 +60,7 @@ Deno.serve(async (req) => {
 
   try {
     if (!API_KEY) {
-      return json({ error: "GOOGLE_API_KEY 가 설정되지 않았습니다. Supabase → Edge Functions → drive-list → Secrets 에 추가하세요." }, 400);
+      return json({ error: "드라이브 API 키가 없습니다. Supabase → Edge Functions → Secrets 에 DRIVE_API_KEY (또는 GOOGLE_API_KEY) 를 추가하세요." }, 400);
     }
     if (!ROOT_ID) {
       return json({ error: "DRIVE_ROOT_FOLDER_ID 가 설정되지 않았습니다. 공유할 구글 드라이브 폴더 ID 를 Secrets 에 추가하세요." }, 400);
