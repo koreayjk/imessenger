@@ -1406,9 +1406,11 @@ function subscribeGlobalMessages() {
   globalMsgSub = sb.channel('global-messages')
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
       const msg = payload.new;
-      // 내가 보낸 메시지거나 현재 보고 있는 채널이면 무시
-      if (!ME || msg.sender_id === ME.id) return;
-      if (currentChannel && currentChannel.id === msg.channel_id) return;
+      if (!ME) return;
+      // 정렬용 활동시각은 어떤 경우든 먼저 갱신 (보고 있는 방/내 메시지 포함)
+      touchChannelActivity(msg.channel_id, msg.created_at);
+      if (msg.sender_id === ME.id) return;
+      if (currentChannel && currentChannel.id === msg.channel_id) { renderPanel(); return; }
       // 내가 속한 채널이면 배지 증가
       if (myChannelIds.has(msg.channel_id)) {
         unreadCounts[msg.channel_id] = (unreadCounts[msg.channel_id] || 0) + 1;
@@ -1443,7 +1445,7 @@ async function resyncRealtime(force) {
   try { subscribeGlobalMessages(); } catch(_) {}
   // 무거운 재조회(안읽음 재계산 + 채널 전체 재로드)는 '오래 자리비움(force)'일 때만 → 대역폭 절약
   if (force) {
-    try { await loadUnreadCounts(); updateUnreadBadges(); } catch(_) {}
+    try { await loadLastMessageTimes(); await loadUnreadCounts(); updateUnreadBadges(); renderPanel(); } catch(_) {}
     try {
       const ca = document.getElementById('chat-active');
       if (currentChannel && ca && ca.style.display !== 'none') await openChannel(currentChannel.id);
@@ -2092,6 +2094,7 @@ async function init() {
 
   renderPanel();
   renderMembers();
+  await loadLastMessageTimes();
   await loadUnreadCounts();
   restoreLastState();
 }
@@ -2298,10 +2301,31 @@ function groupHeaderHtml(g, count) {
     ${canEdit?`<span onclick="renameChannelGroup('${g.id}')" title="이름 수정" style="cursor:pointer;font-size:12px">✏️</span><span onclick="deleteChannelGroup('${g.id}')" title="그룹 삭제" style="cursor:pointer;font-size:12px;opacity:.7">🗑</span>`:''}
   </div>`;
 }
+// 1:1 정렬 기준 — 실제 최신 메시지 시각을 우선 사용.
+// (channels.last_message_at 컬럼은 저장이 막히거나 갱신이 늦을 수 있어 보조로만 씀)
+let chLastMsgAt = {};   // channel_id -> 최신 메시지 시각
+function dmSortKey(c) {
+  return String(chLastMsgAt[c.id] || c.last_message_at || c.created_at || '');
+}
+function touchChannelActivity(channelId, iso) {
+  if (!channelId) return;
+  const when = iso || new Date().toISOString();
+  if (String(chLastMsgAt[channelId] || '') < String(when)) chLastMsgAt[channelId] = when;
+}
+// 내가 속한 채널들의 최신 메시지 시각을 한 번에 읽어온다
+async function loadLastMessageTimes() {
+  const ids = Array.from(myChannelIds || []);
+  if (!ids.length) return;
+  try {
+    const { data } = await sb.from('messages').select('channel_id, created_at')
+      .in('channel_id', ids).order('created_at', { ascending: false }).limit(800);
+    (data || []).forEach(m => { if (!chLastMsgAt[m.channel_id]) chLastMsgAt[m.channel_id] = m.created_at; });
+  } catch (_) {}
+}
 function sortDms(dms) {
   return dms.slice().sort((a,b)=>{
     const fa = dmFavorites.has(a.id)?0:1, fb = dmFavorites.has(b.id)?0:1; if (fa!==fb) return fa-fb;
-    return String(b.last_message_at||b.created_at||'').localeCompare(String(a.last_message_at||a.created_at||''));
+    return dmSortKey(b).localeCompare(dmSortKey(a));
   });
 }
 async function toggleDmFavorite(id) {
@@ -2481,7 +2505,7 @@ function filterChannels(q) {
   }
   if (dms.length) {
     html += `<div class="section-label"><span>💬 1:1 대화</span></div>`;
-    dms.forEach(ch => html += chRow(ch));
+    sortDms(dms).forEach(ch => html += chRow(ch));
   }
   if (!html) html = '<div style="padding:20px;text-align:center;color:var(--ink3);font-size:13px">검색 결과가 없어요</div>';
   document.getElementById('panel-body').innerHTML = html;
@@ -2949,6 +2973,7 @@ async function createPoll() {
   // 1:1 최신순용 마지막 활동시각 갱신
   const nowIso = new Date().toISOString();
   currentChannel.last_message_at = nowIso;
+  touchChannelActivity(currentChannel.id, nowIso);
   const ch = channels.find(c => c.id === currentChannel.id); if (ch) ch.last_message_at = nowIso;
   sb.from('channels').update({ last_message_at: nowIso }).eq('id', currentChannel.id).then(()=>{}, ()=>{});
 }
@@ -3751,6 +3776,7 @@ async function sendMsg() {
   if (currentChannel) {
     const nowIso = new Date().toISOString();
     currentChannel.last_message_at = nowIso;
+    touchChannelActivity(currentChannel.id, nowIso);
     const ch = channels.find(c => c.id === currentChannel.id); if (ch) ch.last_message_at = nowIso;
     sb.from('channels').update({ last_message_at: nowIso }).eq('id', currentChannel.id).then(()=>{}, ()=>{});
     if (currentChannel.kind === 'dm') renderPanel();
