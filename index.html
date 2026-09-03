@@ -3155,6 +3155,16 @@ async function initDrivePage(keepFocus) {
     });
     if (error) throw await driveFnError(error);
     if (data && data.error) throw new Error(data.error);
+    // 구버전 함수 감지: path 를 무시하고 항상 루트를 돌려주면 폴더 진입이 안 됨
+    const askedDepth = driveSearch ? 0 : drivePath.length;
+    const gotDepth = Math.max(0, ((data.breadcrumb || []).length || 1) - 1);
+    if (data.v !== 2 || (askedDepth > 0 && gotDepth !== askedDepth)) {
+      drivePath = [];
+      throw new Error(t(
+        'drive-list 함수가 구버전이에요. 하위 폴더로 들어가려면 Supabase → Edge Functions → drive-list 를 새 코드로 다시 배포해주세요.',
+        'The drive-list function is outdated. Redeploy it with the latest code in Supabase → Edge Functions → drive-list.'
+      ));
+    }
     driveRootId = data.rootId || driveRootId;
     driveFolderId = data.folderId || driveFolderId;
     driveItems = data.files || [];
@@ -3188,7 +3198,7 @@ async function driveFnError(error) {
 
 function renderDriveError(msg) {
   const main = document.getElementById('drive-main');
-  const notSetup = /DRIVE_API_KEY|GOOGLE_API_KEY|드라이브 API 키|DRIVE_ROOT_FOLDER_ID|Failed to send|non-2xx/i.test(msg);
+  const notSetup = /DRIVE_API_KEY|GOOGLE_API_KEY|드라이브 API 키|DRIVE_ROOT_FOLDER_ID|Failed to send|non-2xx|구버전|outdated/i.test(msg);
   main.innerHTML = `<div style="max-width:620px;margin:30px auto;text-align:center">
     <div style="font-size:40px;margin-bottom:12px">📁</div>
     <div style="font-size:16px;font-weight:700;margin-bottom:8px">${notSetup ? t('자료실 연결 설정이 필요해요','Files setup required') : t('불러오지 못했어요','Could not load')}</div>

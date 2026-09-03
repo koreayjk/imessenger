@@ -144,6 +144,7 @@ Deno.serve(async (req) => {
       });
       const data = await driveGet(`/files?${p.toString()}&${COMMON}`);
       return json({
+        v: 2,
         rootId: ROOT_ID,
         folderId: ROOT_ID,
         files: (data?.files || []).map(shape),
@@ -157,7 +158,7 @@ Deno.serve(async (req) => {
     const folderId = breadcrumb[breadcrumb.length - 1].id;
     const files = (await listChildren(folderId)).map(shape);
 
-    return json({ rootId: ROOT_ID, folderId, files, breadcrumb });
+    return json({ v: 2, rootId: ROOT_ID, folderId, files, breadcrumb });
   } catch (e: any) {
     const status = e?.status;
     let msg = String(e?.message || e);
