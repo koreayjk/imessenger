@@ -131,6 +131,7 @@
       <div class="navi" data-page="stock" onclick="go('stock')"><span class="ic">📦</span><span class="t">재고관리</span></div>
       <div class="navi" data-page="expense" onclick="go('expense')"><span class="ic">💸</span><span class="t">지출</span></div>
       <div class="navi" data-page="stats" onclick="go('stats')"><span class="ic">📈</span><span class="t">통계</span></div>
+      <div class="navi" data-page="settle" onclick="go('settle')"><span class="ic">🧾</span><span class="t">정산</span></div>
       <div class="navi" data-page="settings" onclick="go('settings')"><span class="ic">⚙️</span><span class="t">설정</span></div>
       <div style="flex:1"></div>
       <div class="navi" onclick="logout()"><span class="ic">🚪</span><span class="t">나가기</span></div>
@@ -214,6 +215,7 @@ function go(page){
   else if(page==='stock') renderStock();
   else if(page==='expense') renderExpense();
   else if(page==='stats') renderStats();
+  else if(page==='settle') renderSettle();
   else if(page==='settings') renderSettings();
 }
 
@@ -485,6 +487,105 @@ async function saveExpense(){
   try{ await call('save_expense',{expense}); closeModal(); toast('저장 완료'); renderExpense(); }catch(e){ toast(e.message); }
 }
 async function delExpense(id){ if(!confirm('삭제할까요?'))return; try{ await call('delete_expense',{id}); toast('삭제됨'); renderExpense(); }catch(e){ toast(e.message); } }
+
+// ───── 정산 (월별 / 연도별) ─────
+let stlPeriod='month', stlYear=new Date().getFullYear(), stlMonth=new Date().getMonth()+1;
+const PAY_LABEL={allowance:'💳 용돈', deposit:'🏦 예치금', cash:'💵 현금'};
+function stlSet(k,v){ if(k==='period') stlPeriod=v; if(k==='year') stlYear=+v; if(k==='month') stlMonth=+v; renderSettle(); }
+function stlShift(d){
+  if(stlPeriod==='year'){ stlYear+=d; }
+  else { let m=stlMonth+d, y=stlYear; if(m<1){m=12;y--;} if(m>12){m=1;y++;} stlMonth=m; stlYear=y; }
+  renderSettle();
+}
+async function renderSettle(){
+  const m=document.getElementById('main');
+  m.innerHTML='<div style="padding:40px;text-align:center;color:var(--ink3)">정산 불러오는 중...</div>';
+  let r;
+  try{ r=await call('settle',{ period:stlPeriod, year:stlYear, month:stlMonth }); }
+  catch(e){ m.innerHTML=errBox(e); return; }
+
+  const label = stlPeriod==='year' ? `${r.year}년` : `${r.year}년 ${r.month}월`;
+  const maxBucket = Math.max(1, ...r.buckets.map(b=>Math.max(b.sales,b.expense)));
+  const maxQty = Math.max(1, ...r.topProducts.map(p=>p.qty));
+  const seg=(v,txt)=>`<button class="chip ${stlPeriod===v?'on':''}" style="height:38px;padding:0 16px" onclick="stlSet('period','${v}')">${txt}</button>`;
+  const yearOpts=Array.from({length:6},(_,i)=>new Date().getFullYear()-i)
+    .map(y=>`<option value="${y}" ${y===r.year?'selected':''}>${y}년</option>`).join('');
+  const monthOpts=Array.from({length:12},(_,i)=>i+1)
+    .map(mm=>`<option value="${mm}" ${mm===r.month?'selected':''}>${mm}월</option>`).join('');
+
+  // 막대 그래프 (월별/일별 추이)
+  const chart = r.buckets.map(b=>`
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:4px">
+      <div style="width:100%;height:110px;display:flex;align-items:flex-end;justify-content:center;gap:2px">
+        <div title="매출 ${won(b.sales)}" style="width:42%;height:${Math.round(b.sales/maxBucket*100)}%;min-height:${b.sales?2:0}px;background:linear-gradient(180deg,#2a5298,#1d3a5f);border-radius:3px 3px 0 0"></div>
+        <div title="지출 ${won(b.expense)}" style="width:42%;height:${Math.round(b.expense/maxBucket*100)}%;min-height:${b.expense?2:0}px;background:#e5a3a3;border-radius:3px 3px 0 0"></div>
+      </div>
+      <div style="font-size:10px;color:var(--ink3);white-space:nowrap">${b.label}</div>
+    </div>`).join('');
+
+  m.innerHTML=`
+    <div class="head"><div class="h1">🧾 정산<div class="sub">${label} · 매출/지출 정산과 구매 순위</div></div></div>
+
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:16px">
+      ${seg('month','월별')}${seg('year','연도별')}
+      <div style="width:8px"></div>
+      <button class="chip" style="height:38px;width:38px;justify-content:center" onclick="stlShift(-1)">‹</button>
+      <select class="inp" style="height:38px;width:auto" onchange="stlSet('year',this.value)">${yearOpts}</select>
+      ${stlPeriod==='month'?`<select class="inp" style="height:38px;width:auto" onchange="stlSet('month',this.value)">${monthOpts}</select>`:''}
+      <button class="chip" style="height:38px;width:38px;justify-content:center" onclick="stlShift(1)">›</button>
+    </div>
+
+    <div class="grid-stat" style="margin-bottom:18px">
+      <div class="stat"><div class="lb">매출</div><div class="vl">${won(r.summary.salesSum)}</div></div>
+      <div class="stat"><div class="lb">지출</div><div class="vl" style="color:var(--bad)">${won(r.summary.expSum)}</div></div>
+      <div class="stat"><div class="lb">순이익</div><div class="vl" style="color:${r.summary.net>=0?'var(--adeep)':'var(--bad)'}">${won(r.summary.net)}</div></div>
+      <div class="stat"><div class="lb">판매 건수</div><div class="vl">${r.summary.saleCount}건</div></div>
+      <div class="stat"><div class="lb">판매 수량</div><div class="vl">${r.summary.itemQty}개</div></div>
+      <div class="stat"><div class="lb">이용 인원</div><div class="vl">${r.summary.buyerCount}명</div></div>
+    </div>
+
+    <div class="card" style="padding:16px 18px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+        <div style="font-weight:800">📊 ${stlPeriod==='year'?'월별':'일별'} 추이</div>
+        <span style="font-size:11.5px;color:var(--ink3)">
+          <span style="display:inline-block;width:9px;height:9px;background:#1d3a5f;border-radius:2px"></span> 매출
+          &nbsp;<span style="display:inline-block;width:9px;height:9px;background:#e5a3a3;border-radius:2px"></span> 지출
+        </span>
+      </div>
+      <div style="display:flex;gap:3px;align-items:flex-end;overflow-x:auto">${chart}</div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1.2fr 1fr;gap:16px;align-items:start">
+      <div class="card" style="padding:16px 18px;overflow:auto">
+        <div style="font-weight:800;margin-bottom:12px">🧑‍🎓 많이 구매한 사람</div>
+        <table><thead><tr><th>순위</th><th>이름</th><th style="text-align:right">금액</th><th style="text-align:right">횟수</th><th style="text-align:right">수량</th></tr></thead><tbody>
+        ${r.topBuyers.length? r.topBuyers.map((s2,i)=>`<tr>
+          <td style="color:var(--ink3)">${i+1}</td>
+          <td style="font-weight:700">${esc(s2.name)}</td>
+          <td style="text-align:right;font-weight:700;color:var(--adeep)">${won(s2.amount)}</td>
+          <td style="text-align:right;color:var(--ink3)">${s2.count}회</td>
+          <td style="text-align:right;color:var(--ink3)">${s2.qty}개</td></tr>`).join('')
+          : '<tr><td colspan="5" style="text-align:center;color:var(--ink3);padding:24px">이 기간 구매 기록이 없어요</td></tr>'}
+        </tbody></table>
+      </div>
+
+      <div class="card" style="padding:16px 18px">
+        <div style="font-weight:800;margin-bottom:12px">🏆 많이 팔린 상품</div>
+        ${r.topProducts.length? r.topProducts.slice(0,15).map((p,i)=>`
+          <div style="margin-bottom:10px">
+            <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:4px">
+              <span>${i+1}. ${esc(p.name)}</span><b>${p.qty}개 · ${won(p.amount)}</b></div>
+            <div style="height:8px;background:var(--s2);border-radius:99px;overflow:hidden"><div style="height:100%;width:${Math.round(p.qty/maxQty*100)}%;background:linear-gradient(90deg,#2a5298,#1d3a5f)"></div></div>
+          </div>`).join('') : '<div style="color:var(--ink3);font-size:13px">판매 기록이 없어요</div>'}
+        <div style="border-top:1px solid var(--border);margin-top:14px;padding-top:12px">
+          <div style="font-weight:800;margin-bottom:8px">💳 결제수단별</div>
+          ${r.byPay.length? r.byPay.map(p=>`<div style="display:flex;justify-content:space-between;font-size:12.5px;padding:3px 0">
+            <span>${PAY_LABEL[p.method]||p.method}</span><b>${won(p.amount)}</b></div>`).join('')
+            : '<div style="color:var(--ink3);font-size:12.5px">없음</div>'}
+        </div>
+      </div>
+    </div>`;
+}
 
 // ───── 통계 ─────
 async function renderStats(){

@@ -402,6 +402,87 @@ Deno.serve(async (req) => {
     }
 
     // 통계: 학생별 일/주/월 지출 + 상품 랭킹 + 매출/지출 요약
+    // 정산 — 월별/연도별. 누가 많이 샀고 어떤 상품이 많이 팔렸는지.
+    //   period: 'month' | 'year',  year: 2026,  month: 1~12 (month 일 때)
+    if (action === "settle") {
+      const period = b.period === "year" ? "year" : "month";
+      const now = new Date();
+      const year = Math.trunc(Number(b.year) || now.getFullYear());
+      const month = Math.min(12, Math.max(1, Math.trunc(Number(b.month) || (now.getMonth() + 1))));
+
+      const from = period === "year" ? new Date(year, 0, 1) : new Date(year, month - 1, 1);
+      const to = period === "year" ? new Date(year + 1, 0, 1) : new Date(year, month, 1);
+      const fromIso = from.toISOString(), toIso = to.toISOString();
+
+      const { data: sales } = await admin.from("store_sales")
+        .select("member_id, buyer_name, total, pay_method, created_at, store_sale_items(name, qty, price)")
+        .eq("community_id", cid).eq("voided", false)
+        .gte("created_at", fromIso).lt("created_at", toIso);
+
+      const buyers = new Map<string, { name: string; amount: number; count: number; qty: number }>();
+      const prodMap = new Map<string, { name: string; qty: number; amount: number }>();
+      const payMap = new Map<string, number>();
+      const bucketCount = period === "year" ? 12 : new Date(year, month, 0).getDate();
+      const buckets: { sales: number; expense: number; count: number }[] =
+        Array.from({ length: bucketCount }, () => ({ sales: 0, expense: 0, count: 0 }));
+      let salesSum = 0, saleCount = 0, itemQty = 0;
+
+      for (const sale of sales || []) {
+        const t = Number(sale.total) || 0;
+        salesSum += t; saleCount += 1;
+
+        const key = sale.member_id || ("cash:" + (sale.buyer_name || "현금"));
+        const bu = buyers.get(key) || { name: sale.buyer_name || "현금", amount: 0, count: 0, qty: 0 };
+        bu.amount += t; bu.count += 1;
+
+        const d = new Date(sale.created_at);
+        const idx = period === "year" ? d.getMonth() : (d.getDate() - 1);
+        if (buckets[idx]) { buckets[idx].sales += t; buckets[idx].count += 1; }
+
+        const pm = sale.pay_method || "allowance";
+        payMap.set(pm, (payMap.get(pm) || 0) + t);
+
+        for (const it of sale.store_sale_items || []) {
+          const q = Number(it.qty) || 0;
+          const amt = (Number(it.price) || 0) * q;
+          itemQty += q; bu.qty += q;
+          const pr = prodMap.get(it.name) || { name: it.name, qty: 0, amount: 0 };
+          pr.qty += q; pr.amount += amt;
+          prodMap.set(it.name, pr);
+        }
+        buyers.set(key, bu);
+      }
+
+      // 지출 (date 컬럼 기준)
+      const { data: exps } = await admin.from("store_expenses")
+        .select("amount, date, memo").eq("community_id", cid)
+        .gte("date", fromIso.slice(0, 10)).lt("date", toIso.slice(0, 10));
+      let expSum = 0;
+      for (const e of exps || []) {
+        const amt = Number(e.amount) || 0;
+        expSum += amt;
+        const d = new Date(String(e.date) + "T00:00:00");
+        const idx = period === "year" ? d.getMonth() : (d.getDate() - 1);
+        if (buckets[idx]) buckets[idx].expense += amt;
+      }
+
+      const topBuyers = [...buyers.entries()].map(([k, v2]) => ({ key: k, ...v2 }))
+        .sort((a, b2) => b2.amount - a.amount);
+      const topProducts = [...prodMap.values()].sort((a, b2) => b2.qty - a.qty);
+      const byPay = [...payMap.entries()].map(([method, amount]) => ({ method, amount }))
+        .sort((a, b2) => b2.amount - a.amount);
+
+      return json({
+        ok: true, period, year, month, currency: v.currency || "원",
+        summary: { salesSum, expSum, net: salesSum - expSum, saleCount, itemQty, buyerCount: buyers.size },
+        buckets: buckets.map((x, i) => ({
+          label: period === "year" ? (i + 1) + "월" : (i + 1) + "일",
+          sales: x.sales, expense: x.expense, count: x.count,
+        })),
+        topBuyers, topProducts, byPay,
+      });
+    }
+
     if (action === "stats") {
       const now = new Date();
       const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
