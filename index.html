@@ -5214,6 +5214,7 @@ async function selectTcsStudent(student) {
   if (studentProfile) {
     // 현재 학년을 항상 최신 프로필 값으로 반영 (패널 클릭 시 학년 누락 방지)
     tcsCurrentStudent.grade = studentProfile.grade || '';
+    tcsPrintGrade = null;   // 학생이 바뀌면 출력 학년을 그 학생 기준으로 다시 잡는다
     const communityId = ME.community_id || '00000000-0000-0000-0000-000000000001';
     const personalMerge = {
       name_ko: studentProfile.name || '',
@@ -7238,6 +7239,38 @@ async function saveTcsSection(sectionId) {
 // ── TCS 미리보기 ──
 // 종합기록부 출력 시 포함할 섹션 선택 (null = 전체 포함)
 let tcsInclude = null;
+// 출력 대상 학년. null = 아직 선택 안 함(학생의 현재 학년을 기본값으로), 'ALL' = 전체 학년,
+// 그 외에는 'g10' 처럼 한 학년만. 보통 10/11/12학년을 따로 뽑기 때문에 학년별로 끊어서 출력한다.
+let tcsPrintGrade = null;
+// 실제 필터에 쓸 학년 키 (전체면 null)
+function tcsGradeFilter() { return (tcsPrintGrade && tcsPrintGrade !== 'ALL') ? tcsPrintGrade : null; }
+// 학년 목록 — 출결/교과 키가 서로 달라 함께 보관 ('g10' ↔ 'g10_grades')
+const TCS_PRINT_GRADES = [
+  ['k','K (유치원)'],['g1','G1 (1학년)'],['g2','G2 (2학년)'],['g3','G3 (3학년)'],
+  ['g4','G4 (4학년)'],['g5','G5 (5학년)'],['g6','G6 (6학년)'],['g7','G7 (중1)'],
+  ['g8','G8 (중2)'],['g9','G9 (중3)'],['g10','G10 (고1)'],['g11','G11 (고2)'],['g12','G12 (고3)'],
+];
+// 학생 프로필 학년('G10 (고1)') → 출력 키('g10')
+function tcsGradeKeyOfStudent() {
+  const g = ((tcsCurrentStudent && tcsCurrentStudent.grade) || '').trim();
+  if (!g) return null;
+  if (/^K\b/i.test(g)) return 'k';
+  const m = g.match(/(\d+)/);
+  return m ? ('g' + parseInt(m[1])) : null;
+}
+function tcsPrintGradeLabel() {
+  const g = tcsGradeFilter();
+  if (!g) return '';
+  const hit = TCS_PRINT_GRADES.find(([k]) => k === g);
+  return hit ? hit[1] : '';
+}
+function setTcsPrintGrade(v) {
+  tcsPrintGrade = v || 'ALL';
+  const box = document.getElementById('tcs-preview-content');
+  if (box) box.innerHTML = buildTcsPreviewHtml('ko');
+  const ttl = document.getElementById('tcs-preview-title');
+  if (ttl) ttl.textContent = `📄 TCS 기록부 미리보기 — ${tcsCurrentStudent.name}${tcsGradeFilter() ? ' · ' + tcsPrintGradeLabel() : ''}`;
+}
 const TCS_INCLUDE_SECTIONS = [
   ['personal','인적사항'],['school','학적사항'],['attendance','출결'],['academic','교과학습'],
   ['mock','모의고사'],['reading_ts','신앙필독서'],['faith','신앙·인성'],['activities','창의체험'],
@@ -7253,6 +7286,13 @@ function toggleTcsSection(key, checked) {
 
 async function showTcsPreview() {
   await loadRecordOrgs();
+  // 기본값: 이 학생의 현재 학년 (없으면 전체)
+  if (tcsPrintGrade === null) tcsPrintGrade = tcsGradeKeyOfStudent() || 'ALL';
+  const gradeSelect = `
+    <select onchange="setTcsPrintGrade(this.value)" title="출력할 학년" style="height:34px;padding:0 10px;border-radius:8px;border:1.5px solid #1d3a5f;font:700 13px sans-serif;background:white;color:#1d3a5f;cursor:pointer">
+      <option value="ALL" ${!tcsGradeFilter() ? 'selected' : ''}>전체 학년</option>
+      ${TCS_PRINT_GRADES.map(([k,label]) => `<option value="${k}" ${tcsGradeFilter() === k ? 'selected' : ''}>${label}만</option>`).join('')}
+    </select>`;
   const orgSelect = tcsOrgs.length ? `
     <select onchange="tcsSelectedOrgId=this.value;document.getElementById('tcs-preview-content').innerHTML=buildTcsPreviewHtml('ko')" style="height:34px;padding:0 10px;border-radius:8px;border:1.5px solid #e5e7eb;font:500 13px sans-serif;background:white;cursor:pointer">
       ${tcsOrgs.map(o => `<option value="${o.id}" ${o.id === tcsSelectedOrgId ? 'selected' : ''}>${o.name}</option>`).join('')}
@@ -7262,8 +7302,9 @@ async function showTcsPreview() {
   overlay.innerHTML = `
     <div style="background:white;border-radius:20px;width:100%;max-width:860px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.3)">
       <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 24px;border-bottom:1px solid #e5e7eb;flex-shrink:0;gap:10px;flex-wrap:wrap">
-        <div style="font-size:16px;font-weight:700;color:#1d3a5f">📄 TCS 기록부 미리보기 — ${tcsCurrentStudent.name}</div>
+        <div id="tcs-preview-title" style="font-size:16px;font-weight:700;color:#1d3a5f">📄 TCS 기록부 미리보기 — ${tcsCurrentStudent.name}${tcsGradeFilter() ? ' · ' + tcsPrintGradeLabel() : ''}</div>
         <div style="display:flex;gap:8px;align-items:center">
+          ${gradeSelect}
           ${orgSelect}
           <button onclick="printTcsPdf()" style="height:34px;padding:0 16px;border-radius:8px;border:none;background:#1d3a5f;color:white;font:600 13px sans-serif;cursor:pointer">📄 PDF 저장</button>
           <button onclick="this.closest('[style*=fixed]').remove()" style="height:34px;padding:0 12px;border-radius:8px;border:1.5px solid #e5e7eb;background:white;color:#6b7280;font:500 13px sans-serif;cursor:pointer">✕ 닫기</button>
@@ -7321,6 +7362,7 @@ function buildTcsPreviewHtml(lang) {
         <div style="font-size:28px;font-weight:900;color:#1d3a5f;letter-spacing:2px;margin-bottom:4px">학생 종합 기록부</div>
         <div style="font-size:13px;color:#6b7280">Student Comprehensive Record — TCS Total Care System</div>
         ${school.school_name ? `<div style="font-size:13px;font-weight:600;color:#1d3a5f;margin-top:4px">${school.school_name}</div>` : ''}
+        ${tcsGradeFilter() ? `<div style="display:inline-block;margin-top:8px;padding:3px 14px;border:2px solid #1d3a5f;border-radius:999px;font-size:14px;font-weight:800;color:#1d3a5f">${tcsPrintGradeLabel()}</div>` : ''}
       </div>
 
       ${tcsInc('personal') ? `
@@ -7350,7 +7392,9 @@ function buildTcsPreviewHtml(lang) {
       ${(() => {
         if (!tcsInc('attendance')) return '';
         const att = d.attendance || {};
-        const grades = [['K (유치원)','k'],['G1 (1학년)','g1'],['G2 (2학년)','g2'],['G3 (3학년)','g3'],['G4 (4학년)','g4'],['G5 (5학년)','g5'],['G6 (6학년)','g6'],['G7 (중1)','g7'],['G8 (중2)','g8'],['G9 (중3)','g9'],['G10 (고1)','g10'],['G11 (고2)','g11'],['G12 (고3)','g12']];
+        let grades = [['K (유치원)','k'],['G1 (1학년)','g1'],['G2 (2학년)','g2'],['G3 (3학년)','g3'],['G4 (4학년)','g4'],['G5 (5학년)','g5'],['G6 (6학년)','g6'],['G7 (중1)','g7'],['G8 (중2)','g8'],['G9 (중3)','g9'],['G10 (고1)','g10'],['G11 (고2)','g11'],['G12 (고3)','g12']];
+        const _gf = tcsGradeFilter();
+        if (_gf) grades = grades.filter(([,k]) => k === _gf);
         const rows = grades.filter(([,k]) => att[k]).map(([label,k]) =>
           `<tr><td style="padding:6px 12px;background:#dce6f2;font-size:12px;font-weight:600;color:#1d3a5f;border:1px solid #b8cfe0;width:120px">${label}</td><td style="padding:6px 12px;font-size:13px;border:1px solid #d1d5db">${att[k]}</td></tr>`
         ).join('');
@@ -7361,11 +7405,13 @@ function buildTcsPreviewHtml(lang) {
       ${(() => {
         if (!tcsInc('academic')) return '';
         const ac = d.academic || {};
-        const grades = [['K (유치원)','k_grades'],['G1 (1학년)','g1_grades'],['G2 (2학년)','g2_grades'],['G3 (3학년)','g3_grades'],['G4 (4학년)','g4_grades'],['G5 (5학년)','g5_grades'],['G6 (6학년)','g6_grades'],['G7 (중1)','g7_grades'],['G8 (중2)','g8_grades'],['G9 (중3)','g9_grades'],['G10 (고1)','g10_grades'],['G11 (고2)','g11_grades'],['G12 (고3)','g12_grades']];
+        let grades = [['K (유치원)','k_grades'],['G1 (1학년)','g1_grades'],['G2 (2학년)','g2_grades'],['G3 (3학년)','g3_grades'],['G4 (4학년)','g4_grades'],['G5 (5학년)','g5_grades'],['G6 (6학년)','g6_grades'],['G7 (중1)','g7_grades'],['G8 (중2)','g8_grades'],['G9 (중3)','g9_grades'],['G10 (고1)','g10_grades'],['G11 (고2)','g11_grades'],['G12 (고3)','g12_grades']];
+        const _gf = tcsGradeFilter();
+        if (_gf) grades = grades.filter(([,k]) => k === _gf + '_grades');
         const rows = grades.filter(([,k]) => ac[k]).map(([label,k]) =>
           `<tr><td style="padding:7px 12px;background:#dce6f2;font-size:12px;font-weight:600;color:#1d3a5f;border:1px solid #b8cfe0;width:120px;vertical-align:top">${label}</td><td style="padding:7px 12px;font-size:13px;border:1px solid #d1d5db">${ac[k]}</td></tr>`
         ).join('');
-        const gpaRow = ac.gpa ? `<tr><td style="padding:7px 12px;background:#dce6f2;font-size:12px;font-weight:600;color:#1d3a5f;border:1px solid #b8cfe0">누적 GPA</td><td style="padding:7px 12px;font-size:13px;font-weight:700;border:1px solid #d1d5db">${ac.gpa} / 4.0</td></tr>` : '';
+        const gpaRow = (ac.gpa && !_gf) ? `<tr><td style="padding:7px 12px;background:#dce6f2;font-size:12px;font-weight:600;color:#1d3a5f;border:1px solid #b8cfe0">누적 GPA</td><td style="padding:7px 12px;font-size:13px;font-weight:700;border:1px solid #d1d5db">${ac.gpa} / 4.0</td></tr>` : '';
         return (rows||gpaRow) ? `<table style="width:100%;border-collapse:collapse;margin-bottom:4px">${rows}${gpaRow}</table>` : '<p style="font-size:12px;color:#9ca3af;margin-bottom:8px">미기재</p>';
       })()}
 
@@ -7460,7 +7506,7 @@ async function printTcsPdf() {
   const win = window.open('', '_blank');
   win.document.write(`<!DOCTYPE html><html><head>
     <meta charset="utf-8"/>
-    <title>TCS 기록부 — ${tcsCurrentStudent.name}</title>
+    <title>TCS 기록부 — ${tcsCurrentStudent.name}${tcsGradeFilter() ? ' (' + tcsPrintGradeLabel() + ')' : ''}</title>
     <style>
       * { box-sizing:border-box; margin:0; padding:0; }
       body { font-family:Arial,'Malgun Gothic',sans-serif; padding:20mm 18mm; color:#111; }
@@ -13828,6 +13874,16 @@ async function renderS360Detail() {
       ${billRows}
     </div>
 
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin-bottom:14px">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <div style="font-size:14px;font-weight:700;color:var(--ink)">🗂 ${t('생활기록부 (종합기록부)','Student Record (Cumulative)')}</div>
+        <span style="font-size:11.5px;color:var(--ink3)">${t('학년별로 미리보기·PDF 출력이 가능해요','Preview / print as PDF, by grade')}</span>
+        <div style="flex:1"></div>
+        <button onclick="setSchoolSubMode('record')" style="height:32px;padding:0 14px;border:1.5px solid var(--accent);background:white;color:var(--accent);border-radius:9px;cursor:pointer;font:700 12px var(--font)">${t('✏️ 편집 →','✏️ Edit →')}</button>
+        <button onclick="openTcsForStudent('${s.id}')" style="height:32px;padding:0 14px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 12px var(--font)">${t('📄 미리보기 / 출력','📄 Preview / Print')}</button>
+      </div>
+    </div>
+
     ${s360TimetableCard(d.timetable||[])}
 
     ${s360LogCard('observation', d.observation||[])}
@@ -13839,15 +13895,7 @@ async function renderS360Detail() {
     ${s360LogCard('counseling', d.counseling)}
     ${s360LogCard('health', d.health)}
 
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin-bottom:14px">
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        <div style="font-size:14px;font-weight:700;color:var(--ink)">🗂 ${t('생활기록부 (종합기록부)','Student Record (Cumulative)')}</div>
-        <span style="font-size:11.5px;color:var(--ink3)">${t('성적·발달·진로 등 공식 기록부','Official record: grades, development, career, etc.')}</span>
-        <div style="flex:1"></div>
-        <button onclick="setSchoolSubMode('record')" style="height:32px;padding:0 14px;border:1.5px solid var(--accent);background:white;color:var(--accent);border-radius:9px;cursor:pointer;font:700 12px var(--font)">${t('✏️ 편집 →','✏️ Edit →')}</button>
-        <button onclick="openTcsForStudent('${s.id}')" style="height:32px;padding:0 14px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 12px var(--font)">${t('📄 미리보기 / 출력','📄 Preview / Print')}</button>
-      </div>
-    </div>`;
+`;
 }
 
 // 담당학생 용돈기입장 (교사·간사·관리자: 조회 + 수정/삭제)
