@@ -273,23 +273,8 @@ Deno.serve(async (req) => {
         memberCommunity = mem?.community_id || cid;
       }
 
-      // 예치금 결제: 같은 통화 기준 잔액이 모자라면 판매를 막는다
+      // 예치금/용돈 모두 잔액이 모자라도 결제를 막지 않는다 (잔액이 마이너스로 내려갈 수 있음)
       const storeCur = v.currency || "원";
-      if (payMethod === "deposit") {
-        const { data: des, error: dErr } = await admin.from("deposit_entries")
-          .select("type, amount, currency").eq("member_id", memberId);
-        if (dErr) {
-          return json({ error: "예치금 정보를 읽지 못했어요. db/예치금_DB설치.sql 이 실행되었는지 확인하세요." }, 200);
-        }
-        let bal = 0;
-        for (const e of des || []) {
-          if ((e.currency || "원") !== storeCur) continue;   // 통화가 다른 기록은 제외
-          bal += (e.type === "in" ? 1 : -1) * (Number(e.amount) || 0);
-        }
-        if (bal < total) {
-          return json({ error: `예치금 잔액이 부족해요. (잔액 ${fmtMoney(bal, storeCur)} / 결제 ${fmtMoney(total, storeCur)})` }, 200);
-        }
-      }
 
       // 영수증
       const { data: sale, error: sErr } = await admin.from("store_sales").insert({
