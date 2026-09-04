@@ -70,8 +70,8 @@
   /* 키오스크 주문 화면 */
   .ksk{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:16px;align-items:start}
   .ksk>*{min-width:0}
-  .kcats{display:flex;gap:8px;overflow-x:auto;padding-bottom:10px;margin-bottom:6px;-webkit-overflow-scrolling:touch}
-  .kcat{flex:0 0 auto;height:44px;padding:0 20px;border-radius:12px;border:1.5px solid var(--border);background:#fff;font-weight:700;font-size:14.5px;color:var(--ink2);cursor:pointer;white-space:nowrap}
+  .kcats{display:flex;flex-wrap:wrap;gap:8px;padding-bottom:2px;margin-bottom:10px}
+  .kcat{flex:0 0 auto;height:44px;padding:0 16px;border-radius:12px;border:1.5px solid var(--border);background:#fff;font-weight:700;font-size:14.5px;color:var(--ink2);cursor:pointer;white-space:nowrap}
   .kcat.on{background:linear-gradient(135deg,#1d3a5f,#2a5298);border-color:transparent;color:#fff}
   .kgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:12px}
   .ktile{position:relative;min-height:118px;border-radius:16px;border:1.5px solid var(--border);background:var(--surface);cursor:pointer;padding:14px;display:flex;flex-direction:column;justify-content:space-between;text-align:left;transition:transform .08s,box-shadow .12s,border-color .12s;font-family:var(--font)}
