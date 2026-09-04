@@ -82,7 +82,7 @@ function buildReceipt(storeName: string, lines: { name: string; qty: number; pri
   const dt = `${now.getFullYear()}-${p2(now.getMonth() + 1)}-${p2(now.getDate())} ${p2(now.getHours())}:${p2(now.getMinutes())}`;
   const count = lines.reduce((s, l) => s + l.qty, 0);
   const itemLines = lines.map((l) => `• ${l.name} ×${l.qty} — ${fmtMoney(l.price * l.qty, currency)}`).join("\n");
-  const pay = payMethod === "cash" ? "현금" : "용돈 차감";
+  const pay = payMethod === "cash" ? "현금" : (payMethod === "deposit" ? "예치금 차감" : "용돈 차감");
   return [
     `🏪 ${storeName}`,
     `━━━━━━━━━━━━━`,
@@ -245,9 +245,10 @@ Deno.serve(async (req) => {
     if (action === "sale") {
       const items = Array.isArray(b.items) ? b.items : [];
       if (!items.length) return json({ error: "판매할 상품이 없어요" }, 200);
-      const payMethod = b.pay_method === "cash" ? "cash" : "allowance";
+      const payMethod = ["cash", "deposit", "allowance"].includes(String(b.pay_method)) ? String(b.pay_method) : "allowance";
       const memberId = b.member_id || null;
       if (payMethod === "allowance" && !memberId) return json({ error: "용돈 차감은 학생을 선택해야 해요" }, 200);
+      if (payMethod === "deposit" && !memberId) return json({ error: "예치금 차감은 학생을 선택해야 해요" }, 200);
 
       // 상품 로드 & 재고/가격 확정
       const ids = items.map((i: { product_id: string }) => i.product_id);
@@ -270,6 +271,24 @@ Deno.serve(async (req) => {
         const { data: mem } = await admin.from("members").select("name, community_id").eq("id", memberId).single();
         buyerName = mem?.name || buyerName;
         memberCommunity = mem?.community_id || cid;
+      }
+
+      // 예치금 결제: 같은 통화 기준 잔액이 모자라면 판매를 막는다
+      const storeCur = v.currency || "원";
+      if (payMethod === "deposit") {
+        const { data: des, error: dErr } = await admin.from("deposit_entries")
+          .select("type, amount, currency").eq("member_id", memberId);
+        if (dErr) {
+          return json({ error: "예치금 정보를 읽지 못했어요. db/예치금_DB설치.sql 이 실행되었는지 확인하세요." }, 200);
+        }
+        let bal = 0;
+        for (const e of des || []) {
+          if ((e.currency || "원") !== storeCur) continue;   // 통화가 다른 기록은 제외
+          bal += (e.type === "in" ? 1 : -1) * (Number(e.amount) || 0);
+        }
+        if (bal < total) {
+          return json({ error: `예치금 잔액이 부족해요. (잔액 ${fmtMoney(bal, storeCur)} / 결제 ${fmtMoney(total, storeCur)})` }, 200);
+        }
       }
 
       // 영수증
@@ -302,6 +321,20 @@ Deno.serve(async (req) => {
         }
       }
 
+      // 예치금 자동 차감 (회원 + deposit 결제)
+      let depositEntryId: string | null = null;
+      if (memberId && payMethod === "deposit") {
+        const today = new Date().toISOString().slice(0, 10);
+        const { data: de } = await admin.from("deposit_entries").insert({
+          member_id: memberId, community_id: memberCommunity, date: today,
+          type: "out", amount: total, currency: storeCur, memo: "매점 · " + itemsSummary(lines),
+        }).select().single();
+        if (de) {
+          depositEntryId = de.id;
+          await admin.from("store_sales").update({ deposit_entry_id: de.id }).eq("id", sale.id);
+        }
+      }
+
       // 영수증을 구매자 개인 채팅(매점 발신자)으로 발송 — 구성원 결제 시
       let receiptSent = false;
       if (memberId) {
@@ -319,7 +352,7 @@ Deno.serve(async (req) => {
         } catch (_) { /* 영수증 실패는 판매를 막지 않음 */ }
       }
 
-      return json({ ok: true, sale_id: sale.id, total, allowance_entry_id: allowanceEntryId, receipt: receiptSent });
+      return json({ ok: true, sale_id: sale.id, total, allowance_entry_id: allowanceEntryId, deposit_entry_id: depositEntryId, receipt: receiptSent });
     }
 
     // 판매 취소: 재고 복구 + 용돈 지출 삭제 + voided 처리
@@ -334,7 +367,8 @@ Deno.serve(async (req) => {
         if (p) await admin.from("store_products").update({ stock: (p.stock || 0) + (it.qty || 0) }).eq("id", it.product_id);
       }
       if (sale.allowance_entry_id) await admin.from("allowance_entries").delete().eq("id", sale.allowance_entry_id);
-      await admin.from("store_sales").update({ voided: true, allowance_entry_id: null }).eq("id", sale.id);
+      if (sale.deposit_entry_id) await admin.from("deposit_entries").delete().eq("id", sale.deposit_entry_id);
+      await admin.from("store_sales").update({ voided: true, allowance_entry_id: null, deposit_entry_id: null }).eq("id", sale.id);
       return json({ ok: true });
     }
 
