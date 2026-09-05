@@ -12110,9 +12110,67 @@ function finNormalize(desc) {
   let s = d.replace(/\d{2}\/\d{2}(\/\d{2,4})?/g,' ').replace(/#?\d{3,}/g,' ').replace(/[*]/g,' ').replace(/\s+/g,' ').trim();
   return s.split(' ').slice(0,2).join(' ').toUpperCase();
 }
+// 가맹점명이 아닌 은행/카드 공통 수식어 — 학습 키에서 제외한다
+const FIN_LK_NOISE = new Set(['POS','DEBIT','CREDIT','CARD','CARDS','VISA','MASTERCARD','MC','CHECK','CHECKCARD','PURCHASE','PURCHASES','AUTHORIZED','ON','RECURRING','ATM','WITHDRAW','WITHDRAWAL','NON-CHASE','SALE','PAYMENT','PMT','TRANSACTION','TRANSACTION#:','ONLINE','MOBILE','BANK','TRANSFER','DEPOSIT','WD','DES:','ID:','INDN:','CO','NAME:','ORIG','XXXXXX','X','TO','FROM','THE','OF','AND','LLC','INC']);
+// 학습 전용 키 — 가맹점/상대를 구분할 수 있을 만큼 구체적으로 만든다.
+// (classifyTx 의 finNormalize 는 규칙 매칭용이라 'POS DEBIT' 처럼 너무 뭉뚱그려질 수 있어 분리)
+function finLearnKey(desc) {
+  let d = String(desc || '').replace(/&AMP;/gi, '&').replace(/\s+/g, ' ').trim().toUpperCase();
+  if (!d) return '';
+  let m = d.match(/CO NAME:\s*(.+?)\s+ORIG ID/);            // ACH: 회사명
+  if (m) return 'ACH~' + m[1].trim();
+  let z = d.match(/PAYMENT (FROM|TO)\s+([A-Z .'-]+)/);        // Zelle: 상대 이름
+  if (z) return 'ZELLE-' + (z[1] === 'FROM' ? 'IN' : 'OUT') + '~' + z[2].trim();
+  let x = d.match(/ONLINE TRANSFER (TO|FROM)\s+([A-Z]+)\s*\.*\s*(\d{3,4})/);  // 계좌이체: 대상 계좌까지
+  if (x) return 'XFER-' + (x[1] === 'FROM' ? 'IN' : 'OUT') + '~' + x[2] + x[3];
+  if (/^CHECK\b/.test(d)) return 'CHECK';
+  // 숫자·기호 잡음 제거
+  d = d.replace(/\d{2}\/\d{2}(\/\d{2,4})?/g, ' ')   // 날짜
+       .replace(/#\s*\d+/g, ' ')                    // 지점번호(#33, #6338)
+       .replace(/\b\d{3,}\b/g, ' ')                 // 승인번호 등 긴 숫자
+       .replace(/[*]/g, ' ').replace(/\s+/g, ' ').trim();
+  // 카드/POS 공통 수식어를 전부 걸러내고 실제 가맹점명만 남긴다.
+  // (안 거르면 'VISA CHECK CARD' 같은 키가 나와 모든 카드결제가 한 덩어리로 묶여버린다)
+  const words = d.split(' ').filter(w => w && /[A-Z0-9]/.test(w) && !FIN_LK_NOISE.has(w));
+  const key = words.slice(0, 3).join(' ');
+  return key.length >= 4 ? key : '';   // 너무 짧으면(예: 'TX') 학습 안 함
+}
+
+// ── 분류 학습: 내가 고친 분류를 기억해 다음 업로드에 자동 반영 ──
+let finLearned = {};          // { 정규화키: 카테고리 }
+let finLearnedLoaded = false;
+async function loadFinLearned(force) {
+  if (finLearnedLoaded && !force) return;
+  try {
+    const { data, error } = await sb.from('finance_category_rules')
+      .select('match_key, category').eq('community_id', CID());
+    if (error) { finLearnedLoaded = true; return; }   // 테이블 없으면 조용히 규칙만 사용
+    const m = {};
+    (data || []).forEach(r => { if (r.match_key) m[r.match_key] = r.category; });
+    finLearned = m; finLearnedLoaded = true;
+  } catch (_) { finLearnedLoaded = true; }
+}
+// 사용자가 분류를 바꾸면 그 패턴을 학습해 둔다
+const FIN_LEARN_SKIP = new Set(['CHECK']);   // 수표는 건마다 용도가 달라 학습 대상에서 제외
+async function saveFinLearned(desc, category) {
+  const key = finLearnKey(desc);
+  if (!key || !category || FIN_LEARN_SKIP.has(key)) return;
+  finLearned[key] = category;                       // 즉시 메모리 반영
+  try {
+    await sb.from('finance_category_rules').upsert({
+      community_id: CID(), match_key: key, category,
+      sample_desc: String(desc || '').slice(0, 200),
+      updated_by: ME.id, updated_at: new Date().toISOString(),
+    }, { onConflict: 'community_id,match_key' });
+  } catch (_) {}
+}
+
 function classifyTx(desc, amount) {
   const d = String(desc||'');
   const key = finNormalize(d);
+  // 학습된 분류가 있으면 최우선 (내가 고친 것이 규칙보다 우선)
+  const lk = finLearnKey(d);
+  if (lk && !FIN_LEARN_SKIP.has(lk) && finLearned[lk]) return finLearned[lk];
   if ((amount||0) >= 0) {   // 입금(IN)
     // 인물 후원 (ZELLE-IN~ / ACH~ 뒤 이름 매칭)
     const person = key.replace(/^(ZELLE-IN~|ACH~|ZELLE-OUT~)/,'');
@@ -12281,6 +12339,7 @@ function ledgerFilterBar() {
 
 async function renderLedgerHub() {
   const main = document.getElementById('school-main');
+  loadFinLearned();
   main.innerHTML = finTabBar() + '<div style="text-align:center;padding:40px;color:var(--ink3);font-size:13px">'+t('불러오는 중...','Loading...')+'</div>';
   try {
     if (ledgerView === 'year') {
@@ -12355,7 +12414,12 @@ function ledgerRenderInto() {
     return `<tr style="border-bottom:1px solid var(--bs)">
       <td style="padding:7px 8px;font-size:12px;color:var(--ink2);white-space:nowrap">${x.tx_date||''}</td>
       <td style="padding:7px 8px;font-size:12.5px;color:var(--ink);max-width:340px;word-break:break-word">${escHtml((x.description||'').slice(0,180))}</td>
-      <td style="padding:7px 8px;text-align:right;font-size:12.5px;font-weight:700;white-space:nowrap;color:${isIn?'#15803d':'#dc2626'}">${fmtUsd(amt)}</td>
+      <td style="padding:7px 4px;text-align:right;white-space:nowrap">
+        <input value="${Math.abs(amt)}" onchange="ledgerUpdateAmount('${x.id}',this.value)" onclick="this.select()" title="${t('금액을 수정할 수 있어요','You can edit the amount')}"
+          style="width:92px;height:28px;padding:0 7px;text-align:right;border:1px solid transparent;border-radius:7px;background:transparent;font:700 12.5px var(--font);color:${isIn?'#15803d':'#dc2626'}"
+          onfocus="this.style.borderColor='var(--border)';this.style.background='#fff'"
+          onblur="this.style.borderColor='transparent';this.style.background='transparent'"/>
+      </td>
       <td style="padding:7px 8px">
         <select onchange="ledgerUpdateCategory('${x.id}',this.value)" style="height:30px;max-width:170px;padding:0 8px;border:1.5px solid var(--border);border-radius:8px;font:12px var(--font);background:white;cursor:pointer">
           ${isCustom?`<option value="${escAttr(x.category)}" selected>${escHtml(x.category)}</option>`:''}
@@ -12457,7 +12521,12 @@ function ledgerRenderDay() {
     const isCustom = x.category && !FIN_TX_CATEGORIES.includes(x.category);
     return `<tr style="border-bottom:1px solid var(--bs)">
       <td style="padding:7px 8px;font-size:12.5px;color:var(--ink);max-width:360px;word-break:break-word">${escHtml((x.description||'').slice(0,180))}</td>
-      <td style="padding:7px 8px;text-align:right;font-size:12.5px;font-weight:700;white-space:nowrap;color:${isIn?'#15803d':'#dc2626'}">${fmtUsd(amt)}</td>
+      <td style="padding:7px 4px;text-align:right;white-space:nowrap">
+        <input value="${Math.abs(amt)}" onchange="ledgerUpdateAmount('${x.id}',this.value)" onclick="this.select()" title="${t('금액을 수정할 수 있어요','You can edit the amount')}"
+          style="width:92px;height:28px;padding:0 7px;text-align:right;border:1px solid transparent;border-radius:7px;background:transparent;font:700 12.5px var(--font);color:${isIn?'#15803d':'#dc2626'}"
+          onfocus="this.style.borderColor='var(--border)';this.style.background='#fff'"
+          onblur="this.style.borderColor='transparent';this.style.background='transparent'"/>
+      </td>
       <td style="padding:7px 8px">
         <select onchange="ledgerUpdateCategory('${x.id}',this.value)" style="height:30px;max-width:170px;padding:0 8px;border:1.5px solid var(--border);border-radius:8px;font:12px var(--font);background:white;cursor:pointer">
           ${isCustom?`<option value="${escAttr(x.category)}" selected>${escHtml(x.category)}</option>`:''}
@@ -12659,7 +12728,28 @@ async function ledgerDeleteTx(id) {
 async function ledgerUpdateCategory(id, val) {
   const { error } = await sb.from('finance_transactions').update({ category: val }).eq('id', id);
   if (error) { showUploadToast(t('변경 실패','Update failed')); return; }
-  const it = ledgerTx.find(x => x.id === id); if (it) it.category = val;
+  const it = ledgerTx.find(x => x.id === id) || ledgerYearTx.find(x => x.id === id);
+  if (it) {
+    it.category = val;
+    await saveFinLearned(it.description, val);   // 다음 업로드부터 같은 거래에 자동 적용
+    showUploadToast(t('✅ 분류를 바꿨어요. 다음 업로드부터 같은 내역에 자동 적용돼요','✅ Category saved — future uploads will use it'));
+  }
+}
+
+// 금액 수정 (부호 유지: 지출은 음수, 수입은 양수)
+async function ledgerUpdateAmount(id, val) {
+  const it = ledgerTx.find(x => x.id === id) || ledgerYearTx.find(x => x.id === id);
+  if (!it) return;
+  const n = parseFloat(String(val).replace(/[$,\s]/g, ''));
+  if (isNaN(n)) { showUploadToast(t('숫자를 입력하세요','Enter a number')); ledgerRerender(); return; }
+  const wasIncome = Number(it.amount) >= 0;
+  const next = wasIncome ? Math.abs(n) : -Math.abs(n);   // 원래 수입/지출 방향 유지
+  if (next === Number(it.amount)) return;
+  const { error } = await sb.from('finance_transactions').update({ amount: next }).eq('id', id);
+  if (error) { showUploadToast(t('금액 변경 실패: ','Update failed: ') + (error.message||'')); return; }
+  it.amount = next;
+  ledgerRerender();
+  showUploadToast(t('✅ 금액을 수정했어요','✅ Amount updated'));
 }
 
 // 업로드 파일 파싱 (은행 엑셀/CSV + 지난 월별 리포트 양식 모두 대응)
@@ -12684,6 +12774,7 @@ async function ledgerPickFile(input) {
   input.value = '';
   if (/\.pdf$/i.test(file.name)) { showUploadToast(t('PDF는 은행마다 형식이 달라 인식이 어려워요. 은행에서 Excel/CSV로 받아 올려주세요.','PDF layouts vary by bank. Please download Excel/CSV from your bank instead.')); return; }
   showUploadToast(t('파일 분석 중...','Reading file...'));
+  await loadFinLearned(true);   // 내가 고쳐둔 분류를 먼저 불러와 반영
   let XLSX;
   try { XLSX = await loadXLSX(); } catch(e) { showUploadToast(t('엑셀 라이브러리 로드 실패 (인터넷 연결 확인)','Failed to load spreadsheet library')); return; }
   try {
