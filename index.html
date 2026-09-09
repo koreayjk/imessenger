@@ -1055,6 +1055,10 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
             onfocus="this.style.borderColor='#1d3a5f'" onblur="this.style.borderColor='var(--border)'"/>
         </div>
         <button onclick="imClipUrl()" title="링크에서 가져오기" style="height:34px;padding:0 12px;border:1.5px solid var(--border);background:white;border-radius:9px;cursor:pointer;font:600 12px var(--font);color:var(--ink2)">🔗 <span data-ko="링크" data-en="Link">링크</span></button>
+        <label title="에버노트 .enex 가져오기" style="height:34px;padding:0 12px;border:1.5px solid var(--border);background:white;border-radius:9px;cursor:pointer;font:600 12px var(--font);color:var(--ink2);display:inline-flex;align-items:center;gap:4px">
+          🐘 <span data-ko="에버노트" data-en="Evernote">에버노트</span>
+          <input type="file" accept=".enex,application/xml,text/xml" multiple onchange="imEnexPick(this)" style="display:none"/>
+        </label>
         <button onclick="imNewNote()" style="height:34px;padding:0 14px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 12.5px var(--font)">+ <span data-ko="새 노트" data-en="New note">새 노트</span></button>
       </div>
       <div id="note-tplbar" style="padding:10px 24px 0;display:flex;gap:6px;flex-wrap:wrap"></div>
@@ -9156,12 +9160,20 @@ function imSanitizeHtml(html) {
     .forEach(el => el.remove());
 
   const walk = (node) => {
-    for (const child of [...node.children]) {
+    // 살아있는 형제 사슬을 따라간다. 스냅샷으로 돌면,
+    // 껍데기를 벗겨서 위로 올라온 자식들이 검사에서 빠져나간다.
+    let child = node.firstChild;
+    while (child) {
+      const next = child.nextSibling;
+      if (child.nodeType !== 1) { child = next; continue; }
       const tag = child.tagName.toUpperCase();
       if (!IM_OK_TAGS.has(tag)) {
-        // 허용되지 않은 태그는 껍데기만 벗기고 안의 글자는 살린다
-        while (child.firstChild) node.insertBefore(child.firstChild, child);
+        // 허용되지 않은 태그는 껍데기만 벗기고 안의 글자는 살린다.
+        // 올라온 자식들은 반드시 다시 검사한다.
+        const moved = [];
+        while (child.firstChild) { moved.push(child.firstChild); node.insertBefore(child.firstChild, child); }
         child.remove();
+        child = moved.length ? moved[0] : next;
         continue;
       }
       const allow = IM_OK_ATTRS[tag] || [];
@@ -9183,6 +9195,7 @@ function imSanitizeHtml(html) {
         if (child.getAttribute('href')) { child.setAttribute('target','_blank'); child.setAttribute('rel','noopener noreferrer nofollow'); }
       }
       walk(child);
+      child = next;
     }
   };
   walk(body);
@@ -9766,6 +9779,186 @@ async function imSetLink(field, value) {
   imToast(field === 'student_id'
     ? (v ? t('🎓 학생과 연결했어요','🎓 Linked to student') : t('학생 연결을 해제했어요','Student link removed'))
     : (v ? t('📅 날짜와 연결했어요','📅 Linked to a date') : t('날짜 연결을 해제했어요','Date link removed')));
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  에버노트 가져오기 (.enex)
+//   에버노트에서 노트북별로 '내보내기 → .enex' 한 파일을 그대로 올리면
+//   제목 · 태그 · 서식 · 첨부 · 날짜 · 원본링크까지 옮겨옵니다.
+//   파일 전체를 브라우저에서 처리하므로 서버로 올라가지 않습니다.
+//   (노트북 이름은 .enex 안에 없어서 파일 이름을 노트북으로 씁니다)
+// ══════════════════════════════════════════════════════════════════
+const IM_ENEX_MAX = 200 * 1024 * 1024;   // 200MB 넘으면 노트북을 쪼개 달라고 안내
+
+function imEnexDate(v) {
+  // 20260901T090000Z → 2026-09-01T09:00:00Z
+  const m = String(v || '').match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z?$/);
+  if (!m) return null;
+  return `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}Z`;
+}
+function imB64ToBlob(b64, mime) {
+  const bin = atob(String(b64 || '').replace(/\s+/g, ''));
+  const arr = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return new Blob([arr], { type: mime || 'application/octet-stream' });
+}
+
+// ENML(에버노트 본문) → 우리 HTML
+//  · <en-todo> 는 ☐ / ☑ 글자로 (검색도 되고 서식도 안 깨짐)
+//  · <en-media> 는 올려둔 첨부 주소로 바꿔치기 (문서에 나온 순서대로 짝지음)
+function imEnmlToHtml(contentStr, uploaded) {
+  const doc = new DOMParser().parseFromString(String(contentStr || ''), 'text/html');
+  doc.querySelectorAll('en-todo').forEach(el => {
+    const on = String(el.getAttribute('checked') || '').toLowerCase() === 'true';
+    el.replaceWith(doc.createTextNode(on ? '☑ ' : '☐ '));
+  });
+  const medias = [...doc.querySelectorAll('en-media')];
+  medias.forEach((el, i) => {
+    const up = uploaded[i];
+    if (!up) { el.remove(); return; }
+    if (String(up.type || '').startsWith('image/')) {
+      const img = doc.createElement('img');
+      img.setAttribute('src', up.url);
+      img.setAttribute('alt', up.name || '');
+      el.replaceWith(img);
+    } else {
+      const a = doc.createElement('a');
+      a.setAttribute('href', up.url);
+      a.textContent = '📎 ' + (up.name || 'file');
+      el.replaceWith(a);
+    }
+  });
+  return imSanitizeHtml(doc.body.innerHTML);
+}
+
+function imEnexProgress(msg, done, total) {
+  let el = document.getElementById('im-enex-prog');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'im-enex-prog';
+    el.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(15,23,42,.55);'
+      + 'display:flex;align-items:center;justify-content:center;padding:20px';
+    el.innerHTML = '<div style="background:var(--surface);border-radius:16px;padding:24px 26px;max-width:min(92vw,420px);width:100%">'
+      + '<div id="im-enex-msg" style="font:700 14px var(--font);color:var(--ink);margin-bottom:12px"></div>'
+      + '<div style="background:var(--s3);border-radius:99px;height:8px;overflow:hidden">'
+      + '<div id="im-enex-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#1d3a5f,#2a5298);border-radius:99px;transition:width .25s var(--ease-out)"></div></div>'
+      + '<div id="im-enex-sub" style="font:12px var(--font);color:var(--ink3);margin-top:9px"></div></div>';
+    document.body.appendChild(el);
+  }
+  const m = document.getElementById('im-enex-msg'); if (m) m.textContent = msg;
+  const bar = document.getElementById('im-enex-bar');
+  const sub = document.getElementById('im-enex-sub');
+  if (total > 0) {
+    if (bar) bar.style.width = Math.round(done / total * 100) + '%';
+    if (sub) sub.textContent = done + ' / ' + total;
+  } else if (sub) sub.textContent = '';
+}
+function imEnexProgressDone() {
+  const el = document.getElementById('im-enex-prog'); if (el) el.remove();
+}
+
+async function imEnexPick(input) {
+  const files = Array.from(input.files || []); input.value = '';
+  if (!files.length) return;
+  for (const f of files) {
+    try { await imEnexImport(f); }
+    catch (e) { imEnexProgressDone(); imToast(t('가져오기 실패: ','Import failed: ') + (e.message || e)); }
+  }
+  await loadImNotes();
+  imNoteMode = 'list'; imNoteCur = null; renderNotePage();
+}
+
+async function imEnexImport(file) {
+  if (file.size > IM_ENEX_MAX) {
+    throw new Error(t('파일이 너무 커요 (200MB 초과). 에버노트에서 노트북을 나눠 내보내 주세요.',
+                      'File is too large (over 200MB). Export notebooks separately.'));
+  }
+  imEnexProgress(t('파일을 읽는 중…','Reading the file…'), 0, 0);
+  const xml = await file.text();
+
+  const doc = new DOMParser().parseFromString(xml, 'application/xml');
+  if (doc.querySelector('parsererror')) {
+    throw new Error(t('.enex 파일이 아니거나 손상됐어요','Not a valid .enex file'));
+  }
+  const noteEls = [...doc.getElementsByTagName('note')];
+  if (!noteEls.length) throw new Error(t('이 파일에 노트가 없어요','No notes found in this file'));
+
+  // 파일 이름을 노트북 이름으로 (에버노트가 .enex 안에 노트북 이름을 넣어주지 않음)
+  const notebook = String(file.name || '').replace(/\.enex$/i, '').trim() || t('에버노트','Evernote');
+
+  let ok = 0, failed = 0, resourceFail = 0;
+  const batch = [];
+
+  for (let i = 0; i < noteEls.length; i++) {
+    const el = noteEls[i];
+    imEnexProgress(t('노트를 옮기는 중…','Importing notes…'), i, noteEls.length);
+    try {
+      const title = (el.getElementsByTagName('title')[0]?.textContent || '').trim();
+      const content = el.getElementsByTagName('content')[0]?.textContent || '';
+      const tags = [...el.getElementsByTagName('tag')].map(x => x.textContent.trim()).filter(Boolean);
+      const created = imEnexDate(el.getElementsByTagName('created')[0]?.textContent);
+      const updated = imEnexDate(el.getElementsByTagName('updated')[0]?.textContent) || created;
+      const srcUrl = el.querySelector('note-attributes > source-url')?.textContent?.trim() || null;
+
+      // 첨부를 먼저 올려서 주소를 확보 (본문의 en-media 와 순서대로 짝지음)
+      const uploaded = [];
+      for (const r of [...el.getElementsByTagName('resource')]) {
+        const data = r.getElementsByTagName('data')[0]?.textContent || '';
+        const mime = (r.getElementsByTagName('mime')[0]?.textContent || '').trim() || 'application/octet-stream';
+        const name = r.querySelector('resource-attributes > file-name')?.textContent?.trim()
+                  || ('첨부.' + (mime.split('/')[1] || 'bin'));
+        if (!data.trim()) { uploaded.push(null); continue; }
+        try {
+          const blob = imB64ToBlob(data, mime);
+          const ext = (name.split('.').pop() || 'bin').toLowerCase().slice(0, 8);
+          const path = `notes/${ME.id}/enex_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+          const { error } = await sb.storage.from('messenger').upload(path, blob, { cacheControl: '2592000', upsert: false });
+          if (error) { resourceFail++; uploaded.push(null); continue; }
+          const { data: pub } = sb.storage.from('messenger').getPublicUrl(path);
+          uploaded.push({ url: pub.publicUrl, name, type: mime, size: blob.size });
+        } catch (_) { resourceFail++; uploaded.push(null); }
+      }
+
+      const body = imEnmlToHtml(content, uploaded);
+      // 본문에 이미지로 들어간 것 말고, 남은 첨부는 첨부 목록으로
+      const attachments = uploaded.filter(Boolean).map(u => ({ url: u.url, name: u.name, type: u.type, size: u.size }));
+
+      const row = {
+        community_id: CID(), user_id: ME.id, author_name: ME.name || '',
+        title: title || t('제목 없음','Untitled'),
+        body, format: 'html',
+        tags: [...new Set(tags.concat(imTagsOf(imHtmlToText(body))))],
+        notebook, visibility: 'private',
+        attachments,
+        source_url: srcUrl,
+        source_site: srcUrl ? t('에버노트에서 가져옴','From Evernote') : null,
+      };
+      if (created) row.created_at = created;
+      if (updated) row.updated_at = updated;
+      batch.push(row);
+    } catch (_) { failed++; }
+
+    // 50개씩 나눠 저장 (한 번에 많이 보내면 실패했을 때 통째로 날아감)
+    if (batch.length >= 50 || i === noteEls.length - 1) {
+      if (batch.length) {
+        const { error } = await sb.from('notes').insert(batch);
+        if (error) {
+          // 통째로 실패하면 한 건씩 다시 — 한 노트 때문에 전부 날리지 않도록
+          for (const one of batch) {
+            const { error: e2 } = await sb.from('notes').insert(one);
+            if (e2) failed++; else ok++;
+          }
+        } else ok += batch.length;
+        batch.length = 0;
+      }
+    }
+  }
+
+  imEnexProgressDone();
+  let msg = t(`✅ ${ok}개를 '${notebook}' 노트북으로 가져왔어요`, `✅ Imported ${ok} notes into '${notebook}'`);
+  if (failed) msg += t(` (${failed}개 실패)`, ` (${failed} failed)`);
+  if (resourceFail) msg += t(` · 첨부 ${resourceFail}개 실패`, ` · ${resourceFail} attachments failed`);
+  imToast(msg);
 }
 
 // ── 채팅 메시지를 내 노트로 (에버노트가 못 하는, TCS 라서 되는 것) ──
