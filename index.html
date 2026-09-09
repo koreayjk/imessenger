@@ -2863,6 +2863,9 @@ function msgHtml(m, prev, readMap={}) {
       ${(m.kind !== 'file' && m.kind !== 'poll') ? `<div onclick="copyMsgText('${m.id}')" title="전체 복사"
         style="width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:13px"
         onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background=''">📋</div>` : ''}
+      ${m.kind !== 'poll' ? `<div onclick="saveMsgAsNote('${m.id}')" title="${t('IM노트에 저장','Save to IM Notes')}"
+        style="width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:13px"
+        onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background=''">📝</div>` : ''}
       ${(canManageAnnounce() && m.kind !== 'file' && m.kind !== 'poll') ? `<div onclick="setAnnouncement('${m.id}')" title="${t('공지로 등록','Pin as notice')}"
         style="width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:13px"
         onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background=''">📢</div>` : ''}
@@ -9240,6 +9243,8 @@ function imNoteCard(n) {
       <span>${when}</span>
       ${!imNoteIsMine(n) && n.author_name ? `<span>· ${escHtml(n.author_name)}</span>` : ''}
       ${(n.attachments||[]).length ? `<span>· 📎${(n.attachments||[]).length}</span>` : ''}
+      ${n.event_date ? `<span>· 📅${escHtml(n.event_date)}</span>` : ''}
+      ${n.student_id && members[n.student_id] ? `<span>· 🎓${escHtml(members[n.student_id].name||'')}</span>` : ''}
     </div>
   </div>`;
 }
@@ -9311,6 +9316,13 @@ function imNoteEditorHtml() {
   <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center">
     <input id="im-book" ${ro} value="${imAttr(n.notebook || '')}" oninput="imOnEdit()" placeholder="${imAttr(t('노트북(폴더)','Notebook'))}"
       style="width:150px;height:32px;padding:0 11px;border:1.5px solid var(--border);border-radius:9px;background:var(--surface);font:600 12px var(--font);color:var(--ink2);outline:none"/>
+    ${mine ? `<input id="im-date" type="date" value="${imAttr(n.event_date || '')}" onchange="imSetLink('event_date', this.value)" title="${imAttr(t('일정 날짜와 연결','Link to a date'))}"
+      style="height:32px;padding:0 9px;border:1.5px solid var(--border);border-radius:9px;background:var(--surface);font:600 12px var(--font);color:var(--ink2);outline:none"/>` : ''}
+    ${mine && imStudentOptions().length ? `<select id="im-student" onchange="imSetLink('student_id', this.value)" title="${imAttr(t('학생과 연결','Link to a student'))}"
+      style="height:32px;max-width:170px;padding:0 9px;border:1.5px solid var(--border);border-radius:9px;background:var(--surface);font:600 12px var(--font);color:var(--ink2);cursor:pointer">
+      <option value="">${t('🎓 학생 연결 안 함','🎓 No student')}</option>
+      ${imStudentOptions().map(st => `<option value="${st.id}" ${n.student_id===st.id?'selected':''}>${escHtml(st.name)}</option>`).join('')}
+    </select>` : ''}
     <span style="font-size:11.5px;color:var(--ink3)">${t('본문에 #태그, [[노트 제목]] 을 쓰면 자동으로 이어져요','Use #tag and [[Note title]] in the body')}</span>
   </div>
 
@@ -9476,6 +9488,47 @@ function imAttachHtml(n) {
       <div style="font-size:11.5px;color:var(--ink2);line-height:1.6;max-height:88px;overflow:auto">${escHtml(n.ocr_text)}</div>
     </div>` : ''}
   </div>`;
+}
+
+// 학생 목록 (앱이 이미 들고 있는 members 에서)
+function imStudentOptions() {
+  try {
+    return Object.values(members || {})
+      .filter(m => m && isStudentMember(m) && m.name)
+      .sort((a, b) => String(a.name).localeCompare(String(b.name), 'ko'));
+  } catch (_) { return []; }
+}
+// 학생 / 날짜 연결 저장
+async function imSetLink(field, value) {
+  const n = imNoteCur; if (!n || !imNoteIsMine(n)) return;
+  const v = value || null;
+  const { error } = await sb.from('notes').update({ [field]: v }).eq('id', n.id);
+  if (error) { imToast(t('연결 실패: ','Link failed: ') + (error.message || '')); return; }
+  n[field] = v;
+  imToast(field === 'student_id'
+    ? (v ? t('🎓 학생과 연결했어요','🎓 Linked to student') : t('학생 연결을 해제했어요','Student link removed'))
+    : (v ? t('📅 날짜와 연결했어요','📅 Linked to a date') : t('날짜 연결을 해제했어요','Date link removed')));
+}
+
+// ── 채팅 메시지를 내 노트로 (에버노트가 못 하는, TCS 라서 되는 것) ──
+async function saveMsgAsNote(msgId) {
+  let text = '', name = '';
+  const bubble = document.querySelector(`[data-id="${msgId}"] .bubble`);
+  if (bubble) text = (bubble.innerText || '').trim();
+  const nameEl = document.querySelector(`[data-id="${msgId}"] .msg-meta .name`);
+  if (nameEl) name = (nameEl.innerText || '').trim();
+  if (!text) { showUploadToast(t('메시지 내용을 찾지 못했어요','Could not read the message')); return; }
+  const chName = currentChannel ? (currentChannel.name || '') : '';
+  const body = text + '\n\n— ' + (name || '') + (chName ? ' · ' + chName : '') + ' ' + t('(채팅에서 저장)','(saved from chat)');
+  const { data, error } = await sb.from('notes').insert({
+    community_id: CID(), user_id: ME.id, author_name: ME.name || '',
+    title: text.replace(/\s+/g, ' ').slice(0, 40),
+    body, tags: imTagsOf(body), visibility: 'private',
+    channel_id: currentChannel ? currentChannel.id : null,
+  }).select().single();
+  if (error) { showUploadToast(t('노트 저장 실패: ','Could not save: ') + (error.message || '')); return; }
+  if (Array.isArray(imNotes)) imNotes.unshift(data);
+  showUploadToast(t('📝 IM노트에 저장했어요','📝 Saved to IM Notes'));
 }
 
 // ── Edge Function 오류 본문 읽기 (supabase-js 는 본문을 숨김) ──
