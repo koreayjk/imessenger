@@ -572,6 +572,29 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
 .fade { animation: fadeIn .2s var(--ease-out); }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
 
+/* IM노트 본문(편집기 · 미리보기) 서식 */
+#im-body:empty::before { content: attr(data-ph); color: var(--ink3); }
+#im-body:focus { border-color: #1d3a5f; }
+#im-body h1, #im-preview h1 { font-size: 20px; margin: 10px 0 6px; }
+#im-body h2, #im-preview h2 { font-size: 17px; margin: 10px 0 6px; }
+#im-body h3, #im-preview h3 { font-size: 15px; margin: 9px 0 5px; }
+#im-body ul, #im-preview ul, #im-body ol, #im-preview ol { padding-left: 22px; margin: 5px 0; }
+#im-body li, #im-preview li { margin: 2px 0; }
+#im-body blockquote, #im-preview blockquote {
+  border-left: 3px solid var(--border); padding-left: 11px; margin: 7px 0; color: var(--ink2);
+}
+#im-body pre, #im-preview pre, #im-body code, #im-preview code {
+  background: var(--s3); border-radius: 6px; padding: 1px 5px; font-family: ui-monospace, Menlo, monospace; font-size: 12.5px;
+}
+#im-body pre, #im-preview pre { padding: 9px 11px; overflow-x: auto; }
+#im-body table, #im-preview table { border-collapse: collapse; margin: 7px 0; max-width: 100%; }
+#im-body td, #im-preview td, #im-body th, #im-preview th { border: 1px solid var(--border); padding: 5px 9px; font-size: 13px; }
+#im-body th, #im-preview th { background: var(--s2); font-weight: 700; }
+#im-body img, #im-preview img { max-width: 100%; height: auto; border-radius: 8px; }
+#im-body hr, #im-preview hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
+/* 표가 넓어도 페이지 자체가 가로로 밀리지 않게 */
+#im-body, #im-preview { overflow-x: auto; }
+
 /* 접근성: 움직임 최소화 설정을 켠 사용자 — 위치 이동은 없애고, 이해를 돕는 색/투명도 전환은 남긴다 */
 @media (prefers-reduced-motion: reduce) {
   #panel { transition: none; }
@@ -9081,6 +9104,106 @@ function imAttr(s) {
     .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
+// ── 노트 HTML 위생 처리 (허용 목록 방식) ──
+// 본문을 HTML 로 저장하므로, 저장할 때와 보여줄 때 모두 이걸 통과시킵니다.
+// 에버노트에서 가져온 HTML 은 남이 만든 것이고 노트는 공동체에 공개될 수도 있어,
+// "허용한 것만 남기고 나머지는 전부 버리는" 방식으로 갑니다.
+const IM_OK_TAGS = new Set(['P','BR','DIV','SPAN','B','STRONG','I','EM','U','S','STRIKE','DEL','INS','MARK',
+  'CODE','PRE','BLOCKQUOTE','H1','H2','H3','H4','H5','H6','UL','OL','LI','HR','A','IMG','FONT',
+  'TABLE','THEAD','TBODY','TFOOT','TR','TD','TH','CAPTION','COLGROUP','COL']);
+// 태그별로 허용하는 속성
+const IM_OK_ATTRS = {
+  A: ['href','title'], IMG: ['src','alt','width','height'],
+  TD: ['colspan','rowspan'], TH: ['colspan','rowspan'], COL: ['span'], COLGROUP: ['span'],
+  LI: ['data-checked'], FONT: ['color','size'], OL: ['start'],
+};
+// style 로 넘길 수 있는 속성 (url()·expression() 은 값 검사로 막습니다)
+const IM_OK_STYLE = new Set(['color','background-color','font-weight','font-style','text-decoration',
+  'text-align','font-size','text-decoration-line']);
+
+function imSafeUrl(v, forImg) {
+  // 공백·제어문자를 끼워 넣어 javascript: 를 숨기는 수법을 막기 위해 먼저 제거
+  const s = String(v == null ? '' : v).replace(/[\x00-\x20\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]/g, '').trim();
+  if (/^(https?:|mailto:)/i.test(s)) return s;
+  // data: 는 이미지에만, 그중 SVG 는 스크립트를 품을 수 있어 제외
+  if (forImg && /^data:image\/(png|jpe?g|gif|webp);base64,[A-Za-z0-9+/=]+$/i.test(s)) return s;
+  if (/^\/(?!\/)/.test(s)) return s;   // 같은 사이트 경로 (//evil.com 은 제외)
+  return '';
+}
+function imSafeStyle(v) {
+  const out = [];
+  String(v == null ? '' : v).split(';').forEach(part => {
+    const i = part.indexOf(':'); if (i < 0) return;
+    const prop = part.slice(0, i).trim().toLowerCase();
+    const val = part.slice(i + 1).trim();
+    if (!IM_OK_STYLE.has(prop)) return;
+    // 괄호는 rgb()/rgba() 만 허용 → url(), expression() 차단
+    if (/\(/.test(val) && !/^rgba?\([\d\s.,%]+\)$/i.test(val)) return;
+    if (/[<>"']|javascript:|expression|@import|behaviou?r/i.test(val)) return;
+    if (val.length > 80) return;
+    out.push(prop + ':' + val);
+  });
+  return out.join(';');
+}
+
+function imSanitizeHtml(html) {
+  // DOMParser 로 만든 문서는 그 자리에서 실행되지 않습니다(inert)
+  const doc = new DOMParser().parseFromString('<body>' + String(html == null ? '' : html) + '</body>', 'text/html');
+  const body = doc.body;
+
+  // 통째로 버릴 것들 — 안의 내용까지 같이 제거
+  body.querySelectorAll('script,style,noscript,template,svg,math,iframe,object,embed,link,meta,form,input,button,select,textarea,base,title,frame,frameset,applet,marquee')
+    .forEach(el => el.remove());
+
+  const walk = (node) => {
+    for (const child of [...node.children]) {
+      const tag = child.tagName.toUpperCase();
+      if (!IM_OK_TAGS.has(tag)) {
+        // 허용되지 않은 태그는 껍데기만 벗기고 안의 글자는 살린다
+        while (child.firstChild) node.insertBefore(child.firstChild, child);
+        child.remove();
+        continue;
+      }
+      const allow = IM_OK_ATTRS[tag] || [];
+      for (const attr of [...child.attributes]) {
+        const name = attr.name.toLowerCase();
+        if (name === 'style') {
+          const safe = imSafeStyle(attr.value);
+          if (safe) child.setAttribute('style', safe); else child.removeAttribute('style');
+          continue;
+        }
+        if (!allow.includes(name)) { child.removeAttribute(attr.name); continue; }
+        if (name === 'href' || name === 'src') {
+          const safe = imSafeUrl(attr.value, name === 'src');
+          if (safe) child.setAttribute(name, safe); else child.removeAttribute(attr.name);
+        }
+      }
+      // 링크는 항상 새 탭 + opener 차단
+      if (tag === 'A') {
+        if (child.getAttribute('href')) { child.setAttribute('target','_blank'); child.setAttribute('rel','noopener noreferrer nofollow'); }
+      }
+      walk(child);
+    }
+  };
+  walk(body);
+  return body.innerHTML;
+}
+
+// HTML → 순수 텍스트 (검색 · #태그 · [[노트연결]] 추출용)
+function imHtmlToText(html) {
+  const doc = new DOMParser().parseFromString('<body>' + String(html == null ? '' : html) + '</body>', 'text/html');
+  doc.body.querySelectorAll('script,style').forEach(el => el.remove());
+  doc.body.querySelectorAll('br').forEach(el => el.replaceWith('\n'));
+  doc.body.querySelectorAll('p,div,li,tr,h1,h2,h3,h4,h5,h6,blockquote').forEach(el => el.append('\n'));
+  return (doc.body.textContent || '').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+// 노트 본문을 순수 텍스트로 (검색 · 태그 · 노트연결에 쓰임)
+function imNoteText(n) {
+  if (!n) return '';
+  return n.format === 'html' ? imHtmlToText(n.body) : String(n.body || '');
+}
+
 // ── 본문에서 #태그 / [[노트 연결]] 뽑기 ──
 function imTagsOf(body) {
   const out = []; const re = /(^|[\s(])#([^\s#.,!?()[\]{}'"]{1,30})/g; let m;
@@ -9097,7 +9220,7 @@ function imBacklinks(note) {
   const title = String(note && note.title || '').trim().toLowerCase();
   if (!title) return [];
   return imNotes.filter(n => n.id !== note.id &&
-    imLinksOf(n.body).some(l => l.toLowerCase() === title));
+    imLinksOf(imNoteText(n)).some(l => l.toLowerCase() === title));
 }
 function imFindByTitle(title) {
   const k = String(title||'').trim().toLowerCase();
@@ -9105,29 +9228,76 @@ function imFindByTitle(title) {
 }
 
 // ── 본문 렌더 : #태그 · [[연결]] · URL 을 눌러지게 ──
-function imRenderBody(body) {
-  const src = String(body || '');
-  if (!src.trim()) return `<span style="color:var(--ink3)">${t('내용이 없어요','Empty note')}</span>`;
+// 서식 있는 노트(format:'html')는 위생 처리 후 글자 부분만 훑어 꾸민다.
+function imTagSpan(doc, tg) {
+  const el = doc.createElement('span');
+  el.setAttribute('onclick', "imPickTag('" + escAttr(tg) + "')");
+  el.setAttribute('title', t('이 태그의 노트 모아보기','Show notes with this tag'));
+  el.setAttribute('style', 'cursor:pointer;color:#0f766e;background:rgba(15,118,110,.10);border-radius:5px;padding:0 4px;font-weight:600');
+  el.textContent = '#' + tg;
+  return el;
+}
+function imLinkSpan(doc, nm) {
+  const found = imFindByTitle(nm);
+  const el = doc.createElement('span');
+  el.setAttribute('onclick', "imOpenByTitle('" + escAttr(nm) + "')");
+  el.setAttribute('title', found ? t('노트 열기','Open note') : t('없는 노트 — 눌러서 만들기','Missing note — click to create'));
+  el.setAttribute('style', 'cursor:pointer;font-weight:700;color:' + (found ? '#1d4ed8' : 'var(--ink3)')
+    + ';background:' + (found ? 'rgba(29,78,216,.10)' : 'rgba(120,130,150,.12)')
+    + ';border-radius:5px;padding:0 4px' + (found ? '' : ';text-decoration:underline dotted'));
+  el.textContent = nm;
+  return el;
+}
+// 위생 처리된 HTML 의 글자 노드만 훑어 #태그 · [[연결]] · URL 을 살려낸다
+function imDecorate(html) {
+  const doc = new DOMParser().parseFromString('<body>' + String(html || '') + '</body>', 'text/html');
+  const SKIP = new Set(['A','CODE','PRE']);
   const re = /(\[\[[^\]\n]{1,120}\]\])|(https?:\/\/[^\s<]+)|((?:^|[\s(])#[^\s#.,!?()[\]{}'"]{1,30})/g;
-  let out = '', last = 0, m;
-  while ((m = re.exec(src))) {
-    out += escHtml(src.slice(last, m.index));
-    if (m[1]) {                                  // [[노트 제목]]
-      const nm = m[1].slice(2, -2).trim();
-      const found = imFindByTitle(nm);
-      out += `<span onclick="imOpenByTitle('${escAttr(nm)}')" title="${imAttr(found?t('노트 열기','Open note'):t('없는 노트 — 눌러서 만들기','Missing note — click to create'))}"
-        style="cursor:pointer;font-weight:700;color:${found?'#1d4ed8':'var(--ink3)'};background:${found?'rgba(29,78,216,.10)':'rgba(120,130,150,.12)'};border-radius:5px;padding:0 4px;${found?'':'text-decoration:underline dotted'}">${escHtml(nm)}</span>`;
-    } else if (m[2]) {                           // URL
-      out += `<a href="${imAttr(m[2])}" target="_blank" rel="noopener noreferrer" style="color:#1d4ed8;word-break:break-all">${escHtml(m[2])}</a>`;
-    } else {                                     // #태그
-      const raw = m[3], lead = raw.slice(0, raw.indexOf('#')), tg = raw.slice(raw.indexOf('#') + 1);
-      out += escHtml(lead) + `<span onclick="imPickTag('${escAttr(tg)}')" title="${imAttr(t('이 태그의 노트 모아보기','Show notes with this tag'))}"
-        style="cursor:pointer;color:#0f766e;background:rgba(15,118,110,.10);border-radius:5px;padding:0 4px;font-weight:600">#${escHtml(tg)}</span>`;
+  const walk = (node) => {
+    for (const child of [...node.childNodes]) {
+      if (child.nodeType === 3) {
+        const src = child.nodeValue || '';
+        if (!/[#[]|https?:\/\//.test(src)) continue;
+        re.lastIndex = 0;
+        let m, last = 0, hit = false;
+        const frag = doc.createDocumentFragment();
+        while ((m = re.exec(src))) {
+          hit = true;
+          if (m.index > last) frag.append(doc.createTextNode(src.slice(last, m.index)));
+          if (m[1]) {
+            frag.append(imLinkSpan(doc, m[1].slice(2, -2).trim()));
+          } else if (m[2]) {
+            const a = doc.createElement('a');
+            a.setAttribute('href', m[2]); a.setAttribute('target', '_blank');
+            a.setAttribute('rel', 'noopener noreferrer nofollow');
+            a.setAttribute('style', 'color:#1d4ed8;word-break:break-all');
+            a.textContent = m[2];
+            frag.append(a);
+          } else {
+            const raw = m[3], cut = raw.indexOf('#');
+            if (cut > 0) frag.append(doc.createTextNode(raw.slice(0, cut)));
+            frag.append(imTagSpan(doc, raw.slice(cut + 1)));
+          }
+          last = re.lastIndex;
+        }
+        if (!hit) continue;
+        if (last < src.length) frag.append(doc.createTextNode(src.slice(last)));
+        child.replaceWith(frag);
+      } else if (child.nodeType === 1 && !SKIP.has(child.tagName)) {
+        walk(child);
+      }
     }
-    last = re.lastIndex;
-  }
-  out += escHtml(src.slice(last));
-  return out;
+  };
+  walk(doc.body);
+  return doc.body.innerHTML;
+}
+function imRenderNote(n) {
+  if (!n) return '';
+  const raw = String(n.body || '');
+  if (!raw.trim()) return `<span style="color:var(--ink3)">${t('내용이 없어요','Empty note')}</span>`;
+  // 순수 텍스트 노트는 먼저 HTML 로 감싸고, 서식 노트는 위생 처리부터
+  const safe = n.format === 'html' ? imSanitizeHtml(raw) : escHtml(raw);
+  return imDecorate(safe);
 }
 
 // ── 로드 ──
@@ -9182,7 +9352,7 @@ function imNoteFiltered() {
     if (imNoteTag && !(n.tags || []).includes(imNoteTag)) return false;
     if (imNoteBook && (n.notebook || IM_NOTEBOOK_DEFAULT) !== imNoteBook) return false;
     if (!q) return true;
-    return [n.title, n.body, (n.tags||[]).join(' '), n.ocr_text, n.source_title, n.source_url]
+    return [n.title, imNoteText(n), (n.tags||[]).join(' '), n.ocr_text, n.source_title, n.source_url]
       .some(v => String(v || '').toLowerCase().includes(q));
   });
 }
@@ -9225,7 +9395,7 @@ function imNoteListHtml() {
     </div>`}`;
 }
 function imNoteCard(n) {
-  const body = String(n.body || '').replace(/\s+/g, ' ').trim();
+  const body = imNoteText(n).replace(/\s+/g, ' ').trim();
   const when = String(n.updated_at || '').slice(0, 10);
   const tags = (n.tags || []).slice(0, 4);
   return `<div onclick="imOpenNote('${n.id}')" style="background:var(--surface);border:1.5px solid var(--border);border-radius:14px;padding:14px;cursor:pointer;display:flex;flex-direction:column;gap:7px;min-height:120px;transition:border-color .15s var(--ease-out),transform .15s var(--ease-out)"
@@ -9271,7 +9441,8 @@ async function imNewNote(tplId, presetTitle) {
   const row = {
     community_id: CID(), user_id: ME.id, author_name: ME.name || '',
     title: presetTitle || (tpl ? tpl.name : ''),
-    body: tpl ? tpl.body : '',
+    body: tpl ? imTextToHtml(tpl.body) : '',
+    format: 'html',
     tags: tpl ? imTagsOf(tpl.body) : [],
     notebook: imNoteBook || null,
     visibility: 'private',
@@ -9288,6 +9459,89 @@ function imNoteTemplateBar() {
     `<button onclick="imNewNote('${tp.id}')" title="${imAttr(tp.name)}" style="height:32px;padding:0 12px;border:1.5px solid var(--border);background:var(--surface);border-radius:9px;cursor:pointer;font:600 12px var(--font);color:var(--ink2);transition:border-color .15s var(--ease-out)"
       onmouseover="this.style.borderColor='#2a5298'" onmouseout="this.style.borderColor='var(--border)'">${tp.icon} ${escHtml(tp.name)}</button>`
   ).join('');
+}
+
+// ── 서식 도구 ──
+function imTextToHtml(txt) {
+  return String(txt || '').split('\n')
+    .map(line => '<div>' + (escHtml(line) || '<br>') + '</div>').join('');
+}
+function imEditorHtml(n) {
+  return n.format === 'html' ? imSanitizeHtml(n.body) : imTextToHtml(n.body);
+}
+// 붙여넣기/드롭은 가로채서 걸러낸 뒤 넣는다.
+// 저장할 때만 걸러내면 늦다 — 붙여넣는 순간 이미 살아있는 화면에 들어가기 때문.
+function imPasteClean(ev) {
+  const dt = ev.clipboardData || ev.dataTransfer;
+  if (!dt) return;
+  const html = dt.getData('text/html');
+  const text = dt.getData('text/plain');
+  if (!html && !text) return;          // 파일 붙여넣기는 그대로 둔다
+  ev.preventDefault();
+  const clean = html ? imSanitizeHtml(html) : imTextToHtml(text);
+  const bo = document.getElementById('im-body');
+  if (bo) imInsertHtml(bo, clean);
+  imOnEdit();
+}
+// 걸러낸 HTML 을 커서 자리에 넣는다.
+// execCommand('insertHTML') 은 커서가 없으면 조용히 아무것도 안 하므로 직접 넣는다.
+function imInsertHtml(editor, cleanHtml) {
+  const sel = window.getSelection();
+  let range = null;
+  if (sel && sel.rangeCount && editor.contains(sel.anchorNode)) range = sel.getRangeAt(0);
+  if (!range) {                       // 커서가 없으면 맨 끝에
+    range = document.createRange();
+    range.selectNodeContents(editor);
+    range.collapse(false);
+  }
+  range.deleteContents();
+  // DOMParser 로 만든 문서는 실행되지 않으므로 거기서 노드를 가져온다
+  const doc = new DOMParser().parseFromString('<body>' + cleanHtml + '</body>', 'text/html');
+  const frag = document.createDocumentFragment();
+  let last = null;
+  for (const node of [...doc.body.childNodes]) { last = document.importNode(node, true); frag.appendChild(last); }
+  range.insertNode(frag);
+  if (last && sel) {                  // 커서를 붙여넣은 내용 뒤로
+    const after = document.createRange();
+    after.setStartAfter(last); after.collapse(true);
+    sel.removeAllRanges(); sel.addRange(after);
+  }
+}
+
+function imExec(cmd, val) {
+  const bo = document.getElementById('im-body');
+  if (bo) bo.focus();
+  try { document.execCommand('styleWithCSS', false, false); } catch (_) {}
+  try { document.execCommand(cmd, false, val == null ? null : val); } catch (_) {}
+  imOnEdit();
+}
+function imInsertLink() {
+  const url = prompt(t('링크 주소','Link URL'), 'https://');
+  if (!url || !/^https?:\/\//i.test(url)) { if (url !== null) imToast(t('http 로 시작하는 주소만 돼요','Only http(s) links')); return; }
+  imExec('createLink', url);
+}
+function imFormatBar() {
+  const btn = (label, act, title, extra) =>
+    `<button onmousedown="event.preventDefault()" onclick="${act}" title="${imAttr(title)}"
+      style="min-width:30px;height:30px;padding:0 8px;border:1.5px solid var(--border);background:var(--surface);border-radius:8px;cursor:pointer;font:${extra || '700 12.5px'} var(--font);color:var(--ink2);transition:border-color .12s var(--ease-out)"
+      onmouseover="this.style.borderColor='#2a5298'" onmouseout="this.style.borderColor='var(--border)'">${label}</button>`;
+  return `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px;align-items:center">
+    ${btn('<b>B</b>', "imExec('bold')", t('굵게','Bold'))}
+    ${btn('<i>I</i>', "imExec('italic')", t('기울임','Italic'))}
+    ${btn('<u>U</u>', "imExec('underline')", t('밑줄','Underline'))}
+    ${btn('<s>S</s>', "imExec('strikeThrough')", t('취소선','Strikethrough'))}
+    <span style="width:1px;height:20px;background:var(--border);margin:0 3px"></span>
+    ${btn('H', "imExec('formatBlock','h3')", t('제목','Heading'))}
+    ${btn('&bull;', "imExec('insertUnorderedList')", t('글머리 목록','Bulleted list'))}
+    ${btn('1.', "imExec('insertOrderedList')", t('번호 목록','Numbered list'))}
+    ${btn('&#9744;', "imExec('insertText','\u2610 ')", t('체크박스','Checkbox'))}
+    ${btn('&rdquo;', "imExec('formatBlock','blockquote')", t('인용','Quote'))}
+    <span style="width:1px;height:20px;background:var(--border);margin:0 3px"></span>
+    ${btn('&#128279;', "imInsertLink()", t('링크','Link'))}
+    ${btn('&#10005;', "imExec('removeFormat')", t('서식 지우기','Clear formatting'))}
+    <span style="flex:1"></span>
+    <span style="font-size:11px;color:var(--ink3)">${t('붙여넣기 한 서식도 그대로 살아요','Pasted formatting is kept')}</span>
+  </div>`;
 }
 
 // ── 편집기 ──
@@ -9326,9 +9580,10 @@ function imNoteEditorHtml() {
     <span style="font-size:11.5px;color:var(--ink3)">${t('본문에 #태그, [[노트 제목]] 을 쓰면 자동으로 이어져요','Use #tag and [[Note title]] in the body')}</span>
   </div>
 
+  ${mine ? imFormatBar() : ''}
   <div class="im-panes" style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px">
-    <textarea id="im-body" ${ro} oninput="imOnEdit()" placeholder="${imAttr(t('여기에 적어요…','Write here…'))}"
-      style="width:100%;min-height:46vh;padding:14px;border:1.5px solid var(--border);border-radius:12px;background:var(--surface);font:14px/1.75 var(--font);color:var(--ink);outline:none;resize:vertical;min-width:0">${escHtml(n.body).replace(/<br>/g,'\n')}</textarea>
+    <div id="im-body" ${mine ? 'contenteditable="true"' : ''} oninput="imOnEdit()" onpaste="imPasteClean(event)" ondrop="imPasteClean(event)" data-ph="${imAttr(t('여기에 적어요…','Write here…'))}"
+      style="width:100%;min-height:46vh;padding:14px;border:1.5px solid var(--border);border-radius:12px;background:var(--surface);font:14px/1.75 var(--font);color:var(--ink);outline:none;min-width:0;overflow-wrap:break-word">${imEditorHtml(n)}</div>
     <div style="min-width:0;display:flex;flex-direction:column;gap:12px">
       <div id="im-preview" style="padding:14px;border:1.5px solid var(--border);border-radius:12px;background:var(--s2);font:14px/1.75 var(--font);color:var(--ink);min-height:46vh;overflow-wrap:break-word"></div>
     </div>
@@ -9357,13 +9612,13 @@ function imSyncFromForm() {
   const n = imNoteCur; if (!n || !imNoteIsMine(n)) return;
   const ti = document.getElementById('im-title'), bo = document.getElementById('im-body'), bk = document.getElementById('im-book');
   if (ti) n.title = ti.value;
-  if (bo) n.body = bo.value;
+  if (bo) { n.body = bo.innerHTML; n.format = 'html'; }
   if (bk) n.notebook = bk.value.trim() || null;
-  n.tags = imTagsOf(n.body);
+  n.tags = imTagsOf(imNoteText(n));
 }
 function imNoteSyncPreview() {
   const pv = document.getElementById('im-preview');
-  if (pv && imNoteCur) pv.innerHTML = imRenderBody(imNoteCur.body);
+  if (pv && imNoteCur) pv.innerHTML = imRenderNote(imNoteCur);
 }
 function imOnEdit() {
   imSyncFromForm();
@@ -9376,9 +9631,12 @@ async function imSaveNote(quiet) {
   const n = imNoteCur; if (!n || !imNoteIsMine(n)) return;
   const st = document.getElementById('im-save-state');
   if (st && !quiet) st.textContent = t('저장 중…','Saving…');
+  // 저장 직전에 한 번 더 걸러낸다 (붙여넣기로 들어온 것까지)
+  const cleanBody = n.format === 'html' ? imSanitizeHtml(n.body) : n.body;
   const { error } = await sb.from('notes').update({
-    title: n.title, body: n.body, tags: n.tags, notebook: n.notebook,
+    title: n.title, body: cleanBody, tags: n.tags, notebook: n.notebook, format: n.format || 'text',
   }).eq('id', n.id);
+  n.body = cleanBody;
   if (error) { if (st) st.textContent = ''; imToast(t('저장 실패: ','Save failed: ') + (error.message||'')); return; }
   n.updated_at = new Date().toISOString();
   if (st) { st.textContent = t('저장됨','Saved'); setTimeout(() => { if (st.textContent === t('저장됨','Saved')) st.textContent = ''; }, 1600); }
@@ -9523,7 +9781,7 @@ async function saveMsgAsNote(msgId) {
   const { data, error } = await sb.from('notes').insert({
     community_id: CID(), user_id: ME.id, author_name: ME.name || '',
     title: text.replace(/\s+/g, ' ').slice(0, 40),
-    body, tags: imTagsOf(body), visibility: 'private',
+    body: imTextToHtml(body), format: 'html', tags: imTagsOf(body), visibility: 'private',
     channel_id: currentChannel ? currentChannel.id : null,
   }).select().single();
   if (error) { showUploadToast(t('노트 저장 실패: ','Could not save: ') + (error.message || '')); return; }
@@ -9573,7 +9831,7 @@ async function imCreateFromClip(clip, manual) {
   const row = {
     community_id: CID(), user_id: ME.id, author_name: ME.name || '',
     title: (clip.title || clip.url || '').slice(0, 200),
-    body, tags: imTagsOf(body), visibility: 'private',
+    body: imTextToHtml(body), format: 'html', tags: imTagsOf(body), visibility: 'private',
     notebook: imNoteBook || null,
     source_url: clip.url || null, source_title: clip.title || null,
     source_site: clip.site || null, source_image: clip.image || null,
@@ -9602,6 +9860,7 @@ async function imOcrAttachment(idx) {
   n.ocr_text = merged; renderNotePage();
   imToast(t('🔍 글자를 찾았어요. 이제 검색돼요','🔍 Text extracted — now searchable'));
 }
+
 
 function showUploadToast(msg) {
   const area = document.getElementById('msg-area');
