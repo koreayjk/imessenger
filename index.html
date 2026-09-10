@@ -570,9 +570,22 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
 .fade { animation: fadeIn .2s var(--ease-out); }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
 
+/* IM노트: 왼쪽 노트북 목록 + 오른쪽 본문 */
+.note-side-btn { display: none; }
+@media (max-width: 900px) {
+  #note-body { grid-template-columns: minmax(0, 1fr) !important; }
+  #note-side { display: none; }
+  #note-view.side-open #note-side {
+    display: block; border-right: none; border-bottom: 1px solid var(--border); max-height: 46vh;
+  }
+  .note-side-btn { display: inline-flex !important; align-items: center; }
+}
+
 /* IM노트 본문(편집기 · 미리보기) 서식 */
 #im-body:empty::before { content: attr(data-ph); color: var(--ink3); }
 #im-body:focus { border-color: #1d3a5f; }
+#im-body a, #im-preview a { color: #1d4ed8; text-decoration: underline; word-break: break-all; }
+#im-body a { cursor: pointer; }
 #im-body h1, #im-preview h1 { font-size: 20px; margin: 10px 0 6px; }
 #im-body h2, #im-preview h2 { font-size: 17px; margin: 10px 0 6px; }
 #im-body h3, #im-preview h3 { font-size: 15px; margin: 9px 0 5px; }
@@ -1052,6 +1065,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
             style="width:100%;height:34px;padding:0 12px 0 30px;border:1.5px solid var(--border);border-radius:10px;background:var(--s2);font:13px var(--font);color:var(--ink);outline:none;transition:border-color .15s var(--ease-out)"
             onfocus="this.style.borderColor='#1d3a5f'" onblur="this.style.borderColor='var(--border)'"/>
         </div>
+        <button class="note-side-btn" onclick="imToggleSide()" title="노트북" style="height:34px;padding:0 11px;border:1.5px solid var(--border);background:white;border-radius:9px;cursor:pointer;font:600 13px var(--font);color:var(--ink2)">📚</button>
         <button onclick="imClipUrl()" title="링크에서 가져오기" style="height:34px;padding:0 12px;border:1.5px solid var(--border);background:white;border-radius:9px;cursor:pointer;font:600 12px var(--font);color:var(--ink2)">🔗 <span data-ko="링크" data-en="Link">링크</span></button>
         <label title="에버노트 .enex 가져오기" style="height:34px;padding:0 12px;border:1.5px solid var(--border);background:white;border-radius:9px;cursor:pointer;font:600 12px var(--font);color:var(--ink2);display:inline-flex;align-items:center;gap:4px">
           🐘 <span data-ko="에버노트" data-en="Evernote">에버노트</span>
@@ -1059,8 +1073,10 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
         </label>
         <button onclick="imNewNote()" style="height:34px;padding:0 14px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 12.5px var(--font)">+ <span data-ko="새 노트" data-en="New note">새 노트</span></button>
       </div>
-      <div id="note-tplbar" style="padding:10px 24px 0;display:flex;gap:6px;flex-wrap:wrap"></div>
-      <div id="note-main" style="flex:1;overflow-y:auto;padding:16px 24px 24px"></div>
+      <div id="note-body" style="flex:1;display:grid;grid-template-columns:214px minmax(0,1fr);overflow:hidden">
+        <aside id="note-side" style="border-right:1px solid var(--border);background:var(--surface);overflow-y:auto;padding:12px 10px;min-width:0"></aside>
+        <div id="note-main" style="overflow-y:auto;padding:16px 24px 24px;min-width:0"></div>
+      </div>
     </div>
 
     <div id="drive-view" style="display:none;flex-direction:column;height:100%;background:var(--bg)">
@@ -9345,12 +9361,8 @@ function renderNotePage() {
     </div>`;
     return;
   }
-  const bar = document.getElementById('note-tplbar');
-  if (bar) {
-    const showTpl = imNoteMode === 'list';
-    bar.style.display = showTpl ? 'flex' : 'none';
-    bar.innerHTML = showTpl ? `<span style="font-size:11.5px;color:var(--ink3);align-self:center;margin-right:2px">${t('템플릿으로 시작','Start from a template')}</span>` + imNoteTemplateBar() : '';
-  }
+  const side = document.getElementById('note-side');
+  if (side) side.innerHTML = imSideHtml();
   main.innerHTML = imNoteMode === 'edit' ? imNoteEditorHtml() : imNoteListHtml();
   if (imNoteMode === 'edit') imNoteSyncPreview();
 }
@@ -9369,34 +9381,19 @@ function imNoteFiltered() {
   });
 }
 function imNoteListHtml() {
-  const rows = imNoteFiltered();
-  const scoped = imNotes.filter(n => imNoteScope === 'mine' ? imNoteIsMine(n) : n.visibility === 'community');
-
-  // 태그 / 노트북 모음
-  const tagCount = {};
-  scoped.forEach(n => (n.tags||[]).forEach(tg => tagCount[tg] = (tagCount[tg]||0)+1));
-  const tags = Object.entries(tagCount).sort((a,b) => b[1]-a[1] || a[0].localeCompare(b[0])).slice(0, 40);
-  const books = [...new Set(scoped.map(n => n.notebook || IM_NOTEBOOK_DEFAULT))].sort();
-
-  const chip = (on, label, act, extra) => `<button onclick="${act}" style="height:30px;padding:0 12px;border:1.5px solid ${on?'#1d3a5f':'var(--border)'};background:${on?'#1d3a5f':'var(--surface)'};color:${on?'#fff':'var(--ink2)'};border-radius:99px;cursor:pointer;font:600 12px var(--font);transition:background .12s var(--ease-out),border-color .12s var(--ease-out)">${label}${extra||''}</button>`;
-
+  const rows = imNoteFiltered();   // 노트북·태그 고르기는 왼쪽 사이드바(imSideHtml)로 옮겼습니다
+  const where = (imNoteBook ? '📓 ' + escHtml(imNoteBook) : '📚 ' + t('전체','All'))
+    + (imNoteTag ? '  ·  #' + escHtml(imNoteTag) : '');
   return `
-  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
-    ${chip(imNoteScope==='mine', '🔒 ' + t('내 노트','My notes'), "imSetScope('mine')")}
-    ${chip(imNoteScope==='community', '🌐 ' + t('공동체 공개','Shared'), "imSetScope('community')")}
-    <div style="flex:1"></div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:baseline;margin-bottom:12px">
+    <div style="font:800 16px var(--font);color:var(--ink)">${where}</div>
     <span style="font-size:12px;color:var(--ink3)">${rows.length}${t('개','')}</span>
+    <div style="flex:1"></div>
   </div>
-
-  ${books.length > 1 ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
-    ${chip(!imNoteBook, '📚 ' + t('전체','All'), 'imPickBook(null)')}
-    ${books.map(b => chip(imNoteBook===b, '📓 ' + escHtml(b), `imPickBook('${escAttr(b)}')`)).join('')}
-  </div>` : ''}
-
-  ${tags.length ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">
-    ${imNoteTag ? chip(false, '✕ ' + t('태그 해제','Clear tag'), 'imPickTag(null)') : ''}
-    ${tags.map(([tg,c]) => chip(imNoteTag===tg, '#' + escHtml(tg), `imPickTag('${escAttr(tg)}')`, ` <span style="opacity:.6">${c}</span>`)).join('')}
-  </div>` : ''}
+  <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:16px">
+    <span style="font-size:11.5px;color:var(--ink3);margin-right:2px">${t('템플릿으로 시작','Start from a template')}</span>
+    ${imNoteTemplateBar()}
+  </div>
 
   ${rows.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,260px),1fr));gap:12px">
     ${rows.map(imNoteCard).join('')}
@@ -9406,6 +9403,42 @@ function imNoteListHtml() {
       <div style="font-size:12px">${t('오른쪽 위 + 새 노트 로 시작해 보세요','Tap + New note to start')}</div>
     </div>`}`;
 }
+// 왼쪽 노트북/태그 목록 (에버노트식)
+function imSideHtml() {
+  const scoped = imNotes.filter(n => imNoteScope === 'mine' ? imNoteIsMine(n) : n.visibility === 'community');
+  const bookCount = {};
+  scoped.forEach(n => { const b = n.notebook || IM_NOTEBOOK_DEFAULT; bookCount[b] = (bookCount[b] || 0) + 1; });
+  const books = Object.keys(bookCount).sort((a, b) => a.localeCompare(b, 'ko'));
+  const tagCount = {};
+  scoped.forEach(n => (n.tags || []).forEach(tg => tagCount[tg] = (tagCount[tg] || 0) + 1));
+  const tags = Object.entries(tagCount).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'ko')).slice(0, 30);
+
+  const row = (on, icon, label, count, act) => `<div onclick="${act}"
+    style="display:flex;align-items:center;gap:7px;padding:7px 9px;border-radius:9px;cursor:pointer;margin-bottom:1px;
+      background:${on ? 'var(--asoft)' : 'transparent'};transition:background .12s var(--ease-out)"
+    onmouseover="if(!${on})this.style.background='var(--s2)'" onmouseout="if(!${on})this.style.background='transparent'">
+    <span style="font-size:13px;flex-shrink:0">${icon}</span>
+    <span style="flex:1;min-width:0;font:${on ? '700' : '500'} 12.5px var(--font);color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${label}</span>
+    ${count == null ? '' : `<span style="font:600 11px var(--font);color:var(--ink3);flex-shrink:0">${count}</span>`}
+  </div>`;
+  const head = (txt) => `<div style="font:800 10.5px var(--font);color:var(--ink3);text-transform:uppercase;letter-spacing:.06em;padding:12px 9px 5px">${txt}</div>`;
+
+  return head(t('보기','Scope'))
+    + row(imNoteScope === 'mine', '🔒', t('내 노트','My notes'), imNotes.filter(imNoteIsMine).length, "imSetScope('mine')")
+    + row(imNoteScope === 'community', '🌐', t('공동체 공개','Shared'), imNotes.filter(n => n.visibility === 'community').length, "imSetScope('community')")
+    + head(t('노트북','Notebooks'))
+    + row(!imNoteBook, '📚', t('전체','All'), scoped.length, 'imPickBook(null)')
+    + books.map(b => row(imNoteBook === b, '📓', escHtml(b), bookCount[b], `imPickBook('${escAttr(b)}')`)).join('')
+    + (tags.length ? head(t('태그','Tags'))
+        + (imNoteTag ? row(false, '✕', t('태그 해제','Clear tag'), null, 'imPickTag(null)') : '')
+        + tags.map(([tg, c]) => row(imNoteTag === tg, '#', escHtml(tg), c, `imPickTag('${escAttr(tg)}')`)).join('')
+      : '');
+}
+function imToggleSide() {
+  const v = document.getElementById('note-view');
+  if (v) v.classList.toggle('side-open');
+}
+
 function imNoteCard(n) {
   const body = imNoteText(n).replace(/\s+/g, ' ').trim();
   const when = String(n.updated_at || '').slice(0, 10);
@@ -9479,8 +9512,71 @@ function imTextToHtml(txt) {
     .map(line => '<div>' + (escHtml(line) || '<br>') + '</div>').join('');
 }
 function imEditorHtml(n) {
-  return n.format === 'html' ? imSanitizeHtml(n.body) : imTextToHtml(n.body);
+  // 열 때 이미 링크로 만들어 둔다 (저장된 글자 주소 · 에버노트에서 가져온 것 포함)
+  return imAutoLink(n.format === 'html' ? imSanitizeHtml(n.body) : imTextToHtml(n.body));
 }
+// 편집 중에도 주소를 누르면 브라우저 새 탭으로 열리게 한다.
+// (contenteditable 은 클릭을 커서 이동으로 삼켜버려서 링크가 죽는다)
+function imEditorClick(ev) {
+  const a = ev.target && ev.target.closest ? ev.target.closest('a[href]') : null;
+  if (!a) return;
+  const href = a.getAttribute('href') || '';
+  if (!/^(https?:|mailto:)/i.test(href)) return;
+  ev.preventDefault();
+  window.open(href, '_blank', 'noopener,noreferrer');
+}
+
+// 글자로 적힌 주소(http://…)를 진짜 링크로 바꾼다.
+// 타이핑 중에 바꾸면 커서가 튀므로, 편집기를 벗어날 때만 실행한다.
+function imAutoLink(html) {
+  const doc = new DOMParser().parseFromString('<body>' + String(html || '') + '</body>', 'text/html');
+  const re = /https?:\/\/[^\s<>"']+/g;
+  const walk = (node) => {
+    for (const child of [...node.childNodes]) {
+      if (child.nodeType === 3) {
+        const src = child.nodeValue || '';
+        if (!/https?:\/\//.test(src)) continue;
+        re.lastIndex = 0;
+        let m, last = 0, hit = false;
+        const frag = doc.createDocumentFragment();
+        while ((m = re.exec(src))) {
+          hit = true;
+          if (m.index > last) frag.append(doc.createTextNode(src.slice(last, m.index)));
+          let url = m[0];
+          let tail = '';
+          const trail = url.match(/[).,!?;:]+$/);        // 문장 끝 기호는 링크에서 뺀다
+          if (trail) { tail = trail[0]; url = url.slice(0, -tail.length); }
+          const a = doc.createElement('a');
+          a.setAttribute('href', url);
+          a.setAttribute('target', '_blank');
+          a.setAttribute('rel', 'noopener noreferrer nofollow');
+          a.textContent = url;
+          frag.append(a);
+          if (tail) frag.append(doc.createTextNode(tail));
+          last = re.lastIndex;
+        }
+        if (!hit) continue;
+        if (last < src.length) frag.append(doc.createTextNode(src.slice(last)));
+        child.replaceWith(frag);
+      } else if (child.nodeType === 1 && !['A','CODE','PRE'].includes(child.tagName)) {
+        walk(child);
+      }
+    }
+  };
+  walk(doc.body);
+  return doc.body.innerHTML;
+}
+// 편집기를 벗어날 때 주소를 링크로 만들고 화면에도 반영
+function imEditorBlur() {
+  const n = imNoteCur, bo = document.getElementById('im-body');
+  if (!n || !bo || !imNoteIsMine(n)) return;
+  const linked = imAutoLink(bo.innerHTML);
+  if (linked === bo.innerHTML) return;
+  bo.innerHTML = linked;
+  imSyncFromForm();
+  imSaveNote(true);
+}
+
 // 붙여넣기/드롭은 가로채서 걸러낸 뒤 넣는다.
 // 저장할 때만 걸러내면 늦다 — 붙여넣는 순간 이미 살아있는 화면에 들어가기 때문.
 function imPasteClean(ev) {
@@ -9608,13 +9704,14 @@ function imNoteEditorHtml() {
 
   ${mine ? imFormatBar() : ''}
   ${(mine && !imPreviewOn) ? `
-    <div id="im-body" contenteditable="true" oninput="imOnEdit()" onpaste="imPasteClean(event)" ondrop="imPasteClean(event)" data-ph="${imAttr(t('여기에 적어요…','Write here…'))}"
+    <div id="im-body" contenteditable="true" oninput="imOnEdit()" onpaste="imPasteClean(event)" ondrop="imPasteClean(event)"
+      onclick="imEditorClick(event)" onblur="imEditorBlur()" data-ph="${imAttr(t('여기에 적어요…','Write here…'))}"
       style="width:100%;min-height:52vh;padding:16px 18px;border:1.5px solid var(--border);border-radius:12px;background:var(--surface);font:14px/1.75 var(--font);color:var(--ink);outline:none;overflow-wrap:break-word">${imEditorHtml(n)}</div>
   ` : `
     <div id="im-preview" style="width:100%;min-height:52vh;padding:16px 18px;border:1.5px solid var(--border);border-radius:12px;background:var(--s2);font:14px/1.75 var(--font);color:var(--ink);overflow-wrap:break-word"></div>
   `}
 
-  <div style="margin-top:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:12px">
+  <div style="margin-top:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,208px),1fr));gap:12px">
     <div style="background:var(--surface);border:1.5px solid var(--border);border-radius:12px;padding:13px">
       <div style="font-size:11.5px;font-weight:800;color:var(--ink3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">${t('이 노트가 가리키는 노트','Links out')} (${links.length})</div>
       ${links.length ? links.map(l => { const f = imFindByTitle(l); return `<div onclick="imOpenByTitle('${escAttr(l)}')" style="font-size:12.5px;padding:5px 0;cursor:pointer;color:${f?'#1d4ed8':'var(--ink3)'};font-weight:600">→ ${escHtml(l)}${f?'':' <span style="font-weight:400">('+t('없음','missing')+')</span>'}</div>`; }).join('')
