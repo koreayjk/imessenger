@@ -2245,6 +2245,10 @@ function setMode(m) {
     sbTcsBtn.classList.toggle('active', tcsActive);
   }
 
+  // 우측 멤버 목록은 채팅에서만 (다른 화면에서는 자리만 차지함)
+  const rp = document.getElementById('right-panel');
+  if (rp) rp.style.display = (m === 'chat' && !rightPanelHidden) ? 'flex' : 'none';
+
   const panel = document.getElementById('panel');
   if (m === 'home' || m === 'calendar' || m === 'admin' || m === 'tcs' || m === 'mock' || m === 'reading' || m === 'profile' || m === 'school' || m === 'allowance' || m === 'deposit' || m === 'mytt' || m === 'leave' || m === 'bookreport' || m === 'review' || m === 'gishome' || m === 'store' || m === 'approval' || m === 'improve' || m === 'drive' || m === 'note') {
     panel.style.display = 'none';
@@ -3974,9 +3978,11 @@ async function renderMembers() {
   }).join('');
 }
 
+let rightPanelHidden = false;   // 사용자가 직접 접어둔 상태 (채팅으로 돌아와도 유지)
 function toggleRightPanel() {
   const rp = document.getElementById('right-panel');
-  rp.style.display = rp.style.display === 'none' ? 'flex' : 'none';
+  rightPanelHidden = rp.style.display !== 'none';
+  rp.style.display = rightPanelHidden ? 'none' : 'flex';
 }
 
 // ── 채팅방에 멤버 추가 (간사 이상 · 학생 제외) ──
