@@ -547,8 +547,6 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
   /* flex 자식이 긴 텍스트로 부모 밖으로 밀려나지 않게(축소 허용) — 넘침 방지 안전망 */
   #main [style*="display:flex"] > * { min-width: 0; }
   .adm-row { min-width: 0; }
-  /* IM노트 편집기: 좁은 화면에서는 편집/미리보기를 위아래로 */
-  .im-panes { grid-template-columns: minmax(0, 1fr) !important; }
 }
 .s360-mobile-back { display: none; }
 .mention { color:#1d4ed8; font-weight:700; background:rgba(29,78,216,.10); border-radius:5px; padding:0 3px; }
@@ -9084,6 +9082,7 @@ let imNoteBook = null;        // 선택된 노트북
 let imNoteScope = 'mine';     // 'mine' | 'community'
 let imNoteSaveT = null;       // 자동저장 디바운스
 let imNoteBusy = false;
+let imPreviewOn = false;      // 편집 화면을 '보기'로 전환했는지 (#태그·[[연결]] 을 눌러보려 할 때)
 
 const IM_NOTEBOOK_DEFAULT = '기본';
 
@@ -9440,7 +9439,7 @@ function imOnSearch(v) { imNoteQ = v; if (imNoteMode === 'list') renderNotePage(
 // ── 열기 / 새로 만들기 ──
 function imOpenNote(id) {
   const n = imNotes.find(x => x.id === id); if (!n) return;
-  imNoteCur = n; imNoteMode = 'edit'; renderNotePage();
+  imNoteCur = n; imNoteMode = 'edit'; imPreviewOn = false; renderNotePage();
 }
 async function imOpenByTitle(title) {
   const found = imFindByTitle(title);
@@ -9521,6 +9520,12 @@ function imInsertHtml(editor, cleanHtml) {
   }
 }
 
+function imTogglePreview() {
+  if (!imPreviewOn) { imSyncFromForm(); if (imNoteSaveT) { clearTimeout(imNoteSaveT); imNoteSaveT = null; } imSaveNote(true); }
+  imPreviewOn = !imPreviewOn;
+  renderNotePage();
+}
+
 function imExec(cmd, val) {
   const bo = document.getElementById('im-body');
   if (bo) bo.focus();
@@ -9538,6 +9543,13 @@ function imFormatBar() {
     `<button onmousedown="event.preventDefault()" onclick="${act}" title="${imAttr(title)}"
       style="min-width:30px;height:30px;padding:0 8px;border:1.5px solid var(--border);background:var(--surface);border-radius:8px;cursor:pointer;font:${extra || '700 12.5px'} var(--font);color:var(--ink2);transition:border-color .12s var(--ease-out)"
       onmouseover="this.style.borderColor='#2a5298'" onmouseout="this.style.borderColor='var(--border)'">${label}</button>`;
+  // 보기 모드에서는 서식 버튼이 할 일이 없으므로 되돌아가는 버튼만 둔다
+  if (imPreviewOn) {
+    return `<div style="display:flex;gap:6px;margin-bottom:8px;align-items:center">
+      <button onclick="imTogglePreview()" style="height:30px;padding:0 12px;border:1.5px solid #1d3a5f;background:#1d3a5f;color:#fff;border-radius:8px;cursor:pointer;font:700 12px var(--font)">✏️ ${t('편집으로','Edit')}</button>
+      <span style="font-size:11.5px;color:var(--ink3)">${t('보기 모드 — #태그와 [[노트 연결]] 을 누를 수 있어요','View mode — #tags and [[links]] are clickable')}</span>
+    </div>`;
+  }
   return `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px;align-items:center">
     ${btn('<b>B</b>', "imExec('bold')", t('굵게','Bold'))}
     ${btn('<i>I</i>', "imExec('italic')", t('기울임','Italic'))}
@@ -9553,7 +9565,8 @@ function imFormatBar() {
     ${btn('&#128279;', "imInsertLink()", t('링크','Link'))}
     ${btn('&#10005;', "imExec('removeFormat')", t('서식 지우기','Clear formatting'))}
     <span style="flex:1"></span>
-    <span style="font-size:11px;color:var(--ink3)">${t('붙여넣기 한 서식도 그대로 살아요','Pasted formatting is kept')}</span>
+    <button onclick="imTogglePreview()" title="${imAttr(t('보기로 전환하면 #태그와 [[노트연결]] 을 누를 수 있어요','Switch to view mode to click #tags and [[links]]'))}"
+      style="height:30px;padding:0 11px;border:1.5px solid var(--border);background:var(--surface);border-radius:8px;cursor:pointer;font:600 12px var(--font);color:var(--ink2)">👁 ${t('보기','View')}</button>
   </div>`;
 }
 
@@ -9594,13 +9607,12 @@ function imNoteEditorHtml() {
   </div>
 
   ${mine ? imFormatBar() : ''}
-  <div class="im-panes" style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px">
-    <div id="im-body" ${mine ? 'contenteditable="true"' : ''} oninput="imOnEdit()" onpaste="imPasteClean(event)" ondrop="imPasteClean(event)" data-ph="${imAttr(t('여기에 적어요…','Write here…'))}"
-      style="width:100%;min-height:46vh;padding:14px;border:1.5px solid var(--border);border-radius:12px;background:var(--surface);font:14px/1.75 var(--font);color:var(--ink);outline:none;min-width:0;overflow-wrap:break-word">${imEditorHtml(n)}</div>
-    <div style="min-width:0;display:flex;flex-direction:column;gap:12px">
-      <div id="im-preview" style="padding:14px;border:1.5px solid var(--border);border-radius:12px;background:var(--s2);font:14px/1.75 var(--font);color:var(--ink);min-height:46vh;overflow-wrap:break-word"></div>
-    </div>
-  </div>
+  ${(mine && !imPreviewOn) ? `
+    <div id="im-body" contenteditable="true" oninput="imOnEdit()" onpaste="imPasteClean(event)" ondrop="imPasteClean(event)" data-ph="${imAttr(t('여기에 적어요…','Write here…'))}"
+      style="width:100%;min-height:52vh;padding:16px 18px;border:1.5px solid var(--border);border-radius:12px;background:var(--surface);font:14px/1.75 var(--font);color:var(--ink);outline:none;overflow-wrap:break-word">${imEditorHtml(n)}</div>
+  ` : `
+    <div id="im-preview" style="width:100%;min-height:52vh;padding:16px 18px;border:1.5px solid var(--border);border-radius:12px;background:var(--s2);font:14px/1.75 var(--font);color:var(--ink);overflow-wrap:break-word"></div>
+  `}
 
   <div style="margin-top:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:12px">
     <div style="background:var(--surface);border:1.5px solid var(--border);border-radius:12px;padding:13px">
@@ -9619,7 +9631,7 @@ function imNoteEditorHtml() {
 
 function imBackToList() {
   if (imNoteSaveT) { clearTimeout(imNoteSaveT); imNoteSaveT = null; imSaveNote(true); }
-  imNoteMode = 'list'; imNoteCur = null; renderNotePage();
+  imNoteMode = 'list'; imNoteCur = null; imPreviewOn = false; renderNotePage();
 }
 function imSyncFromForm() {
   const n = imNoteCur; if (!n || !imNoteIsMine(n)) return;
