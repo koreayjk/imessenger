@@ -572,13 +572,26 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
 
 /* IM노트: 왼쪽 노트북 목록 + 오른쪽 본문 */
 .note-side-btn { display: none; }
-@media (max-width: 900px) {
-  #note-body { grid-template-columns: minmax(0, 1fr) !important; }
+.note-back-btn { display: none; }
+/* 태블릿: 노트북 목록은 숨기고 (목록 + 본문) 2단 */
+@media (max-width: 1200px) {
+  #note-body { grid-template-columns: 280px minmax(0, 1fr); }
   #note-side { display: none; }
   #note-view.side-open #note-side {
-    display: block; border-right: none; border-bottom: 1px solid var(--border); max-height: 46vh;
+    display: block; position: absolute; left: 0; top: 0; bottom: 0; width: 240px; z-index: 5;
+    box-shadow: 6px 0 20px rgba(15,23,42,.10);
   }
+  #note-body { position: relative; }
   .note-side-btn { display: inline-flex !important; align-items: center; }
+}
+/* 모바일: 한 번에 하나만 — 목록을 보다가 노트를 고르면 본문으로 */
+@media (max-width: 900px) {
+  #note-body { grid-template-columns: minmax(0, 1fr) !important; }
+  #note-list { border-right: none; }
+  #note-view.note-open #note-list { display: none; }
+  #note-view:not(.note-open) #note-main { display: none; }
+  #note-view.note-open .note-back-btn { display: inline-flex !important; align-items: center; }
+  #note-view.side-open #note-side { width: min(78vw, 260px); }
 }
 
 /* IM노트 본문(편집기 · 미리보기) 서식 */
@@ -1073,9 +1086,10 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
         </label>
         <button onclick="imNewNote()" style="height:34px;padding:0 14px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 12.5px var(--font)">+ <span data-ko="새 노트" data-en="New note">새 노트</span></button>
       </div>
-      <div id="note-body" style="flex:1;display:grid;grid-template-columns:214px minmax(0,1fr);overflow:hidden">
+      <div id="note-body" style="flex:1;display:grid;grid-template-columns:212px 304px minmax(0,1fr);overflow:hidden">
         <aside id="note-side" style="border-right:1px solid var(--border);background:var(--surface);overflow-y:auto;padding:12px 10px;min-width:0"></aside>
-        <div id="note-main" style="overflow-y:auto;padding:16px 24px 24px;min-width:0"></div>
+        <div id="note-list" style="border-right:1px solid var(--border);background:var(--s2);overflow-y:auto;min-width:0"></div>
+        <div id="note-main" style="overflow-y:auto;padding:16px 22px 22px;min-width:0"></div>
       </div>
     </div>
 
@@ -9090,7 +9104,7 @@ async function uploadFileGetMeta(file) {
 //   #태그 · [[노트 연결]] + 역링크 · 노트북(폴더) · 검색 · 첨부 · 템플릿
 // ══════════════════════════════════════════════════════════════════
 let imNotes = [];
-let imNoteMode = 'list';      // 'list' | 'edit'
+let imNoteSort = 'updated';   // 'updated' | 'created' | 'title'
 let imNoteCur = null;         // 편집 중인 노트
 let imNoteQ = '';             // 검색어
 let imNoteTag = null;         // 선택된 태그
@@ -9330,7 +9344,7 @@ function imRenderNote(n) {
 
 // ── 로드 ──
 async function initNotePage() {
-  imNoteMode = 'list'; imNoteCur = null;
+  imNoteCur = null;
   const main = document.getElementById('note-main');
   if (main) main.innerHTML = `<div style="text-align:center;padding:40px;color:var(--ink3);font-size:13px">${t('불러오는 중...','Loading...')}</div>`;
   await loadImNotes();
@@ -9361,10 +9375,28 @@ function renderNotePage() {
     </div>`;
     return;
   }
+  const view = document.getElementById('note-view');
   const side = document.getElementById('note-side');
+  const list = document.getElementById('note-list');
   if (side) side.innerHTML = imSideHtml();
-  main.innerHTML = imNoteMode === 'edit' ? imNoteEditorHtml() : imNoteListHtml();
-  if (imNoteMode === 'edit') imNoteSyncPreview();
+  if (list) list.innerHTML = imNoteListHtml();
+  main.innerHTML = imNoteCur ? imNoteEditorHtml() : imNoteEmptyHtml();
+  // 좁은 화면에서 목록/본문 중 무엇을 보일지
+  if (view) view.classList.toggle('note-open', !!imNoteCur);
+  if (imNoteCur) imNoteSyncPreview();
+  // 고른 노트가 목록에서 보이게
+  const sel = list && list.querySelector('[data-sel="1"]');
+  if (sel && sel.scrollIntoView) sel.scrollIntoView({ block: 'nearest' });
+}
+
+// 아무 노트도 고르지 않았을 때의 오른쪽 화면
+function imNoteEmptyHtml() {
+  return `<div style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:var(--ink3);padding:40px 20px">
+    <div style="font-size:44px;margin-bottom:14px;opacity:.55">📝</div>
+    <div style="font:700 14px var(--font);color:var(--ink2);margin-bottom:6px">${t('노트를 고르거나 새로 만들어 보세요','Pick a note, or start a new one')}</div>
+    <div style="font-size:12px;margin-bottom:18px">${t('본문에 #태그 와 [[노트 제목]] 을 쓰면 서로 이어져요','Use #tags and [[Note titles]] to link notes together')}</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center;max-width:460px">${imNoteTemplateBar()}</div>
+  </div>`;
 }
 
 // ── 목록 ──
@@ -9379,29 +9411,6 @@ function imNoteFiltered() {
     return [n.title, imNoteText(n), (n.tags||[]).join(' '), n.ocr_text, n.source_title, n.source_url]
       .some(v => String(v || '').toLowerCase().includes(q));
   });
-}
-function imNoteListHtml() {
-  const rows = imNoteFiltered();   // 노트북·태그 고르기는 왼쪽 사이드바(imSideHtml)로 옮겼습니다
-  const where = (imNoteBook ? '📓 ' + escHtml(imNoteBook) : '📚 ' + t('전체','All'))
-    + (imNoteTag ? '  ·  #' + escHtml(imNoteTag) : '');
-  return `
-  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:baseline;margin-bottom:12px">
-    <div style="font:800 16px var(--font);color:var(--ink)">${where}</div>
-    <span style="font-size:12px;color:var(--ink3)">${rows.length}${t('개','')}</span>
-    <div style="flex:1"></div>
-  </div>
-  <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:16px">
-    <span style="font-size:11.5px;color:var(--ink3);margin-right:2px">${t('템플릿으로 시작','Start from a template')}</span>
-    ${imNoteTemplateBar()}
-  </div>
-
-  ${rows.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,260px),1fr));gap:12px">
-    ${rows.map(imNoteCard).join('')}
-  </div>` : `<div style="text-align:center;padding:56px 20px;color:var(--ink3)">
-      <div style="font-size:34px;margin-bottom:10px">📝</div>
-      <div style="font-size:13.5px;font-weight:600;margin-bottom:4px">${imNoteQ||imNoteTag ? t('찾는 노트가 없어요','No matching notes') : t('아직 노트가 없어요','No notes yet')}</div>
-      <div style="font-size:12px">${t('오른쪽 위 + 새 노트 로 시작해 보세요','Tap + New note to start')}</div>
-    </div>`}`;
 }
 // 왼쪽 노트북/태그 목록 (에버노트식)
 function imSideHtml() {
@@ -9439,40 +9448,97 @@ function imToggleSide() {
   if (v) v.classList.toggle('side-open');
 }
 
-function imNoteCard(n) {
-  const body = imNoteText(n).replace(/\s+/g, ' ').trim();
-  const when = String(n.updated_at || '').slice(0, 10);
-  const tags = (n.tags || []).slice(0, 4);
-  return `<div onclick="imOpenNote('${n.id}')" style="background:var(--surface);border:1.5px solid var(--border);border-radius:14px;padding:14px;cursor:pointer;display:flex;flex-direction:column;gap:7px;min-height:120px;transition:border-color .15s var(--ease-out),transform .15s var(--ease-out)"
-    onmouseover="this.style.borderColor='#2a5298';hoverLift(this,'translateY(-2px)')"
-    onmouseout="this.style.borderColor='var(--border)';this.style.transform=''">
+function imNoteListHtml() {
+  const rows = imNoteSorted(imNoteFiltered());
+  const where = (imNoteBook ? '📓 ' + escHtml(imNoteBook) : (imNoteScope === 'community' ? '🌐 ' + t('공동체 공개','Shared') : '📚 ' + t('전체','All')))
+    + (imNoteTag ? ' · #' + escHtml(imNoteTag) : '');
+  const sortLabel = { updated: t('수정한 순','Last edited'), created: t('만든 순','Created'), title: t('제목 순','Title') }[imNoteSort];
+  return `
+  <div style="position:sticky;top:0;z-index:2;background:var(--s2);border-bottom:1px solid var(--border);padding:11px 13px 9px">
+    <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:6px">
+      <div style="flex:1;min-width:0;font:800 13.5px var(--font);color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${where}</div>
+      <span style="font:600 11px var(--font);color:var(--ink3);flex-shrink:0">${rows.length}</span>
+    </div>
     <div style="display:flex;align-items:center;gap:6px">
-      ${n.pinned ? '<span title="고정" style="font-size:12px">📌</span>' : ''}
-      <div style="flex:1;min-width:0;font-size:14px;font-weight:800;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(n.title || t('제목 없음','Untitled'))}</div>
-      ${n.visibility === 'community' ? '<span title="공동체 공개" style="font-size:11px">🌐</span>' : ''}
+      <select onchange="imSetSort(this.value)" title="${imAttr(t('정렬','Sort'))}"
+        style="height:26px;padding:0 6px;border:1px solid var(--border);border-radius:7px;background:var(--surface);font:600 11px var(--font);color:var(--ink2);cursor:pointer">
+        <option value="updated" ${imNoteSort==='updated'?'selected':''}>${t('수정한 순','Last edited')}</option>
+        <option value="created" ${imNoteSort==='created'?'selected':''}>${t('만든 순','Created')}</option>
+        <option value="title" ${imNoteSort==='title'?'selected':''}>${t('제목 순','Title')}</option>
+      </select>
+      <div style="flex:1"></div>
+      <button onclick="imNewNote()" style="height:26px;padding:0 10px;border:none;border-radius:7px;background:#1d3a5f;color:#fff;cursor:pointer;font:700 11px var(--font)">+ ${t('새 노트','New')}</button>
     </div>
-    ${n.source_url ? `<div style="font-size:11px;color:#1d4ed8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">🔗 ${escHtml(n.source_site || n.source_url)}</div>` : ''}
-    <div style="flex:1;font-size:12.5px;color:var(--ink2);line-height:1.6;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical">${escHtml(body.slice(0, 160)) || '<span style="color:var(--ink3)">' + t('내용 없음','Empty') + '</span>'}</div>
-    ${tags.length ? `<div style="display:flex;gap:4px;flex-wrap:wrap">${tags.map(tg => `<span style="font-size:10.5px;font-weight:600;color:#0f766e;background:rgba(15,118,110,.10);border-radius:5px;padding:1px 6px">#${escHtml(tg)}</span>`).join('')}</div>` : ''}
-    <div style="display:flex;align-items:center;gap:6px;font-size:10.5px;color:var(--ink3)">
-      <span>${when}</span>
-      ${!imNoteIsMine(n) && n.author_name ? `<span>· ${escHtml(n.author_name)}</span>` : ''}
-      ${(n.attachments||[]).length ? `<span>· 📎${(n.attachments||[]).length}</span>` : ''}
-      ${n.event_date ? `<span>· 📅${escHtml(n.event_date)}</span>` : ''}
-      ${n.student_id && members[n.student_id] ? `<span>· 🎓${escHtml(members[n.student_id].name||'')}</span>` : ''}
+  </div>
+  ${rows.length ? rows.map(imNoteRow).join('') : `<div style="padding:40px 18px;text-align:center;color:var(--ink3)">
+    <div style="font-size:28px;margin-bottom:8px;opacity:.6">🔍</div>
+    <div style="font-size:12.5px;font-weight:600">${imNoteQ || imNoteTag ? t('찾는 노트가 없어요','No matching notes') : t('아직 노트가 없어요','No notes yet')}</div>
+  </div>`}`;
+}
+
+// 목록 정렬
+function imNoteSorted(rows) {
+  const key = imNoteSort;
+  return rows.slice().sort((a, b) => {
+    if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;   // 고정이 항상 위
+    if (key === 'title') return String(a.title||'').localeCompare(String(b.title||''), 'ko');
+    const f = key === 'created' ? 'created_at' : 'updated_at';
+    return String(b[f]||'').localeCompare(String(a[f]||''));
+  });
+}
+function imSetSort(v) { imNoteSort = v; renderNotePage(); }
+
+// 에버노트식 목록 한 줄
+function imNoteRow(n) {
+  const on = imNoteCur && imNoteCur.id === n.id;
+  const body = imNoteText(n).replace(/\s+/g, ' ').trim();
+  const when = imNoteWhen(imNoteSort === 'created' ? n.created_at : n.updated_at);
+  const tags = (n.tags || []).slice(0, 3);
+  const thumb = n.source_image || ((n.attachments || []).find(a => String(a.type||'').startsWith('image/')) || {}).url;
+  return `<div data-sel="${on ? 1 : 0}" onclick="imOpenNote('${n.id}')"
+    style="display:flex;gap:9px;padding:10px 13px;border-bottom:1px solid var(--bs);cursor:pointer;
+      background:${on ? 'var(--surface)' : 'transparent'};border-left:3px solid ${on ? '#1d3a5f' : 'transparent'};
+      transition:background .12s var(--ease-out)"
+    onmouseover="if(!${on})this.style.background='rgba(255,255,255,.6)'" onmouseout="if(!${on})this.style.background='transparent'">
+    <div style="flex:1;min-width:0">
+      <div style="display:flex;align-items:center;gap:4px;margin-bottom:3px">
+        ${n.pinned ? '<span style="font-size:10px">📌</span>' : ''}
+        <div data-role="row-title" style="flex:1;min-width:0;font:${on ? '800' : '700'} 13px var(--font);color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(n.title || t('제목 없음','Untitled'))}</div>
+        ${n.visibility === 'community' ? '<span title="공동체 공개" style="font-size:10px">🌐</span>' : ''}
+      </div>
+      <div data-role="row-snip" style="font-size:11.5px;color:var(--ink2);line-height:1.5;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;margin-bottom:4px">${escHtml(body.slice(0,110)) || '<span style="color:var(--ink3)">' + t('내용 없음','Empty') + '</span>'}</div>
+      <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
+        <span style="font-size:10.5px;color:var(--ink3);flex-shrink:0">${when}</span>
+        ${(n.attachments||[]).length ? `<span style="font-size:10.5px;color:var(--ink3)">📎${(n.attachments||[]).length}</span>` : ''}
+        ${tags.map(tg => `<span style="font-size:10px;font-weight:600;color:#0f766e;background:rgba(15,118,110,.10);border-radius:4px;padding:0 5px">#${escHtml(tg)}</span>`).join('')}
+      </div>
     </div>
+    ${thumb ? `<img src="${imAttr(thumb)}" onerror="this.remove()" style="width:46px;height:46px;object-fit:cover;border-radius:7px;flex-shrink:0"/>` : ''}
   </div>`;
 }
 
+// 날짜 표기 — 오늘/어제는 말로, 올해는 월·일, 그 밖은 연도까지
+function imNoteWhen(iso) {
+  const s2 = String(iso || ''); if (!s2) return '';
+  const d = new Date(s2); if (isNaN(d)) return s2.slice(0, 10);
+  const now = new Date();
+  const day = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = Math.round((day(now) - day(d)) / 86400000);
+  if (diff === 0) return String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+  if (diff === 1) return t('어제','Yesterday');
+  if (d.getFullYear() === now.getFullYear()) return (d.getMonth()+1) + t('월 ','/') + d.getDate() + t('일','');
+  return d.getFullYear() + '. ' + (d.getMonth()+1) + '. ' + d.getDate();
+}
+
 function imSetScope(v) { imNoteScope = v; imNoteTag = null; imNoteBook = null; renderNotePage(); }
-function imPickTag(tg) { imNoteTag = tg; if (imNoteMode !== 'list') { imNoteMode = 'list'; imNoteCur = null; } renderNotePage(); }
+function imPickTag(tg) { imNoteTag = tg; renderNotePage(); }
 function imPickBook(b) { imNoteBook = b; renderNotePage(); }
-function imOnSearch(v) { imNoteQ = v; if (imNoteMode === 'list') renderNotePage(); }
+function imOnSearch(v) { imNoteQ = v; renderNotePage(); }
 
 // ── 열기 / 새로 만들기 ──
 function imOpenNote(id) {
   const n = imNotes.find(x => x.id === id); if (!n) return;
-  imNoteCur = n; imNoteMode = 'edit'; imPreviewOn = false; renderNotePage();
+  imNoteCur = n; imPreviewOn = false; renderNotePage();
 }
 async function imOpenByTitle(title) {
   const found = imFindByTitle(title);
@@ -9496,7 +9562,7 @@ async function imNewNote(tplId, presetTitle) {
   imNoteBusy = false;
   if (error) { imToast(t('노트를 만들지 못했어요: ','Could not create note: ') + (error.message||'')); return; }
   imNotes.unshift(data);
-  imNoteCur = data; imNoteMode = 'edit'; renderNotePage();
+  imNoteCur = data; imPreviewOn = false; renderNotePage();
   const ta = document.getElementById('im-title'); if (ta) ta.focus();
 }
 function imNoteTemplateBar() {
@@ -9676,7 +9742,7 @@ function imNoteEditorHtml() {
 
   return `
   <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
-    <button onclick="imBackToList()" style="height:32px;padding:0 12px;border:1.5px solid var(--border);background:var(--surface);border-radius:9px;cursor:pointer;font:600 12px var(--font);color:var(--ink2)">← ${t('목록','Back')}</button>
+    <button class="note-back-btn" onclick="imBackToList()" style="height:32px;padding:0 12px;border:1.5px solid var(--border);background:var(--surface);border-radius:9px;cursor:pointer;font:600 12px var(--font);color:var(--ink2)">← ${t('목록','List')}</button>
     <div style="flex:1"></div>
     <span id="im-save-state" style="font-size:11.5px;color:var(--ink3)"></span>
     ${mine ? `
@@ -9711,7 +9777,7 @@ function imNoteEditorHtml() {
     <div id="im-preview" style="width:100%;min-height:52vh;padding:16px 18px;border:1.5px solid var(--border);border-radius:12px;background:var(--s2);font:14px/1.75 var(--font);color:var(--ink);overflow-wrap:break-word"></div>
   `}
 
-  <div style="margin-top:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,208px),1fr));gap:12px">
+  <div style="margin-top:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,184px),1fr));gap:10px">
     <div style="background:var(--surface);border:1.5px solid var(--border);border-radius:12px;padding:13px">
       <div style="font-size:11.5px;font-weight:800;color:var(--ink3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">${t('이 노트가 가리키는 노트','Links out')} (${links.length})</div>
       ${links.length ? links.map(l => { const f = imFindByTitle(l); return `<div onclick="imOpenByTitle('${escAttr(l)}')" style="font-size:12.5px;padding:5px 0;cursor:pointer;color:${f?'#1d4ed8':'var(--ink3)'};font-weight:600">→ ${escHtml(l)}${f?'':' <span style="font-weight:400">('+t('없음','missing')+')</span>'}</div>`; }).join('')
@@ -9728,7 +9794,7 @@ function imNoteEditorHtml() {
 
 function imBackToList() {
   if (imNoteSaveT) { clearTimeout(imNoteSaveT); imNoteSaveT = null; imSaveNote(true); }
-  imNoteMode = 'list'; imNoteCur = null; imPreviewOn = false; renderNotePage();
+  imNoteCur = null; imPreviewOn = false; renderNotePage();
 }
 function imSyncFromForm() {
   const n = imNoteCur; if (!n || !imNoteIsMine(n)) return;
@@ -9742,8 +9808,20 @@ function imNoteSyncPreview() {
   const pv = document.getElementById('im-preview');
   if (pv && imNoteCur) pv.innerHTML = imRenderNote(imNoteCur);
 }
+// 목록을 다시 그리지 않고 고른 줄의 제목·미리보기만 갱신한다
+// (타이핑 중 전체를 다시 그리면 커서와 포커스를 뺏긴다)
+function imTouchRow() {
+  const n = imNoteCur; if (!n) return;
+  const row = document.querySelector('#note-list [data-sel="1"]'); if (!row) return;
+  const ti = row.querySelector('[data-role="row-title"]');
+  if (ti) ti.textContent = n.title || t('제목 없음','Untitled');
+  const sn = row.querySelector('[data-role="row-snip"]');
+  if (sn) sn.textContent = imNoteText(n).replace(/\s+/g, ' ').trim().slice(0, 110) || t('내용 없음','Empty');
+}
+
 function imOnEdit() {
   imSyncFromForm();
+  imTouchRow();
   imNoteSyncPreview();
   const st = document.getElementById('im-save-state'); if (st) st.textContent = t('입력 중…','Typing…');
   if (imNoteSaveT) clearTimeout(imNoteSaveT);
@@ -9786,7 +9864,7 @@ async function imDeleteNote() {
   const { error } = await sb.from('notes').delete().eq('id', n.id);
   if (error) { imToast(t('삭제 실패: ','Delete failed: ') + (error.message||'')); return; }
   imNotes = imNotes.filter(x => x.id !== n.id);
-  imNoteMode = 'list'; imNoteCur = null; renderNotePage();
+  imNoteCur = null; renderNotePage();
   imToast(t('삭제했어요','Deleted'));
 }
 
@@ -9974,7 +10052,7 @@ async function imEnexPick(input) {
     catch (e) { imEnexProgressDone(); imToast(t('가져오기 실패: ','Import failed: ') + (e.message || e)); }
   }
   await loadImNotes();
-  imNoteMode = 'list'; imNoteCur = null; renderNotePage();
+  imNoteCur = null; renderNotePage();
 }
 
 async function imEnexImport(file) {
@@ -10141,7 +10219,7 @@ async function imCreateFromClip(clip, manual) {
   const { data, error } = await sb.from('notes').insert(row).select().single();
   if (error) { imToast(t('노트 저장 실패: ','Could not save note: ') + (error.message||'')); return; }
   imNotes.unshift(data);
-  imNoteCur = data; imNoteMode = 'edit'; renderNotePage();
+  imNoteCur = data; imPreviewOn = false; renderNotePage();
   imToast(manual ? t('링크를 저장했어요. 내용을 붙여넣어 주세요','Link saved — paste the content') : t('✅ 가져왔어요','✅ Clipped'));
 }
 
