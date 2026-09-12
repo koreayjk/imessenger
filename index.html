@@ -3289,14 +3289,23 @@ async function initDrivePage(keepFocus) {
   }
   try {
     const { data, error } = await sb.functions.invoke('drive-list', {
-      body: { path: drivePath, search: driveSearch || undefined },
+      // 어느 공동체 폴더를 열지는 서버가 토큰으로 판단합니다.
+      // 이 값은 총관리자가 공동체를 전환했을 때만 쓰입니다.
+      body: { path: drivePath, search: driveSearch || undefined, communityId: CID() },
     });
-    if (error) throw await driveFnError(error);
+    if (error) {
+      const parsed = await driveFnError(error);
+      // 이 공동체에 폴더가 아직 지정되지 않은 경우는 따로 안내
+      if (parsed && parsed.needsFolder) { driveNeedsFolder = true; renderDrivePage(); return; }
+      throw parsed;
+    }
+    if (data && data.needsFolder) { driveNeedsFolder = true; renderDrivePage(); return; }
     if (data && data.error) throw new Error(data.error);
+    driveNeedsFolder = false;
     // 구버전 함수 감지: path 를 무시하고 항상 루트를 돌려주면 폴더 진입이 안 됨
     const askedDepth = driveSearch ? 0 : drivePath.length;
     const gotDepth = Math.max(0, ((data.breadcrumb || []).length || 1) - 1);
-    if (data.v !== 2 || (askedDepth > 0 && gotDepth !== askedDepth)) {
+    if (!(data.v >= 2) || (askedDepth > 0 && gotDepth !== askedDepth)) {
       drivePath = [];
       throw new Error(t(
         'drive-list 함수가 구버전이에요. 하위 폴더로 들어가려면 Supabase → Edge Functions → drive-list 를 새 코드로 다시 배포해주세요.',
@@ -3321,14 +3330,16 @@ async function initDrivePage(keepFocus) {
   }
 }
 
+let driveNeedsFolder = false;   // 이 공동체에 자료실 폴더가 아직 지정되지 않음
+
 async function driveFnError(error) {
   try {
     const res = error && error.context;
     if (res && typeof res.text === 'function') {
       const raw = await res.text();
-      let detail = raw;
-      try { const j = JSON.parse(raw); detail = j.error || j.message || raw; } catch (_) {}
-      if (detail) return new Error(String(detail).slice(0, 500));
+      let detail = raw, needsFolder = false;
+      try { const j = JSON.parse(raw); detail = j.error || j.message || raw; needsFolder = !!j.needsFolder; } catch (_) {}
+      if (detail) { const e = new Error(String(detail).slice(0, 500)); e.needsFolder = needsFolder; return e; }
     }
   } catch (_) {}
   return (error instanceof Error) ? error : new Error(String(error));
@@ -3350,7 +3361,24 @@ function renderDriveError(msg) {
   </div>`;
 }
 
+// 공동체에 폴더가 지정되지 않았을 때
+function renderDriveNoFolder() {
+  const main = document.getElementById('drive-main');
+  const canFix = typeof isCommunityAdmin === 'function' && isCommunityAdmin();
+  main.innerHTML = `<div style="max-width:560px;margin:40px auto;background:var(--surface);border:1.5px solid var(--border);border-radius:16px;padding:26px 28px;text-align:center">
+    <div style="font-size:40px;margin-bottom:12px">📁</div>
+    <div style="font-size:16px;font-weight:800;color:var(--ink);margin-bottom:8px">${t('이 공동체의 자료실 폴더가 아직 없어요','No files folder set for this community yet')}</div>
+    <div style="font-size:12.5px;color:var(--ink2);line-height:1.8">
+      ${t('자료실은 <b>공동체마다 다른 폴더</b>를 씁니다. 이 공동체에서 보여줄 구글 드라이브 폴더를 먼저 지정해 주세요.',
+          'Each community uses its <b>own folder</b>. Please set the Google Drive folder for this community first.')}
+    </div>
+    ${canFix ? `<button onclick="setMode('admin')" style="margin-top:16px;height:38px;padding:0 18px;border:none;border-radius:10px;background:#1d3a5f;color:#fff;cursor:pointer;font:700 13px var(--font)">${t('관리자 → 공동체 설정으로','Go to Admin → Community settings')}</button>`
+      : `<div style="margin-top:14px;font-size:12px;color:var(--ink3)">${t('공동체 관리자에게 폴더 지정을 요청해 주세요.','Please ask a community admin to set the folder.')}</div>`}
+  </div>`;
+}
+
 function renderDrivePage() {
+  if (driveNeedsFolder) return renderDriveNoFolder();
   const main = document.getElementById('drive-main');
   const searching = !!driveSearch.trim();
 
@@ -7934,6 +7962,17 @@ async function renderCommunitySettings() {
           <input type="hidden" id="cs-logo-url" value="${comm.logo_url||''}"/>
         </div>
 
+        <!-- 자료실 폴더 -->
+        <div style="border-top:1px solid var(--border);margin:16px 0 14px;padding-top:14px">
+          <div style="font-size:12px;font-weight:600;color:var(--ink3);margin-bottom:5px">📁 자료실 폴더 (구글 드라이브)</div>
+          <input id="cs-drive" class="adm-input" value="${escAttr(comm.drive_root_folder_id||'')}" placeholder="예: 1AbC2dEfGhIjKlMnOpQrStUvWxYz" style="width:100%"/>
+          <div style="font-size:11px;color:var(--ink3);line-height:1.65;margin-top:6px">
+            이 공동체의 자료실에서 보여줄 최상위 폴더입니다. 공동체마다 다르게 지정할 수 있어요.<br>
+            드라이브 폴더 주소 <b>drive.google.com/drive/folders/<span style="color:#1d4ed8">여기</span></b> 의 마지막 부분을 넣으세요.<br>
+            폴더는 <b>'링크가 있는 모든 사용자 — 뷰어'</b> 로 공유되어 있어야 합니다. 비워두면 기본 폴더를 씁니다.
+          </div>
+        </div>
+
         <!-- 저장 버튼 -->
         <button onclick="saveCommSettings('${comm.id}')"
           style="width:100%;height:44px;border-radius:12px;border:none;background:linear-gradient(135deg,#1d3a5f,#2a5298);color:white;font:600 15px var(--font);cursor:pointer;box-shadow:0 4px 14px rgba(29,58,95,.3)">
@@ -8073,8 +8112,15 @@ async function saveCommSettings(commId) {
   const desc = document.getElementById('cs-desc').value.trim();
   const color = document.getElementById('cs-color').value;
   const logoUrl = document.getElementById('cs-logo-url').value;
+  const driveEl = document.getElementById('cs-drive');
   if (!name) { showUploadToast('공동체 이름을 입력해주세요'); return; }
   const updateData = { name, description: desc, color };
+  if (driveEl) {
+    // 폴더 주소를 통째로 붙여넣어도 ID 만 뽑아낸다
+    const raw = driveEl.value.trim();
+    const m = raw.match(/folders\/([A-Za-z0-9_-]{10,})/) || raw.match(/[?&]id=([A-Za-z0-9_-]{10,})/);
+    updateData.drive_root_folder_id = (m ? m[1] : raw) || null;
+  }
   if (logoUrl) updateData.logo_url = logoUrl;
   const { error } = await sb.from('communities').update(updateData).eq('id', commId);
   if (error) { showUploadToast('저장 실패: ' + error.message); return; }
