@@ -5427,6 +5427,8 @@ function renderTcsSectionList() {
           <div style="font-size:22px;font-weight:700;color:white">${completedSections}/${TCS_SECTIONS.length}</div>
           <div style="font-size:11px;color:rgba(255,255,255,.6)">${t('섹션 완성','Sections done')}</div>
         </div>
+        <button onclick="showTcsPreview()" title="${t('학년별로 미리보기하고 PDF로 출력해요','Preview by grade and print as PDF')}"
+          style="height:38px;padding:0 15px;border:none;border-radius:10px;background:rgba(255,255,255,.95);color:#1d3a5f;cursor:pointer;font:700 12.5px var(--font);flex-shrink:0">${t('📄 미리보기 / 출력','📄 Preview / Print')}</button>
       </div>
 
       ${isTeacher() ? `
@@ -10940,7 +10942,6 @@ const SCHOOL_TABS = [
   { id:'student',    icon:'👤', label:t('학생','Students'),      ready:true  },
   { id:'record',     icon:'🗂', label:t('생활기록부','Records'),   ready:true  },
   { id:'reading',    icon:'📖', label:t('트리플스쿨','Triple School'), ready:true  },
-  { id:'mock',       icon:'🧠', label:t('모의고사','Mock Exam'),    ready:true  },
   { id:'newsletter', icon:'✉️', label:t('가정통신문','Newsletter'), ready:true, admin:true },
   { id:'cert',       icon:'📄', label:t('증명서','Certificates'),  ready:true, admin:true },
   { id:'tuition',    icon:'💰', label:t('재정','Finance'),        ready:true, admin:true },
@@ -11040,7 +11041,7 @@ function renderSchoolMain() {
   const sub = document.getElementById('school-header-sub');
   if (sub) sub.textContent = tab ? tab.label : t('학교 행정을 한 곳에서','School admin in one place');
   document.getElementById('school-header-actions').innerHTML = '';
-  if (['student','record','reading','mock'].includes(schoolSubMode)) return renderStudent360();
+  if (['student','record','reading'].includes(schoolSubMode)) return renderStudent360();
   if (schoolSubMode === 'attendance') return renderAttendanceHub();
   if (schoolSubMode === 'approval')   return renderApprovalHub();
   if (schoolSubMode === 'timetable')  return renderTimetableHub();
@@ -15073,10 +15074,6 @@ async function renderS360Right() {
     renderTcsSectionList();
   } else if (kind === 'reading') {
     renderTcsReadingUnified();
-  } else if (kind === 'mock') {
-    tcsMockTarget = 's360-tcs'; tcsMockUnified = true;
-    tcsMockState = { files: [], answerFiles: [], result: null, analyzing: false };
-    renderMockExamEditor();
   }
 }
 
@@ -15151,26 +15148,10 @@ async function renderS360Detail() {
   s360AllowEntries = d.allowAll || [];
   s360DepEntries = d.deposits || [];
 
-  const c = {present:0,late:0,early:0,absent:0,sick:0,excused:0};
-  d.att.forEach(r=>{ if(c[r.status]!==undefined)c[r.status]++; });
-  const total = d.att.length;
-  const rate = total ? Math.round((c.present+c.late+c.early)/total*100) : 0;
-  const unpaid = d.bills.filter(b=>!b.paid);
-  const unpaidSum = unpaid.reduce((a,b)=>a+(Number(b.amount)||0),0);
-  const monthLabel = t((d.month||'').slice(5,7) + '월', 'Month ' + Number((d.month||'').slice(5,7)));
-
   const assignedT = homeroomTeachers(s.id);
   const hrChips = assignedT.map(tid => `<span style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;color:#1d3a5f;background:var(--asoft);padding:4px 6px 4px 10px;border-radius:99px">${escHtml(s360TeacherName(tid)||'?')}<b onclick="removeHomeroom('${s.id}','${tid}')" title="${t('해제','Remove')}" style="cursor:pointer;color:#c0392b;font-size:13px;line-height:1">✕</b></span>`).join('');
   const addableT = schoolTeachers.filter(t => !assignedT.includes(t.id));
   const hrAdd = `<select onchange="if(this.value){addHomeroom('${s.id}',this.value)}" style="height:30px;padding:0 8px;border:1px solid var(--border);border-radius:9px;font:600 12px var(--font);background:var(--surface);color:var(--ink2)"><option value="">${t('＋ 담당 추가','＋ Add teacher')}</option>${addableT.map(t=>`<option value="${t.id}">${escHtml(t.name)}</option>`).join('')}</select>`;
-
-  const attBadges = ATT_STATUSES.map(st=>`<span style="font-size:12px;color:${st.color};font-weight:600">${st.label} ${c[st.key]}</span>`).join('<span style="color:var(--border)">|</span>');
-
-  const billRows = d.bills.slice(0,5).map(b=>`<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--border)">
-      <span style="font-size:12.5px;color:var(--ink2);flex:1">${escHtml(b.title||'')}</span>
-      <span style="font-size:12.5px;font-weight:600;color:var(--ink)">${tuiWon(b.amount)}</span>
-      <span style="font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:6px;background:${b.paid?'#e8f5ee':'#fdecea'};color:${b.paid?'#2a7a5a':'#c0392b'}">${b.paid?t('완료','Paid'):t('미납','Unpaid')}</span>
-    </div>`).join('') || '<div style="font-size:12px;color:var(--ink3);padding:8px 0">'+t('청구 내역이 없어요.','No bills yet.')+'</div>';
 
   const allowReq = d.allowReq || [];
   const allowReqCard = allowReq.length ? `
@@ -15209,36 +15190,16 @@ async function renderS360Detail() {
           ${hrAdd}
         </div>
       </div>
-      <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap">
-        ${s360Stat(`${monthLabel} ${t('출석률','attendance')}`, total?`${rate}%`:t('기록 없음','No records'))}
-        ${s360Stat(`${monthLabel} ${t('결석/지각','absent/late')}`, `${c.absent} / ${c.late}`)}
-        ${s360Stat(t('미납액','Unpaid'), tuiWon(unpaidSum), unpaidSum>0)}
-      </div>
     </div>
 
     ${allowReqCard}
 
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin-bottom:14px">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><div style="font-size:14px;font-weight:700;color:var(--ink)">📋 ${t('출결','Attendance')} (${monthLabel})</div><div style="flex:1"></div>
-        <button onclick="setSchoolSubMode('attendance')" style="height:28px;padding:0 11px;border:1px solid var(--border);background:var(--surface);border-radius:8px;cursor:pointer;font:600 11px var(--font);color:var(--ink2)">${t('출석부 열기 →','Open attendance →')}</button></div>
-      <div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap;padding:10px 12px;background:var(--s2);border-radius:9px">${total?attBadges:'<span style="font-size:12px;color:var(--ink3)">'+t('이번 달 출석 기록이 없어요.','No attendance records this month.')+'</span>'}</div>
-    </div>
-
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin-bottom:14px">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><div style="font-size:14px;font-weight:700;color:var(--ink)">💰 ${t('학비','Tuition')}</div>
-        ${unpaidSum>0?`<span style="font-size:11px;font-weight:700;color:#c0392b;background:#fdecea;padding:2px 8px;border-radius:6px">${t('미납','Unpaid')} ${unpaid.length}${t('건','')} · ${tuiWon(unpaidSum)}</span>`:'<span style="font-size:11px;font-weight:700;color:#2a7a5a;background:#e8f5ee;padding:2px 8px;border-radius:6px">'+t('미납 없음','No unpaid')+'</span>'}
-        <div style="flex:1"></div>
-        <button onclick="setSchoolSubMode('tuition')" style="height:28px;padding:0 11px;border:1px solid var(--border);background:var(--surface);border-radius:8px;cursor:pointer;font:600 11px var(--font);color:var(--ink2)">${t('학비 열기 →','Open tuition →')}</button></div>
-      ${billRows}
-    </div>
-
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin-bottom:14px">
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <div style="font-size:14px;font-weight:700;color:var(--ink)">🗂 ${t('생활기록부 (종합기록부)','Student Record (Cumulative)')}</div>
-        <span style="font-size:11.5px;color:var(--ink3)">${t('학년별로 미리보기·PDF 출력이 가능해요','Preview / print as PDF, by grade')}</span>
+        <span style="font-size:11.5px;color:var(--ink3)">${t('작성·미리보기·PDF 출력은 생활기록부 탭에서','Write, preview and print in the Records tab')}</span>
         <div style="flex:1"></div>
-        <button onclick="setSchoolSubMode('record')" style="height:32px;padding:0 14px;border:1.5px solid var(--accent);background:white;color:var(--accent);border-radius:9px;cursor:pointer;font:700 12px var(--font)">${t('✏️ 편집 →','✏️ Edit →')}</button>
-        <button onclick="openTcsForStudent('${s.id}')" style="height:32px;padding:0 14px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 12px var(--font)">${t('📄 미리보기 / 출력','📄 Preview / Print')}</button>
+        <button onclick="setSchoolSubMode('record')" style="height:32px;padding:0 14px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 12px var(--font)">${t('생활기록부 열기 →','Open record →')}</button>
       </div>
     </div>
 
