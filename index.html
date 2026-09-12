@@ -7468,6 +7468,61 @@ async function showTcsPreview() {
   document.body.appendChild(overlay);
 }
 
+// 생활기록부 문서 양식 — 화면 미리보기와 PDF 가 같은 CSS 를 씁니다.
+// 모든 선택자를 .tcsdoc 아래로 묶어 앱 화면에 번지지 않게 합니다.
+const TCS_DOC_CSS = `
+.tcsdoc { color:#14181f; font-size:10.5pt; line-height:1.7; }
+.tcsdoc * { box-sizing:border-box; }
+
+/* 문서 머리 */
+.tcsdoc .tdoc-org { display:flex; align-items:center; justify-content:center; gap:9px; margin-bottom:9px; }
+.tcsdoc .tdoc-org img { height:34px; max-width:150px; object-fit:contain; }
+.tcsdoc .tdoc-org span { font-size:12pt; font-weight:800; color:#1d3a5f; letter-spacing:.05em; }
+.tcsdoc .tdoc-head { text-align:center; border-bottom:2.5px solid #1d3a5f; padding-bottom:11px; margin-bottom:5mm; break-after:avoid; }
+.tcsdoc .tdoc-title { font-size:21pt; font-weight:800; color:#14181f; letter-spacing:.42em; text-indent:.42em; }
+.tcsdoc .tdoc-sub { font-size:8.5pt; color:#6b7688; margin-top:3px; letter-spacing:.04em; }
+.tcsdoc .tdoc-grade { display:inline-block; margin-top:7px; padding:2px 13px; border:1.5px solid #1d3a5f;
+  border-radius:999px; font-size:9.5pt; font-weight:700; color:#1d3a5f; }
+
+/* 학생 기본 정보 (문서 상단 고정 표) */
+.tcsdoc table.tdoc-id { width:100%; border-collapse:collapse; margin-bottom:6mm; break-inside:avoid; }
+.tcsdoc table.tdoc-id th, .tcsdoc table.tdoc-id td { border:1px solid #9fb3cc; padding:6px 10px; font-size:10pt; }
+.tcsdoc table.tdoc-id th { background:#dce6f2; color:#1d3a5f; font-weight:700; width:70px; text-align:center; white-space:nowrap; }
+
+/* 섹션 */
+.tcsdoc .tdoc-sec { margin:6mm 0 2.5mm; padding-left:9px; border-left:3.5px solid #1d3a5f;
+  font-size:11.5pt; font-weight:800; color:#1d3a5f; break-after:avoid; }
+.tcsdoc .tdoc-sec .no { margin-right:6px; }
+
+/* 본문 표 */
+.tcsdoc table.tdoc { width:100%; border-collapse:collapse; margin-bottom:3mm; }
+.tcsdoc table.tdoc th, .tcsdoc table.tdoc td { border:1px solid #b9c7d8; padding:6px 10px; font-size:10pt; vertical-align:top; }
+.tcsdoc table.tdoc th { background:#eaf1f8; color:#1d3a5f; font-weight:700; text-align:left; width:120px; white-space:nowrap; }
+.tcsdoc table.tdoc th.num { width:34px; text-align:center; }
+.tcsdoc table.tdoc tr { break-inside:avoid; }
+
+/* 서술형 칸 */
+.tcsdoc .tdoc-note { border:1px solid #b9c7d8; border-left:3px solid #1d3a5f; background:#f7fafd;
+  padding:10px 13px; font-size:10pt; line-height:1.9; white-space:pre-wrap; margin-bottom:3mm; break-inside:avoid; }
+.tcsdoc .tdoc-card { border:1px solid #b9c7d8; border-radius:6px; padding:9px 12px; margin-bottom:2.5mm; break-inside:avoid; }
+.tcsdoc .tdoc-card b.t { font-size:10.5pt; color:#1d3a5f; }
+.tcsdoc .tdoc-card .m { font-size:8.5pt; font-weight:400; color:#6b7688; }
+.tcsdoc .tdoc-card .r { font-size:9.5pt; color:#33405a; margin-top:4px; white-space:pre-wrap; line-height:1.8; }
+.tcsdoc .tdoc-empty { font-size:9pt; color:#8a94a6; margin-bottom:3mm; }
+
+/* 확인란 — 문서 맨 끝 */
+.tcsdoc .tdoc-sign { margin-top:9mm; border-top:1.5px solid #1d3a5f; padding-top:5mm; break-inside:avoid; }
+.tcsdoc table.tdoc-sign-t { width:100%; border-collapse:collapse; }
+.tcsdoc table.tdoc-sign-t th, .tcsdoc table.tdoc-sign-t td { border:1px solid #9fb3cc; padding:8px 10px; font-size:10pt; text-align:center; }
+.tcsdoc table.tdoc-sign-t th { background:#dce6f2; color:#1d3a5f; font-weight:700; width:88px; }
+.tcsdoc table.tdoc-sign-t td.sig { height:52px; }
+.tcsdoc .tdoc-seal { display:inline-block; width:26px; height:26px; line-height:22px; border:1.5px dashed #9fb3cc;
+  border-radius:50%; color:#9fb3cc; font-size:8pt; text-align:center; vertical-align:middle; margin-left:6px; }
+.tcsdoc .tdoc-issued { text-align:center; font-size:10.5pt; margin:6mm 0 4mm; letter-spacing:.08em; }
+`;
+
+const TCS_ROMAN = ['Ⅰ','Ⅱ','Ⅲ','Ⅳ','Ⅴ','Ⅵ','Ⅶ','Ⅷ','Ⅸ','Ⅹ','Ⅺ','Ⅻ','ⅩⅢ','ⅩⅣ'];
+
 function buildTcsPreviewHtml(lang) {
   const d = tcsRecords;
   const s = tcsCurrentStudent;
@@ -7477,172 +7532,151 @@ function buildTcsPreviewHtml(lang) {
   const career = d.career || {};
   const comment = d.comment || {};
 
-  const row = (label, value) => value ? `
-    <tr>
-      <td style="padding:7px 12px;background:#dce6f2;font-size:12px;font-weight:600;color:#1d3a5f;white-space:nowrap;border:1px solid #b8cfe0;width:140px">${label}</td>
-      <td style="padding:7px 12px;font-size:13px;border:1px solid #d1d5db">${value}</td>
-    </tr>` : '';
+  // 섹션 번호는 실제로 포함된 것만 세어 매깁니다
+  let secNo = 0;
+  const sec = (title) => { secNo++; return `<div class="tdoc-sec"><span class="no">${TCS_ROMAN[secNo-1]||secNo}.</span>${title}</div>`; };
 
-  const sectionTitle = (icon, title) => `
-    <div style="margin:20px 0 10px;border-left:4px solid #1d3a5f;padding-left:12px">
-      <span style="font-size:14px;font-weight:700;color:#1d3a5f">${icon} ${title}</span>
-    </div>`;
+  const row = (label, value) => value
+    ? `<tr><th>${label}</th><td>${value}</td></tr>` : '';
 
-  const listSection = (sectionId, rowLabel) => {
+  const table = (rows, emptyMsg) => rows
+    ? `<table class="tdoc">${rows}</table>`
+    : `<p class="tdoc-empty">${emptyMsg || '기록 없음'}</p>`;
+
+  const listSection = (sectionId) => {
     const sd = d[sectionId] || {};
-    const rows = Object.values(sd).filter(v => v && v.trim());
-    if (!rows.length) return '';
-    return `<table style="width:100%;border-collapse:collapse;margin-bottom:4px">
-      ${rows.map((v,i) => `<tr>
-        <td style="padding:6px 12px;background:#dce6f2;font-size:12px;font-weight:600;color:#1d3a5f;border:1px solid #b8cfe0;width:40px;text-align:center">${i+1}</td>
-        <td style="padding:6px 12px;font-size:13px;border:1px solid #d1d5db">${v}</td>
-      </tr>`).join('')}
-    </table>`;
+    const rows = Object.values(sd).filter(v => v && String(v).trim());
+    if (!rows.length) return `<p class="tdoc-empty">기록 없음</p>`;
+    return `<table class="tdoc">${rows.map((v,i) =>
+      `<tr><th class="num">${i+1}</th><td>${v}</td></tr>`).join('')}</table>`;
   };
 
-  return `
-    <div style="font-family:Arial,sans-serif;color:#111;max-width:780px;margin:0 auto">
-      <!-- 타이틀 -->
-      <div style="text-align:center;margin-bottom:28px;border-bottom:3px solid #1d3a5f;padding-bottom:16px">
-        ${(() => { const o = tcsOrgs.find(x => x.id === tcsSelectedOrgId); return o ? `<div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:10px">${o.logo_url ? `<img src="${o.logo_url}" onerror="this.remove()" style="height:46px;max-width:160px;object-fit:contain"/>` : ''}<span style="font-size:18px;font-weight:800;color:#1d3a5f">${o.name}</span></div>` : ''; })()}
-        <div style="font-size:28px;font-weight:900;color:#1d3a5f;letter-spacing:2px;margin-bottom:4px">학생 종합 기록부</div>
-        <div style="font-size:13px;color:#6b7280">Student Comprehensive Record — TCS Total Care System</div>
-        ${school.school_name ? `<div style="font-size:13px;font-weight:600;color:#1d3a5f;margin-top:4px">${school.school_name}</div>` : ''}
-        ${tcsGradeFilter() ? `<div style="display:inline-block;margin-top:8px;padding:3px 14px;border:2px solid #1d3a5f;border-radius:999px;font-size:14px;font-weight:800;color:#1d3a5f">${tcsPrintGradeLabel()}</div>` : ''}
-      </div>
+  const org = tcsOrgs.find(x => x.id === tcsSelectedOrgId);
+  const gf = tcsGradeFilter();
 
-      ${tcsInc('personal') ? `
-      ${sectionTitle('👤','인적사항')}
-      <table style="width:100%;border-collapse:collapse;margin-bottom:4px">
-        ${row('성명 (한글)', personal.name_ko || s.name)}
-        ${row('성명 (영문)', personal.name_en)}
-        ${row('생년월일', personal.birth)}
-        ${row('성별', personal.gender)}
-        ${row('국적', personal.nationality)}
-        ${row('보호자', personal.guardian)}
-        ${row('연락처', personal.contact)}
-        ${row('주소', personal.address)}
-      </table>` : ''}
+  // ── 문서 머리 + 학생 기본 정보 ──
+  const head = `
+    <div class="tdoc-head">
+      ${org ? `<div class="tdoc-org">${org.logo_url ? `<img src="${org.logo_url}" onerror="this.remove()"/>` : ''}<span>${escHtml(org.name||'')}</span></div>` : ''}
+      <div class="tdoc-title">학생 종합 기록부</div>
+      <div class="tdoc-sub">STUDENT COMPREHENSIVE RECORD</div>
+      ${gf ? `<div class="tdoc-grade">${tcsPrintGradeLabel()}</div>` : ''}
+    </div>
+    <table class="tdoc-id">
+      <tr>
+        <th>성 명</th><td>${escHtml(personal.name_ko || s.name || '')}${personal.name_en ? ` <span style="color:#6b7688;font-size:9pt">(${escHtml(personal.name_en)})</span>` : ''}</td>
+        <th>생년월일</th><td>${escHtml(personal.birth || '')}</td>
+      </tr>
+      <tr>
+        <th>학 년</th><td>${escHtml(gf ? tcsPrintGradeLabel() : (s.grade || ''))}</td>
+        <th>학 교</th><td>${escHtml(school.school_name || '')}</td>
+      </tr>
+    </table>`;
 
-      ${tcsInc('school') ? `
-      ${sectionTitle('🏫','학적사항')}
-      <table style="width:100%;border-collapse:collapse;margin-bottom:4px">
-        ${row('학교명', school.school_name)}
-        ${row('학교 구분', school.school_type)}
-        ${row('입학일', school.enroll_date)}
-        ${row('졸업(예정)일', school.grad_date)}
-        ${row('재학 과정', school.course)}
-      </table>` : ''}
+  // ── 각 섹션 ──
+  const parts = [];
 
-      ${tcsInc('attendance') ? sectionTitle('📅','출결사항') : ''}
-      ${(() => {
-        if (!tcsInc('attendance')) return '';
-        const att = d.attendance || {};
-        let grades = [['K (유치원)','k'],['G1 (1학년)','g1'],['G2 (2학년)','g2'],['G3 (3학년)','g3'],['G4 (4학년)','g4'],['G5 (5학년)','g5'],['G6 (6학년)','g6'],['G7 (중1)','g7'],['G8 (중2)','g8'],['G9 (중3)','g9'],['G10 (고1)','g10'],['G11 (고2)','g11'],['G12 (고3)','g12']];
-        const _gf = tcsGradeFilter();
-        if (_gf) grades = grades.filter(([,k]) => k === _gf);
-        const rows = grades.filter(([,k]) => att[k]).map(([label,k]) =>
-          `<tr><td style="padding:6px 12px;background:#dce6f2;font-size:12px;font-weight:600;color:#1d3a5f;border:1px solid #b8cfe0;width:120px">${label}</td><td style="padding:6px 12px;font-size:13px;border:1px solid #d1d5db">${att[k]}</td></tr>`
-        ).join('');
-        return rows ? `<table style="width:100%;border-collapse:collapse;margin-bottom:4px">${rows}</table>` : '<p style="font-size:12px;color:#9ca3af;margin-bottom:8px">미기재</p>';
-      })()}
+  if (tcsInc('personal')) parts.push(sec('인적사항') + table(
+    row('성명 (한글)', escHtml(personal.name_ko || s.name || '')) +
+    row('성명 (영문)', escHtml(personal.name_en || '')) +
+    row('생년월일', escHtml(personal.birth || '')) +
+    row('성별', escHtml(personal.gender || '')) +
+    row('국적', escHtml(personal.nationality || '')) +
+    row('보호자', escHtml(personal.guardian || '')) +
+    row('연락처', escHtml(personal.contact || '')) +
+    row('주소', escHtml(personal.address || ''))));
 
-      ${tcsInc('academic') ? sectionTitle('📚','교과학습 발달상황') : ''}
-      ${(() => {
-        if (!tcsInc('academic')) return '';
-        const ac = d.academic || {};
-        let grades = [['K (유치원)','k_grades'],['G1 (1학년)','g1_grades'],['G2 (2학년)','g2_grades'],['G3 (3학년)','g3_grades'],['G4 (4학년)','g4_grades'],['G5 (5학년)','g5_grades'],['G6 (6학년)','g6_grades'],['G7 (중1)','g7_grades'],['G8 (중2)','g8_grades'],['G9 (중3)','g9_grades'],['G10 (고1)','g10_grades'],['G11 (고2)','g11_grades'],['G12 (고3)','g12_grades']];
-        const _gf = tcsGradeFilter();
-        if (_gf) grades = grades.filter(([,k]) => k === _gf + '_grades');
-        const rows = grades.filter(([,k]) => ac[k]).map(([label,k]) =>
-          `<tr><td style="padding:7px 12px;background:#dce6f2;font-size:12px;font-weight:600;color:#1d3a5f;border:1px solid #b8cfe0;width:120px;vertical-align:top">${label}</td><td style="padding:7px 12px;font-size:13px;border:1px solid #d1d5db">${ac[k]}</td></tr>`
-        ).join('');
-        const gpaRow = (ac.gpa && !_gf) ? `<tr><td style="padding:7px 12px;background:#dce6f2;font-size:12px;font-weight:600;color:#1d3a5f;border:1px solid #b8cfe0">누적 GPA</td><td style="padding:7px 12px;font-size:13px;font-weight:700;border:1px solid #d1d5db">${ac.gpa} / 4.0</td></tr>` : '';
-        return (rows||gpaRow) ? `<table style="width:100%;border-collapse:collapse;margin-bottom:4px">${rows}${gpaRow}</table>` : '<p style="font-size:12px;color:#9ca3af;margin-bottom:8px">미기재</p>';
-      })()}
+  if (tcsInc('school')) parts.push(sec('학적사항') + table(
+    row('학교명', escHtml(school.school_name || '')) +
+    row('학교 구분', escHtml(school.school_type || '')) +
+    row('입학일', escHtml(school.enroll_date || '')) +
+    row('졸업(예정)일', escHtml(school.grad_date || '')) +
+    row('재학 과정', escHtml(school.course || ''))));
 
-      ${(() => {
-        if (!tcsInc('mock')) return '';
-        const items = (d.mockexam && d.mockexam.items) || [];
-        if (!items.length) return '';
-        const cards = items.map(it => `
-          <div style="border:1px solid #d1d5db;border-radius:8px;padding:10px 12px;margin-bottom:8px">
-            <div style="font-size:13px;font-weight:700;color:#1d3a5f">${it.subject||'과목 미상'} <span style="font-size:11px;font-weight:400;color:#6b7280">${it.exam||''} ${it.date||''}</span></div>
-            ${it.score?`<div style="font-size:12px;color:#1d4ed8;margin-top:2px">${it.score}</div>`:''}
-            ${(it.weak&&it.weak.length)?`<div style="font-size:12px;color:#374151;margin-top:4px"><b>약점:</b> ${it.weak.join(', ')}</div>`:''}
-            ${(it.focus&&it.focus.length)?`<div style="font-size:12px;color:#374151;margin-top:2px"><b>집중 학습:</b> ${it.focus.join(', ')}</div>`:''}
-          </div>`).join('');
-        return `${sectionTitle('🧠','모의고사 분석 (AI)')}${cards}`;
-      })()}
+  if (tcsInc('attendance')) {
+    const att = d.attendance || {};
+    let grades = [['K (유치원)','k'],['G1 (1학년)','g1'],['G2 (2학년)','g2'],['G3 (3학년)','g3'],['G4 (4학년)','g4'],['G5 (5학년)','g5'],['G6 (6학년)','g6'],['G7 (중1)','g7'],['G8 (중2)','g8'],['G9 (중3)','g9'],['G10 (고1)','g10'],['G11 (고2)','g11'],['G12 (고3)','g12']];
+    if (gf) grades = grades.filter(([,k]) => k === gf);
+    const rows = grades.filter(([,k]) => att[k]).map(([label,k]) =>
+      `<tr><th>${label}</th><td>${escHtml(att[k])}</td></tr>`).join('');
+    parts.push(sec('출결사항') + table(rows, '출결 기록이 없습니다.'));
+  }
 
-      ${(() => {
-        if (!tcsInc('reading_ts')) return '';
-        const rl = d._reading_included || [];
-        if (!rl.length) return '';
-        const rows = rl.map(it => `
-          <div style="border:1px solid #d1d5db;border-radius:8px;padding:10px 12px;margin-bottom:8px">
-            <div style="font-size:13px;font-weight:700;color:#1d3a5f">${it.title} <span style="font-size:11px;font-weight:400;color:#6b7280">${it.category||''}${it.author?' · '+it.author:''} ${it.date||''}</span></div>
-            ${it.report?`<div style="font-size:12px;color:#374151;margin-top:4px;white-space:pre-wrap">${escReport(it.report)}</div>`:''}
-          </div>`).join('');
-        return `${sectionTitle('📖','신앙 필독서 (Triple School)')}${rows}`;
-      })()}
+  if (tcsInc('academic')) {
+    const ac = d.academic || {};
+    let grades = [['K (유치원)','k_grades'],['G1 (1학년)','g1_grades'],['G2 (2학년)','g2_grades'],['G3 (3학년)','g3_grades'],['G4 (4학년)','g4_grades'],['G5 (5학년)','g5_grades'],['G6 (6학년)','g6_grades'],['G7 (중1)','g7_grades'],['G8 (중2)','g8_grades'],['G9 (중3)','g9_grades'],['G10 (고1)','g10_grades'],['G11 (고2)','g11_grades'],['G12 (고3)','g12_grades']];
+    if (gf) grades = grades.filter(([,k]) => k === gf + '_grades');
+    const rows = grades.filter(([,k]) => ac[k]).map(([label,k]) =>
+      `<tr><th>${label}</th><td>${escHtml(ac[k])}</td></tr>`).join('');
+    // 전체 학년을 뽑을 때만 누계 평점을 넣습니다 (한 학년만 뽑으면 오해를 부릅니다)
+    const gpaRow = (ac.gpa && !gf) ? `<tr><th>누계 평점 (GPA)</th><td>${escHtml(ac.gpa)}</td></tr>` : '';
+    parts.push(sec('교과학습 발달상황') + table(rows + gpaRow, '성적 기록이 없습니다.'));
+  }
 
-      ${tcsInc('faith') ? `
-      ${sectionTitle('✝️','신앙 및 인성')}
-      <table style="width:100%;border-collapse:collapse;margin-bottom:8px">
-        ${row('세례 여부 / 날짜', faith.baptism)}
-        ${row('소속 교회', faith.church)}
-        ${row('성경 암송', faith.scripture)}
-        ${row('큐티 / 경건 생활', faith.devotion)}
+  if (tcsInc('mock')) {
+    const items = (d.mockexam && d.mockexam.items) || [];
+    if (items.length) parts.push(sec('모의고사 분석') + items.map(it => `
+      <div class="tdoc-card">
+        <b class="t">${escHtml(it.subject||'과목 미상')}</b> <span class="m">${escHtml(it.exam||'')}</span>
+        ${it.score?`<div class="r">${escHtml(it.score)}</div>`:''}
+        ${(it.weak&&it.weak.length)?`<div class="r"><b>약점</b> · ${escHtml(it.weak.join(', '))}</div>`:''}
+        ${(it.focus&&it.focus.length)?`<div class="r"><b>집중 학습</b> · ${escHtml(it.focus.join(', '))}</div>`:''}
+      </div>`).join(''));
+  }
+
+  if (tcsInc('reading_ts')) {
+    const rl = d._reading_included || [];
+    if (rl.length) parts.push(sec('신앙 필독서 (Triple School)') + rl.map(it => `
+      <div class="tdoc-card">
+        <b class="t">${escHtml(it.title||'')}</b> <span class="m">${escHtml(it.category||'')}${it.author?' · '+escHtml(it.author):''}</span>
+        ${it.report?`<div class="r">${escReport(it.report)}</div>`:''}
+      </div>`).join(''));
+  }
+
+  if (tcsInc('faith')) {
+    parts.push(sec('신앙 및 인성') + table(
+      row('세례 여부 / 날짜', escHtml(faith.baptism || '')) +
+      row('소속 교회', escHtml(faith.church || '')) +
+      row('성경 암송', escHtml(faith.scripture || '')) +
+      row('큐티 / 경건 생활', escHtml(faith.devotion || ''))) +
+      (faith.faith_note ? `<div class="tdoc-note">${escHtml(faith.faith_note)}</div>` : ''));
+  }
+
+  if (tcsInc('activities')) parts.push(sec('창의적 체험활동') + listSection('activities'));
+  if (tcsInc('service'))    parts.push(sec('봉사활동')       + listSection('service'));
+  if (tcsInc('awards'))     parts.push(sec('수상 및 자격증')  + listSection('awards'));
+  if (tcsInc('reading'))    parts.push(sec('독서활동')       + listSection('reading'));
+
+  if (tcsInc('career')) parts.push(sec('진로 및 진학') + table(
+    row('진로 희망', escHtml(career.career_goal || '')) +
+    row('검정고시', escHtml(career.ged || '')) +
+    row('SAT', escHtml(career.sat || '')) +
+    row('ACT', escHtml(career.act || '')) +
+    row('AP 과목 및 점수', escHtml(career.ap || '')) +
+    row('TOEFL / IELTS', escHtml(career.toefl || '')) +
+    row('최종 진학 결과', escHtml(career.final_college || ''))));
+
+  if (tcsInc('comment')) parts.push(sec('담임교사 종합의견') +
+    (comment.comment_ko ? `<div class="tdoc-note">${escHtml(comment.comment_ko)}</div>`
+                        : `<p class="tdoc-empty">작성된 종합의견이 없습니다.</p>`));
+
+  // ── 확인란 (문서 맨 끝) ──
+  const issued = comment.issue_date || printToday();
+  const sign = `
+    <div class="tdoc-sign">
+      <div class="tdoc-issued">위 내용이 사실과 다름없음을 확인합니다.</div>
+      <div class="tdoc-issued"><b>${escHtml(issued)}</b></div>
+      <table class="tdoc-sign-t">
+        <tr>
+          <th>담임교사</th>
+          <td class="sig">${escHtml(comment.teacher_name||'')}<span class="tdoc-seal">인</span></td>
+          <th>학교장</th>
+          <td class="sig">${escHtml(org ? org.name : (school.school_name||''))}<span class="tdoc-seal">인</span></td>
+        </tr>
       </table>
-      ${faith.faith_note ? `<div style="background:#f0f6ff;border:1px solid #b8cfe0;border-radius:8px;padding:12px 14px;font-size:13px;line-height:1.8;margin-bottom:4px;white-space:pre-wrap">${faith.faith_note}</div>` : ''}` : ''}
-
-      ${tcsInc('activities') ? `
-      ${sectionTitle('🏃','창의적 체험활동')}
-      ${listSection('activities','활동')}` : ''}
-
-      ${tcsInc('service') ? `
-      ${sectionTitle('🤝','봉사활동')}
-      ${listSection('service','봉사')}` : ''}
-
-      ${tcsInc('awards') ? `
-      ${sectionTitle('🏆','수상 및 자격증')}
-      ${listSection('awards','수상')}` : ''}
-
-      ${tcsInc('reading') ? `
-      ${sectionTitle('📖','독서활동')}
-      ${listSection('reading','도서')}` : ''}
-
-      ${tcsInc('career') ? `
-      ${sectionTitle('🎯','진로 및 진학')}
-      <table style="width:100%;border-collapse:collapse;margin-bottom:4px">
-        ${row('진로 희망', career.career_goal)}
-        ${row('검정고시', career.ged)}
-        ${row('SAT', career.sat)}
-        ${row('ACT', career.act)}
-        ${row('AP 과목 및 점수', career.ap)}
-        ${row('TOEFL / IELTS', career.toefl)}
-        ${row('최종 진학 결과', career.final_college)}
-      </table>` : ''}
-
-      ${tcsInc('comment') ? `
-      ${sectionTitle('✍️','담임교사 종합의견')}
-      ${comment.comment_ko ? `<div style="background:#f8fafc;border:1px solid #d1d5db;border-radius:8px;padding:14px 16px;font-size:13px;line-height:1.9;margin-bottom:12px;white-space:pre-wrap;min-height:120px">${comment.comment_ko}</div>` : '<div style="background:#f8fafc;border:1px solid #d1d5db;border-radius:8px;padding:14px 16px;font-size:12px;color:#9ca3af;min-height:80px">미기재</div>'}` : ''}
-
-      <!-- 서명란 -->
-      <div style="margin-top:24px;display:grid;grid-template-columns:1fr 1fr;gap:16px">
-        <div style="border:1px solid #d1d5db;border-radius:8px;padding:12px 16px">
-          <div style="font-size:11px;font-weight:600;color:#6b7280;margin-bottom:4px">담임교사</div>
-          <div style="font-size:13px;font-weight:600">${comment.teacher_name||''}</div>
-          <div style="font-size:11px;color:#9ca3af;margin-top:4px">서명: _______________</div>
-        </div>
-        <div style="border:1px solid #d1d5db;border-radius:8px;padding:12px 16px">
-          <div style="font-size:11px;font-weight:600;color:#6b7280;margin-bottom:4px">작성일</div>
-          <div style="font-size:13px">${comment.issue_date||''}</div>
-          <div style="font-size:11px;color:#9ca3af;margin-top:4px">학교장 확인: ___________</div>
-        </div>
-      </div>
     </div>`;
+
+  return `<style>${TCS_DOC_CSS}</style><div class="tcsdoc">${head}${parts.join('')}${sign}</div>`;
 }
 
 // ── TCS PDF 출력 ──
