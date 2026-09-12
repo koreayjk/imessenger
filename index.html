@@ -10840,6 +10840,20 @@ function birthdaysForDate(dateStr) {
   }).map(b => ({ id:'bday-'+b.member_id, title:'🎂 '+b.name+t(' 생일',' Birthday'), start_date:dateStr, isBirthday:true, color:'#E86AA6' }));
 }
 
+// ── 날짜 문자열 ↔ 로컬 날짜 ─────────────────────────────────
+// 'YYYY-MM-DD' 를 new Date() 에 그냥 넣으면 UTC 자정으로 해석된다.
+// 한국(UTC+9)에서는 우연히 맞지만, 미국(UTC-5/-6)에서는 하루 앞당겨져
+// 23일 일정이 22일에 그려지고, 매월 1일 일정은 이전 달로 판정돼 사라진다.
+function ymdLocal(str) {
+  const m = String(str || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? new Date(+m[1], +m[2] - 1, +m[3]) : null;
+}
+// 로컬 날짜 → 'YYYY-MM-DD' (toISOString 은 UTC 라 쓰면 안 된다)
+function ymdStr(d) {
+  const z = (n) => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate());
+}
+
 function renderCalendar() {
   const today = new Date();
   const firstDay = new Date(calYear, calMonth, 1).getDay();
@@ -10865,8 +10879,8 @@ function renderCalendar() {
 
   // ── 날짜 → 셀 인덱스 계산 ──
   function cellIndex(dateStr) {
-    const d = new Date(dateStr);
-    if (d.getFullYear() !== calYear || d.getMonth() !== calMonth) return -1;
+    const d = ymdLocal(dateStr);
+    if (!d || d.getFullYear() !== calYear || d.getMonth() !== calMonth) return -1;
     return firstDay + d.getDate() - 1;
   }
 
@@ -10896,21 +10910,24 @@ function renderCalendar() {
   const rowOccupied = {}; // cellIndex → [row]
 
   multiEvents.forEach(e => {
-    const startD = new Date(Math.max(new Date(e.start_date), new Date(calYear, calMonth, 1)));
-    const endD = new Date(Math.min(new Date(e.end_date), new Date(calYear, calMonth, daysInMonth)));
+    // 'YYYY-MM-DD' 는 반드시 로컬 자정으로 파싱한다.
+    // new Date('2026-09-23') 은 UTC 자정이라, 미국처럼 UTC 보다 뒤인 곳에서는
+    // getDate() 가 22 를 돌려줘 일정이 하루 앞당겨 그려진다.
+    const startD = new Date(Math.max(ymdLocal(e.start_date), new Date(calYear, calMonth, 1)));
+    const endD = new Date(Math.min(ymdLocal(e.end_date), new Date(calYear, calMonth, daysInMonth)));
     if (startD > endD) return;
 
     // 주 경계로 분할
     let cur = new Date(startD);
     while (cur <= endD) {
-      const segStart = cellIndex(cur.toISOString().slice(0,10));
+      const segStart = cellIndex(ymdStr(cur));
       if (segStart < 0) { cur.setDate(cur.getDate()+1); continue; }
       const rowStart = Math.floor(segStart / 7);
       // 이 주 끝 (토요일 or endD)
       const weekEnd = new Date(cur);
       weekEnd.setDate(cur.getDate() + (6 - cur.getDay()));
       const segEndDate = weekEnd < endD ? weekEnd : endD;
-      const segEnd = cellIndex(segEndDate.toISOString().slice(0,10));
+      const segEnd = cellIndex(ymdStr(segEndDate));
 
       // row 배치 (겹치지 않는 최소 row)
       let row = 0;
@@ -11039,7 +11056,7 @@ function showDayEvents(dateStr) {
     if (!e.end_date || e.end_date === e.start_date) return e.start_date === dateStr;
     return e.start_date <= dateStr && e.end_date >= dateStr;
   }).concat(birthdaysForDate(dateStr));
-  const d = new Date(dateStr);
+  const d = ymdLocal(dateStr) || new Date(dateStr);
   const wk = APP_LANG === 'en' ? ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'] : ['일','월','화','수','목','금','토'];
   const monthsEn = ['January','February','March','April','May','June','July','August','September','October','November','December'];
   const label = APP_LANG === 'en'
