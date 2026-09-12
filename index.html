@@ -165,6 +165,8 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
 .subnav-center { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
 .subnav-center::-webkit-scrollbar { display: none; }
 .subnav-center > * { margin-left: auto; margin-right: auto; flex-shrink: 0; }
+/* 학사 탭 묶음 구분선 */
+.sn-sep { width: 1px; height: 17px; background: var(--border); margin: 0 5px; flex-shrink: 0; }
 
 /* 빈 화면 */
 #empty {
@@ -11088,13 +11090,24 @@ async function deleteEvent() {
 // ════════════════════════════════════════════════════════════════════
 //  학사관리 (학교 행정 허브) — 출석부 / 시간표 / 학비 / 가정통신문
 // ════════════════════════════════════════════════════════════════════
+// 학사 탭 — 세 묶음으로 나눠 보여줍니다.
+//  이전에는 시간표·출석부·출결신청이 탭에 없어서 다른 화면의 링크로만 들어갈 수 있었고,
+//  그 링크를 지우면 아예 도달할 수 없게 되어 있었습니다.
+const SCHOOL_GROUPS = {
+  student: t('학생','Student'),
+  class:   t('수업·출결','Class'),
+  admin:   t('행정','Admin'),
+};
 const SCHOOL_TABS = [
-  { id:'student',    icon:'👤', label:t('학생','Students'),      ready:true  },
-  { id:'record',     icon:'🗂', label:t('생활기록부','Records'),   ready:true  },
-  { id:'reading',    icon:'📖', label:t('트리플스쿨','Triple School'), ready:true  },
-  { id:'newsletter', icon:'✉️', label:t('가정통신문','Newsletter'), ready:true, admin:true },
-  { id:'cert',       icon:'📄', label:t('증명서','Certificates'),  ready:true, admin:true },
-  { id:'tuition',    icon:'💰', label:t('재정','Finance'),        ready:true, admin:true },
+  { id:'student',    icon:'👤', label:t('학생','Students'),          group:'student' },
+  { id:'record',     icon:'🗂', label:t('생활기록부','Records'),       group:'student' },
+  { id:'reading',    icon:'📖', label:t('트리플스쿨','Triple School'), group:'student' },
+  { id:'timetable',  icon:'🗓', label:t('시간표','Timetable'),        group:'class' },
+  { id:'attendance', icon:'✅', label:t('출석부','Attendance'),       group:'class' },
+  { id:'leave',      icon:'📝', label:t('출결 신청','Leave'),         group:'class' },
+  { id:'newsletter', icon:'✉️', label:t('가정통신문','Newsletter'),    group:'admin', admin:true },
+  { id:'cert',       icon:'📄', label:t('증명서','Certificates'),     group:'admin', admin:true },
+  { id:'tuition',    icon:'💰', label:t('재정','Finance'),           group:'admin', admin:true },
 ];
 let schoolSubMode = 'student';
 let schoolStudents = [];
@@ -11135,14 +11148,21 @@ function attIsMissingTable(e) {
          (m.includes('relation') && m.includes('attendance')) || m.includes('schema cache');
 }
 
+function schoolVisibleTabs() {
+  return SCHOOL_TABS.filter(x => !x.admin || canSeeAdminModules());
+}
 function schoolSubnavHtml() {
-  const tabs = SCHOOL_TABS.filter(t => !t.admin || canSeeAdminModules()).map(t => {
-    const on = schoolSubMode === t.id;
-    return `<button onclick="setSchoolSubMode('${t.id}')" title="${t.label}"
-      style="height:30px;padding:0 11px;border:none;border-radius:8px;font:600 12px var(--font);cursor:pointer;white-space:nowrap;
-      background:${on?'#1d3a5f':'transparent'};color:${on?'#fff':'var(--ink2)'}">${t.icon} ${t.label}</button>`;
-  }).join('');
-  return `<div style="display:inline-flex;gap:2px;background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:3px;white-space:nowrap">${tabs}</div>`;
+  let html = '', prev = null;
+  schoolVisibleTabs().forEach(x => {
+    if (prev && x.group !== prev) html += '<span class="sn-sep"></span>';
+    prev = x.group;
+    const on = schoolSubMode === x.id;
+    html += `<button onclick="setSchoolSubMode('${x.id}')" title="${SCHOOL_GROUPS[x.group]} · ${x.label}"
+      style="height:30px;padding:0 11px;border:none;border-radius:8px;font:${on?'700':'600'} 12px var(--font);cursor:pointer;white-space:nowrap;
+      background:${on?'#1d3a5f':'transparent'};color:${on?'#fff':'var(--ink2)'};transition:background .12s var(--ease-out)"
+      ${on?'':`onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background='transparent'"`}>${x.icon} ${x.label}</button>`;
+  });
+  return `<div style="display:inline-flex;align-items:center;gap:2px;background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:3px;white-space:nowrap">${html}</div>`;
 }
 
 async function initSchoolPage() {
@@ -11177,36 +11197,31 @@ async function initSchoolPage() {
 }
 
 function setSchoolSubMode(m) {
-  schoolSubMode = m;
+  schoolSubMode = (m === 'approval') ? 'leave' : m;
   const sn = document.getElementById('subnav-school');
   if (sn) sn.innerHTML = schoolSubnavHtml();
   renderSchoolMain();
 }
 
 function renderSchoolMain() {
-  // 권한 없는 사용자가 행정 탭(학비·통신문·증명서)에 있으면 학생 탭으로
-  const cur = SCHOOL_TABS.find(t => t.id === schoolSubMode);
-  if (cur && cur.admin && !canSeeAdminModules()) { schoolSubMode = 'student'; }
-  const tab = SCHOOL_TABS.find(t => t.id === schoolSubMode);
+  if (schoolSubMode === 'approval') schoolSubMode = 'leave';   // 예전 이름 (사이드바 전자결재와 혼동되던 것)
+  // 권한 없는 사용자가 행정 탭(재정·통신문·증명서)에 있으면 학생 탭으로
+  let tab = SCHOOL_TABS.find(x => x.id === schoolSubMode);
+  if (!tab || (tab.admin && !canSeeAdminModules())) { schoolSubMode = 'student'; tab = SCHOOL_TABS[0]; }
   const sub = document.getElementById('school-header-sub');
-  if (sub) sub.textContent = tab ? tab.label : t('학교 행정을 한 곳에서','School admin in one place');
+  if (sub) {
+    const g = SCHOOL_GROUPS[tab.group];
+    sub.textContent = (g && g !== tab.label) ? `${g} · ${tab.label}` : tab.label;
+  }
   document.getElementById('school-header-actions').innerHTML = '';
   if (['student','record','reading'].includes(schoolSubMode)) return renderStudent360();
   if (schoolSubMode === 'attendance') return renderAttendanceHub();
-  if (schoolSubMode === 'approval')   return renderApprovalHub();
+  if (schoolSubMode === 'leave')      return renderApprovalHub();
   if (schoolSubMode === 'timetable')  return renderTimetableHub();
   if (schoolSubMode === 'tuition')    return renderTuitionHub();
   if (schoolSubMode === 'newsletter') return renderNewsletterHub();
   if (schoolSubMode === 'cert')       return renderCertHub();
-  return renderSchoolComingSoon(tab);
-}
-
-function renderSchoolComingSoon(tab) {
-  document.getElementById('school-main').innerHTML = `<div style="max-width:520px;margin:64px auto;text-align:center">
-    <div style="font-size:48px;margin-bottom:14px">${tab?tab.icon:'🛠'}</div>
-    <div style="font-size:17px;font-weight:700;color:var(--ink);margin-bottom:8px">${tab?tab.label:''} ${t('기능 준비 중','Coming Soon')}</div>
-    <div style="font-size:13px;color:var(--ink3);line-height:1.8">${t('이 모듈은 곧 추가됩니다.<br>지금은 <b>출석부</b>를 먼저 사용할 수 있어요.','This module is coming soon.<br>For now, you can use the <b>Attendance</b> book first.')}</div>
-  </div>`;
+  return renderStudent360();
 }
 
 // ════════════════════════════════════════════════════════════════════
