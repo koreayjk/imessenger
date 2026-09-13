@@ -7895,12 +7895,16 @@ ${o.serif ? '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?fami
 }
 
 // 새 창에 문서를 띄운다
-function openPrintDoc(opts) {
-  const win = window.open('', '_blank');
-  if (!win) { showUploadToast(t('팝업을 허용해 주세요','Please allow pop-ups')); return null; }
-  win.document.write(buildPrintDoc(opts));
-  win.document.close();
-  return win;
+// 새 창에 문서를 띄운다.
+//  win 을 넘기면 그 창에 쓴다 — 서버에 먼저 물어보고 인쇄해야 하는 문서는
+//  클릭 직후에 창을 열어 둬야 팝업 차단에 걸리지 않기 때문이다.
+function openPrintDoc(opts, win) {
+  const w = win || window.open('', '_blank');
+  if (!w) { showUploadToast(t('팝업을 허용해 주세요','Please allow pop-ups')); return null; }
+  try { w.document.open(); } catch (_) {}
+  w.document.write(buildPrintDoc(opts));
+  w.document.close();
+  return w;
 }
 
 async function printTcsPdf() {
@@ -8097,6 +8101,25 @@ async function renderCommunitySettings() {
         </div>
       </div>
 
+      <!-- 직인 (학교 도장) -->
+      <div class="adm-card" style="margin-top:16px">
+        <div style="font-size:13px;font-weight:700;color:var(--ink);margin-bottom:4px">🔴 직인 (도장)</div>
+        <div style="font-size:12px;color:var(--ink3);margin-bottom:12px;line-height:1.7">
+          도장을 찍은 그림을 올려 두면 증명서에 <b>빨간 도장</b>으로 찍혀 나옵니다.
+          여러 개 올려 두고 발급할 때 골라 쓸 수 있어요.<br/>
+          흰 종이에 찍어 사진을 찍거나 스캔한 것이면 됩니다 — 배경은 자동으로 지워집니다.
+        </div>
+        <div id="cs-seals-list"><div style="font-size:12px;color:var(--ink3)">불러오는 중...</div></div>
+        <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <div id="seal-preview" style="width:52px;height:52px;border-radius:10px;background:#fff;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:19px">🔴</div>
+          <input id="seal-name-input" type="text" placeholder="직인 이름 (예: 학교장 직인)" style="flex:1;min-width:150px;height:38px;padding:0 12px;border:1.5px solid var(--border);border-radius:9px;font:600 13px var(--font);color:var(--ink);background:var(--surface)"/>
+          <input type="file" id="seal-file-input" accept="image/*" style="display:none" onchange="uploadSealImage(this)"/>
+          <input type="hidden" id="seal-image-url" value=""/>
+          <button onclick="document.getElementById('seal-file-input').click()" style="height:38px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);font:600 13px var(--font);cursor:pointer">도장 그림</button>
+          <button onclick="addOrgSeal('${comm.id}')" style="height:38px;padding:0 16px;border-radius:9px;border:none;background:#1d3a5f;color:white;font:700 13px var(--font);cursor:pointer">추가</button>
+        </div>
+      </div>
+
       <!-- 위험 구역 -->
       <div class="adm-card" style="border:1.5px solid #fca5a5;margin-top:16px">
         <div style="font-size:13px;font-weight:700;color:#dc2626;margin-bottom:8px">⚠️ 위험 구역</div>
@@ -8106,6 +8129,7 @@ async function renderCommunitySettings() {
       </div><!-- /flex -->
     </div>`;
   renderRecordOrgsAdmin();
+  renderSealsAdmin();
 }
 
 // ── 기록부 기관 프리셋 CRUD ──
@@ -8149,6 +8173,129 @@ async function addRecordOrg(commId) {
   document.getElementById('org-logo-url').value = '';
   const pv = document.getElementById('org-logo-preview'); if (pv) pv.innerHTML = '🏷️';
   renderRecordOrgsAdmin();
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  직인 (도장)
+//   한국 학교는 증명서에 도장을 찍는다. 도장 그림을 올려 두면
+//   증명서에 빨간 도장으로 찍혀 나온다. 여러 개 등록해 골라 쓴다.
+// ══════════════════════════════════════════════════════════════════
+let orgSeals = [];
+const SEAL_RED = [200, 32, 42];          // 인주 빛깔
+
+async function loadOrgSeals() {
+  try {
+    const { data } = await sb.from('org_seals').select('*')
+      .eq('community_id', CID()).order('sort').order('created_at');
+    orgSeals = data || [];
+  } catch (_) { orgSeals = []; }
+  return orgSeals;
+}
+
+// 올린 그림을 '빨간 잉크 + 투명 배경' 으로 바꾼다.
+//  · 흰 종이에 찍어 스캔·촬영한 그림(알파 없음) → 종이만 지운다
+//  · 배경이 이미 투명한 PNG → 그 알파를 그대로 쓴다
+// 색을 통일하는 이유 — 검은 도장을 올려도 증명서에는 빨갛게 찍혀야 한다.
+function sealImageToRed(img, maxSide) {
+  maxSide = maxSide || 600;
+  const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+  const w = Math.max(1, Math.round(img.width * scale));
+  const h = Math.max(1, Math.round(img.height * scale));
+  const cv = document.createElement('canvas');
+  cv.width = w; cv.height = h;
+  const cx = cv.getContext('2d', { willReadFrequently: true });
+  cx.drawImage(img, 0, 0, w, h);
+  const d = cx.getImageData(0, 0, w, h);
+  const px = d.data;
+
+  let hasAlpha = false;
+  for (let i = 3; i < px.length; i += 4) { if (px[i] < 250) { hasAlpha = true; break; } }
+
+  for (let i = 0; i < px.length; i += 4) {
+    let a;
+    if (hasAlpha) {
+      a = px[i + 3];
+    } else {
+      // 흰 종이에서 얼마나 멀어졌는지로 잉크를 가린다.
+      // 밝기로 재면 '빨간 도장'이 밝다는 이유로 연하게 잡힌다.
+      const ink = 255 - Math.min(px[i], px[i + 1], px[i + 2]);
+      a = Math.round((ink - 25) * 1.45);
+    }
+    px[i] = SEAL_RED[0]; px[i + 1] = SEAL_RED[1]; px[i + 2] = SEAL_RED[2];
+    px[i + 3] = a < 0 ? 0 : (a > 255 ? 255 : a);
+  }
+  cx.putImageData(d, 0, 0);
+  return cv;
+}
+
+async function uploadSealImage(input) {
+  const file = input.files && input.files[0];
+  input.value = '';                                  // 같은 파일을 다시 골라도 동작하게
+  if (!file) return;
+  showUploadToast('도장 그림 처리 중... ⏳');
+  try {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    const cv = sealImageToRed(img);
+    URL.revokeObjectURL(url);
+
+    const blob = await new Promise(res => cv.toBlob(res, 'image/png'));
+    if (!blob) { showUploadToast('그림을 바꾸지 못했어요 😥'); return; }
+
+    const path = `seals/${CID()}/${Date.now()}.png`;
+    const { error } = await sb.storage.from('messenger')
+      .upload(path, blob, { contentType: 'image/png', cacheControl: '3600', upsert: true });
+    if (error) { showUploadToast('업로드 실패 😥'); return; }
+    const { data: u } = sb.storage.from('messenger').getPublicUrl(path);
+    const publicUrl = u.publicUrl;
+
+    document.getElementById('seal-image-url').value = publicUrl;
+    const pv = document.getElementById('seal-preview');
+    // 흰 바탕에 올려야 빨간 도장이 제대로 보인다
+    if (pv) pv.innerHTML = `<img src="${imAttr(publicUrl)}" style="width:48px;height:48px;object-fit:contain"/>`;
+    showUploadToast('도장 준비됨 ✅');
+  } catch (e) {
+    showUploadToast('그림을 읽지 못했어요 😥');
+  }
+}
+
+async function renderSealsAdmin() {
+  const box = document.getElementById('cs-seals-list');
+  if (!box) return;
+  await loadOrgSeals();
+  box.innerHTML = orgSeals.length ? orgSeals.map(sl => `
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--bs)">
+      <div style="width:44px;height:44px;border-radius:9px;background:#fff;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0">
+        <img src="${imAttr(sl.image_url)}" onerror="this.remove()" style="width:40px;height:40px;object-fit:contain"/>
+      </div>
+      <div style="flex:1;font-size:13px;font-weight:600;color:var(--ink)">${escHtml(sl.name)}</div>
+      <button onclick="deleteOrgSeal('${sl.id}')" style="width:28px;height:28px;border-radius:7px;border:1.5px solid var(--border);background:white;color:#ef4444;font-size:14px;cursor:pointer">×</button>
+    </div>`).join('')
+    : '<div style="font-size:12px;color:var(--ink3)">아직 등록된 직인이 없어요. 아래에서 추가하세요.</div>';
+}
+
+async function addOrgSeal(commId) {
+  const name = document.getElementById('seal-name-input').value.trim();
+  const url = document.getElementById('seal-image-url').value;
+  if (!name) { showUploadToast('직인 이름을 입력하세요'); return; }
+  if (!url)  { showUploadToast('도장 그림을 올려주세요'); return; }
+  const { error } = await sb.from('org_seals')
+    .insert({ community_id: commId, name, image_url: url });
+  if (error) { showUploadToast('추가 실패: ' + error.message); return; }
+  showUploadToast('✅ 직인이 추가됐어요');
+  document.getElementById('seal-name-input').value = '';
+  document.getElementById('seal-image-url').value = '';
+  const pv = document.getElementById('seal-preview'); if (pv) pv.innerHTML = '🔴';
+  renderSealsAdmin();
+}
+
+async function deleteOrgSeal(id) {
+  if (!confirm('이 직인을 삭제할까요?\n이미 발급한 증명서 기록에는 그대로 남습니다.')) return;
+  await sb.from('org_seals').delete().eq('id', id);
+  showUploadToast('삭제됨');
+  renderSealsAdmin();
 }
 
 async function deleteRecordOrg(id) {
@@ -15085,10 +15232,29 @@ const certSpec = (type) => (CERT_TYPES[type] || CERT_TYPES.enroll)[certLang];
 let certStudentId = '';
 let certPrefill = { name:'', birth:'', school:'' };
 
+let certSubTab = 'issue';        // issue | log
+let certLog = [];
+let certLogQ = '';
+
+function setCertSubTab(v) {
+  certSubTab = v;
+  if (v === 'log') renderCertLog(); else renderCert();
+}
+
 async function renderCertHub() {
   if (!tcsOrgs.length) { try { await loadRecordOrgs(); } catch(e){} }
+  try { await loadOrgSeals(); } catch(e){}
   if (!certStudentId && schoolStudents.length) { certStudentId = schoolStudents[0].id; await certLoadStudent(certStudentId); }
-  renderCert();
+  if (certSubTab === 'log') renderCertLog(); else renderCert();
+}
+
+// 발급 / 발급 대장 전환 줄 — 두 화면이 함께 쓴다
+function certTabsHtml() {
+  const on  = 'border:1.5px solid #1d3a5f;background:#1d3a5f;color:#fff';
+  const off = 'border:1.5px solid var(--border);background:var(--surface);color:var(--ink2)';
+  const btn = (k, label) => `<button onclick="setCertSubTab('${k}')" style="height:34px;padding:0 16px;border-radius:9px;cursor:pointer;font:700 13px var(--font);${certSubTab===k?on:off}">${label}</button>`;
+  return `<div style="display:flex;gap:7px;margin-bottom:14px">
+    ${btn('issue', t('발급','Issue'))}${btn('log', t('발급 대장','Ledger'))}</div>`;
 }
 
 async function certLoadStudent(id) {
@@ -15103,11 +15269,9 @@ async function certLoadStudent(id) {
   });
 }
 
-function certNo() {
-  const y = attTodayStr().slice(0,4);
-  const seq = String(Math.floor(Math.random()*9000)+1000);
-  return `${y}-${seq}`;
-}
+// 발급번호는 서버가 공동체·연도별 순번으로 매긴다.
+// 예전엔 난수라서 겹칠 수 있었고, 대장에서 순서를 알 수도 없었다.
+// 이 칸은 비워 두면 자동, 적어 넣으면 그 번호를 쓴다(옛 문서를 옮겨 적을 때).
 
 function renderCert() {
   const main = document.getElementById('school-main');
@@ -15116,10 +15280,14 @@ function renderCert() {
   const typeOpts = Object.entries(CERT_TYPES).map(([k,v]) => `<option value="${k}">${v[certLang].label}</option>`).join('');
   const orgOpts = tcsOrgs.length ? tcsOrgs.map(o => `<option value="${o.id}" ${o.id===tcsSelectedOrgId?'selected':''}>${o.name}</option>`).join('')
     : `<option value="">${t('기관 미등록','No organization registered')}</option>`;
+  const sealOpts = `<option value="">${t('직인 없음','No seal')}</option>`
+    + orgSeals.map(sl => `<option value="${sl.id}">${escHtml(sl.name)}</option>`).join('')
+    + (orgSeals.length ? '' : `<option value="" disabled>${t('— 관리자 → 공동체 설정에서 등록하세요','— Register under Admin → Community Settings')}</option>`);
   const inp = 'height:38px;padding:0 12px;border:1px solid var(--border);border-radius:9px;font:600 13px var(--font);color:var(--ink);background:var(--surface)';
   const lbl = 'font-size:12px;font-weight:600;color:var(--ink2);display:block;margin-bottom:6px';
 
   main.innerHTML = `<div style="max-width:680px;margin:0 auto">
+    ${certTabsHtml()}
     ${schoolStudents.length ? '' : `<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px">${t('등록된 학생이 없어요.','No students registered.')}</div>`}
     ${schoolStudents.length ? `
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px">
@@ -15146,8 +15314,9 @@ function renderCert() {
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
         <div><label style="${lbl}">${t('발급 사유','Purpose')}</label><input id="cert-reason" value="${t('제출용','For submission')}" style="${inp};width:100%"/></div>
         <div><label style="${lbl}">${t('발급일자','Issue date')}</label><input id="cert-date" type="date" value="${attTodayStr()}" style="${inp};width:100%"/></div>
-        <div><label style="${lbl}">${t('발급번호','Certificate no.')}</label><input id="cert-no" value="${certNo()}" style="${inp};width:100%"/></div>
+        <div><label style="${lbl}">${t('발급번호','Certificate no.')}</label><input id="cert-no" value="" placeholder="${t('비우면 자동 부여','Auto if left blank')}" style="${inp};width:100%"/></div>
         <div><label style="${lbl}">${t('발급 기관','Issuing organization')}</label><select id="cert-org" style="${inp};width:100%">${orgOpts}</select></div>
+        <div style="grid-column:1/3"><label style="${lbl}">${t('직인','Seal')}</label><select id="cert-seal" style="${inp};width:100%">${sealOpts}</select></div>
         <div style="grid-column:1/3"><label style="${lbl}">${t('대표자 명의 (직인 표기)','Representative name (for seal)')}</label><input id="cert-rep" value="${escAttr((tcsOrgs.find(o=>o.id===tcsSelectedOrgId)?.name)||'')}${t(' 장',' Head')}" placeholder="${t('예: ○○학교장 / 대표 홍길동','e.g. Principal of ○○ School / Rep. Hong Gil-dong')}" style="${inp};width:100%"/></div>
       </div>
       <div style="display:flex;justify-content:flex-end;gap:8px">
@@ -15188,30 +15357,144 @@ function certSetLang(lang) {
   }
 }
 
+// ══════════════════════════════════════════════════════════════════
+//  발급 대장
+//   "이 증명서 여기서 발급한 것 맞습니까" 에 답하기 위한 기록.
+//   발급 당시 값을 그대로 들고 있어서, 학생 정보가 나중에 바뀌어도
+//   그때 찍힌 문서를 똑같이 다시 뽑을 수 있다.
+// ══════════════════════════════════════════════════════════════════
+async function renderCertLog() {
+  const main = document.getElementById('school-main');
+  if (!main) return;
+  main.innerHTML = `<div style="max-width:820px;margin:0 auto">${certTabsHtml()}
+    <div style="padding:30px;text-align:center;color:var(--ink3);font-size:13px">${t('불러오는 중…','Loading…')}</div></div>`;
+
+  let rows = [], err = '';
+  try {
+    const { data, error } = await sb.from('certificates').select('*')
+      .eq('community_id', CID())
+      .order('issue_date', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(500);
+    if (error) throw error;
+    rows = data || [];
+  } catch (e) { err = (e && e.message) || String(e); }
+  certLog = rows;
+
+  const q = certLogQ.trim().toLowerCase();
+  const shown = q ? rows.filter(r =>
+    [r.cert_no, r.student_name, r.doc_label, r.school, r.reason, r.issued_by_name]
+      .some(v => String(v || '').toLowerCase().includes(q))) : rows;
+
+  const inp = 'height:38px;padding:0 12px;border:1.5px solid var(--border);border-radius:9px;font:600 13px var(--font);color:var(--ink);background:var(--surface)';
+
+  const body = err
+    ? `<div style="padding:26px;text-align:center;color:var(--ink3);font-size:13px;line-height:1.8">
+         ${t('대장을 불러오지 못했어요.','Could not load the ledger.')}<br/>
+         <span style="font-size:12px">${escHtml(err)}</span><br/>
+         <span style="font-size:12px">${t('db/증명서_발급대장_직인_DB설치.sql 을 실행했는지 확인해 주세요.','Check that the ledger SQL has been run.')}</span>
+       </div>`
+    : (!rows.length
+      ? `<div style="padding:36px;text-align:center;color:var(--ink3);font-size:13px">${t('아직 발급한 증명서가 없어요.','No certificates issued yet.')}</div>`
+      : (!shown.length
+        ? `<div style="padding:36px;text-align:center;color:var(--ink3);font-size:13px">${t('찾는 증명서가 없어요.','No matching certificate.')}</div>`
+        : shown.map(r => certLogRow(r)).join('')));
+
+  main.innerHTML = `<div style="max-width:820px;margin:0 auto">
+    ${certTabsHtml()}
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
+      <input id="cert-log-q" value="${escAttr(certLogQ)}" oninput="certLogQ=this.value;certLogFilter()"
+        placeholder="${t('발급번호 · 이름 · 종류로 찾기','Search by no., name or type')}" style="${inp};flex:1;min-width:180px"/>
+      <span style="font-size:12px;color:var(--ink3)">${t(`총 ${rows.length}건`, `${rows.length} total`)}</span>
+    </div>
+    <div id="cert-log-list" style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden">${body}</div>
+  </div>`;
+}
+
+// 검색은 이미 받아온 목록에서 걸러낸다 (매번 다시 물어보지 않게)
+function certLogFilter() {
+  const box = document.getElementById('cert-log-list');
+  if (!box) return;
+  const q = certLogQ.trim().toLowerCase();
+  const shown = q ? certLog.filter(r =>
+    [r.cert_no, r.student_name, r.doc_label, r.school, r.reason, r.issued_by_name]
+      .some(v => String(v || '').toLowerCase().includes(q))) : certLog;
+  box.innerHTML = shown.length ? shown.map(r => certLogRow(r)).join('')
+    : `<div style="padding:36px;text-align:center;color:var(--ink3);font-size:13px">${t('찾는 증명서가 없어요.','No matching certificate.')}</div>`;
+}
+
+function certLogRow(r) {
+  const dead = !!r.voided_at;
+  return `<div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-bottom:1px solid var(--bs);${dead?'opacity:.55':''}">
+    <div style="flex:none;width:92px">
+      <div style="font:700 12.5px var(--font);color:${dead?'var(--ink3)':'#1d3a5f'};letter-spacing:.02em">${escHtml(r.cert_no)}</div>
+      <div style="font-size:11px;color:var(--ink3);margin-top:2px">${escHtml(r.issue_date || '')}</div>
+    </div>
+    <div style="flex:1;min-width:0">
+      <div style="font:600 13.5px var(--font);color:var(--ink);${dead?'text-decoration:line-through':''}">
+        ${escHtml(r.student_name)}
+        <span style="font-weight:500;color:var(--ink3);font-size:12.5px"> · ${escHtml(r.doc_label)}</span>
+        ${r.lang === 'en' ? '<span style="font-size:10.5px;color:var(--ink3);border:1px solid var(--border);border-radius:5px;padding:1px 5px;margin-left:5px">EN</span>' : ''}
+        ${dead ? `<span style="font-size:10.5px;color:#c0392b;border:1px solid #f3ccc6;border-radius:5px;padding:1px 5px;margin-left:5px">${t('무효','VOID')}</span>` : ''}
+      </div>
+      <div style="font-size:11.5px;color:var(--ink3);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+        ${[r.grade, r.school, r.reason].filter(Boolean).map(escHtml).join(' · ')}
+        ${r.issued_by_name ? ` · ${t('발급','by')} ${escHtml(r.issued_by_name)}` : ''}
+      </div>
+    </div>
+    <button onclick="reprintCertificate('${r.id}')" title="${t('다시 인쇄','Reprint')}"
+      style="flex:none;height:32px;padding:0 12px;border-radius:8px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);font:600 12px var(--font);cursor:pointer">${t('다시 인쇄','Reprint')}</button>
+    ${dead ? '' : `<button onclick="voidCertificate('${r.id}')" title="${t('무효 처리','Void')}"
+      style="flex:none;width:30px;height:32px;border-radius:8px;border:1.5px solid var(--border);background:var(--surface);color:#ef4444;font-size:13px;cursor:pointer">✕</button>`}
+  </div>`;
+}
+
+// 대장에서 다시 뽑기 — 새 번호를 매기지 않고 그때 그 문서를 그대로 낸다
+function reprintCertificate(id) {
+  const r = certLog.find(x => x.id === id);
+  if (!r) { showUploadToast(t('기록을 찾지 못했어요','Record not found')); return; }
+  const spec = (CERT_TYPES[r.type] || {})[r.lang === 'en' ? 'en' : 'ko'] || {};
+  openPrintDoc(buildCertOpts({
+    lang: r.lang, type: r.type, docLabel: r.doc_label, sub: spec.sub || '',
+    no: r.cert_no, name: r.student_name, birth: r.birth, grade: r.grade, school: r.school,
+    stmt: r.statement, reason: r.reason, date: r.issue_date, rep: r.rep,
+    orgName: r.org_name, orgLogo: r.org_logo_url, sealUrl: r.seal_url,
+    voided: !!r.voided_at,
+  }));
+}
+
+// 잘못 발급한 것은 지우지 않고 무효로 남긴다.
+// 지워 버리면 번호가 비고, 대장으로서 의미가 없어진다.
+async function voidCertificate(id) {
+  const r = certLog.find(x => x.id === id);
+  if (!r) return;
+  const why = prompt(t(`제 ${r.cert_no} 호 (${r.student_name}) 를 무효 처리할까요?\n\n기록은 지워지지 않고 '무효'로 남습니다.\n사유를 적어주세요.`,
+                       `Void No. ${r.cert_no} (${r.student_name})?\n\nThe record is kept and marked void.\nEnter a reason.`), '');
+  if (why === null) return;
+  const { error } = await sb.from('certificates')
+    .update({ voided_at: new Date().toISOString(), void_reason: why.trim() || null })
+    .eq('id', id);
+  if (error) { showUploadToast(t('무효 처리 실패: ','Failed: ') + error.message); return; }
+  showUploadToast(t('무효 처리했어요','Marked void'));
+  renderCertLog();
+}
+
 function certChangeStudent(id) { certLoadStudent(id).then(renderCert); }
 function certOnType(v) {
   document.getElementById('cert-custom-wrap').style.display = v === 'custom' ? 'block' : 'none';
 }
 
-function printCertificate() {
-  const type = document.getElementById('cert-type').value;
-  const name = document.getElementById('cert-name').value.trim();
-  const birth = document.getElementById('cert-birth').value.trim();
-  const grade = document.getElementById('cert-grade').value.trim();
-  const school = document.getElementById('cert-school').value.trim();
-  const reason = document.getElementById('cert-reason').value.trim();
-  const date = document.getElementById('cert-date').value || attTodayStr();
-  const no = document.getElementById('cert-no').value.trim();
-  const orgId = document.getElementById('cert-org').value;
-  const rep = document.getElementById('cert-rep').value.trim();
-  const org = tcsOrgs.find(o => o.id === orgId);
-  if (!name) { showUploadToast(t('성명을 입력하세요','Enter a name')); return; }
-
-  const ct = certSpec(type);                 // 앱 언어가 아니라 '증서 언어'를 따른다
-  const docLabel = ct.docLabel || ct.label;
-  const stmt = type === 'custom'
-    ? (document.getElementById('cert-custom').value.trim() || certT('위 사실을 증명합니다.','This certifies the above facts.'))
-    : ct.stmt;
+// 증서 문서 한 장을 만든다.
+//  발급 화면에서도, 발급 대장에서 다시 뽑을 때도 같은 함수를 쓴다.
+//  대장에서 다시 뽑을 때는 '그때 찍힌 그대로' 나와야 하므로
+//  전역 상태(certLang 등)를 보지 않고 넘겨받은 값만 쓴다.
+function buildCertOpts(d) {
+  const tr = (ko, en) => (d.lang === 'en' ? en : ko);
+  const name = d.name || '', stmt = d.stmt || '', docLabel = d.docLabel || '';
+  const no = d.no || '', reason = d.reason || '', rep = d.rep || '';
+  const orgName = d.orgName || '', orgLogo = d.orgLogo || '', sealUrl = d.sealUrl || '';
+  const birth = d.birth || '', grade = d.grade || '', school = d.school || '';
+  const sub = d.sub || '';
 
   // 넓은 자간·블랙레터는 라틴 문자에만 쓴다 (한글에는 대응 글꼴이 없다)
   const lat = (v) => /[가-힣]/.test(String(v || '')) ? '' : ' lat';
@@ -15229,53 +15512,55 @@ function printCertificate() {
   const ymdText = (v) => {
     const p = String(v || '').split('-');
     return (p.length === 3 && p[0].length === 4)
-      ? certT(`${p[0]}년 ${parseInt(p[1])}월 ${parseInt(p[2])}일`, `${TUI_MON_EN[parseInt(p[1])]} ${parseInt(p[2])}, ${p[0]}`)
+      ? tr(`${p[0]}년 ${parseInt(p[1])}월 ${parseInt(p[2])}일`, `${TUI_MON_EN[parseInt(p[1])]} ${parseInt(p[2])}, ${p[0]}`)
       : String(v || '');
   };
-  const dateKo = ymdText(date);
-  const orgName = org ? org.name : (school || '');
+  const dateKo = ymdText(d.date);
   // 증서는 한 장이어야 한다. 본문이 길면 글자를 낮춰 한 장에 들어오게.
   const stmtClass = stmt.length > 150 ? ' s3' : (stmt.length > 65 ? ' s2' : '');
 
-  openPrintDoc({
+  return {
     title: `${docLabel} — ${name}`,
     serif: true,
-    org,
+    org: { name: orgName, logo: orgLogo },
     letterhead: false,   // 증서는 기관 명의가 맨 아래에 온다
     margin: '11mm',      // 테두리를 한 장 가득 두르므로 여백은 인쇄 가능 범위까지만
     body: `
       <div class="cf">
-        ${org && org.logo_url ? `<img class="c-wm" src="${imAttr(org.logo_url)}" onerror="this.remove()"/>` : ''}
+        ${orgLogo ? `<img class="c-wm" src="${imAttr(orgLogo)}" onerror="this.remove()"/>` : ''}
+        ${d.voided ? `<div class="c-void">${tr('무 효','VOID')}</div>` : ''}
         <div class="c-in">
           <i class="c-cn tl"></i><i class="c-cn tr"></i><i class="c-cn bl"></i><i class="c-cn br"></i>
 
-          <div class="c-no">${certT('제','No.')} ${escHtml(no || '____')}${certT(' 호','')}</div>
+          <div class="c-no">${tr('제','No.')} ${escHtml(no || '____')}${tr(' 호','')}</div>
 
           <header class="c-head">
             <h1 class="${lat(docLabel).trim()}">${escHtml(docLabel)}</h1>
-            ${ct.sub ? `<div class="c-sub${lat(ct.sub)}">${escHtml(ct.sub)}</div>` : ''}
+            ${sub ? `<div class="c-sub${lat(sub)}">${escHtml(sub)}</div>` : ''}
             <div class="c-orn"><i></i><b>&#10022;</b><i></i></div>
           </header>
 
           <div class="c-mid">
           <section class="c-info">
-            ${row(certT('성 명','Name'), name)}
-            ${row(certT('생년월일','Date of Birth'), ymdText(birth))}
-            ${row(certT('학 년','Grade'), grade)}
-            ${row(certT('학 교','School'), school)}
+            ${row(tr('성 명','Name'), name)}
+            ${row(tr('생년월일','Date of Birth'), ymdText(birth))}
+            ${row(tr('학 년','Grade'), grade)}
+            ${row(tr('학 교','School'), school)}
           </section>
 
           <section class="c-body">
             <p class="c-stmt${stmtClass}${lat(stmt)}">${escHtml(stmt)}</p>
-            ${reason ? `<p class="c-reason">${certT('발급 사유','Purpose')} · ${escHtml(reason)}</p>` : ''}
+            ${reason ? `<p class="c-reason">${tr('발급 사유','Purpose')} · ${escHtml(reason)}</p>` : ''}
           </section>
           </div>
 
           <footer class="c-foot">
             <div class="c-date${lat(dateKo)}">${escHtml(dateKo)}</div>
-            ${org && org.logo_url ? `<img class="c-logo" src="${imAttr(org.logo_url)}" onerror="this.remove()"/>` : ''}
+            ${orgLogo ? `<img class="c-logo" src="${imAttr(orgLogo)}" onerror="this.remove()"/>` : ''}
             <div class="c-org${lat(orgName)}">${escHtml(orgName)}</div>
-            ${rep ? `<div class="c-rep${lat(rep)}">${escHtml(rep)}<span class="c-seal">${certT('印','SEAL')}</span></div>` : ''}
+            ${rep ? `<div class="c-rep${lat(rep)}">${escHtml(rep)}${
+              sealUrl ? `<img class="c-stamp" src="${imAttr(sealUrl)}" onerror="this.remove()"/>`
+                   : `<span class="c-seal">${tr('印','SEAL')}</span>`}</div>` : ''}
           </footer>
         </div>
       </div>`,
@@ -15381,8 +15666,89 @@ function printCertificate() {
                 color: #b3392c; font-size: 8.5pt; font-weight: 700;
                 letter-spacing: 0; display: inline-flex;
                 align-items: center; justify-content: center; opacity: .88; }
-      .c-rep { word-break: keep-all; }`,
-  });
+      .c-rep { word-break: keep-all; }
+      /* 도장은 이름 끝에 살짝 겹쳐 찍는다 (한국 증명서 관행).
+         배경이 인쇄에서 빠지지 않도록 print-color-adjust 는 공통 틀에 있다 */
+      .c-stamp { flex: none; width: 19mm; height: 19mm; object-fit: contain;
+                 margin-left: -4mm; position: relative; z-index: 2; }
+      /* 무효 처리된 증서를 다시 뽑으면 유효한 것처럼 보이면 안 된다 */
+      .c-void { position: absolute; top: 50%; left: 50%; z-index: 3;
+                transform: translate(-50%, -50%) rotate(-22deg);
+                font-size: 66pt; font-weight: 800; letter-spacing: .2em;
+                color: rgba(192,57,43,.17); border: 6px solid rgba(192,57,43,.17);
+                border-radius: 8px; padding: 6mm 12mm; white-space: nowrap; }`,
+  };
+}
+
+
+// 발급 — 번호를 서버에서 받아 대장에 남긴 뒤 인쇄한다.
+async function printCertificate() {
+  const type = document.getElementById('cert-type').value;
+  const name = document.getElementById('cert-name').value.trim();
+  const birth = document.getElementById('cert-birth').value.trim();
+  const grade = document.getElementById('cert-grade').value.trim();
+  const school = document.getElementById('cert-school').value.trim();
+  const reason = document.getElementById('cert-reason').value.trim();
+  const date = document.getElementById('cert-date').value || attTodayStr();
+  const typedNo = document.getElementById('cert-no').value.trim();
+  const orgId = document.getElementById('cert-org').value;
+  const rep = document.getElementById('cert-rep').value.trim();
+  const org = tcsOrgs.find(o => o.id === orgId);
+  const sealId = (document.getElementById('cert-seal') || {}).value || '';
+  const seal = orgSeals.find(x => x.id === sealId) || null;
+  if (!name) { showUploadToast(t('성명을 입력하세요','Enter a name')); return; }
+
+  const ct = certSpec(type);                 // 앱 언어가 아니라 '증서 언어'를 따른다
+  const docLabel = ct.docLabel || ct.label;
+  const stmt = type === 'custom'
+    ? (document.getElementById('cert-custom').value.trim() || certT('위 사실을 증명합니다.','This certifies the above facts.'))
+    : ct.stmt;
+
+  // 창은 클릭 직후에 열어야 한다. 서버에 물어본 뒤에 열면 팝업 차단에 걸린다.
+  const win = window.open('', '_blank');
+  if (!win) { showUploadToast(t('팝업을 허용해 주세요','Please allow pop-ups')); return; }
+  win.document.write('<!DOCTYPE html><meta charset="utf-8"/><body style="font:15px system-ui;padding:40px;color:#40506b">'
+    + t('발급 중…','Issuing…') + '</body>');
+
+  const d = {
+    lang: certLang, type, docLabel, sub: ct.sub || '',
+    name, birth, grade, school,
+    stmt, reason, date, rep, no: typedNo,
+    orgName: org ? org.name : (school || ''),
+    orgLogo: org ? (org.logo_url || '') : '',
+    sealUrl: seal ? seal.image_url : '',
+  };
+
+  // 대장에 남긴다. 번호는 서버가 매긴다.
+  let recorded = null, failMsg = '';
+  try {
+    const { data, error } = await sb.rpc('issue_certificate', { p: {
+      community_id: CID(), cert_no: typedNo, lang: certLang, type, doc_label: docLabel,
+      student_id: certStudentId || null, student_name: name,
+      birth, grade, school, statement: stmt, reason, issue_date: date,
+      org_id: orgId || null, org_name: d.orgName, org_logo_url: d.orgLogo,
+      rep, seal_url: d.sealUrl,
+    }});
+    if (error) throw error;
+    recorded = data;
+  } catch (e) { failMsg = (e && e.message) || String(e); }
+
+  if (recorded) {
+    d.no = recorded.cert_no;
+  } else {
+    // 대장에 못 남겼는데 말없이 인쇄하면, 나중에 조회했을 때 없는 증명서가 된다.
+    const go = confirm(t(
+      '발급 대장에 남기지 못했습니다.\n\n' + failMsg + '\n\n대장에 없는 증명서는 나중에 조회해도 확인할 수 없습니다.\n그래도 인쇄할까요?',
+      'Could not record this in the ledger.\n\n' + failMsg + '\n\nA certificate missing from the ledger cannot be verified later.\nPrint anyway?'));
+    if (!go) { win.close(); return; }
+    if (!d.no) d.no = '____';
+  }
+
+  openPrintDoc(buildCertOpts(d), win);
+  if (recorded) {
+    showUploadToast(t('✅ 발급 완료 · 제 ' + recorded.cert_no + ' 호', '✅ Issued · No. ' + recorded.cert_no));
+    document.getElementById('cert-no').value = '';
+  }
 }
 
 // ════════════════════════════════════════════════════════════════════
