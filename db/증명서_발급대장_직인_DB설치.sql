@@ -22,6 +22,16 @@ returns uuid language sql security definer stable set search_path = public as $$
   select community_id from public.members where id = auth.uid() limit 1;
 $$;
 
+-- 총관리자만 공동체를 넘나든다. 나머지는 자기 공동체 안에 갇힌다.
+create or replace function public.is_super_admin()
+returns boolean language sql security definer stable set search_path = public as $$
+  select exists (
+    select 1 from public.members me
+    where me.id = auth.uid()
+      and (me.community_role = 'super_admin' or me.role = '총관리자')
+  ) or coalesce(auth.jwt() ->> 'email','') = 'koreayjk@gmail.com';
+$$;
+
 -- ── 증명서를 발급할 수 있는 사람 : 행정담당자 · 관리자 · 총관리자 ──
 create or replace function public.is_cert_issuer()
 returns boolean language sql security definer stable set search_path = public as $$
@@ -57,12 +67,13 @@ alter table public.org_seals enable row level security;
 -- 보기: 같은 공동체 구성원 (증명서 화면에서 그려야 하므로)
 drop policy if exists org_seals_select on public.org_seals;
 create policy org_seals_select on public.org_seals for select to authenticated
-using (community_id = public.my_community_id() or public.is_cert_issuer());
+using (community_id = public.my_community_id() or public.is_super_admin());
 
 -- 올리기·지우기: 관리자
 drop policy if exists org_seals_write on public.org_seals;
 create policy org_seals_write on public.org_seals for all to authenticated
-using (public.is_cert_issuer()) with check (public.is_cert_issuer());
+using      (public.is_cert_issuer() and (community_id = public.my_community_id() or public.is_super_admin()))
+with check (public.is_cert_issuer() and (community_id = public.my_community_id() or public.is_super_admin()));
 
 -- ══════════════════════════════════════════════════════════════════
 --  발급 대장
@@ -108,12 +119,16 @@ alter table public.certificates enable row level security;
 -- 대장은 발급 권한이 있는 사람만 본다
 drop policy if exists certificates_select on public.certificates;
 create policy certificates_select on public.certificates for select to authenticated
-using (public.is_cert_issuer());
+using (public.is_cert_issuer() and (community_id = public.my_community_id() or public.is_super_admin()));
 
 -- 무효 처리만 허용. 내용 수정·삭제는 막는다 (대장의 의미가 사라진다)
 drop policy if exists certificates_update on public.certificates;
 create policy certificates_update on public.certificates for update to authenticated
-using (public.is_cert_issuer()) with check (public.is_cert_issuer());
+using      (public.is_cert_issuer() and (community_id = public.my_community_id() or public.is_super_admin()))
+with check (public.is_cert_issuer() and (community_id = public.my_community_id() or public.is_super_admin()));
+
+-- insert 정책은 일부러 두지 않는다.
+-- 발급은 반드시 issue_certificate() 를 거쳐야 번호가 제대로 매겨진다.
 
 -- ── 발급 : 번호를 매기고 대장에 남긴다 ──
 --   같은 공동체·같은 해에 번호가 겹치지 않도록 잠금을 잡고 순번을 뽑는다.
@@ -121,7 +136,7 @@ create or replace function public.issue_certificate(p jsonb)
 returns public.certificates
 language plpgsql security definer set search_path = public as $$
 declare
-  cid uuid := (p->>'community_id')::uuid;
+  cid uuid;
   idt date := coalesce((p->>'issue_date')::date, current_date);
   yr  int  := extract(year from idt)::int;
   n   int;
@@ -131,8 +146,18 @@ begin
   if not public.is_cert_issuer() then
     raise exception '증명서를 발급할 권한이 없습니다.' using errcode = '42501';
   end if;
+
+  -- 이 함수는 security definer 라 RLS 가 적용되지 않는다.
+  -- 클라이언트가 보낸 공동체 ID 를 그대로 믿으면 남의 공동체 대장에
+  -- 글을 쓰고 번호를 축낼 수 있다. 그래서 호출자의 소속으로 정한다.
+  -- (공동체를 옮겨 다니는 총관리자만 지정한 값을 인정한다)
+  if public.is_super_admin() then
+    cid := coalesce(nullif(p->>'community_id','')::uuid, public.my_community_id());
+  else
+    cid := public.my_community_id();
+  end if;
   if cid is null then
-    raise exception '공동체가 지정되지 않았습니다.' using errcode = '22004';
+    raise exception '소속 공동체를 찾을 수 없습니다.' using errcode = '22004';
   end if;
 
   -- 동시에 발급해도 번호가 겹치지 않게 (트랜잭션이 끝나면 자동 해제)
