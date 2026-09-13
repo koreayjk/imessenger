@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>계정 및 데이터 삭제 — TCS</title>
+<meta name="description" content="TCS(Total Care System) 계정과 데이터를 삭제하는 방법"/>
+<link rel="icon" type="image/png" sizes="192x192" href="./tcs_icon-192.png"/>
+<meta name="theme-color" content="#1d3a5f"/>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  :root{--navy:#1d3a5f;--ink:#14181f;--ink2:#40506b;--ink3:#6b7688;--line:#dbe3ee;--bg:#f4f7fb;--rose:#c0392b}
+  html{-webkit-text-size-adjust:100%}
+  body{font-family:'Pretendard Variable',Pretendard,-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Malgun Gothic','Noto Sans KR',sans-serif;
+       color:var(--ink);background:var(--bg);line-height:1.75;font-size:16px}
+  .wrap{max-width:760px;margin:0 auto;padding:0 20px 72px}
+  header{background:var(--navy);color:#fff;padding:34px 0 30px;margin-bottom:30px}
+  header .wrap{padding-bottom:0}
+  header img{height:44px;display:block;margin-bottom:14px;background:#fff;border-radius:10px;padding:5px}
+  header h1{font-size:25px;font-weight:800;letter-spacing:-.01em}
+  header p{margin-top:7px;font-size:14px;color:#c5d4e8}
+  main{background:#fff;border:1px solid var(--line);border-radius:14px;padding:30px 26px}
+  h2{font-size:18px;color:var(--navy);margin:32px 0 10px;padding-top:22px;border-top:1px solid var(--line);letter-spacing:-.01em}
+  h2:first-child{margin-top:0;padding-top:0;border-top:none}
+  p{margin:0 0 11px;color:var(--ink2)}
+  ul,ol{margin:0 0 13px;padding-left:20px;color:var(--ink2)}
+  li{margin-bottom:7px}
+  strong{color:var(--ink);font-weight:700}
+  ol.steps{counter-reset:s;list-style:none;padding-left:0}
+  ol.steps li{counter-increment:s;position:relative;padding-left:40px;margin-bottom:13px}
+  ol.steps li::before{content:counter(s);position:absolute;left:0;top:2px;width:27px;height:27px;
+    border-radius:50%;background:var(--navy);color:#fff;font:700 13.5px/27px inherit;text-align:center}
+  table{width:100%;border-collapse:collapse;margin:6px 0 15px;font-size:14.5px}
+  th,td{border:1px solid var(--line);padding:10px 12px;text-align:left;vertical-align:top;color:var(--ink2)}
+  th{background:#eef3f9;color:var(--navy);font-weight:700}
+  .warn{background:#fff5f4;border:1px solid #f3ccc6;border-left:3px solid var(--rose);
+        border-radius:0 9px 9px 0;padding:14px 16px;margin:15px 0;font-size:14.5px;color:#7d2b20}
+  .warn strong{color:var(--rose)}
+  .note{background:#f8fafd;border:1px solid var(--line);border-left:3px solid var(--navy);
+        border-radius:0 9px 9px 0;padding:14px 16px;margin:15px 0;font-size:14.5px}
+  a{color:var(--navy);font-weight:600}
+  .back{display:inline-block;margin-top:22px;font-size:14.5px}
+  .meta{font-size:13.5px;color:var(--ink3);margin-top:26px;padding-top:16px;border-top:1px solid var(--line)}
+  @media (max-width:560px){
+    body{font-size:15px}
+    main{padding:22px 17px;border-radius:11px}
+    header h1{font-size:21px}
+    table{font-size:13.5px} th,td{padding:8px 9px}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <img src="./tcs_icon-maskable-192.png" alt="TCS"/>
+    <h1>계정 및 데이터 삭제</h1>
+    <p>TCS — Total Care System</p>
+  </div>
+</header>
+
+<div class="wrap">
+<main>
+
+<h2>앱에서 직접 삭제하기</h2>
+<p>TCS 앱 안에서 본인이 직접 계정을 지울 수 있습니다.</p>
+<ol class="steps">
+  <li>TCS 앱에 로그인합니다.</li>
+  <li><strong>내 프로필</strong> 화면으로 들어갑니다. (모바일에서는 <strong>더보기 → 내 프로필</strong>)</li>
+  <li>화면 맨 아래 <strong>계정 삭제</strong>를 펼칩니다.</li>
+  <li><strong>계정 삭제 진행</strong>을 누르고, 확인 창에 <strong>삭제</strong>라고 입력합니다.</li>
+</ol>
+<p>입력을 마치면 <strong>즉시 삭제가 시작되며, 되돌릴 수 없습니다.</strong></p>
+
+<div class="warn">
+  <strong>총관리자는 바로 탈퇴할 수 없습니다.</strong><br/>
+  총관리자가 나가면 공동체가 주인을 잃게 되므로, 먼저 다른 구성원에게
+  총관리자 권한을 넘긴 뒤에 삭제해 주세요.
+</div>
+
+<h2>무엇이 지워지고, 무엇이 남나요</h2>
+<table>
+  <tr>
+    <th style="width:34%">바로 삭제됩니다</th>
+    <td>
+      <ul style="margin:0;padding-left:17px">
+        <li>로그인 계정(이메일·비밀번호)</li>
+        <li>프로필 정보 — 이름, 연락처, 생년월일, 주소, 보호자 연락처, 프로필 사진</li>
+        <li>보낸 채팅 메시지와 첨부한 파일·사진</li>
+        <li>읽음 표시, 메시지 반응, 설문 응답</li>
+        <li>노트와 노트 첨부파일, 할 일, 기도제목, 월간 목표</li>
+        <li>본인이 만든 개인 시간표</li>
+      </ul>
+    </td>
+  </tr>
+  <tr>
+    <th>공동체에 남습니다</th>
+    <td>
+      <p style="margin:0 0 8px">출결, 평가·관찰 기록, 종합기록부, 상담·생활지도 기록, 보건 기록,
+      학비 청구·납입 내역, 회계 거래 내역처럼 <strong>공동체가 보존해야 하는 기록</strong>입니다.</p>
+      <p style="margin:0">다만 이 기록들에서 <strong>이름을 비롯한 신원 정보는 지워져</strong>
+      누구의 기록인지 알아볼 수 없게 됩니다.</p>
+    </td>
+  </tr>
+</table>
+
+<div class="note">
+  <strong>왜 전부 지우지 않나요?</strong><br/>
+  학교와 교회는 출결·평가·회계 기록을 일정 기간 보존할 책임이 있습니다.
+  학생이 스스로 성적이나 출결을 지울 수 있다면 기록으로서 의미가 없어집니다.
+  그래서 기록 자체는 남기되, <strong>그것이 누구의 것인지 알 수 없게</strong> 만듭니다.
+</div>
+
+<h2>남은 기록까지 지우고 싶다면</h2>
+<p>공동체에 남은 기록의 완전한 삭제를 원하시면, <strong>소속 공동체의 관리자</strong>에게
+요청하시거나 아래 문의처로 연락해 주세요. 본인 확인 후 처리해 드립니다.</p>
+
+<h2>보관 기간</h2>
+<ul>
+  <li><strong>계정과 개인 기록</strong> — 삭제 요청 즉시 지워지며, 따로 보관하지 않습니다.</li>
+  <li><strong>파일 저장소의 첨부파일</strong> — 삭제와 동시에 함께 제거됩니다.</li>
+  <li><strong>공동체 보존 기록</strong> — 신원 정보가 제거된 상태로, 공동체의 보존 정책과
+      관계 법령이 정한 기간 동안 보관된 뒤 파기됩니다.</li>
+</ul>
+
+<h2>앱에 접속할 수 없는 경우</h2>
+<p>비밀번호를 잊었거나 앱에 들어갈 수 없다면, 가입하신 이메일 주소로 아래에 연락해 주세요.
+본인 확인 후 대신 삭제해 드립니다. 처리에는 영업일 기준 최대 7일이 걸릴 수 있습니다.</p>
+<table>
+  <tr><th style="width:34%">문의 이메일</th><td>__CONTACT_EMAIL__</td></tr>
+</table>
+
+<p style="margin-top:18px">개인정보 처리에 대한 전반적인 내용은
+<a href="./terms.html">개인정보처리방침</a>에서 확인하실 수 있습니다.</p>
+
+<div class="meta">최종 수정일: 2026년 9월 13일</div>
+
+<a class="back" href="./index.html">← TCS로 돌아가기</a>
+
+</main>
+</div>
+
+</body>
+</html>

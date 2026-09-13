@@ -1,0 +1,29 @@
+# ── Android 서명 키 — 절대 커밋 금지 ───────────────────────────
+#  PWABuilder 가 준 zip 안에는 .keystore 와, 그 비밀번호가 평문으로
+#  적힌 signing-key-info.txt 가 들어 있습니다.
+#  키를 잃어버리면 앱 업데이트가 영원히 막히고,
+#  공개 저장소에 올라가면 남이 우리 앱으로 위장할 수 있습니다.
+*.keystore
+*.jks
+*.p12
+*.pepk
+signing-key-info.txt
+android-package/
+*.aab
+*.apk
+key.properties
+
+# ── 로컬 설정 · 비밀값 ────────────────────────────────────────
+.env
+.env.*
+!.env.example
+supabase/.temp/
+supabase/.branches/
+
+# ── 잡동사니 ─────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+node_modules/
+*.log
+.vscode/
+.idea/

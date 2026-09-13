@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8"/>
 <title>TCS — Total Care System</title>
-<link rel="icon" type="image/png" sizes="192x192" href="https://koreayjk.github.io/imessenger/tcs_icon-192.png"/>
-<link rel="icon" type="image/png" sizes="512x512" href="https://koreayjk.github.io/imessenger/tcs_icon-512.png"/>
-<link rel="apple-touch-icon" sizes="180x180" href="https://koreayjk.github.io/imessenger/apple-touch-icon.png"/>
-<link rel="manifest" href="https://koreayjk.github.io/imessenger/manifest.webmanifest"/>
+<link rel="icon" type="image/png" sizes="192x192" href="./tcs_icon-192.png"/>
+<link rel="icon" type="image/png" sizes="512x512" href="./tcs_icon-512.png"/>
+<link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png"/>
+<link rel="manifest" href="./manifest.webmanifest"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-title" content="TCS"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
@@ -634,7 +634,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
 
 <!-- 인증 화면 -->
 <div id="splash">
-  <img src="https://koreayjk.github.io/imessenger/tcs_icon-192.png" alt="TCS" style="width:72px;height:72px;border-radius:18px"/>
+  <img src="./tcs_icon-192.png" alt="TCS" style="width:72px;height:72px;border-radius:18px"/>
   <div class="ring"></div>
 </div>
 
@@ -643,7 +643,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
     <!-- 왼쪽 브랜드 -->
     <div class="auth-left">
       <div style="display:flex;flex-direction:column;align-items:center;text-align:center">
-        <img src="https://koreayjk.github.io/imessenger/tcs_logo.png" alt="TCS 로고"
+        <img src="./tcs_logo.png" alt="TCS 로고"
           id="auth-logo-img"
           style="width:160px;margin-bottom:16px;border-radius:16px;box-shadow:0 8px 32px rgba(0,0,0,.3)"
           onerror="document.getElementById('auth-logo-img').style.display='none';document.getElementById('auth-logo-txt').style.display='block'"/>
@@ -730,7 +730,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
 <div id="community-select-screen" style="display:none;position:fixed;inset:0;z-index:150;background:var(--bg);flex-direction:column;align-items:center;justify-content:center;padding:24px">
   <div style="max-width:640px;width:100%">
     <div style="text-align:center;margin-bottom:36px">
-      <img src="https://koreayjk.github.io/imessenger/tcs_logo.png" alt="TCS"
+      <img src="./tcs_logo.png" alt="TCS"
         style="width:72px;height:72px;object-fit:contain;margin-bottom:14px;opacity:.85"
         onerror="this.style.display='none'"/>
       <div style="font-size:26px;font-weight:700;color:var(--adeep);margin-bottom:6px" data-ko="공동체 선택" data-en="Select Community">공동체 선택</div>
@@ -747,7 +747,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
   <!-- 1) 아이콘 사이드바 -->
   <div id="sidebar">
     <div class="logo">
-      <img src="https://koreayjk.github.io/imessenger/tcs_logo.png" alt="TCS" id="sidebar-logo-img"
+      <img src="./tcs_logo.png" alt="TCS" id="sidebar-logo-img"
         style="width:40px;height:40px;object-fit:cover;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.3)"
         onerror="document.getElementById('sidebar-logo-img').style.display='none';document.getElementById('sidebar-logo-txt').style.display='flex'"/>
       <div id="sidebar-logo-txt" style="display:none;width:38px;height:38px;border-radius:10px;background:rgba(255,255,255,.2);align-items:center;justify-content:center;font-size:13px;font-weight:800;color:white">TCS</div>
@@ -4969,10 +4969,76 @@ async function renderProfilePage() {
       </button>
       <!-- 로그아웃 (특히 모바일에서 사이드바가 없어 여기서 접근) -->
       <button onclick="doLogout()"
-        style="width:100%;height:46px;border-radius:13px;border:1.5px solid #FFD6D6;background:#FFF0F0;color:var(--rose);font:700 15px var(--font);cursor:pointer;margin-bottom:24px;display:flex;align-items:center;justify-content:center;gap:8px">
+        style="width:100%;height:46px;border-radius:13px;border:1.5px solid #FFD6D6;background:#FFF0F0;color:var(--rose);font:700 15px var(--font);cursor:pointer;margin-bottom:20px;display:flex;align-items:center;justify-content:center;gap:8px">
         🚪 ${t('로그아웃','Log Out')}
       </button>
+
+      <!-- 계정 삭제 — 눌러서 여는 접이식. 실수로 누르기 어렵게 맨 아래 둔다 -->
+      <details style="margin-bottom:24px;border:1px solid var(--border);border-radius:13px;background:var(--s2);overflow:hidden">
+        <summary style="padding:13px 16px;cursor:pointer;font:600 13.5px var(--font);color:var(--ink3);list-style:none">
+          ${t('계정 삭제','Delete account')}
+        </summary>
+        <div style="padding:0 16px 16px;border-top:1px solid var(--border)">
+          <p style="margin:13px 0 8px;font-size:13px;line-height:1.7;color:var(--ink2)">
+            ${t('계정을 지우면 되돌릴 수 없습니다. 다음이 삭제됩니다.',
+                'Deleting your account cannot be undone. The following will be removed:')}
+          </p>
+          <ul style="margin:0 0 10px;padding-left:18px;font-size:12.5px;line-height:1.8;color:var(--ink3)">
+            <li>${t('로그인 계정과 프로필 정보','Your login and profile')}</li>
+            <li>${t('보낸 메시지와 첨부파일','Messages you sent and their attachments')}</li>
+            <li>${t('노트 · 할 일 · 기도제목 · 목표','Notes, to-dos, prayers and goals')}</li>
+          </ul>
+          <p style="margin:0 0 12px;font-size:12.5px;line-height:1.7;color:var(--ink3)">
+            ${t('출결 · 평가 · 상담 · 보건 · 학비처럼 공동체가 보존하는 기록은 남고, 그 기록에서 이름 등 신원 정보만 지워집니다.',
+                'Records the community must keep (attendance, assessments, counseling, health, tuition) remain, but your identifying details are removed from them.')}
+            <a href="./delete-account.html" target="_blank" rel="noopener" style="color:var(--accent);font-weight:600">${t('자세히','Details')}</a>
+          </p>
+          <button onclick="openDeleteAccount()"
+            style="width:100%;height:42px;border-radius:11px;border:1.5px solid var(--rose);background:transparent;color:var(--rose);font:700 13.5px var(--font);cursor:pointer">
+            ${t('계정 삭제 진행','Continue to delete')}
+          </button>
+        </div>
+      </details>
     </div>`;
+}
+
+// ── 계정 삭제 ────────────────────────────────────────────────────
+//  구글 플레이는 로그인이 있는 앱에 '앱 안에서 지우는 길'을 요구합니다.
+//  실수로 지우는 일이 없도록 정해진 낱말을 직접 치게 합니다.
+function openDeleteAccount() {
+  const want = t('삭제', 'DELETE');
+  const typed = prompt(
+    t(`정말 계정을 삭제할까요?\n\n되돌릴 수 없습니다.\n계속하려면 아래에 "${want}" 라고 입력하세요.`,
+      `Delete your account?\n\nThis cannot be undone.\nType "${want}" below to continue.`)
+  );
+  if (typed === null) return;                       // 취소
+  if (typed.trim() !== want) {
+    showUploadToast(t('입력한 낱말이 달라서 취소했어요', 'The word did not match — cancelled'));
+    return;
+  }
+  runDeleteAccount();
+}
+
+async function runDeleteAccount() {
+  showUploadToast(t('계정을 삭제하는 중…', 'Deleting your account…'));
+  try {
+    const { data, error } = await sb.functions.invoke('delete-account', {
+      body: { confirm: 'DELETE' },
+    });
+    // 함수가 4xx/5xx 를 주면 error 에 본문이 안 담기는 경우가 있어 둘 다 본다
+    const msg = (data && data.error) || (error && (error.message || String(error)));
+    if (!data || !data.ok) {
+      alert(t('삭제하지 못했습니다.\n\n', 'Could not delete your account.\n\n') + (msg || ''));
+      return;
+    }
+    alert(data.partial
+      ? t('기록이 삭제되었고 로그인이 차단되었습니다.', 'Your records were deleted and login is disabled.')
+      : t('계정이 삭제되었습니다. 이용해 주셔서 고맙습니다.', 'Your account has been deleted. Thank you.'));
+    await sb.auth.signOut().catch(() => {});
+    location.reload();
+  } catch (e) {
+    alert(t('삭제하지 못했습니다.\n\n', 'Could not delete your account.\n\n') + (e?.message || e));
+  }
 }
 
 async function saveProfile() {

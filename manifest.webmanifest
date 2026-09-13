@@ -1,13 +1,22 @@
 {
+  "id": "/",
   "name": "TCS — Total Care System",
   "short_name": "TCS",
-  "start_url": "https://koreayjk.github.io/imessenger/",
-  "scope": "https://koreayjk.github.io/imessenger/",
+  "description": "공동체·학사·재정을 한곳에서 돌보는 통합 관리 시스템",
+  "lang": "ko",
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui", "browser"],
+  "orientation": "any",
   "background_color": "#ffffff",
   "theme_color": "#1d3a5f",
+  "categories": ["productivity", "education", "business"],
   "icons": [
-    { "src": "https://koreayjk.github.io/imessenger/tcs_icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "https://koreayjk.github.io/imessenger/tcs_icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+    { "src": "./tcs_icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./tcs_icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "./tcs_icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "./tcs_icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }
