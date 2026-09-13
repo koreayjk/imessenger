@@ -15053,11 +15053,35 @@ async function renderPublicNewsletter(id) {
 // ════════════════════════════════════════════════════════════════════
 //  학사 — 증명서 발급 (새 DB 불필요: 학생·기록·기관 데이터 재사용)
 // ════════════════════════════════════════════════════════════════════
+// 증명서는 앱 언어와 따로 논다 — 한국에서도 영문 증명서가 필요하기 때문에
+// 두 언어를 모두 들고 있다가 발급할 때 고른다. (t() 로 미리 굳히면 안 됨)
+//   label : 드롭다운 · 증서 제목
+//   sub   : 제목 아래 작게 놓는 반대 언어 표기
+//   stmt  : 본문 문구
 const CERT_TYPES = {
-  enroll: { label:t('재학증명서','Certificate of Enrollment'), stmt:t('위 학생은 본교에 재학 중임을 증명합니다.','This certifies that the above student is currently enrolled at this school.') },
-  grad:   { label:t('졸업증명서','Certificate of Graduation'), stmt:t('위 학생은 본교 소정의 전 과정을 이수하고 졸업하였음을 증명합니다.','This certifies that the above student completed all prescribed courses and graduated from this school.') },
-  custom: { label:t('직접입력','Custom'),   stmt:'' },
+  enroll: {
+    ko: { label:'재학증명서', sub:'CERTIFICATE OF ENROLLMENT',
+          stmt:'위 학생은 본교에 재학 중임을 증명합니다.' },
+    en: { label:'Certificate of Enrollment', sub:'재 학 증 명 서',
+          stmt:'This certifies that the above student is currently enrolled at this school.' },
+  },
+  grad: {
+    ko: { label:'졸업증명서', sub:'CERTIFICATE OF GRADUATION',
+          stmt:'위 학생은 본교 소정의 전 과정을 이수하고 졸업하였음을 증명합니다.' },
+    en: { label:'Certificate of Graduation', sub:'졸 업 증 명 서',
+          stmt:'This certifies that the above student completed all prescribed courses and graduated from this school.' },
+  },
+  // 직접입력은 드롭다운 이름과 증서 제목이 달라야 한다 ('직접입력'이 찍히면 안 됨)
+  custom: {
+    ko: { label:'직접입력', docLabel:'증 명 서', sub:'CERTIFICATE', stmt:'' },
+    en: { label:'Custom',   docLabel:'Certificate', sub:'증 명 서',  stmt:'' },
+  },
 };
+// 증서에 쓸 언어 (앱 언어와 별개). 기본값은 앱 언어를 따라간다.
+let certLang = (APP_LANG === 'en') ? 'en' : 'ko';
+const certT = (ko, en) => (certLang === 'en' ? en : ko);
+const certSpec = (type) => (CERT_TYPES[type] || CERT_TYPES.enroll)[certLang];
+
 let certStudentId = '';
 let certPrefill = { name:'', birth:'', school:'' };
 
@@ -15089,7 +15113,7 @@ function renderCert() {
   const main = document.getElementById('school-main');
   const s = schoolStudents.find(x => x.id === certStudentId);
   const studentOpts = schoolStudents.map(x => `<option value="${x.id}" ${x.id===certStudentId?'selected':''}>${x.name}${x.grade?` (${x.grade})`:''}</option>`).join('');
-  const typeOpts = Object.entries(CERT_TYPES).map(([k,v]) => `<option value="${k}">${v.label}</option>`).join('');
+  const typeOpts = Object.entries(CERT_TYPES).map(([k,v]) => `<option value="${k}">${v[certLang].label}</option>`).join('');
   const orgOpts = tcsOrgs.length ? tcsOrgs.map(o => `<option value="${o.id}" ${o.id===tcsSelectedOrgId?'selected':''}>${o.name}</option>`).join('')
     : `<option value="">${t('기관 미등록','No organization registered')}</option>`;
   const inp = 'height:38px;padding:0 12px;border:1px solid var(--border);border-radius:9px;font:600 13px var(--font);color:var(--ink);background:var(--surface)';
@@ -15099,6 +15123,14 @@ function renderCert() {
     ${schoolStudents.length ? '' : `<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px">${t('등록된 학생이 없어요.','No students registered.')}</div>`}
     ${schoolStudents.length ? `
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border)">
+        <span style="${lbl};margin:0">${t('증서 언어','Certificate language')}</span>
+        <div style="display:flex;gap:6px">
+          <button id="cert-lang-ko" onclick="certSetLang('ko')" style="${certLangBtnCss(certLang==='ko')}">${t('한국어','Korean')}</button>
+          <button id="cert-lang-en" onclick="certSetLang('en')" style="${certLangBtnCss(certLang==='en')}">English</button>
+        </div>
+        <span style="font-size:11.5px;color:var(--ink3)">${t('앱 언어와 상관없이 고를 수 있어요','Independent of the app language')}</span>
+      </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
         <div><label style="${lbl}">${t('학생','Student')}</label><select id="cert-student" onchange="certChangeStudent(this.value)" style="${inp};width:100%">${studentOpts}</select></div>
         <div><label style="${lbl}">${t('증명서 종류','Certificate type')}</label><select id="cert-type" onchange="certOnType(this.value)" style="${inp};width:100%">${typeOpts}</select></div>
@@ -15126,6 +15158,36 @@ function renderCert() {
   </div>`;
 }
 
+function certLangBtnCss(on) {
+  return `height:32px;padding:0 14px;border-radius:9px;cursor:pointer;font:700 12.5px var(--font);`
+    + (on ? 'border:1.5px solid #1d3a5f;background:#1d3a5f;color:#fff'
+          : 'border:1.5px solid var(--border);background:var(--surface);color:var(--ink2)');
+}
+
+// 증서 언어 전환. renderCert() 를 다시 부르면 입력하던 값이 전부 초기화되므로
+// 바뀌어야 하는 것(버튼 · 종류 이름 · 기본 발급사유)만 제자리에서 손본다.
+function certSetLang(lang) {
+  const prev = certLang;
+  certLang = (lang === 'en') ? 'en' : 'ko';
+  if (prev === certLang) return;
+
+  ['ko','en'].forEach(k => {
+    const b = document.getElementById('cert-lang-' + k);
+    if (b) b.style.cssText = certLangBtnCss(k === certLang);
+  });
+  const sel = document.getElementById('cert-type');
+  if (sel) Array.from(sel.options).forEach(o => {
+    const spec = CERT_TYPES[o.value];
+    if (spec) o.textContent = spec[certLang].label;
+  });
+  // 발급 사유를 손대지 않았다면 같이 번역해 준다
+  const reason = document.getElementById('cert-reason');
+  if (reason) {
+    const was = (prev === 'en') ? 'For submission' : '제출용';
+    if (reason.value.trim() === was) reason.value = certT('제출용','For submission');
+  }
+}
+
 function certChangeStudent(id) { certLoadStudent(id).then(renderCert); }
 function certOnType(v) {
   document.getElementById('cert-custom-wrap').style.display = v === 'custom' ? 'block' : 'none';
@@ -15143,50 +15205,183 @@ function printCertificate() {
   const orgId = document.getElementById('cert-org').value;
   const rep = document.getElementById('cert-rep').value.trim();
   const org = tcsOrgs.find(o => o.id === orgId);
-  if (!name) { showUploadToast(window.t('성명을 입력하세요','Enter a name')); return; }
-  const t = CERT_TYPES[type] || CERT_TYPES.enroll;
-  const stmt = type === 'custom' ? (document.getElementById('cert-custom').value.trim() || window.t('위 사실을 증명합니다.','This certifies the above facts.')) : t.stmt;
-  const dro = (label, value) => value ? `<tr><th>${label}</th><td>${escHtml(value)}</td></tr>` : '';
-  const dateKo = (() => { const p = date.split('-'); return p.length===3 ? window.t(`${p[0]}년 ${parseInt(p[1])}월 ${parseInt(p[2])}일`, `${TUI_MON_EN[parseInt(p[1])]} ${parseInt(p[2])}, ${p[0]}`) : date; })();
+  if (!name) { showUploadToast(t('성명을 입력하세요','Enter a name')); return; }
+
+  const ct = certSpec(type);                 // 앱 언어가 아니라 '증서 언어'를 따른다
+  const docLabel = ct.docLabel || ct.label;
+  const stmt = type === 'custom'
+    ? (document.getElementById('cert-custom').value.trim() || certT('위 사실을 증명합니다.','This certifies the above facts.'))
+    : ct.stmt;
+
+  // 넓은 자간·블랙레터는 라틴 문자에만 쓴다 (한글에는 대응 글꼴이 없다)
+  const lat = (v) => /[가-힣]/.test(String(v || '')) ? '' : ' lat';
+  // 인쇄창은 about:blank 라 상대경로가 안 먹는다. 지금 주소 기준으로 절대경로를 만든다.
+  // 저장소에 직접 싣는 이유 — 구글 폰트에 기대면 학교 망이 막혔을 때
+  // 증서가 말없이 기본 세리프로 인쇄된다.
+  let certFontUrl = '';
+  try { certFontUrl = new URL('fonts/UnifrakturMaguntia.woff2', location.href).href; } catch (_) {}
+
+  // 한 줄씩 — 값이 없는 항목은 아예 빼서 빈 칸이 남지 않게
+  const row = (label, value) => value
+    ? `<div class="c-row"><span class="c-lb${lat(label)}">${label}</span>`
+      + `<span class="c-vl${lat(value)}">${escHtml(value)}</span></div>` : '';
+  // 2008-04-17 처럼 들어온 값을 사람이 읽는 형태로. 형식이 다르면 그대로 둔다.
+  const ymdText = (v) => {
+    const p = String(v || '').split('-');
+    return (p.length === 3 && p[0].length === 4)
+      ? certT(`${p[0]}년 ${parseInt(p[1])}월 ${parseInt(p[2])}일`, `${TUI_MON_EN[parseInt(p[1])]} ${parseInt(p[2])}, ${p[0]}`)
+      : String(v || '');
+  };
+  const dateKo = ymdText(date);
+  const orgName = org ? org.name : (school || '');
+  // 증서는 한 장이어야 한다. 본문이 길면 글자를 낮춰 한 장에 들어오게.
+  const stmtClass = stmt.length > 150 ? ' s3' : (stmt.length > 65 ? ' s2' : '');
 
   openPrintDoc({
-    title: `${t.label} — ${name}`,
-    docTitle: t.label,
+    title: `${docLabel} — ${name}`,
     serif: true,
-    org, // 발급 기관을 그대로 넘김
-    letterhead: false,          // 증명서는 기관 명의가 문서 아래에 오는 양식
-    footerNote: `${t.label}${no ? ' · ' + window.t('제 ','No. ') + no + window.t(' 호','') : ''}`,
+    org,
+    letterhead: false,   // 증서는 기관 명의가 맨 아래에 온다
+    margin: '11mm',      // 테두리를 한 장 가득 두르므로 여백은 인쇄 가능 범위까지만
     body: `
-      <div class="doc-no">${window.t('제','No.')} ${escHtml(no||'____')}${window.t(' 호','')}</div>
-      <table class="info">
-        ${dro(window.t('성 명','Name'), name)}
-        ${dro(window.t('생년월일','Date of Birth'), birth)}
-        ${dro(window.t('학 년','Grade'), grade)}
-        ${dro(window.t('학 교','School'), school)}
-      </table>
-      <div class="stmt">${escHtml(stmt)}</div>
-      ${reason ? `<div class="reason">${window.t('— 발급 사유: ','— Purpose: ')}${escHtml(reason)} —</div>` : ''}
-      <div class="date">${escHtml(dateKo)}</div>
-      <div class="org">
-        ${org && org.logo_url ? `<img src="${org.logo_url}" onerror="this.remove()"/>` : ''}
-        <div class="name">${escHtml(org ? org.name : school || '')}</div>
-        ${rep ? `<div class="rep">${escHtml(rep)} <span class="pseal">印</span></div>` : ''}
+      <div class="cf">
+        ${org && org.logo_url ? `<img class="c-wm" src="${imAttr(org.logo_url)}" onerror="this.remove()"/>` : ''}
+        <div class="c-in">
+          <i class="c-cn tl"></i><i class="c-cn tr"></i><i class="c-cn bl"></i><i class="c-cn br"></i>
+
+          <div class="c-no">${certT('제','No.')} ${escHtml(no || '____')}${certT(' 호','')}</div>
+
+          <header class="c-head">
+            <h1 class="${lat(docLabel).trim()}">${escHtml(docLabel)}</h1>
+            ${ct.sub ? `<div class="c-sub${lat(ct.sub)}">${escHtml(ct.sub)}</div>` : ''}
+            <div class="c-orn"><i></i><b>&#10022;</b><i></i></div>
+          </header>
+
+          <div class="c-mid">
+          <section class="c-info">
+            ${row(certT('성 명','Name'), name)}
+            ${row(certT('생년월일','Date of Birth'), ymdText(birth))}
+            ${row(certT('학 년','Grade'), grade)}
+            ${row(certT('학 교','School'), school)}
+          </section>
+
+          <section class="c-body">
+            <p class="c-stmt${stmtClass}${lat(stmt)}">${escHtml(stmt)}</p>
+            ${reason ? `<p class="c-reason">${certT('발급 사유','Purpose')} · ${escHtml(reason)}</p>` : ''}
+          </section>
+          </div>
+
+          <footer class="c-foot">
+            <div class="c-date${lat(dateKo)}">${escHtml(dateKo)}</div>
+            ${org && org.logo_url ? `<img class="c-logo" src="${imAttr(org.logo_url)}" onerror="this.remove()"/>` : ''}
+            <div class="c-org${lat(orgName)}">${escHtml(orgName)}</div>
+            ${rep ? `<div class="c-rep${lat(rep)}">${escHtml(rep)}<span class="c-seal">${certT('印','SEAL')}</span></div>` : ''}
+          </footer>
+        </div>
       </div>`,
-    margin: '26mm 24mm 22mm',
     extraCss: `
-      .pt { margin: 2mm 0 9mm; }
-      .pt h1 { border-bottom: 3px solid #1d3a5f; padding-bottom: 14px; display: block; }
-      .doc-no { font-size: 9.5pt; color: #5b6577; }
-      table.info { margin: 0 auto 9mm; }
-      table.info th { width: 120px; font-size: 11.5pt; padding: 9px 12px; }
-      table.info td { font-size: 11.5pt; padding: 9px 14px; }
-      .stmt { font-size: 13pt; line-height: 2.15; text-align: center; margin: 11mm 0; }
-      .reason { font-size: 10.5pt; color: #40506b; text-align: center; margin-bottom: 12mm; }
-      .date { font-size: 12pt; text-align: center; margin: 10mm 0 8mm; letter-spacing: .12em; }
-      .org { text-align: center; margin-top: 6mm; }
-      .org img { height: 50px; max-width: 190px; object-fit: contain; display: block; margin: 0 auto 9px; }
-      .org .name { font-size: 16pt; font-weight: 800; color: #1d3a5f; letter-spacing: .3em; text-indent: .3em; }
-      .org .rep { font-size: 12pt; margin-top: 12px; letter-spacing: .1em; }`,
+      ${certFontUrl ? `@font-face {
+        font-family: 'TCS Blackletter';
+        src: url('${certFontUrl}') format('woff2');
+        font-weight: 400; font-style: normal; font-display: block;
+      }` : ''}
+      /* 증서는 공통 바닥글(발급일 줄)을 쓰지 않는다 — 발급일이 본문 안에 있고,
+         테두리 밖에 한 줄이 더 붙으면 종이가 두 장으로 넘어간다 */
+      .pf { display: none !important; }
+
+      /* ── 한 장을 가득 채우는 이중 테두리 ──
+         A4 297mm 에서 @page 여백 11mm 씩을 빼면 275mm.
+         273mm 로 잡아 반올림 때문에 두 장이 되는 일을 막는다. */
+      .cf { position: relative; min-height: 273mm; padding: 4.5mm;
+            border: 1px solid #b9a06a; background: #fff; }
+      .c-in { position: relative; min-height: 264mm; height: 100%;
+              border: 2.5px solid #1d3a5f; padding: 16mm 15mm 13mm;
+              display: flex; flex-direction: column; }
+
+      /* 모서리 장식 — 안쪽 테두리 네 귀에 짧은 금색 갈고리 */
+      .c-cn { position: absolute; width: 7mm; height: 7mm; }
+      .c-cn.tl { top: 5mm; left: 5mm; border-top: 1px solid #b9a06a; border-left: 1px solid #b9a06a; }
+      .c-cn.tr { top: 5mm; right: 5mm; border-top: 1px solid #b9a06a; border-right: 1px solid #b9a06a; }
+      .c-cn.bl { bottom: 5mm; left: 5mm; border-bottom: 1px solid #b9a06a; border-left: 1px solid #b9a06a; }
+      .c-cn.br { bottom: 5mm; right: 5mm; border-bottom: 1px solid #b9a06a; border-right: 1px solid #b9a06a; }
+
+      /* 배경 로고 — 아주 옅게. 진하면 본문 글씨를 잡아먹는다 */
+      .c-wm { position: absolute; top: 50%; left: 50%; width: 105mm;
+              transform: translate(-50%, -50%); opacity: .045; z-index: 0; }
+
+      .c-no { position: absolute; top: 8.5mm; right: 16mm;
+              font-size: 9pt; color: #7b8496; letter-spacing: .06em; }
+
+      /* ── 제목 ── */
+      .c-head { text-align: center; position: relative; z-index: 1; }
+      .c-head h1 { font-size: 33pt; font-weight: 700; color: #14181f;
+                   letter-spacing: .42em; text-indent: .42em; line-height: 1.25; margin: 0; }
+      .c-sub { margin-top: 7mm; font-size: 9.5pt; color: #8b7440;
+               letter-spacing: .34em; text-indent: .34em; }
+      /* 라틴 문자는 자간을 줄이고, 증서 특유의 블랙레터를 쓴다.
+         (한글에는 대응하는 글꼴이 없어 명조 그대로 둔다)
+         우리가 실은 글꼴을 맨 앞에 둔다 — 설치 글꼴을 앞세우면 기기마다 모양이 달라지고,
+         리눅스는 없는 글꼴 이름을 아무 세리프로 대체해 버려 블랙레터가 사라진다 */
+      .c-head h1.lat { font-family: 'TCS Blackletter','Old English Text MT',
+                       'Engravers Old English BT','Cloister Black',serif;
+                       font-size: 34pt; font-weight: 400; letter-spacing: .02em;
+                       text-indent: 0; line-height: 1.3; }
+      /* 라틴 본문 — 명조의 라틴 글자는 볼품없다. 어디에나 있는 세리프로 바꾼다 */
+      .c-vl.lat, .c-stmt.lat, .c-date.lat, .c-org.lat, .c-rep.lat, .c-sub.lat, .c-lb.lat {
+        font-family: Georgia,'Times New Roman','Nanum Myeongjo',serif; }
+      .c-stmt.lat { font-size: 13.5pt; }
+      .c-stmt.lat.s2 { font-size: 12.5pt; }
+      .c-stmt.lat.s3 { font-size: 11.5pt; }
+      .c-sub.lat { letter-spacing: .28em; text-indent: .28em; }
+      .c-date.lat { letter-spacing: .09em; text-indent: 0; }
+      .c-org.lat { letter-spacing: .1em; text-indent: 0; }
+      .c-rep.lat { letter-spacing: .05em; }
+      .c-orn { display: flex; align-items: center; justify-content: center;
+               gap: 9px; margin-top: 7mm; }
+      .c-orn i { display: block; width: 26mm; height: 1px; background: #b9a06a; }
+      .c-orn b { color: #b9a06a; font-size: 8pt; line-height: 1; }
+
+      /* ── 인적사항 — 표 대신 조용한 밑줄 ── */
+      .c-mid { flex: 1; display: flex; flex-direction: column; justify-content: center;
+               position: relative; z-index: 1; }
+      .c-info { width: 126mm; margin: 0 auto; }
+      .c-row { display: flex; align-items: baseline; gap: 9mm; padding: 3.4mm 0;
+               border-bottom: 1px solid #e4e8ef; }
+      .c-row:last-child { border-bottom: none; }
+      .c-lb { flex: none; width: 33mm; font-size: 10pt; color: #6b7688;
+              letter-spacing: .12em; line-height: 1.5; }
+      .c-vl { flex: 1; font-size: 13.5pt; color: #14181f; letter-spacing: .04em;
+              word-break: keep-all; overflow-wrap: break-word; }
+
+      /* ── 본문 — 가운데 여백을 넉넉히 먹여 위아래 균형을 잡는다 ── */
+      .c-body { display: flex; flex-direction: column; align-items: center;
+                margin-top: 15mm; padding: 0 4mm; }
+      /* 한글은 keep-all 이 없으면 낱말 한가운데서 잘린다 ('증명합 / 니다') */
+      .c-stmt { font-size: 13pt; line-height: 2.35; text-align: center;
+                letter-spacing: .03em; color: #14181f; max-width: 132mm; margin: 0;
+                word-break: keep-all; overflow-wrap: break-word; }
+      .c-stmt.s2 { font-size: 12pt; line-height: 2.1;  max-width: 138mm; }
+      .c-stmt.s3 { font-size: 11pt; line-height: 1.95; max-width: 142mm; text-align: justify;
+                   text-align-last: center; }
+      .c-reason { margin: 8mm 0 0; font-size: 10pt; color: #6b7688; letter-spacing: .1em; }
+
+      /* ── 명의 ── */
+      .c-foot { text-align: center; position: relative; z-index: 1; }
+      .c-date { font-size: 12pt; letter-spacing: .22em; text-indent: .22em;
+                color: #14181f; margin-bottom: 11mm; }
+      .c-logo { height: 15mm; max-width: 55mm; object-fit: contain;
+                display: block; margin: 0 auto 5mm; }
+      .c-org { font-size: 19pt; font-weight: 700; color: #1d3a5f;
+               letter-spacing: .32em; text-indent: .32em;
+               word-break: keep-all; overflow-wrap: break-word; line-height: 1.45; }
+      .c-rep { margin-top: 6mm; font-size: 12.5pt; letter-spacing: .14em;
+               display: inline-flex; align-items: center; }
+      .c-seal { flex: none; width: 13mm; height: 13mm; margin-left: 4mm;
+                border: 1.5px solid #b3392c; border-radius: 50%;
+                color: #b3392c; font-size: 8.5pt; font-weight: 700;
+                letter-spacing: 0; display: inline-flex;
+                align-items: center; justify-content: center; opacity: .88; }
+      .c-rep { word-break: keep-all; }`,
   });
 }
 
