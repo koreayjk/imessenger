@@ -8494,7 +8494,7 @@ async function loadGcalInfo() {
     if (data && data.serviceAccount) el.value = data.serviceAccount;
     else if (data && !data.hasSecret) el.placeholder = '서버에 서비스 계정 키가 없습니다 (관리자 문의)';
     else el.placeholder = '주소를 불러오지 못했습니다';
-  } catch (_) { el.placeholder = 'gcal-sync 함수가 배포되지 않았습니다'; }
+  } catch (e) { el.placeholder = (await edgeErrorText(e, null)) || 'gcal-sync 함수가 배포되지 않았습니다'; }
 }
 
 function copyGcalSa() {
@@ -8520,9 +8520,8 @@ async function createGcal() {
       body: { action: 'create', force: true,
               timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone },
     });
-    const msg = (data && data.error) || (error && (error.message || String(error)));
     if (!data || !data.ok) {
-      if (box) box.innerHTML = `<span style="color:#b91c1c">❌ ${escHtml(msg || '만들지 못했습니다')}</span>`;
+      if (box) box.innerHTML = `<span style="color:#b91c1c">❌ ${escHtml(await edgeErrorText(error, data))}</span>`;
       return;
     }
     if (idEl) idEl.value = data.calendarId;
@@ -8542,6 +8541,32 @@ async function createGcal() {
   }
 }
 
+// Edge Function 오류의 '진짜 내용' 을 꺼낸다.
+//  supabase-js 는 함수가 4xx/5xx 를 주면 error.message 를
+//  "Edge Function returned a non-2xx status code" 로만 준다.
+//  서버가 보낸 한글 안내는 error.context(Response) 안에 들어 있어서,
+//  그걸 읽지 않으면 사용자는 무엇이 잘못됐는지 영영 알 수 없다.
+async function edgeErrorText(error, data) {
+  if (data && data.error) return String(data.error);
+  if (!error) return '';
+  try {
+    const ctx = error.context;
+    if (ctx && typeof ctx.json === 'function') {
+      const body = await ctx.clone().json().catch(() => null);
+      if (body && (body.error || body.message)) return String(body.error || body.message);
+    }
+    if (ctx && typeof ctx.text === 'function') {
+      const txt = await ctx.clone().text().catch(() => '');
+      if (txt) return txt.slice(0, 300);
+    }
+    if (ctx && ctx.status === 404) return '함수를 찾을 수 없습니다. gcal-sync 를 배포했는지 확인해 주세요.';
+  } catch (_) { /* 본문을 못 읽으면 아래 기본 문구 */ }
+  const m = String(error.message || error);
+  if (/non-2xx/i.test(m)) return '서버가 오류를 돌려줬습니다. 함수 배포와 시크릿을 확인해 주세요.';
+  if (/Failed to (send|fetch)/i.test(m)) return '함수에 연결하지 못했습니다. gcal-sync 가 배포되어 있는지 확인해 주세요.';
+  return m;
+}
+
 // 캘린더를 자기 구글 앱에서도 보는 사람들.
 //  동기화는 서비스 계정이 하므로, 여기 없는 관리자도 TCS 안에서는 다 본다.
 async function renderGcalAcl() {
@@ -8552,7 +8577,7 @@ async function renderGcalAcl() {
   try {
     const res = await sb.functions.invoke('gcal-sync', { body: { action: 'acl' } });
     data = res.data;
-    if (!data || data.error) throw new Error((data && data.error) || '불러오지 못했습니다');
+    if (!data || data.error) throw new Error(await edgeErrorText(res.error, data));
   } catch (e) {
     box.innerHTML = `<div style="font-size:12px;color:var(--ink3)">${escHtml(e?.message || '권한 목록을 불러오지 못했습니다')}</div>`;
     return;
@@ -8599,10 +8624,10 @@ async function gcalShare(email) {
   if (!target) { showUploadToast('이메일을 넣어주세요'); return; }
   showUploadToast('권한을 주는 중…');
   try {
-    const { data } = await sb.functions.invoke('gcal-sync', {
+    const { data, error } = await sb.functions.invoke('gcal-sync', {
       body: { action: 'share', email: target, role: 'writer' },
     });
-    if (!data || !data.ok) { showUploadToast('실패: ' + ((data && data.error) || '')); return; }
+    if (!data || !data.ok) { alert('권한을 주지 못했습니다.\n\n' + (await edgeErrorText(error, data))); return; }
     if ((data.failed || []).length) { showUploadToast(`${data.failed.join(', ')} 는 실패했어요 (구글 계정이 맞는지 확인해 주세요)`); }
     else { showUploadToast('✅ 권한을 줬어요. 초대 메일이 갑니다'); }
     if (el) el.value = '';
@@ -8613,8 +8638,8 @@ async function gcalShare(email) {
 async function gcalUnshare(ruleId, email) {
   if (!confirm(`${email} 의 구글 캘린더 권한을 거둘까요?\n\nTCS 안에서는 그대로 일정을 봅니다.`)) return;
   try {
-    const { data } = await sb.functions.invoke('gcal-sync', { body: { action: 'unshare', ruleId } });
-    if (!data || !data.ok) { showUploadToast('실패: ' + ((data && data.error) || '')); return; }
+    const { data, error } = await sb.functions.invoke('gcal-sync', { body: { action: 'unshare', ruleId } });
+    if (!data || !data.ok) { alert('권한을 거두지 못했습니다.\n\n' + (await edgeErrorText(error, data))); return; }
     showUploadToast('권한을 거뒀어요');
     renderGcalAcl();
   } catch (e) { showUploadToast('실패: ' + (e?.message || e)); }
@@ -8635,10 +8660,9 @@ async function checkGcal() {
     const { data, error } = await sb.functions.invoke('gcal-sync', {
       body: { action: 'check', timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone },
     });
-    const msg = (data && data.error) || (error && (error.message || String(error)));
     if (data && data.needsCalendar) { box.innerHTML = `<span style="color:#b45309">${escHtml(data.message)}</span>`; return; }
     if (!data || !data.ok) {
-      box.innerHTML = `<span style="color:#b91c1c">❌ ${escHtml(msg || '연결하지 못했습니다')}</span>`;
+      box.innerHTML = `<span style="color:#b91c1c">❌ ${escHtml(await edgeErrorText(error, data))}</span>`;
       return;
     }
     box.innerHTML = `<span style="color:#15803d">✅ 연결됨 — <b>${escHtml(data.calendarName || data.calendarId)}</b></span>`;
@@ -8655,9 +8679,13 @@ async function syncGoogleCalendar() {
     const { data, error } = await sb.functions.invoke('gcal-sync', {
       body: { action: 'sync', timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone },
     });
-    const msg = (data && data.error) || (error && (error.message || String(error)));
-    if (data && data.needsCalendar) { showUploadToast(data.message); return; }
-    if (!data || !data.ok) { showUploadToast(t('동기화 실패: ','Sync failed: ') + (msg || '')); return; }
+    if (data && data.needsCalendar) { alert(data.message); return; }
+    if (!data || !data.ok) {
+      // 토스트는 금방 사라져서 놓치기 쉽다. 실패는 알림창으로.
+      alert(t('구글 캘린더 동기화에 실패했습니다.\n\n','Google Calendar sync failed.\n\n')
+            + (await edgeErrorText(error, data)));
+      return;
+    }
     const r = data.report || {};
     showUploadToast(t(
       `✅ 구글로 ${(r.pushed||0) + (r.updated||0)}건 보내고 ${r.pulled||0}건 가져왔어요`,
