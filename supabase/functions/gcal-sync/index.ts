@@ -209,7 +209,7 @@ Deno.serve(async (req) => {
     });
   }
 
-  if (!calId && action !== "create") {
+  if (!calId && !["create", "list", "select"].includes(action)) {
     return json({ needsCalendar: true, communityName: comm?.name || "",
       message: "연동할 구글 캘린더가 없습니다. '캘린더 만들기' 를 누르거나, 쓰던 캘린더의 ID 를 넣어주세요." });
   }
@@ -217,6 +217,52 @@ Deno.serve(async (req) => {
   let token: string;
   try { token = await getAccessToken(); }
   catch (e) { return json({ error: String((e as Error).message) }, 500); }
+
+  // ── 쓸 수 있는 캘린더 목록 ─────────────────────────────────────
+  //   서비스 계정에 공유된 캘린더를 전부 보여 준다.
+  //   캘린더 ID 를 구글 설정에서 찾아 옮겨 적게 하면 대부분 여기서 막힌다.
+  if (action === "list") {
+    try {
+      const out: any[] = [];
+      let pageToken: string | undefined;
+      do {
+        const q = new URLSearchParams({ maxResults: "250", showHidden: "true" });
+        if (pageToken) q.set("pageToken", pageToken);
+        const page = await gcal(token, `/users/me/calendarList?${q}`);
+        for (const c of page.items ?? []) {
+          out.push({
+            id: c.id,
+            name: c.summaryOverride || c.summary || c.id,
+            role: c.accessRole,                       // owner / writer / reader
+            primary: !!c.primary,
+            canWrite: c.accessRole === "owner" || c.accessRole === "writer",
+          });
+        }
+        pageToken = page.nextPageToken;
+      } while (pageToken);
+      // 쓰기 되는 것부터, 그다음 이름순
+      out.sort((a, b) => (Number(b.canWrite) - Number(a.canWrite)) || String(a.name).localeCompare(String(b.name)));
+      return json({ ok: true, calendars: out, current: calId });
+    } catch (e: any) {
+      return json({ error: `캘린더 목록을 읽지 못했습니다: ${e.message}` }, 400);
+    }
+  }
+
+  // 목록에서 고른 것을 연결
+  if (action === "select") {
+    const pick = String(body?.calendarId || "").trim();
+    if (!pick) return json({ error: "고른 캘린더가 없습니다." }, 400);
+    try {
+      const cal = await gcal(token, `/calendars/${encodeURIComponent(pick)}`);
+      await admin.from("communities").update({ google_calendar_id: pick }).eq("id", cid);
+      return json({ ok: true, calendarId: pick, calendarName: cal?.summary || "" });
+    } catch (e: any) {
+      const hint = e.status === 404 || e.status === 403
+        ? "그 캘린더에 접근할 수 없습니다. 서비스 계정에 '변경 및 공유 관리' 권한으로 공유했는지 확인해 주세요."
+        : String(e.message);
+      return json({ error: hint }, 400);
+    }
+  }
 
   // ── 누가 이 캘린더를 볼 수 있는지 ──────────────────────────────
   //   동기화는 서비스 계정이 하므로, 여기 없는 관리자도 TCS 안에서는
