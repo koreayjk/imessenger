@@ -5173,24 +5173,55 @@ async function changeProfilePassword() {
   document.getElementById('prof-pw2').value = '';
 }
 
+// ══════════════════════════════════════════════════════════════════
+//  학교생활기록부 구성
+//   교육부 「학교생활기록 작성 및 관리지침」 별지 제7호(초) · 제9호(중)
+//   · 제11호(고) 서식을 따른다. 학교급마다 항목이 다르다.
+//     · 초등 : 수상경력 · 독서활동 없음
+//     · 중등 : 자유학기활동상황 있음
+//     · 고등 : 자격증·NCS 이수상황 있음, 자유학기 없음
+//   levels 에 적힌 학교급에서만 보인다. 비우면 전 학교급 공통.
+//   faith(신앙·인성) · career(진로) 는 공식 서식에는 없는 우리 공동체 항목.
+// ══════════════════════════════════════════════════════════════════
+const TCS_LEVELS = { elem:'초등학교', middle:'중학교', high:'고등학교' };
+
+// 학년(K~12)으로 학교급을 정한다. K~6 초 · 7~9 중 · 10~12 고
+function tcsLevelOfGrade(gradeNum) {
+  if (gradeNum === null || gradeNum === undefined) return null;
+  if (gradeNum <= 6) return 'elem';
+  if (gradeNum <= 9) return 'middle';
+  return 'high';
+}
+
 const TCS_SECTIONS = [
-  { id:'personal',   icon:'👤', label:'인적사항',        labelEn:'Personal Info' },
-  { id:'school',     icon:'🏫', label:'학적사항',        labelEn:'School Info' },
-  { id:'attendance', icon:'📅', label:'출결사항',        labelEn:'Attendance' },
-  { id:'academic',   icon:'📚', label:'교과학습 발달',    labelEn:'Academic' },
+  { id:'personal',   icon:'👤', label:'인적·학적사항',   labelEn:'Personal & Enrollment' },
+  { id:'school',     icon:'🏫', label:'학적 변동',       labelEn:'Enrollment History' },
+  { id:'attendance', icon:'📅', label:'출결상황',        labelEn:'Attendance' },
+  { id:'awards',     icon:'🏆', label:'수상경력',        labelEn:'Awards', levels:['middle','high'] },
+  { id:'certs',      icon:'📜', label:'자격증·NCS',      labelEn:'Certificates & NCS', levels:['high'] },
+  { id:'violence',   icon:'⚖️',  label:'학교폭력 조치상황', labelEn:'School Violence Measures' },
+  { id:'activities', icon:'🏃', label:'창의적 체험활동',  labelEn:'Creative Activities' },
+  { id:'service',    icon:'🤝', label:'봉사활동 실적',    labelEn:'Volunteer Record' },
+  { id:'freesem',    icon:'🌱', label:'자유학기활동',     labelEn:'Free Semester', levels:['middle'] },
+  { id:'academic',   icon:'📚', label:'교과학습발달상황', labelEn:'Academic' },
+  { id:'reading',    icon:'📖', label:'독서활동상황',     labelEn:'Reading', levels:['middle','high'] },
   { id:'faith',      icon:'✝️',  label:'신앙 및 인성',    labelEn:'Faith & Character' },
-  { id:'activities', icon:'🏃', label:'창의적 체험활동',  labelEn:'Activities' },
-  { id:'service',    icon:'🤝', label:'봉사활동',        labelEn:'Service' },
-  { id:'awards',     icon:'🏆', label:'수상 및 자격증',  labelEn:'Awards' },
-  { id:'reading',    icon:'📖', label:'독서활동',        labelEn:'Reading' },
   { id:'career',     icon:'🎯', label:'진로 및 진학',    labelEn:'Career' },
-  { id:'comment',    icon:'✍️',  label:'담임 종합의견',   labelEn:'Assessment' },
+  { id:'comment',    icon:'✍️',  label:'행동특성 및 종합의견', labelEn:'Behavior & Overall' },
 ];
+
+// 이 학생에게 보여야 할 항목만
+function tcsSectionsFor(gradeNum) {
+  const lv = tcsLevelOfGrade(gradeNum);
+  // 학년을 모르면 다 보여준다 (숨겨서 입력을 막는 것보다 낫다)
+  if (!lv) return TCS_SECTIONS;
+  return TCS_SECTIONS.filter(s => !s.levels || s.levels.includes(lv));
+}
 
 // ── 성적(교과) 에디터 설정 ──
 const TCS_DEFAULT_SUBJECTS = ['성경','국어','영어','수학','사회','과학'];
+// 예전 미국식 등급 — 지금은 입력에 쓰지 않고, 이미 저장된 값을 알아보는 용도로만 둔다
 const TCS_GRADE_OPTIONS = ['A','A-','B','B-','C','C-','D','F'];
-const TCS_GRADE_POINTS = { 'A':4.0, 'A-':3.7, 'B':3.0, 'B-':2.7, 'C':2.0, 'C-':1.7, 'D':1.0, 'F':0.0 };
 const TCS_ACADEMIC_GRADES = [
   ['k_grades','K','K (유치원)'],
   ['g1_grades','G1','G1 (1학년)'],
@@ -5214,10 +5245,27 @@ const TCS_ATTENDANCE_GRADES = [
   ['g4','G4','G4 (4학년)'],['g5','G5','G5 (5학년)'],['g6','G6','G6 (6학년)'],['g7','G7','G7 (중1)'],
   ['g8','G8','G8 (중2)'],['g9','G9','G9 (중3)'],['g10','G10','G10 (고1)'],['g11','G11','G11 (고2)'],['g12','G12','G12 (고3)'],
 ];
-const TCS_ATT_FIELDS = ['수업일수','결석','지각','조퇴'];   // DB 키 — 변경 금지
+// 공식 서식(별지 제7·9·11호)의 출결 칸.
+//  결석·지각·조퇴·결과를 각각 질병/미인정/기타로 나눠 적는다.
+//  예전에는 '결석·지각·조퇴' 총계만 받아서 결과(缺課) 항목 자체가 없었고
+//  사유 구분도 특기사항도 없었다.
+//  ⚠ 예전 키('결석','지각','조퇴')는 이미 저장된 자료가 있으므로 지우지 않는다.
+const TCS_ATT_REASONS = ['질병','미인정','기타'];
+const TCS_ATT_KINDS   = ['결석','지각','조퇴','결과'];
+const TCS_ATT_FIELDS  = ['수업일수']
+  .concat(TCS_ATT_KINDS.flatMap(k => TCS_ATT_REASONS.map(r => `${k}_${r}`)))
+  .concat(['특기사항']);
+// 예전 자료를 읽을 때 쓰는 키 (새 칸이 비었으면 이 값을 보여준다)
+const TCS_ATT_LEGACY = ['결석','지각','조퇴'];
+
 // 출결 필드 화면 표시 라벨 (키는 그대로, 표시만 현지화)
 function tcsAttFieldLabel(f) {
-  return t(f, { '수업일수':'School days', '결석':'Absent', '지각':'Late', '조퇴':'Early leave' }[f] || f);
+  const EN = { '수업일수':'School days', '결석':'Absent', '지각':'Late',
+               '조퇴':'Early leave', '결과':'Class missed', '특기사항':'Remarks',
+               '질병':'Illness', '미인정':'Unexcused', '기타':'Other' };
+  if (APP_LANG !== 'en') return f.replace('_', ' · ');
+  const [kind, reason] = String(f).split('_');
+  return reason ? `${EN[kind] || kind} (${EN[reason] || reason})` : (EN[kind] || kind);
 }
 // 학년 라벨의 한글 괄호부분 현지화 (예: 'G9 (중3)' → 'G9 (M3)')
 function localizeGradeLabel(s) {
@@ -5231,29 +5279,58 @@ let tcsAttendanceDraft = null; // { active:'g9', grades:{ key:{수업일수,결�
 
 // ── 목록형 섹션 설정 (칸 고정) — label 은 표시용(현지화), options/key 는 저장값 ──
 const TCS_LIST_SPECS = {
+  // 창의적 체험활동 — 2024 개정으로 '자율활동'이 '자율·자치활동'이 되었고,
+  // 봉사활동은 별도 영역이 아니라 아래 '봉사활동 실적'으로 따로 적는다.
   activities: { prefix:'act', max:12, columns:[
-    {key:'grade', label:t('학년','Grade'), type:'select', options:['K','G1','G2','G3','G4','G5','G6','G7','G8','G9','G10','G11','G12'], w:'90px'},
-    {key:'area',  label:t('영역','Area'), type:'select', options:['자율활동','동아리활동','진로활동','봉사활동','기타'], w:'130px'},
-    {key:'content', label:t('내용','Content'), type:'text', flex:true},
-    {key:'hours', label:t('시간','Hours'), type:'text', w:'80px', suffix:'h'},
+    {key:'grade', label:t('학년','Grade'), type:'select', options:['K','G1','G2','G3','G4','G5','G6','G7','G8','G9','G10','G11','G12'], w:'86px'},
+    {key:'area',  label:t('영역','Area'), type:'select', options:['자율·자치활동','동아리활동','진로활동'], w:'132px'},
+    {key:'content', label:t('특기사항','Remarks'), type:'text', flex:true},
+    {key:'hours', label:t('시간','Hours'), type:'text', w:'72px', suffix:'h'},
   ]},
+  // 봉사활동 실적 — 공식 서식: 일자 또는 기간 / 장소 또는 주관기관명 / 활동내용 / 시간 / 누계시간
   service: { prefix:'svc', max:12, columns:[
-    {key:'date', label:t('날짜','Date'), type:'month', w:'150px'},
-    {key:'content', label:t('내용','Content'), type:'text', flex:true},
-    {key:'org', label:t('기관','Organization'), type:'text', w:'150px'},
-    {key:'hours', label:t('시간','Hours'), type:'text', w:'80px', suffix:'h'},
+    {key:'date', label:t('일자 또는 기간','Date or period'), type:'text', w:'150px'},
+    {key:'org', label:t('장소 또는 주관기관명','Place or organizer'), type:'text', w:'170px'},
+    {key:'content', label:t('활동내용','Activity'), type:'text', flex:true},
+    {key:'hours', label:t('시간','Hours'), type:'text', w:'70px', suffix:'h'},
+    {key:'total', label:t('누계시간','Cumulative'), type:'text', w:'86px', suffix:'h'},
   ]},
+  // 수상경력 — 교내상만. 교외상은 어떤 항목에도 기재 불가.
   awards: { prefix:'awd', max:12, columns:[
-    {key:'date', label:t('날짜','Date'), type:'month', w:'150px'},
-    {key:'title', label:t('명칭','Title'), type:'text', flex:true},
-    {key:'org', label:t('수여기관','Awarding Body'), type:'text', w:'150px'},
-    {key:'level', label:t('급수/등급','Level/Grade'), type:'text', w:'110px'},
+    {key:'term', label:t('학년(학기)','Year(Term)'), type:'text', w:'100px'},
+    {key:'title', label:t('수상명','Award'), type:'text', flex:true},
+    {key:'level', label:t('등급(위)','Rank'), type:'text', w:'86px'},
+    {key:'date', label:t('수상연월일','Date'), type:'text', w:'120px'},
+    {key:'org', label:t('수여기관','Awarded by'), type:'text', w:'130px'},
+    {key:'scope', label:t('참가대상(참가인원)','Participants'), type:'text', w:'150px'},
   ]},
+  // 자격증 취득 및 국가직무능력표준(NCS) 이수상황 — 고등학교
+  certs: { prefix:'crt', max:12, columns:[
+    {key:'kind', label:t('구분','Type'), type:'select', options:['자격증','NCS 이수'], w:'104px'},
+    {key:'title', label:t('명칭 또는 종류','Name or type'), type:'text', flex:true},
+    {key:'no', label:t('번호 또는 내용','No. or detail'), type:'text', w:'140px'},
+    {key:'date', label:t('취득연월일','Date'), type:'text', w:'120px'},
+    {key:'org', label:t('발급기관','Issued by'), type:'text', w:'130px'},
+  ]},
+  // 학교폭력 조치상황 관리 — 초·중·고 공통 필수
+  violence: { prefix:'vio', max:8, columns:[
+    {key:'grade', label:t('학년','Grade'), type:'select', options:['K','G1','G2','G3','G4','G5','G6','G7','G8','G9','G10','G11','G12'], w:'86px'},
+    {key:'date', label:t('조치결정 일자','Decision date'), type:'text', w:'140px'},
+    {key:'action', label:t('조치사항','Measure'), type:'text', flex:true},
+  ]},
+  // 자유학기활동상황 — 중학교
+  freesem: { prefix:'fs', max:12, columns:[
+    {key:'grade', label:t('학년','Grade'), type:'select', options:['G7','G8','G9'], w:'86px'},
+    {key:'sem', label:t('학기','Term'), type:'select', options:['1','2'], w:'68px'},
+    {key:'area', label:t('영역','Area'), type:'select', options:['주제선택','예술·체육','동아리','진로탐색'], w:'124px'},
+    {key:'content', label:t('특기사항','Remarks'), type:'text', flex:true},
+    {key:'hours', label:t('시간','Hours'), type:'text', w:'72px', suffix:'h'},
+  ]},
+  // 독서활동상황 — 중·고. 공식 서식은 '학년 / 과목 또는 영역 / 독서 활동 상황'
   reading: { prefix:'book', max:20, columns:[
-    {key:'title', label:t('제목','Title'), type:'text', flex:true},
-    {key:'author', label:t('저자','Author'), type:'text', w:'130px'},
-    {key:'pub', label:t('출판사','Publisher'), type:'text', w:'130px'},
-    {key:'term', label:t('학년학기','Grade/Term'), type:'text', w:'120px'},
+    {key:'term', label:t('학년','Grade'), type:'text', w:'86px'},
+    {key:'area', label:t('과목 또는 영역','Subject or area'), type:'text', w:'150px'},
+    {key:'title', label:t('독서 활동 상황 (도서명, 저자)','Reading record (title, author)'), type:'text', flex:true},
   ]},
 };
 let tcsListDraft = null; // { section, entries:[{col:val}] }
@@ -5508,7 +5585,9 @@ function renderTcsSectionList() {
     return Object.values(d).some(v => v && String(v).trim());
   }
 
-  const completedSections = TCS_SECTIONS.filter(s => isSectionComplete(s)).length;
+  // 이 학생의 학교급에 해당하는 항목만 센다 (초등학생에게 수상경력을 요구하면 안 된다)
+  const mySections = tcsSectionsFor(gradeNum);
+  const completedSections = mySections.filter(s => isSectionComplete(s)).length;
   const gradeLabel = gradeStr ? ` (${gradeStr})` : '';
 
   main.innerHTML = `
@@ -5520,7 +5599,7 @@ function renderTcsSectionList() {
           <div style="font-size:12px;color:rgba(255,255,255,.7);margin-top:2px">${t('TCS 학생 종합 기록부','TCS Student Comprehensive Record')}</div>
         </div>
         <div style="text-align:right">
-          <div style="font-size:22px;font-weight:700;color:white">${completedSections}/${TCS_SECTIONS.length}</div>
+          <div style="font-size:22px;font-weight:700;color:white">${completedSections}/${mySections.length}</div>
           <div style="font-size:11px;color:rgba(255,255,255,.6)">${t('섹션 완성','Sections done')}</div>
         </div>
         <button onclick="showTcsPreview()" title="${t('학년별로 미리보기하고 PDF로 출력해요','Preview by grade and print as PDF')}"
@@ -5552,11 +5631,11 @@ function renderTcsSectionList() {
       </div>`)}
 
       <div style="background:var(--border);border-radius:99px;height:6px;margin-bottom:20px;overflow:hidden">
-        <div style="height:100%;width:${Math.round(completedSections/TCS_SECTIONS.length*100)}%;background:linear-gradient(90deg,#1d3a5f,#2a5298);border-radius:99px;transition:width .4s var(--ease-out)"></div>
+        <div style="height:100%;width:${Math.round(completedSections/mySections.length*100)}%;background:linear-gradient(90deg,#1d3a5f,#2a5298);border-radius:99px;transition:width .4s var(--ease-out)"></div>
       </div>
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        ${TCS_SECTIONS.map(sec => {
+        ${mySections.map(sec => {
           const done = isSectionComplete(sec);
           const hasAny = tcsRecords[sec.id] && Object.keys(tcsRecords[sec.id]).length > 0;
           const partial = hasAny && !done;
@@ -5661,7 +5740,7 @@ function getTcsSectionFields(sectionId) {
       {key:'g10_grades', label:t('G10 성적','G10 Grades'), type:'textarea', placeholder:''},
       {key:'g11_grades', label:t('G11 성적','G11 Grades'), type:'textarea', placeholder:''},
       {key:'g12_grades', label:t('G12 성적','G12 Grades'), type:'textarea', placeholder:''},
-      {key:'gpa', label:t('누적 GPA (4.0 만점)','Cumulative GPA (4.0 scale)'), type:'text', placeholder:t('예: 3.75','e.g. 3.75')},
+      {key:'avg_score', label:t('원점수 평균','Average raw score'), type:'text', placeholder:t('예: 87.4','e.g. 87.4')},
     ],
     faith: [
       {key:'baptism', label:t('세례 여부 / 날짜','Baptism status / date'), type:'text', placeholder:t('예: 세례 완료 / 2022-03-15','e.g. Baptized / 2022-03-15')},
@@ -5723,42 +5802,97 @@ function getTcsSectionFields(sectionId) {
   return F[sectionId] || [];
 }
 
-// ── 성적(교과) 전용 에디터 ──
-function parseGradeStr(str) {
-  // "성경:A, 국어:B-, 수학:A" → [{name,grade}]
+// ── 교과학습발달상황 — 한국 공식 서식 ──
+//   별지 제7·9·11호. 학교급마다 칸이 다르다.
+//     초 : 교과(목) + 성취수준 및 특기사항 (성적 없음, 서술만)
+//     중 : 학기·교과·과목·원점수/과목평균·성취도·수강자수 + 세부능력 및 특기사항
+//     고 : 위 + 학점·성취도별분포비율·석차등급
+//   ⚠ 예전에 넣은 A~F 성적은 원점수로 환산할 방법이 없다.
+//      지우지 않고 letter 에 남겨 화면에 보여주고, 옮겨 적도록 한다.
+const TCS_ACHIEVE = ['A','B','C','D','E'];        // 성취도
+const TCS_RANK = ['1','2','3','4','5','6','7','8','9'];  // 석차등급
+
+const TCS_ACAD_FIELDS = {
+  sem:     { label:t('학기','Term'),      en:'Term',   w:'62px',  type:'select', options:['1','2'] },
+  area:    { label:t('교과','Subject area'), en:'Area', w:'110px', type:'text' },
+  name:    { label:t('과목','Course'),    en:'Course', w:'',      type:'text', flex:true },
+  credit:  { label:t('학점','Credits'),   en:'Credits', w:'62px', type:'num' },
+  score:   { label:t('원점수','Score'),   en:'Score',  w:'74px',  type:'num' },
+  mean:    { label:t('과목평균','Avg'),   en:'Avg',    w:'74px',  type:'num' },
+  achieve: { label:t('성취도','Level'),   en:'Level',  w:'74px',  type:'select', options:TCS_ACHIEVE },
+  dist:    { label:t('분포비율','Dist.'), en:'Dist.',  w:'120px', type:'text' },
+  rank:    { label:t('석차등급','Rank'),  en:'Rank',   w:'74px',  type:'select', options:TCS_RANK },
+  takers:  { label:t('수강자수','Takers'),en:'Takers', w:'74px',  type:'num' },
+};
+const TCS_ACAD_COLS = {
+  elem:   ['name'],
+  middle: ['sem','area','name','score','mean','achieve','takers'],
+  high:   ['sem','area','name','credit','score','mean','achieve','dist','rank','takers'],
+};
+function tcsAcadCols(level) { return TCS_ACAD_COLS[level] || TCS_ACAD_COLS.high; }
+// 초등은 '성취수준 및 특기사항', 중·고는 '세부능력 및 특기사항' (2026 개정)
+function tcsAcadDetailLabel(level) {
+  return level === 'elem'
+    ? t('성취수준 및 특기사항','Achievement level & remarks')
+    : t('세부능력 및 특기사항','Detailed abilities & remarks');
+}
+
+function tcsEmptyAcadRow() {
+  return { sem:'', area:'', name:'', credit:'', score:'', mean:'',
+           achieve:'', dist:'', rank:'', takers:'', detail:'', letter:'' };
+}
+
+// 한 학년치를 읽는다. 새 형식은 JSON, 예전 형식은 "성경:A, 국어:B-".
+function parseAcademicRows(str) {
   if (!str) return [];
-  return String(str).split(',').map(s => s.trim()).filter(Boolean).map(pair => {
+  const s = String(str).trim();
+  if (s.startsWith('[')) {
+    try {
+      const arr = JSON.parse(s);
+      if (Array.isArray(arr)) return arr.map(r => Object.assign(tcsEmptyAcadRow(), r));
+    } catch (_) { /* 아래 예전 형식으로 */ }
+  }
+  // 예전 형식 — 등급을 letter 에 담아 둔다 (원점수로 환산하지 않는다)
+  return s.split(',').map(x => x.trim()).filter(Boolean).map(pair => {
     const i = pair.lastIndexOf(':');
-    if (i === -1) return { name: pair.trim(), grade: '' };
-    return { name: pair.slice(0, i).trim(), grade: pair.slice(i + 1).trim() };
+    const row = tcsEmptyAcadRow();
+    if (i === -1) { row.name = pair.trim(); }
+    else { row.name = pair.slice(0, i).trim(); row.letter = pair.slice(i + 1).trim(); }
+    return row;
   }).filter(r => r.name);
 }
-function serializeGradeRows(rows) {
-  return rows.filter(r => r.name.trim() && r.grade).map(r => `${r.name.trim()}:${r.grade}`).join(', ');
+
+function serializeAcademicRows(rows) {
+  const keep = (rows || []).filter(r =>
+    Object.keys(r).some(k => String(r[k] == null ? '' : r[k]).trim() !== ''));
+  return keep.length ? JSON.stringify(keep) : '';
 }
+
 function initAcademicGradeRows(savedStr) {
-  const parsed = parseGradeStr(savedStr);
-  const rows = [];
-  const seen = {};
-  TCS_DEFAULT_SUBJECTS.forEach(s => {
-    const found = parsed.find(p => p.name === s);
-    rows.push({ name: s, grade: found ? found.grade : '', fixed: true });
-    seen[s] = true;
+  const parsed = parseAcademicRows(savedStr);
+  if (parsed.length) return parsed;
+  // 처음 열 때는 기본 과목을 깔아 준다
+  return TCS_DEFAULT_SUBJECTS.map(n => Object.assign(tcsEmptyAcadRow(), { name: n }));
+}
+
+// 요약 — 한국식에는 GPA 가 없다. 이수 과목 수·학점 합계·원점수 평균을 보여준다.
+function academicSummary(rows) {
+  let credits = 0, scoreSum = 0, scoreN = 0, subjects = 0;
+  (rows || []).forEach(r => {
+    if (String(r.name || '').trim()) subjects++;
+    const c = parseFloat(r.credit); if (!isNaN(c)) credits += c;
+    const sc = parseFloat(r.score); if (!isNaN(sc)) { scoreSum += sc; scoreN++; }
   });
-  parsed.forEach(p => { if (!seen[p.name]) rows.push({ name: p.name, grade: p.grade, fixed: false }); });
-  return rows;
+  return { subjects, credits, avg: scoreN ? scoreSum / scoreN : null, scoreN };
 }
-function gradeGpa(rows) {
-  let sum = 0, n = 0;
-  rows.forEach(r => { if (r.grade && r.grade in TCS_GRADE_POINTS) { sum += TCS_GRADE_POINTS[r.grade]; n++; } });
-  return { sum, n, avg: n ? sum / n : null };
-}
-function cumulativeGpa() {
-  let sum = 0, n = 0;
+function cumulativeAcademic() {
+  let credits = 0, scoreSum = 0, scoreN = 0, subjects = 0;
   Object.values(tcsAcademicDraft.grades).forEach(rows => {
-    rows.forEach(r => { if (r.grade && r.grade in TCS_GRADE_POINTS) { sum += TCS_GRADE_POINTS[r.grade]; n++; } });
+    const g = academicSummary(rows);
+    subjects += g.subjects; credits += g.credits;
+    if (g.avg !== null) { scoreSum += g.avg * g.scoreN; scoreN += g.scoreN; }
   });
-  return { sum, n, avg: n ? sum / n : null };
+  return { subjects, credits, avg: scoreN ? scoreSum / scoreN : null, scoreN };
 }
 
 function openAcademicEditor() {
@@ -5826,7 +5960,7 @@ function renderAcademicEditor() {
 
       <div style="background:linear-gradient(135deg,#1d3a5f,#2a5298);border-radius:14px;padding:18px 22px;margin-top:16px;display:flex;align-items:center;justify-content:space-between">
         <div>
-          <div style="font-size:12px;color:rgba(255,255,255,.7)">${t('총 GPA (전 학년 누적)','Total GPA (cumulative)')}</div>
+          <div style="font-size:12px;color:rgba(255,255,255,.7)">${t('전 학년 누계','Cumulative')}</div>
           <div id="acad-total-detail" style="font-size:11px;color:rgba(255,255,255,.55);margin-top:2px"></div>
         </div>
         <div id="acad-total-gpa" style="font-size:30px;font-weight:800;color:white">–</div>
@@ -5845,46 +5979,86 @@ function renderAcademicEditor() {
 function renderAcademicRows() {
   const rows = tcsAcademicDraft.grades[tcsAcademicDraft.active] || [];
   const box = document.getElementById('acad-rows');
-  const sel = (i, grade) => `
-    <select onchange="setAcademicGrade(${i}, this.value)"
-      style="width:96px;height:38px;padding:0 10px;border-radius:9px;border:1.5px solid var(--border);background:white;font:600 13px var(--font);color:${grade?'var(--ink)':'var(--ink3)'};cursor:pointer;outline:none">
-      <option value="">–</option>
-      ${TCS_GRADE_OPTIONS.map(g => `<option value="${g}" ${grade===g?'selected':''}>${g}</option>`).join('')}
-    </select>`;
-  box.innerHTML = rows.map((r, i) => {
-    const nameCell = r.fixed
-      ? `<div style="flex:1;font-size:14px;font-weight:600;color:var(--ink);padding:0 4px">${r.name}</div>`
-      : `<input value="${(r.name||'').replace(/"/g,'&quot;')}" placeholder="${t('과목명','Subject')}"
-           oninput="setAcademicName(${i}, this.value)"
-           style="flex:1;height:38px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--s2);font:14px var(--font);color:var(--ink);outline:none"/>`;
-    const del = r.fixed ? '' :
-      `<button onclick="removeAcademicSubject(${i})" title="${t('삭제','Delete')}"
-         style="width:34px;height:38px;border-radius:9px;border:1.5px solid var(--border);background:white;color:#ef4444;font-size:16px;cursor:pointer;flex-shrink:0">×</button>`;
-    return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">${nameCell}${sel(i, r.grade)}${del}</div>`;
-  }).join('');
+  if (!box) return;
+  // 이 학생의 학교급에 맞는 칸만 (초등은 성적 없이 서술만)
+  const level = tcsLevelOfGrade(tcsStudentGradeNum()) || 'high';
+  const cols = tcsAcadCols(level);
+
+  const cell = (i, key, r) => {
+    const f = TCS_ACAD_FIELDS[key];
+    const v = String(r[key] == null ? '' : r[key]).replace(/"/g, '&quot;');
+    const base = `height:36px;padding:0 9px;border-radius:8px;border:1.5px solid var(--border);`
+      + `background:var(--s2);font:13px var(--font);color:var(--ink);outline:none;`
+      + (f.flex ? 'flex:1;min-width:110px;' : `width:${f.w};flex:none;`);
+    if (f.type === 'select') {
+      return `<select onchange="setAcademicField(${i},'${key}',this.value)" title="${f.label}"
+        style="${base}background:white;cursor:pointer">
+        <option value="">${f.label}</option>
+        ${f.options.map(o => `<option value="${o}" ${r[key]===o?'selected':''}>${o}</option>`).join('')}
+      </select>`;
+    }
+    return `<input value="${v}" placeholder="${f.label}" title="${f.label}"
+      ${f.type === 'num' ? 'inputmode="decimal"' : ''}
+      oninput="setAcademicField(${i},'${key}',this.value)" style="${base}"/>`;
+  };
+
+  box.innerHTML = rows.map((r, i) => `
+    <div style="border:1px solid var(--border);border-radius:11px;padding:10px;margin-bottom:10px;background:var(--surface)">
+      <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+        ${cols.map(k => cell(i, k, r)).join('')}
+        <button onclick="removeAcademicSubject(${i})" title="${t('삭제','Delete')}"
+          style="width:32px;height:36px;border-radius:8px;border:1.5px solid var(--border);background:white;color:#ef4444;font-size:15px;cursor:pointer;flex:none">×</button>
+      </div>
+      ${r.letter ? `<div style="margin-top:7px;font-size:11.5px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:7px;padding:5px 8px">
+        ${t(`예전 등급 <b>${escHtml(r.letter)}</b> — 원점수로 자동 환산할 수 없어 그대로 두었습니다. 위 칸에 옮겨 적어주세요.`,
+             `Previous grade <b>${escHtml(r.letter)}</b> — cannot be converted to a raw score automatically. Please re-enter above.`)}
+      </div>` : ''}
+      <textarea placeholder="${tcsAcadDetailLabel(level)}"
+        oninput="setAcademicField(${i},'detail',this.value)"
+        style="width:100%;min-height:58px;margin-top:7px;padding:8px 10px;border-radius:8px;border:1.5px solid var(--border);background:var(--s2);font:13px var(--font);color:var(--ink);line-height:1.7;resize:vertical;outline:none">${escHtml(r.detail || '')}</textarea>
+    </div>`).join('');
+}
+
+// 지금 보고 있는 학생의 학년 숫자 (K=0). 모르면 null
+function tcsStudentGradeNum() {
+  const g = (tcsCurrentStudent && tcsCurrentStudent.grade || '').trim();
+  if (g === 'K') return 0;
+  const m = g.match(/(\d+)/);
+  return m ? parseInt(m[1], 10) : null;
 }
 
 function refreshAcademicGpa() {
-  const g = gradeGpa(tcsAcademicDraft.grades[tcsAcademicDraft.active] || []);
+  const g = academicSummary(tcsAcademicDraft.grades[tcsAcademicDraft.active] || []);
   const avgEl = document.getElementById('acad-grade-avg');
-  if (avgEl) avgEl.textContent = g.avg !== null ? t(`이 학년 평균 ${g.avg.toFixed(2)} (${g.n}과목)`, `Grade avg ${g.avg.toFixed(2)} (${g.n} subjects)`) : '';
-  const c = cumulativeGpa();
+  if (avgEl) {
+    const bits = [];
+    if (g.subjects) bits.push(t(`${g.subjects}과목`, `${g.subjects} courses`));
+    if (g.credits) bits.push(t(`이수학점 ${g.credits}`, `${g.credits} credits`));
+    if (g.avg !== null) bits.push(t(`원점수 평균 ${g.avg.toFixed(1)}`, `avg score ${g.avg.toFixed(1)}`));
+    avgEl.textContent = bits.join(' · ');
+  }
+  const c = cumulativeAcademic();
   const totEl = document.getElementById('acad-total-gpa');
   const detEl = document.getElementById('acad-total-detail');
-  if (totEl) totEl.textContent = c.avg !== null ? `${c.avg.toFixed(2)} / 4.0` : '–';
-  if (detEl) detEl.textContent = c.avg !== null ? t(`총 ${c.n}개 과목 평균`, `Average of ${c.n} subjects`) : t('과목 점수를 입력하면 자동 계산돼요','Enter subject scores to auto-calculate');
+  if (totEl) totEl.textContent = c.avg !== null ? c.avg.toFixed(1) : (c.credits ? String(c.credits) : '–');
+  if (detEl) {
+    detEl.textContent = c.avg !== null
+      ? t(`전체 원점수 평균 · ${c.subjects}과목`, `Overall avg score · ${c.subjects} courses`)
+      : (c.credits ? t(`이수학점 합계`, `Total credits`)
+                   : t('과목을 입력하면 자동 계산돼요','Enter courses to auto-calculate'));
+  }
 }
 
-function setAcademicGrade(i, val) {
-  tcsAcademicDraft.grades[tcsAcademicDraft.active][i].grade = val;
-  renderAcademicRows();     // 색상 갱신
-  refreshAcademicGpa();
+function setAcademicField(i, key, val) {
+  const rows = tcsAcademicDraft.grades[tcsAcademicDraft.active];
+  if (!rows || !rows[i]) return;
+  rows[i][key] = val;
+  // 서술란은 입력할 때마다 다시 그리면 글자가 튄다 — 요약만 갱신
+  if (key !== 'detail') refreshAcademicGpa();
 }
-function setAcademicName(i, val) {
-  tcsAcademicDraft.grades[tcsAcademicDraft.active][i].name = val;
-}
+
 function addAcademicSubject() {
-  tcsAcademicDraft.grades[tcsAcademicDraft.active].push({ name: '', grade: '', fixed: false });
+  tcsAcademicDraft.grades[tcsAcademicDraft.active].push(tcsEmptyAcadRow());
   renderAcademicRows();
   refreshAcademicGpa();
   const inputs = document.querySelectorAll('#acad-rows input');
@@ -5903,11 +6077,12 @@ function switchAcademicGrade(key) {
 async function saveAcademicSection() {
   const data = {};
   TCS_ACADEMIC_GRADES.forEach(([key]) => {
-    const s = serializeGradeRows(tcsAcademicDraft.grades[key] || []);
+    const s = serializeAcademicRows(tcsAcademicDraft.grades[key] || []);
     if (s) data[key] = s;
   });
-  const c = cumulativeGpa();
-  if (c.avg !== null) data.gpa = c.avg.toFixed(2);
+  const c = cumulativeAcademic();
+  if (c.avg !== null) data.avg_score = c.avg.toFixed(1);
+  if (c.credits) data.total_credits = String(c.credits);
 
   const { error } = await sb.from('tcs_records').upsert({
     student_id: tcsCurrentStudent.id,
@@ -5925,24 +6100,61 @@ async function saveAcademicSection() {
 }
 
 // ── 출결 전용 에디터 (학년별 고정 항목 + 숫자 입력) ──
+// 출결 한 학년치를 글자열 하나에 담는다.
+//  칸이 14개로 늘고 특기사항(글)이 생겨서, ' / ' 로 잇던 방식은 더 못 쓴다
+//  (특기사항에 '/' 가 들어가면 쪼개진다). 새로 저장할 때는 JSON 을 쓰고,
+//  예전 형식도 그대로 읽을 수 있게 둔다.
 function parseAttendance(str) {
-  const out = { 수업일수:'', 결석:'', 지각:'', 조퇴:'' };
+  const out = {};
+  TCS_ATT_FIELDS.forEach(f => out[f] = '');
   if (!str) return out;
   const s = String(str).trim();
-  if (/[가-힣]/.test(s) && s.includes(':') === false && /수업일수|결석|지각|조퇴/.test(s)) {
-    // 라벨 형식: "수업일수 190 / 결석 2 / 지각 1 / 조퇴 0"
-    TCS_ATT_FIELDS.forEach(f => { const m = s.match(new RegExp(f + '\\s*([0-9]+)')); if (m) out[f] = m[1]; });
+
+  // 새 형식 (JSON)
+  if (s.startsWith('{')) {
+    try {
+      const o = JSON.parse(s);
+      Object.keys(o).forEach(k => { if (o[k] != null) out[k] = String(o[k]); });
+      // 예전 키로 저장된 총계가 있으면 '기타' 칸에 얹어 보여준다
+      TCS_ATT_LEGACY.forEach(k => {
+        if (o[k] != null && String(o[k]).trim() !== '' && !out[`${k}_기타`]) out[`${k}_기타`] = String(o[k]);
+      });
+      return out;
+    } catch (_) { /* 아래 예전 형식으로 시도 */ }
+  }
+
+  // 예전 라벨 형식: "수업일수 190 / 결석 2 / 지각 1 / 조퇴 0"
+  if (/수업일수|결석|지각|조퇴/.test(s)) {
+    const m0 = s.match(/수업일수\s*([0-9]+)/); if (m0) out['수업일수'] = m0[1];
+    TCS_ATT_LEGACY.forEach(k => {
+      // '결석_질병' 같은 새 키에 걸리지 않도록 뒤에 밑줄이 없을 때만
+      const m = s.match(new RegExp(k + '(?!_)\\s*([0-9]+)'));
+      if (m) out[`${k}_기타`] = m[1];
+    });
     return out;
   }
-  // 구형 위치 형식: "190 / 2 / 1 / 0"
+
+  // 더 예전 위치 형식: "190 / 2 / 1 / 0"
   const parts = s.split('/').map(x => x.trim());
-  TCS_ATT_FIELDS.forEach((f, i) => { if (parts[i] !== undefined && parts[i] !== '') out[f] = parts[i].replace(/[^0-9]/g, ''); });
+  const order = ['수업일수', '결석_기타', '지각_기타', '조퇴_기타'];
+  order.forEach((f, i) => {
+    if (parts[i] !== undefined && parts[i] !== '') out[f] = parts[i].replace(/[^0-9]/g, '');
+  });
   return out;
 }
+
 function serializeAttendance(obj) {
-  const filled = TCS_ATT_FIELDS.filter(f => (obj[f] || '').toString().trim() !== '');
-  if (!filled.length) return '';
-  return TCS_ATT_FIELDS.map(f => `${f} ${obj[f] !== '' && obj[f] != null ? obj[f] : 0}`).join(' / ');
+  const o = {};
+  TCS_ATT_FIELDS.forEach(f => {
+    const v = (obj[f] == null ? '' : String(obj[f])).trim();
+    if (v !== '') o[f] = v;
+  });
+  return Object.keys(o).length ? JSON.stringify(o) : '';
+}
+
+// 결석/지각/조퇴/결과 합계 (질병+미인정+기타)
+function tcsAttTotal(obj, kind) {
+  return TCS_ATT_REASONS.reduce((n, r) => n + (parseInt(obj[`${kind}_${r}`], 10) || 0), 0);
 }
 
 function openAttendanceEditor() {
@@ -7432,6 +7644,10 @@ async function saveTcsSection(sectionId) {
     if (el) data[f.key] = el.value.trim();
   });
 
+  // 기재 금지사항이 섞여 있으면 짚어 준다 (막지는 않는다)
+  const joined = Object.values(data).join('\n');
+  if (!tcsConfirmForbidden(joined, sectionId)) return;
+
   // upsert
   const { error } = await sb.from('tcs_records').upsert({
     student_id: tcsCurrentStudent.id,
@@ -7663,20 +7879,65 @@ function buildTcsPreviewHtml(lang) {
     const att = d.attendance || {};
     let grades = [['K (유치원)','k'],['G1 (1학년)','g1'],['G2 (2학년)','g2'],['G3 (3학년)','g3'],['G4 (4학년)','g4'],['G5 (5학년)','g5'],['G6 (6학년)','g6'],['G7 (중1)','g7'],['G8 (중2)','g8'],['G9 (중3)','g9'],['G10 (고1)','g10'],['G11 (고2)','g11'],['G12 (고3)','g12']];
     if (gf) grades = grades.filter(([,k]) => k === gf);
-    const rows = grades.filter(([,k]) => att[k]).map(([label,k]) =>
-      `<tr><th>${label}</th><td>${escHtml(att[k])}</td></tr>`).join('');
-    parts.push(sec('출결사항') + table(rows, '출결 기록이 없습니다.'));
+    // 공식 서식의 출결 표 — 결석·지각·조퇴·결과를 질병/미인정/기타로 나눠 찍는다
+    const shown = grades.filter(([,k]) => att[k]);
+    let attHtml;
+    if (!shown.length) {
+      attHtml = table('', '출결 기록이 없습니다.');
+    } else {
+      const head = `<tr>
+          <th rowspan="2">학년</th><th rowspan="2">수업일수</th>
+          ${TCS_ATT_KINDS.map(k => `<th colspan="3">${k}</th>`).join('')}
+          <th rowspan="2">특기사항</th>
+        </tr><tr>${TCS_ATT_KINDS.map(() =>
+          TCS_ATT_REASONS.map(r => `<th>${r}</th>`).join('')).join('')}</tr>`;
+      const body = shown.map(([label, k]) => {
+        const a = parseAttendance(att[k]);
+        const cells = TCS_ATT_KINDS.map(kind =>
+          TCS_ATT_REASONS.map(r => `<td style="text-align:center">${escHtml(a[`${kind}_${r}`] || '')}</td>`).join('')
+        ).join('');
+        return `<tr><th>${escHtml(label)}</th>`
+          + `<td style="text-align:center">${escHtml(a['수업일수'] || '')}</td>`
+          + cells + `<td>${escHtml(a['특기사항'] || '')}</td></tr>`;
+      }).join('');
+      attHtml = `<table><thead>${head}</thead><tbody>${body}</tbody></table>`;
+    }
+    parts.push(sec('출결상황') + attHtml);
   }
 
   if (tcsInc('academic')) {
     const ac = d.academic || {};
     let grades = [['K (유치원)','k_grades'],['G1 (1학년)','g1_grades'],['G2 (2학년)','g2_grades'],['G3 (3학년)','g3_grades'],['G4 (4학년)','g4_grades'],['G5 (5학년)','g5_grades'],['G6 (6학년)','g6_grades'],['G7 (중1)','g7_grades'],['G8 (중2)','g8_grades'],['G9 (중3)','g9_grades'],['G10 (고1)','g10_grades'],['G11 (고2)','g11_grades'],['G12 (고3)','g12_grades']];
     if (gf) grades = grades.filter(([,k]) => k === gf + '_grades');
-    const rows = grades.filter(([,k]) => ac[k]).map(([label,k]) =>
-      `<tr><th>${label}</th><td>${escHtml(ac[k])}</td></tr>`).join('');
-    // 전체 학년을 뽑을 때만 누계 평점을 넣습니다 (한 학년만 뽑으면 오해를 부릅니다)
-    const gpaRow = (ac.gpa && !gf) ? `<tr><th>누계 평점 (GPA)</th><td>${escHtml(ac.gpa)}</td></tr>` : '';
-    parts.push(sec('교과학습 발달상황') + table(rows + gpaRow, '성적 기록이 없습니다.'));
+    const gnum = (() => {
+      const g = (tcsCurrentStudent && tcsCurrentStudent.grade || '').trim();
+      if (g === 'K') return 0;
+      const m = g.match(/(\d+)/); return m ? parseInt(m[1], 10) : null;
+    })();
+    const level = tcsLevelOfGrade(gnum) || 'high';
+    const cols = tcsAcadCols(level);
+    const blocks = grades.filter(([,k]) => ac[k]).map(([label, k]) => {
+      const rows = parseAcademicRows(ac[k]);
+      if (!rows.length) return '';
+      const head = `<tr>${cols.map(c => `<th>${TCS_ACAD_FIELDS[c].label}</th>`).join('')}</tr>`;
+      const body = rows.map(r => `<tr>${cols.map(c =>
+        `<td${c === 'name' || c === 'area' ? '' : ' style="text-align:center"'}>${escHtml(r[c] || '')}</td>`
+      ).join('')}</tr>`).join('');
+      // 세부능력 및 특기사항은 과목별로 따로 (공식 서식과 같은 배치)
+      const details = rows.filter(r => String(r.detail || '').trim()).map(r =>
+        `<tr><th>${escHtml(r.name || '')}</th><td>${escHtml(r.detail)}</td></tr>`).join('');
+      return `<h3>${escHtml(label)}</h3>`
+        + `<table><thead>${head}</thead><tbody>${body}</tbody></table>`
+        + (details ? `<table><thead><tr><th style="width:110px">과목</th>`
+            + `<th>${level === 'elem' ? '성취수준 및 특기사항' : '세부능력 및 특기사항'}</th></tr></thead>`
+            + `<tbody>${details}</tbody></table>` : '');
+    }).join('');
+    // 전체 학년을 뽑을 때만 누계를 넣습니다 (한 학년만 뽑으면 오해를 부릅니다)
+    const totRow = (!gf && (ac.total_credits || ac.avg_score)) ? `<table><tbody>`
+      + (ac.total_credits ? `<tr><th>이수학점 합계</th><td>${escHtml(ac.total_credits)}</td></tr>` : '')
+      + (ac.avg_score ? `<tr><th>원점수 평균</th><td>${escHtml(ac.avg_score)}</td></tr>` : '')
+      + `</tbody></table>` : '';
+    parts.push(sec('교과학습발달상황') + (blocks ? blocks + totRow : table('', '성적 기록이 없습니다.')));
   }
 
   if (tcsInc('mock')) {
@@ -16430,6 +16691,62 @@ function printAllowancePdf() {
 }
 
 // ── 생기부 종합의견 AI 초안 ─────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════
+//  기재 금지사항 검사
+//   2026학년도 학교생활기록부 기재요령 「01 학교생활기록부 작성 시 유의사항」
+//   — 사교육 유발 요인이 큰 사항은 '행동특성 및 종합의견'을 포함해
+//     어떤 항목에도 기재할 수 없다.
+//   글을 막지는 않는다. 걸릴 만한 낱말을 짚어 주고 사람이 판단하게 한다.
+//   (자동으로 지우면 문맥상 문제없는 표현까지 날아간다)
+// ══════════════════════════════════════════════════════════════════
+const TCS_FORBIDDEN = [
+  { why:'공인어학시험', words:['TOEIC','토익','TOEFL','토플','TEPS','텝스','HSK','JPT','JLPT',
+      'DELF','DALF','TESTDAF','DSH','DSD','TORFL','DELE','한자능력검정','한자급수'] },
+  { why:'교외 대회·교외상', words:['교외대회','교외상','표창장','감사장','공로상'] },
+  { why:'모의고사 성적', words:['모의고사','전국연합학력평가','백분위','석차백분율'] },
+  { why:'논문·도서출간·지식재산권', words:['학회지','논문 게재','논문게재','학회 발표','도서 출간','도서출간',
+      '특허','실용신안','상표 등록','디자인 등록','지식재산권'] },
+  { why:'해외 활동실적', words:['어학연수','해외봉사','해외 봉사'] },
+  { why:'부모의 사회·경제적 지위', words:['아버지 직업','어머니 직업','부친 직업','모친 직업','부모님 직업','가업'] },
+  { why:'장학생·장학금', words:['장학금','장학생'] },
+  { why:'자격증 (자격증 항목 외 기재 불가)', words:['자격증','자격 취득'] },
+];
+
+// 글에서 걸릴 만한 낱말을 찾는다. section 을 주면 그 항목에서 허용되는 것은 건너뛴다.
+function tcsCheckForbidden(text, section) {
+  const s = String(text || '');
+  if (!s.trim()) return [];
+  const hits = [];
+  for (const rule of TCS_FORBIDDEN) {
+    // 자격증은 '자격증·NCS' 항목에서는 당연히 써야 한다
+    if (section === 'certs' && rule.why.startsWith('자격증')) continue;
+    // 수상경력 항목에서는 교내상을 적으므로 '상' 관련 낱말을 걸지 않는다
+    if (section === 'awards' && rule.why.startsWith('교외')) continue;
+    const found = rule.words.filter(w => s.toLowerCase().includes(w.toLowerCase()));
+    if (found.length) hits.push({ why: rule.why, words: found });
+  }
+  return hits;
+}
+
+// 걸린 것을 사람이 읽을 수 있게
+function tcsForbiddenMessage(hits) {
+  return hits.map(h => `· ${h.why} — "${h.words.join('", "')}"`).join('\n');
+}
+
+// 저장 직전에 부른다. 걸리면 물어보고, 사용자가 그래도 저장하겠다면 통과.
+function tcsConfirmForbidden(text, section) {
+  const hits = tcsCheckForbidden(text, section);
+  if (!hits.length) return true;
+  return confirm(t(
+    '학교생활기록부에 기재할 수 없는 내용이 있는지 확인해 주세요.\n\n'
+    + tcsForbiddenMessage(hits)
+    + '\n\n2026학년도 기재요령에 따르면 위 항목은 어떤 란에도 기재할 수 없습니다.\n'
+    + '문맥상 문제가 없다면 그대로 저장하셔도 됩니다.\n\n저장할까요?',
+    'Please check for content that cannot be recorded.\n\n'
+    + tcsForbiddenMessage(hits)
+    + '\n\nSave anyway?'));
+}
+
 const TCS_ASSESS_FN = 'draft-assessment';
 let lastAssessmentDraft = '';
 
@@ -16491,7 +16808,10 @@ function renderAssessmentDraft(text) {
       <button onclick="copyAssessment()" style="height:32px;padding:0 13px;border:1px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:8px;cursor:pointer;font:600 12px var(--font)">${t('📋 복사','📋 Copy')}</button>
       <button onclick="applyAssessmentToRecord()" style="height:32px;padding:0 14px;border:none;background:#6d28d9;color:#fff;border-radius:8px;cursor:pointer;font:700 12px var(--font)">${t('📄 생기부 종합의견에 넣기','📄 Insert into record summary')}</button>
     </div>
-    <div style="font-size:10.5px;color:#7c6ba0;margin-top:6px">${t('※ AI 초안입니다. 반드시 담임 선생님이 확인·수정한 뒤 사용하세요.','※ This is an AI draft. The homeroom teacher must review and edit it before use.')}</div>`;
+    <div style="font-size:11px;color:#7c2d12;background:#fff7ed;border:1px solid #fed7aa;border-radius:9px;padding:9px 11px;margin-top:8px;line-height:1.7">
+      ${t('⚠️ <b>AI가 만든 글을 그대로 넣을 수 없습니다.</b> 2026학년도 학교생활기록부 기재요령은 “AI를 활용하여 생성한 자료를 서술형 항목에 그대로 입력하는 행위”를 금지합니다. 윤문 보조로만 쓰시고, 넣기 전에 <b>학생의 실제 수행과 다른 허위·과장이 없는지</b> 반드시 확인하세요.',
+          '⚠️ <b>An AI draft may not be entered as-is.</b> The 2026 guidelines prohibit entering AI-generated text directly into narrative fields. Use it only as a writing aid, and verify there is no false or exaggerated content before saving.')}
+    </div>`;
 }
 
 function copyAssessment() {
@@ -16502,7 +16822,18 @@ function copyAssessment() {
 async function applyAssessmentToRecord() {
   const text = (document.getElementById('assess-text')?.value || lastAssessmentDraft).trim();
   if (!text) return;
-  if (!confirm(t('생기부 종합의견(담임 종합의견)에 이 내용을 저장할까요?\n기존 내용이 있으면 덮어씁니다.','Save this into the record summary (homeroom teacher summary)?\nAny existing content will be overwritten.'))) return;
+
+  // 기재요령 : AI 가 만든 글을 그대로 넣는 것은 금지. 손대지 않았으면 막는다.
+  if (text === String(lastAssessmentDraft || '').trim()) {
+    alert(t('AI 초안을 한 글자도 고치지 않으셨습니다.\n\n2026학년도 기재요령은 AI가 생성한 자료를 서술형 항목에 그대로 입력하는 것을 금지합니다.\n선생님이 관찰한 내용으로 손본 뒤에 넣어주세요.',
+            'The AI draft has not been edited.\n\nThe 2026 guidelines prohibit entering AI-generated text as-is. Please revise it based on your own observations first.'));
+    return;
+  }
+  // 기재 금지사항이 섞여 있는지 짚어 준다
+  if (!tcsConfirmForbidden(text, 'comment')) return;
+
+  if (!confirm(t('아래를 확인하셨습니까?\n\n· 학생의 실제 수행과 다른 허위·과장이 없음\n· 기재 금지사항이 들어 있지 않음\n\n확인하셨다면 생기부 종합의견에 저장합니다. (기존 내용은 덮어씁니다)',
+                 'Have you verified the following?\n\n· No false or exaggerated content\n· No prohibited content\n\nIf so, this will be saved into the record summary (overwriting existing content).'))) return;
   const { data: rec } = await sb.from('tcs_records').select('data').eq('community_id',CID()).eq('student_id',s360Id).eq('section','comment').maybeSingle();
   const data = (rec && rec.data) || {};
   data.comment_ko = text;
