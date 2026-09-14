@@ -218,6 +218,65 @@ Deno.serve(async (req) => {
   try { token = await getAccessToken(); }
   catch (e) { return json({ error: String((e as Error).message) }, 500); }
 
+  // ── 누가 이 캘린더를 볼 수 있는지 ──────────────────────────────
+  //   동기화는 서비스 계정이 하므로, 여기 없는 관리자도 TCS 안에서는
+  //   일정을 다 본다. 이 목록은 '자기 구글 캘린더 앱에서도 보는 사람' 이다.
+  if (action === "acl") {
+    if (!calId) return json({ ok: true, people: [] });
+    try {
+      const list = await gcal(token, `/calendars/${encodeURIComponent(calId)}/acl`);
+      const people = (list.items ?? [])
+        .filter((a: any) => a.scope?.type === "user" && a.scope?.value)
+        .filter((a: any) => !String(a.scope.value).endsWith(".iam.gserviceaccount.com"))
+        .map((a: any) => ({ id: a.id, email: a.scope.value, role: a.role }));
+      // 아직 권한이 없는 우리 공동체 관리자들을 추천해 준다
+      const { data: admins } = await admin.from("members")
+        .select("name, email, community_role, role")
+        .eq("community_id", cid).limit(200);
+      const have = new Set(people.map((p: any) => String(p.email).toLowerCase()));
+      const suggest = (admins ?? [])
+        .filter((m: any) =>
+          ["super_admin", "community_admin", "admin_officer"].includes(m.community_role) ||
+          ["총관리자", "관리자", "행정담당자"].includes(m.role))
+        .filter((m: any) => m.email && !have.has(String(m.email).toLowerCase()))
+        .map((m: any) => ({ name: m.name, email: m.email }));
+      return json({ ok: true, people, suggest });
+    } catch (e: any) {
+      return json({ error: `권한 목록을 읽지 못했습니다: ${e.message}` }, 400);
+    }
+  }
+
+  // 권한 주기 / 거두기
+  if (action === "share" || action === "unshare") {
+    if (!calId) return json({ error: "연결된 캘린더가 없습니다." }, 400);
+    try {
+      if (action === "unshare") {
+        const ruleId = String(body?.ruleId || "");
+        if (!ruleId) return json({ error: "지울 대상이 없습니다." }, 400);
+        await gcal(token, `/calendars/${encodeURIComponent(calId)}/acl/${encodeURIComponent(ruleId)}`,
+          { method: "DELETE" });
+        return json({ ok: true, removed: ruleId });
+      }
+      const emails: string[] = (Array.isArray(body?.emails) ? body.emails : [body?.email])
+        .map((x: any) => String(x || "").trim()).filter(Boolean);
+      if (!emails.length) return json({ error: "이메일을 넣어주세요." }, 400);
+      const role = body?.role === "reader" ? "reader" : "writer";
+      const done: string[] = [], failed: string[] = [];
+      for (const email of emails) {
+        try {
+          await gcal(token, `/calendars/${encodeURIComponent(calId)}/acl?sendNotifications=true`, {
+            method: "POST",
+            body: JSON.stringify({ role, scope: { type: "user", value: email } }),
+          });
+          done.push(email);
+        } catch (_) { failed.push(email); }
+      }
+      return json({ ok: true, shared: done, failed });
+    } catch (e: any) {
+      return json({ error: e.message }, 400);
+    }
+  }
+
   // ── 캘린더를 대신 만들어 준다 ──────────────────────────────────
   //   공동체마다 구글 콘솔을 만지게 하면 아무도 안 쓴다.
   //   서비스 계정이 캘린더를 만들고, 요청한 관리자에게 권한을 넘겨준다.

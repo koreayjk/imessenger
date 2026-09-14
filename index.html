@@ -8379,6 +8379,9 @@ async function renderCommunitySettings() {
         </div>
         <div id="cs-gcal-msg" style="font-size:12px;margin-bottom:10px;line-height:1.7"></div>
 
+        <!-- 누가 자기 구글 캘린더에서도 볼 수 있는지 -->
+        <div id="cs-gcal-acl" style="border-top:1px solid var(--border);padding-top:10px;margin-bottom:10px"></div>
+
         <details style="border-top:1px solid var(--border);padding-top:10px">
           <summary style="cursor:pointer;font-size:12px;font-weight:600;color:var(--ink3);list-style:none">
             이미 쓰던 캘린더를 연결하고 싶어요
@@ -8431,6 +8434,7 @@ async function renderCommunitySettings() {
   renderRecordOrgsAdmin();
   renderSealsAdmin();
   loadGcalInfo();
+  renderGcalAcl();
 }
 
 // ── 기록부 기관 프리셋 CRUD ──
@@ -8530,11 +8534,90 @@ async function createGcal() {
               ? `<span style="color:#b45309">⚠️ ${escHtml(data.warn)}</span><br/>`
               : ''))
       + `<a href="${imAttr(data.link)}" target="_blank" rel="noopener" style="color:var(--accent);font-weight:600">구글 캘린더에서 열기 →</a>`;
+    renderGcalAcl();
   } catch (e) {
     if (box) box.innerHTML = `<span style="color:#b91c1c">❌ ${escHtml(e?.message || String(e))}</span>`;
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '캘린더 만들기'; }
   }
+}
+
+// 캘린더를 자기 구글 앱에서도 보는 사람들.
+//  동기화는 서비스 계정이 하므로, 여기 없는 관리자도 TCS 안에서는 다 본다.
+async function renderGcalAcl() {
+  const box = document.getElementById('cs-gcal-acl');
+  if (!box) return;
+  box.innerHTML = '<div style="font-size:12px;color:var(--ink3)">권한 목록을 불러오는 중…</div>';
+  let data = null;
+  try {
+    const res = await sb.functions.invoke('gcal-sync', { body: { action: 'acl' } });
+    data = res.data;
+    if (!data || data.error) throw new Error((data && data.error) || '불러오지 못했습니다');
+  } catch (e) {
+    box.innerHTML = `<div style="font-size:12px;color:var(--ink3)">${escHtml(e?.message || '권한 목록을 불러오지 못했습니다')}</div>`;
+    return;
+  }
+  const people = data.people || [];
+  const suggest = data.suggest || [];
+  const roleKo = (r) => ({ owner:'소유자', writer:'편집', reader:'보기' }[r] || r);
+
+  box.innerHTML = `
+    <div style="font-size:12px;font-weight:700;color:var(--ink2);margin-bottom:3px">구글 캘린더에서 볼 수 있는 사람</div>
+    <div style="font-size:11.5px;color:var(--ink3);margin-bottom:9px;line-height:1.7">
+      여기 없어도 <b>TCS 안에서는 모든 관리자가 일정을 보고 고칩니다.</b>
+      이 목록은 각자의 구글 캘린더 앱에도 띄우고 싶은 사람만 넣으면 됩니다.
+    </div>
+    ${people.length ? people.map(p => `
+      <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--bs)">
+        <div style="flex:1;font-size:12.5px;color:var(--ink)">${escHtml(p.email)}</div>
+        <div style="font-size:11px;color:var(--ink3)">${roleKo(p.role)}</div>
+        ${p.role === 'owner' ? '' : `<button onclick="gcalUnshare('${escAttr(p.id)}','${escAttr(p.email)}')"
+          style="width:26px;height:26px;border-radius:6px;border:1.5px solid var(--border);background:white;color:#ef4444;font-size:13px;cursor:pointer">×</button>`}
+      </div>`).join('')
+      : '<div style="font-size:12px;color:var(--ink3);padding:4px 0">아직 없어요.</div>'}
+
+    ${suggest.length ? `
+      <div style="margin-top:10px">
+        <div style="font-size:11.5px;color:var(--ink3);margin-bottom:6px">이 공동체의 관리자 — 눌러서 권한 주기</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">
+          ${suggest.map(m => `<button onclick="gcalShare('${escAttr(m.email)}')"
+            style="height:30px;padding:0 11px;border-radius:8px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);font:600 12px var(--font);cursor:pointer">
+            + ${escHtml(m.name || m.email)}</button>`).join('')}
+        </div>
+      </div>` : ''}
+
+    <div style="display:flex;gap:6px;margin-top:10px">
+      <input id="cs-gcal-add" type="email" placeholder="구글 계정 이메일 추가"
+        style="flex:1;min-width:150px;height:34px;padding:0 10px;border:1.5px solid var(--border);border-radius:8px;font:500 12.5px var(--font);color:var(--ink);background:var(--surface)"/>
+      <button onclick="gcalShare()" style="height:34px;padding:0 13px;border-radius:8px;border:1.5px solid var(--accent);background:white;color:var(--accent);font:700 12px var(--font);cursor:pointer">권한 주기</button>
+    </div>`;
+}
+
+async function gcalShare(email) {
+  const el = document.getElementById('cs-gcal-add');
+  const target = (email || (el && el.value) || '').trim();
+  if (!target) { showUploadToast('이메일을 넣어주세요'); return; }
+  showUploadToast('권한을 주는 중…');
+  try {
+    const { data } = await sb.functions.invoke('gcal-sync', {
+      body: { action: 'share', email: target, role: 'writer' },
+    });
+    if (!data || !data.ok) { showUploadToast('실패: ' + ((data && data.error) || '')); return; }
+    if ((data.failed || []).length) { showUploadToast(`${data.failed.join(', ')} 는 실패했어요 (구글 계정이 맞는지 확인해 주세요)`); }
+    else { showUploadToast('✅ 권한을 줬어요. 초대 메일이 갑니다'); }
+    if (el) el.value = '';
+    renderGcalAcl();
+  } catch (e) { showUploadToast('실패: ' + (e?.message || e)); }
+}
+
+async function gcalUnshare(ruleId, email) {
+  if (!confirm(`${email} 의 구글 캘린더 권한을 거둘까요?\n\nTCS 안에서는 그대로 일정을 봅니다.`)) return;
+  try {
+    const { data } = await sb.functions.invoke('gcal-sync', { body: { action: 'unshare', ruleId } });
+    if (!data || !data.ok) { showUploadToast('실패: ' + ((data && data.error) || '')); return; }
+    showUploadToast('권한을 거뒀어요');
+    renderGcalAcl();
+  } catch (e) { showUploadToast('실패: ' + (e?.message || e)); }
 }
 
 async function checkGcal() {
