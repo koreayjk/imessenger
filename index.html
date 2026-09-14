@@ -8703,8 +8703,22 @@ async function syncGoogleCalendar() {
       lines.push('', t('양쪽 모두 이미 같은 상태이거나, 보낼 일정이 없습니다.',
                        'Both sides already match, or there is nothing to send.'));
     }
+    // 무엇이 언제로 들어갔는지 — 구글에서 못 찾을 때 스스로 확인할 수 있게
+    if (data.sentFrom) {
+      lines.push('', t(`보낸 일정 기간: ${data.sentFrom} ~ ${data.sentTo}`,
+                       `Sent range: ${data.sentFrom} ~ ${data.sentTo}`));
+      if (Array.isArray(data.sentSample) && data.sentSample.length) {
+        lines.push(...data.sentSample.map(x => '· ' + x));
+        if (sent > data.sentSample.length) lines.push(t(`… 외 ${sent - data.sentSample.length}건`, `… and ${sent - data.sentSample.length} more`));
+      }
+      lines.push('', t('구글 캘린더에 안 보이면, 왼쪽 목록에서 이 캘린더에 체크가 되어 있는지 확인하세요.',
+                       'If you cannot see them, check that this calendar is ticked in the left sidebar.'));
+    }
     // 오래 기다린 끝에 나오는 결과라 토스트로는 놓치기 쉽다
     alert(t('✅ 구글 캘린더 동기화 완료\n\n','✅ Google Calendar sync done\n\n') + lines.join('\n'));
+    if (data.calendarLink && sent && confirm(t('구글 캘린더를 열어 확인할까요?','Open Google Calendar to check?'))) {
+      window.open(data.calendarLink, '_blank', 'noopener');
+    }
     await loadCalendar();
   } catch (e) {
     showUploadToast(t('동기화 실패: ','Sync failed: ') + (e?.message || e));

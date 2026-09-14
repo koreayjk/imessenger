@@ -355,6 +355,17 @@ Deno.serve(async (req) => {
 
   const report: Record<string, number> = { pushed: 0, updated: 0, pulled: 0, skipped: 0 };
   const problems: string[] = [];
+  // 무엇이 언제로 들어갔는지 — "보냈다는데 안 보인다" 를 스스로 확인할 수 있게
+  const sentSample: string[] = [];
+  let minDate = "", maxDate = "";
+  const noteSent = (ev: any) => {
+    const d = String(ev.start_date || "");
+    if (d) {
+      if (!minDate || d < minDate) minDate = d;
+      if (!maxDate || d > maxDate) maxDate = d;
+    }
+    if (sentSample.length < 5) sentSample.push(`${d} ${ev.title || ""}`.trim());
+  };
 
   // ── 1. TCS → 구글 ────────────────────────────────────────────────
   if (action === "sync" || action === "push") {
@@ -369,6 +380,7 @@ Deno.serve(async (req) => {
           await gcal(token, `/calendars/${encodeURIComponent(calId)}/events/${encodeURIComponent(ev.google_event_id)}`,
             { method: "PATCH", body: JSON.stringify(payload) });
           report.updated++;
+          noteSent(ev);
         } else {
           const made = await gcal(token, `/calendars/${encodeURIComponent(calId)}/events`,
             { method: "POST", body: JSON.stringify(payload) });
@@ -376,6 +388,7 @@ Deno.serve(async (req) => {
             google_event_id: made.id, gcal_origin: "tcs", gcal_synced_at: new Date().toISOString(),
           }).eq("id", ev.id);
           report.pushed++;
+          noteSent(ev);
         }
       } catch (e: any) {
         // 구글에서 지워진 일정이면 짝을 풀어 다음번에 새로 만든다
@@ -428,5 +441,9 @@ Deno.serve(async (req) => {
     }
   }
 
-  return json({ ok: true, calendarId: calId, report, problems });
+  return json({
+    ok: true, calendarId: calId, report, problems,
+    sentSample, sentFrom: minDate, sentTo: maxDate,
+    calendarLink: `https://calendar.google.com/calendar/u/0/r?cid=${encodeURIComponent(calId)}`,
+  });
 });
