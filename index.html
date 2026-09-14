@@ -965,6 +965,8 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
           <div style="font-size:15px;font-weight:700" id="cal-month-title">2026년 5월</div>
           <div style="font-size:12px;color:var(--ink3);margin-top:1px">IMUSA 공동체 일정</div>
         </div>
+        <button id="gcal-sync-btn" onclick="syncGoogleCalendar()" title="구글 캘린더와 주고받기"
+          style="height:34px;padding:0 13px;border-radius:10px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);font:600 12.5px var(--font);cursor:pointer;margin-right:7px">🔄 구글 캘린더</button>
         <button onclick="showEventForm()" style="height:34px;padding:0 16px;border-radius:10px;border:none;background:var(--accent);color:white;font:600 13px var(--font);cursor:pointer">+ 일정 추가</button>
       </div>
       <div style="flex:1;overflow-y:auto;display:flex;flex-direction:column">
@@ -8362,6 +8364,23 @@ async function renderCommunitySettings() {
         </div>
       </div>
 
+      <!-- 구글 캘린더 연동 -->
+      <div class="adm-card" style="margin-top:16px">
+        <div style="font-size:13px;font-weight:700;color:var(--ink);margin-bottom:4px">📅 구글 캘린더 연동</div>
+        <div style="font-size:12px;color:var(--ink3);margin-bottom:12px;line-height:1.7">
+          전용 서비스 계정으로 <b>캘린더 하나</b>를 주고받습니다. 선생님들이 각자 구글 로그인을 할 필요는 없어요.<br/>
+          구글 캘린더 → 해당 캘린더 <b>설정 → 캘린더 통합 → 캘린더 ID</b> 를 복사해 넣으세요.
+          그리고 <b>설정 → 특정 사용자와 공유</b>에 서비스 계정 이메일을 <b>‘변경 및 공유 관리’</b> 권한으로 추가해야 합니다.
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <input id="cs-gcal" type="text" value="${escAttr(comm.google_calendar_id || '')}"
+            placeholder="예: abc123@group.calendar.google.com"
+            style="flex:1;min-width:220px;height:38px;padding:0 12px;border:1.5px solid var(--border);border-radius:9px;font:600 13px var(--font);color:var(--ink);background:var(--surface)"/>
+          <button onclick="checkGcal()" style="height:38px;padding:0 14px;border-radius:9px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);font:600 13px var(--font);cursor:pointer">연결 확인</button>
+        </div>
+        <div id="cs-gcal-msg" style="font-size:12px;margin-top:8px;line-height:1.7"></div>
+      </div>
+
       <!-- 직인 (학교 도장) -->
       <div class="adm-card" style="margin-top:16px">
         <div style="font-size:13px;font-weight:700;color:var(--ink);margin-bottom:4px">🔴 직인 (도장)</div>
@@ -8434,6 +8453,64 @@ async function addRecordOrg(commId) {
   document.getElementById('org-logo-url').value = '';
   const pv = document.getElementById('org-logo-preview'); if (pv) pv.innerHTML = '🏷️';
   renderRecordOrgsAdmin();
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  구글 캘린더 연동
+//   전용 서비스 계정 하나로 '공유받은 캘린더' 를 주고받는다.
+//   개별 사용자의 구글 로그인은 없다.
+// ══════════════════════════════════════════════════════════════════
+async function checkGcal() {
+  const box = document.getElementById('cs-gcal-msg');
+  const el = document.getElementById('cs-gcal');
+  if (!box || !el) return;
+  const raw = el.value.trim();
+  if (!raw) { box.innerHTML = '<span style="color:var(--ink3)">캘린더 ID 를 먼저 넣어주세요.</span>'; return; }
+  box.innerHTML = '<span style="color:var(--ink3)">확인하는 중…</span>';
+  // 저장 전에도 확인할 수 있게, 화면의 값을 먼저 저장한다
+  const { error: saveErr } = await sb.from('communities')
+    .update({ google_calendar_id: raw }).eq('id', CID());
+  if (saveErr) { box.innerHTML = `<span style="color:#b91c1c">저장 실패: ${escHtml(saveErr.message)}</span>`; return; }
+  try {
+    const { data, error } = await sb.functions.invoke('gcal-sync', {
+      body: { action: 'check', timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone },
+    });
+    const msg = (data && data.error) || (error && (error.message || String(error)));
+    if (data && data.needsCalendar) { box.innerHTML = `<span style="color:#b45309">${escHtml(data.message)}</span>`; return; }
+    if (!data || !data.ok) {
+      box.innerHTML = `<span style="color:#b91c1c">❌ ${escHtml(msg || '연결하지 못했습니다')}</span>`;
+      return;
+    }
+    box.innerHTML = `<span style="color:#15803d">✅ 연결됨 — <b>${escHtml(data.calendarName || data.calendarId)}</b></span>`;
+  } catch (e) {
+    box.innerHTML = `<span style="color:#b91c1c">❌ ${escHtml(e?.message || String(e))}</span>`;
+  }
+}
+
+// 일정 화면의 '구글 캘린더 동기화' 버튼
+async function syncGoogleCalendar() {
+  const btn = document.getElementById('gcal-sync-btn');
+  if (btn) { btn.disabled = true; btn.textContent = t('동기화 중…','Syncing…'); }
+  try {
+    const { data, error } = await sb.functions.invoke('gcal-sync', {
+      body: { action: 'sync', timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone },
+    });
+    const msg = (data && data.error) || (error && (error.message || String(error)));
+    if (data && data.needsCalendar) { showUploadToast(data.message); return; }
+    if (!data || !data.ok) { showUploadToast(t('동기화 실패: ','Sync failed: ') + (msg || '')); return; }
+    const r = data.report || {};
+    showUploadToast(t(
+      `✅ 구글로 ${(r.pushed||0) + (r.updated||0)}건 보내고 ${r.pulled||0}건 가져왔어요`,
+      `✅ Sent ${(r.pushed||0) + (r.updated||0)}, pulled ${r.pulled||0}`));
+    if (Array.isArray(data.problems) && data.problems.length) {
+      console.warn('구글 캘린더 동기화 경고:', data.problems);
+    }
+    await loadCalendar();
+  } catch (e) {
+    showUploadToast(t('동기화 실패: ','Sync failed: ') + (e?.message || e));
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = t('🔄 구글 캘린더','🔄 Google Calendar'); }
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -8628,6 +8705,13 @@ async function saveCommSettings(commId) {
     const raw = driveEl.value.trim();
     const m = raw.match(/folders\/([A-Za-z0-9_-]{10,})/) || raw.match(/[?&]id=([A-Za-z0-9_-]{10,})/);
     updateData.drive_root_folder_id = (m ? m[1] : raw) || null;
+  }
+  const gcalEl = document.getElementById('cs-gcal');
+  if (gcalEl) {
+    // 캘린더 설정 화면에서 통째로 복사해 와도 ID 만 남긴다
+    const raw = gcalEl.value.trim();
+    const m = raw.match(/([A-Za-z0-9._%+-]+@(?:group\.calendar\.google\.com|gmail\.com))/);
+    updateData.google_calendar_id = (m ? m[1] : raw) || null;
   }
   if (logoUrl) updateData.logo_url = logoUrl;
   const { error } = await sb.from('communities').update(updateData).eq('id', commId);
