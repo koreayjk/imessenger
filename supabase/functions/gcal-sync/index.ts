@@ -219,8 +219,11 @@ Deno.serve(async (req) => {
   catch (e) { return json({ error: String((e as Error).message) }, 500); }
 
   // ── 쓸 수 있는 캘린더 목록 ─────────────────────────────────────
-  //   서비스 계정에 공유된 캘린더를 전부 보여 준다.
-  //   캘린더 ID 를 구글 설정에서 찾아 옮겨 적게 하면 대부분 여기서 막힌다.
+  //   ⚠ 서비스 계정에 캘린더를 '공유' 해도 calendarList 에는 안 나타난다.
+  //      사람 계정과 달리 초대를 수락하는 절차가 없기 때문이다.
+  //      calendarList.insert 로 목록에 넣어 줘야 비로소 보인다.
+  //      그래서 처음 한 번은 캘린더 ID 를 받아야 하고(select),
+  //      그때 목록에도 넣어 두면 다음부터는 골라 쓸 수 있다.
   if (action === "list") {
     try {
       const out: any[] = [];
@@ -240,9 +243,20 @@ Deno.serve(async (req) => {
         }
         pageToken = page.nextPageToken;
       } while (pageToken);
+      // 지금 연결된 캘린더가 목록에 없으면 따로 넣어 준다
+      if (calId && !out.some((c) => c.id === calId)) {
+        try {
+          const cur = await gcal(token, `/calendars/${encodeURIComponent(calId)}`);
+          out.push({ id: calId, name: cur?.summary || calId, role: "writer", primary: false, canWrite: true });
+        } catch (_) { /* 접근이 끊겼으면 넣지 않는다 */ }
+      }
       // 쓰기 되는 것부터, 그다음 이름순
       out.sort((a, b) => (Number(b.canWrite) - Number(a.canWrite)) || String(a.name).localeCompare(String(b.name)));
-      return json({ ok: true, calendars: out, current: calId });
+      return json({
+        ok: true, calendars: out, current: calId,
+        // 공유만으로는 목록에 안 뜬다는 것을 화면이 설명할 수 있게
+        note: out.length ? "" : "shared-not-listed",
+      });
     } catch (e: any) {
       return json({ error: `캘린더 목록을 읽지 못했습니다: ${e.message}` }, 400);
     }
@@ -254,6 +268,13 @@ Deno.serve(async (req) => {
     if (!pick) return json({ error: "고른 캘린더가 없습니다." }, 400);
     try {
       const cal = await gcal(token, `/calendars/${encodeURIComponent(pick)}`);
+      // 서비스 계정의 캘린더 목록에 넣어 둔다.
+      // 공유만으로는 목록에 안 뜨므로, 이렇게 해야 다음부터 골라 쓸 수 있다.
+      try {
+        await gcal(token, "/users/me/calendarList", {
+          method: "POST", body: JSON.stringify({ id: pick }),
+        });
+      } catch (_) { /* 이미 들어 있으면 실패한다. 연결 자체는 문제없다 */ }
       await admin.from("communities").update({ google_calendar_id: pick }).eq("id", cid);
       return json({ ok: true, calendarId: pick, calendarName: cal?.summary || "" });
     } catch (e: any) {
@@ -366,6 +387,11 @@ Deno.serve(async (req) => {
         await grant(String(extra), "writer");
       }
 
+      try {
+        await gcal(token, "/users/me/calendarList", {
+          method: "POST", body: JSON.stringify({ id: newId }),
+        });
+      } catch (_) { /* 목록에 못 넣어도 연결은 된다 */ }
       await admin.from("communities").update({ google_calendar_id: newId }).eq("id", cid);
       // 권한을 아무에게도 못 준 경우 — 캘린더는 만들어졌지만 사람 눈에는 안 보인다.
       // 그냥 성공이라고 하면 "만들었다는데 안 보인다" 가 된다.

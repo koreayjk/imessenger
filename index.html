@@ -8398,7 +8398,24 @@ async function renderCommunitySettings() {
               <button onclick="copyGcalSa()" style="height:34px;padding:0 12px;border-radius:8px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);font:600 12px var(--font);cursor:pointer">복사</button>
             </div>
             <div style="font-size:12px;color:var(--ink3);line-height:1.8;margin:12px 0 8px">
-              <b>2단계</b> — 공유한 뒤 아래에서 골라 주세요. 캘린더 ID 를 찾아 적으실 필요 없습니다.
+              <b>2단계</b> — 캘린더 ID 를 한 번만 넣어 주세요.<br/>
+              <span style="color:#b45309">구글은 공유만으로 서비스 계정의 목록에 캘린더를 올려주지 않습니다.</span>
+              한 번 연결해 두면 그다음부터는 아래 목록에서 골라 쓸 수 있어요.
+            </div>
+            <input id="cs-gcal" type="text" value="${escAttr(comm.google_calendar_id || '')}"
+              placeholder="캘린더 ID — 개인 캘린더면 내 지메일 주소"
+              style="width:100%;height:38px;padding:0 12px;border:1.5px solid var(--border);border-radius:9px;font:600 13px var(--font);color:var(--ink);background:var(--surface)"/>
+            <div style="display:flex;gap:6px;margin-top:7px">
+              <button onclick="connectGcalById()" style="flex:1;height:36px;border-radius:8px;border:1.5px solid var(--accent);background:white;color:var(--accent);font:700 12.5px var(--font);cursor:pointer">이 ID 로 연결</button>
+            </div>
+            <div style="font-size:11px;color:var(--ink3);margin-top:6px;line-height:1.7">
+              찾는 곳: 구글 캘린더 → 그 캘린더 <b>설정 및 공유</b> → 아래로 내려 <b>캘린더 통합</b> → <b>캘린더 ID</b>.
+              (휴대폰 앱에는 없습니다. PC 웹에서 보세요)<br/>
+              본인 기본 캘린더라면 ID 가 그냥 <b>내 지메일 주소</b>입니다.
+            </div>
+
+            <div style="font-size:12px;color:var(--ink3);line-height:1.8;margin:14px 0 8px;border-top:1px solid var(--border);padding-top:12px">
+              한 번 연결한 적 있는 캘린더는 여기서 고를 수 있어요.
             </div>
             <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
               <select id="cs-gcal-pick" style="flex:1;min-width:190px;height:36px;padding:0 10px;border:1.5px solid var(--border);border-radius:8px;font:600 12.5px var(--font);color:var(--ink);background:var(--surface)">
@@ -8407,16 +8424,6 @@ async function renderCommunitySettings() {
               <button onclick="loadGcalList()" style="height:36px;padding:0 12px;border-radius:8px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);font:600 12px var(--font);cursor:pointer">목록 새로고침</button>
               <button onclick="pickGcal()" style="height:36px;padding:0 13px;border-radius:8px;border:1.5px solid var(--accent);background:white;color:var(--accent);font:700 12px var(--font);cursor:pointer">이걸로 연결</button>
             </div>
-            <details style="margin-top:10px">
-              <summary style="cursor:pointer;font-size:11.5px;color:var(--ink3);list-style:none">캘린더 ID 를 직접 넣기</summary>
-              <input id="cs-gcal" type="text" value="${escAttr(comm.google_calendar_id || '')}"
-                placeholder="예: abc123@group.calendar.google.com 또는 내 지메일 주소"
-                style="width:100%;height:38px;margin-top:7px;padding:0 12px;border:1.5px solid var(--border);border-radius:9px;font:600 13px var(--font);color:var(--ink);background:var(--surface)"/>
-              <div style="font-size:11px;color:var(--ink3);margin-top:5px;line-height:1.7">
-                구글 캘린더 → 그 캘린더 <b>설정 및 공유</b> → 아래로 내려 <b>캘린더 통합</b> → <b>캘린더 ID</b>.
-                (휴대폰 앱에는 없습니다. PC 웹에서 보세요)
-              </div>
-            </details>
           </div>
         </details>
       </div>
@@ -8697,7 +8704,8 @@ async function loadGcalList() {
     if (!data || !data.ok) throw new Error(await edgeErrorText(error, data));
     const list = data.calendars || [];
     if (!list.length) {
-      sel.innerHTML = '<option value="">공유된 캘린더가 없습니다 — 1단계를 먼저 해주세요</option>';
+      // 공유만으로는 여기 안 뜬다. 그렇게 말해 줘야 사용자가 공유를 의심하지 않는다.
+      sel.innerHTML = '<option value="">아직 없습니다 — 위에서 캘린더 ID 로 먼저 한 번 연결하세요</option>';
       return;
     }
     sel.innerHTML = list.map(c => {
@@ -8710,6 +8718,16 @@ async function loadGcalList() {
   }
 }
 
+// 캘린더 ID 를 직접 넣어 연결. 첫 연결은 이 길뿐이다
+// (구글이 공유만으로는 서비스 계정 목록에 캘린더를 올려주지 않는다).
+async function connectGcalById() {
+  const el = document.getElementById('cs-gcal');
+  const raw = (el && el.value || '').trim();
+  if (!raw) { showUploadToast('캘린더 ID 를 넣어주세요'); return; }
+  const m = raw.match(/([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+)/);
+  await selectGcal(m ? m[1] : raw);
+}
+
 async function pickGcal() {
   const sel = document.getElementById('cs-gcal-pick');
   const box = document.getElementById('cs-gcal-msg');
@@ -8717,6 +8735,11 @@ async function pickGcal() {
   if (!id) { showUploadToast('연결할 캘린더를 골라주세요'); return; }
   if (sel.selectedOptions[0] && sel.selectedOptions[0].textContent.includes('읽기 전용')
       && !confirm('이 캘린더는 읽기 전용입니다.\nTCS 일정을 구글로 보낼 수 없고, 가져오기만 됩니다.\n\n그래도 연결할까요?')) return;
+  await selectGcal(id);
+}
+
+async function selectGcal(id) {
+  const box = document.getElementById('cs-gcal-msg');
   try {
     const { data, error } = await sb.functions.invoke('gcal-sync', { body: { action: 'select', calendarId: id } });
     if (!data || !data.ok) {
