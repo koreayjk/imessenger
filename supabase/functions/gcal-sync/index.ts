@@ -227,7 +227,15 @@ Deno.serve(async (req) => {
       const list = await gcal(token, `/calendars/${encodeURIComponent(calId)}/acl`);
       const people = (list.items ?? [])
         .filter((a: any) => a.scope?.type === "user" && a.scope?.value)
-        .filter((a: any) => !String(a.scope.value).endsWith(".iam.gserviceaccount.com"))
+        // 사람이 아닌 항목은 뺀다.
+        //  · 서비스 계정 — 지우면 동기화가 통째로 멈춘다
+        //  · 캘린더 자기 자신 (…@group.calendar.google.com) — 구글이 자동으로 넣는다
+        .filter((a: any) => {
+          const v = String(a.scope.value).toLowerCase();
+          return !v.endsWith(".iam.gserviceaccount.com")
+              && !v.endsWith("@group.calendar.google.com")
+              && v !== String(calId).toLowerCase();
+        })
         .map((a: any) => ({ id: a.id, email: a.scope.value, role: a.role }));
       // 아직 권한이 없는 우리 공동체 관리자들을 추천해 준다
       const { data: admins } = await admin.from("members")
