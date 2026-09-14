@@ -8689,12 +8689,22 @@ async function syncGoogleCalendar() {
       return;
     }
     const r = data.report || {};
-    showUploadToast(t(
-      `✅ 구글로 ${(r.pushed||0) + (r.updated||0)}건 보내고 ${r.pulled||0}건 가져왔어요`,
-      `✅ Sent ${(r.pushed||0) + (r.updated||0)}, pulled ${r.pulled||0}`));
+    const sent = (r.pushed || 0) + (r.updated || 0);
+    const lines = [
+      t(`구글로 보냄: ${sent}건 (새로 ${r.pushed||0}, 수정 ${r.updated||0})`,
+        `Sent: ${sent} (new ${r.pushed||0}, updated ${r.updated||0})`),
+      t(`구글에서 가져옴: ${r.pulled||0}건`, `Pulled: ${r.pulled||0}`),
+    ];
     if (Array.isArray(data.problems) && data.problems.length) {
+      lines.push('', t('처리하지 못한 것:', 'Could not process:'), ...data.problems);
       console.warn('구글 캘린더 동기화 경고:', data.problems);
     }
+    if (!sent && !(r.pulled || 0)) {
+      lines.push('', t('양쪽 모두 이미 같은 상태이거나, 보낼 일정이 없습니다.',
+                       'Both sides already match, or there is nothing to send.'));
+    }
+    // 오래 기다린 끝에 나오는 결과라 토스트로는 놓치기 쉽다
+    alert(t('✅ 구글 캘린더 동기화 완료\n\n','✅ Google Calendar sync done\n\n') + lines.join('\n'));
     await loadCalendar();
   } catch (e) {
     showUploadToast(t('동기화 실패: ','Sync failed: ') + (e?.message || e));
@@ -11232,7 +11242,10 @@ async function imOcrAttachment(idx) {
 
 function showUploadToast(msg) {
   const area = document.getElementById('msg-area');
-  if (!area) { imToast(msg); return; }   // 채팅 화면 밖에서는 떠 있는 토스트로
+  // msg-area 는 채팅 화면을 벗어나도 DOM 에 남아 있고 크기만 0 이 된다.
+  // 있는지만 보고 붙이면, 채팅 밖에서는 안내가 보이지 않는 곳으로 사라진다.
+  // (증명서 발급·설정 저장·동기화 결과가 전부 여기로 빨려들어가고 있었다)
+  if (!area || area.offsetParent === null) { imToast(msg); return; }
   const BASE = 'translateX(-50%)';
   let toast = document.getElementById('upload-toast');
   if (!toast) {
