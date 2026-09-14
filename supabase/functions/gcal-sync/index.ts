@@ -410,11 +410,36 @@ Deno.serve(async (req) => {
     }
   }
 
-  // 연결만 확인
+  // 연결 확인 — 어느 캘린더를 보고 있고, 거기에 뭐가 들어 있는지까지
   if (action === "check") {
     try {
       const cal = await gcal(token, `/calendars/${encodeURIComponent(calId)}`);
-      return json({ ok: true, calendarId: calId, calendarName: cal?.summary || "", communityName: comm?.name || "" });
+      // 양쪽에 각각 몇 건이 있는지 세어 준다.
+      // "연결은 됐다는데 일정이 안 보인다" 를 스스로 가려낼 수 있게.
+      let gCount = 0; const gSample: string[] = [];
+      try {
+        const from = new Date(); from.setMonth(from.getMonth() - 6);
+        const to = new Date(); to.setFullYear(to.getFullYear() + 1);
+        const q = new URLSearchParams({
+          singleEvents: "true", maxResults: "250", orderBy: "startTime",
+          timeMin: from.toISOString(), timeMax: to.toISOString(),
+        });
+        const page = await gcal(token, `/calendars/${encodeURIComponent(calId)}/events?${q}`);
+        for (const g of page.items ?? []) {
+          if (g.status === "cancelled") continue;
+          gCount++;
+          if (gSample.length < 3) {
+            gSample.push(`${g.start?.date || (g.start?.dateTime || "").slice(0, 10)} ${g.summary || ""}`.trim());
+          }
+        }
+      } catch (_) { /* 개수는 못 세도 연결 자체는 알려 준다 */ }
+      const { count: tcsCount } = await admin.from("events")
+        .select("id", { count: "exact", head: true }).eq("community_id", cid);
+      return json({
+        ok: true, calendarId: calId, calendarName: cal?.summary || "",
+        communityName: comm?.name || "",
+        googleCount: gCount, googleSample: gSample, tcsCount: tcsCount ?? 0,
+      });
     } catch (e: any) {
       const hint = e.status === 404
         ? "캘린더를 찾을 수 없습니다. 캘린더 ID 가 맞는지, 서비스 계정에 캘린더를 공유했는지 확인해 주세요."

@@ -8776,7 +8776,14 @@ async function checkGcal() {
       box.innerHTML = `<span style="color:#b91c1c">❌ ${escHtml(await edgeErrorText(error, data))}</span>`;
       return;
     }
-    box.innerHTML = `<span style="color:#15803d">✅ 연결됨 — <b>${escHtml(data.calendarName || data.calendarId)}</b></span>`;
+    const bits = [`<span style="color:#15803d">✅ 연결됨 — <b>${escHtml(data.calendarName || data.calendarId)}</b></span>`];
+    bits.push(`<span style="color:var(--ink3);font-size:11.5px">구글에 ${data.googleCount ?? '?'}건 · TCS에 ${data.tcsCount ?? '?'}건</span>`);
+    if (Array.isArray(data.googleSample) && data.googleSample.length) {
+      bits.push(`<span style="color:var(--ink3);font-size:11.5px">구글 쪽 예: ${escHtml(data.googleSample.join(' / '))}</span>`);
+    } else if (data.googleCount === 0) {
+      bits.push(`<span style="color:#b45309;font-size:11.5px">이 캘린더에는 일정이 하나도 없습니다. 보고 계신 캘린더가 맞는지 확인해 주세요.</span>`);
+    }
+    box.innerHTML = bits.join('<br/>');
   } catch (e) {
     box.innerHTML = `<span style="color:#b91c1c">❌ ${escHtml(e?.message || String(e))}</span>`;
   }
