@@ -53,6 +53,11 @@ function pemToDer(pem: string): ArrayBuffer {
 
 let cachedToken: { token: string; exp: number } | null = null;
 
+// 시크릿에서 서비스 계정 이메일만 꺼낸다 (화면에 보여 주려고)
+function serviceAccountEmail(): string {
+  try { return JSON.parse(SA_RAW)?.client_email || ""; } catch { return ""; }
+}
+
 async function getAccessToken(): Promise<string> {
   if (cachedToken && cachedToken.exp > Date.now() / 1000 + 60) return cachedToken.token;
   if (!SA_RAW) throw new Error("GOOGLE_SERVICE_ACCOUNT 시크릿이 없습니다.");
@@ -170,6 +175,7 @@ Deno.serve(async (req) => {
   });
   const { data: u, error: uErr } = await asUser.auth.getUser();
   const uid = u?.user?.id;
+  const userEmail = u?.user?.email || "";
   if (uErr || !uid) return json({ error: "로그인 정보를 확인할 수 없습니다." }, 401);
 
   const admin = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
@@ -188,17 +194,82 @@ Deno.serve(async (req) => {
   const { data: comm } = await admin.from("communities")
     .select("id, name, google_calendar_id").eq("id", cid).maybeSingle();
   const calId = (comm?.google_calendar_id || "").trim();
-  if (!calId) {
-    return json({ needsCalendar: true, communityName: comm?.name || "",
-      message: "연동할 구글 캘린더가 지정되지 않았습니다. 관리자 → 공동체 설정에서 캘린더 ID 를 넣어주세요." });
-  }
-
   const tz = String(body?.timeZone || "Asia/Seoul");
   const action = String(body?.action || "sync");
+
+  // 설정 화면에 보여 줄 정보 — 토큰 없이도 답한다
+  if (action === "info") {
+    return json({
+      ok: true,
+      serviceAccount: serviceAccountEmail(),
+      hasSecret: !!SA_RAW,
+      calendarId: calId,
+      communityName: comm?.name || "",
+      myEmail: userEmail,
+    });
+  }
+
+  if (!calId && action !== "create") {
+    return json({ needsCalendar: true, communityName: comm?.name || "",
+      message: "연동할 구글 캘린더가 없습니다. '캘린더 만들기' 를 누르거나, 쓰던 캘린더의 ID 를 넣어주세요." });
+  }
 
   let token: string;
   try { token = await getAccessToken(); }
   catch (e) { return json({ error: String((e as Error).message) }, 500); }
+
+  // ── 캘린더를 대신 만들어 준다 ──────────────────────────────────
+  //   공동체마다 구글 콘솔을 만지게 하면 아무도 안 쓴다.
+  //   서비스 계정이 캘린더를 만들고, 요청한 관리자에게 권한을 넘겨준다.
+  if (action === "create") {
+    if (calId && !body?.force) {
+      return json({ error: "이미 연결된 캘린더가 있습니다. 새로 만들려면 먼저 캘린더 ID 를 비워주세요." }, 400);
+    }
+    try {
+      const made = await gcal(token, "/calendars", {
+        method: "POST",
+        body: JSON.stringify({
+          summary: `${comm?.name || "TCS"} 일정`,
+          description: "TCS 에서 자동으로 만든 공동체 일정 캘린더입니다.",
+          timeZone: tz,
+        }),
+      });
+      const newId = made.id;
+
+      // 요청한 관리자가 자기 구글 캘린더에서 볼 수 있게 권한을 준다
+      const shared: string[] = [];
+      const grant = async (email: string, role: string) => {
+        if (!email) return;
+        try {
+          await gcal(token, `/calendars/${encodeURIComponent(newId)}/acl?sendNotifications=true`, {
+            method: "POST",
+            body: JSON.stringify({ role, scope: { type: "user", value: email } }),
+          });
+          shared.push(email);
+        } catch (_) { /* 한 명 실패해도 계속 */ }
+      };
+      await grant(userEmail, "owner");
+      for (const extra of (Array.isArray(body?.shareWith) ? body.shareWith : [])) {
+        await grant(String(extra), "writer");
+      }
+
+      await admin.from("communities").update({ google_calendar_id: newId }).eq("id", cid);
+      // 권한을 아무에게도 못 준 경우 — 캘린더는 만들어졌지만 사람 눈에는 안 보인다.
+      // 그냥 성공이라고 하면 "만들었다는데 안 보인다" 가 된다.
+      const warn = shared.length ? "" :
+        (userEmail
+          ? "캘린더는 만들어졌지만 권한을 넘기지 못했습니다. 아래 주소를 직접 공유해 주세요."
+          : "로그인 계정에 이메일이 없어 권한을 넘기지 못했습니다. 아래 캘린더 ID 를 쓰시거나, 이메일이 있는 계정으로 다시 시도해 주세요.");
+      return json({
+        ok: true, created: true, calendarId: newId,
+        calendarName: made.summary, shared, warn,
+        serviceAccount: serviceAccountEmail(),
+        link: `https://calendar.google.com/calendar/u/0/r?cid=${encodeURIComponent(newId)}`,
+      });
+    } catch (e: any) {
+      return json({ error: `캘린더를 만들지 못했습니다: ${e.message}` }, 400);
+    }
+  }
 
   // 연결만 확인
   if (action === "check") {

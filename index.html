@@ -8368,17 +8368,37 @@ async function renderCommunitySettings() {
       <div class="adm-card" style="margin-top:16px">
         <div style="font-size:13px;font-weight:700;color:var(--ink);margin-bottom:4px">📅 구글 캘린더 연동</div>
         <div style="font-size:12px;color:var(--ink3);margin-bottom:12px;line-height:1.7">
-          전용 서비스 계정으로 <b>캘린더 하나</b>를 주고받습니다. 선생님들이 각자 구글 로그인을 할 필요는 없어요.<br/>
-          구글 캘린더 → 해당 캘린더 <b>설정 → 캘린더 통합 → 캘린더 ID</b> 를 복사해 넣으세요.
-          그리고 <b>설정 → 특정 사용자와 공유</b>에 서비스 계정 이메일을 <b>‘변경 및 공유 관리’</b> 권한으로 추가해야 합니다.
+          버튼을 누르면 이 공동체 전용 캘린더를 <b>TCS가 대신 만들고</b>,
+          지금 로그인한 분의 구글 계정에 권한까지 넘겨 드립니다.
+          구글 콘솔을 만지실 필요 없어요.
         </div>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <input id="cs-gcal" type="text" value="${escAttr(comm.google_calendar_id || '')}"
-            placeholder="예: abc123@group.calendar.google.com"
-            style="flex:1;min-width:220px;height:38px;padding:0 12px;border:1.5px solid var(--border);border-radius:9px;font:600 13px var(--font);color:var(--ink);background:var(--surface)"/>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+          <button onclick="createGcal()" id="gcal-make-btn"
+            style="height:38px;padding:0 16px;border-radius:9px;border:none;background:#1d3a5f;color:#fff;font:700 13px var(--font);cursor:pointer">캘린더 만들기</button>
           <button onclick="checkGcal()" style="height:38px;padding:0 14px;border-radius:9px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);font:600 13px var(--font);cursor:pointer">연결 확인</button>
         </div>
-        <div id="cs-gcal-msg" style="font-size:12px;margin-top:8px;line-height:1.7"></div>
+        <div id="cs-gcal-msg" style="font-size:12px;margin-bottom:10px;line-height:1.7"></div>
+
+        <details style="border-top:1px solid var(--border);padding-top:10px">
+          <summary style="cursor:pointer;font-size:12px;font-weight:600;color:var(--ink3);list-style:none">
+            이미 쓰던 캘린더를 연결하고 싶어요
+          </summary>
+          <div style="padding-top:10px">
+            <div style="font-size:12px;color:var(--ink3);line-height:1.8;margin-bottom:8px">
+              쓰던 캘린더가 있으면, 그 캘린더 <b>설정 및 공유 → 특정 사용자와 공유</b>에
+              아래 주소를 <b>‘변경 및 공유 관리’</b> 권한으로 추가한 뒤,
+              <b>캘린더 통합 → 캘린더 ID</b> 를 넣고 저장하세요.
+            </div>
+            <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px">
+              <input id="cs-gcal-sa" readonly value="" placeholder="서비스 계정 주소를 불러오는 중…"
+                style="flex:1;min-width:180px;height:34px;padding:0 10px;border:1.5px solid var(--border);border-radius:8px;font:500 12px var(--font);color:var(--ink2);background:var(--s2)"/>
+              <button onclick="copyGcalSa()" style="height:34px;padding:0 12px;border-radius:8px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);font:600 12px var(--font);cursor:pointer">복사</button>
+            </div>
+            <input id="cs-gcal" type="text" value="${escAttr(comm.google_calendar_id || '')}"
+              placeholder="캘린더 ID (예: abc123@group.calendar.google.com)"
+              style="width:100%;height:38px;padding:0 12px;border:1.5px solid var(--border);border-radius:9px;font:600 13px var(--font);color:var(--ink);background:var(--surface)"/>
+          </div>
+        </details>
       </div>
 
       <!-- 직인 (학교 도장) -->
@@ -8410,6 +8430,7 @@ async function renderCommunitySettings() {
     </div>`;
   renderRecordOrgsAdmin();
   renderSealsAdmin();
+  loadGcalInfo();
 }
 
 // ── 기록부 기관 프리셋 CRUD ──
@@ -8460,12 +8481,68 @@ async function addRecordOrg(commId) {
 //   전용 서비스 계정 하나로 '공유받은 캘린더' 를 주고받는다.
 //   개별 사용자의 구글 로그인은 없다.
 // ══════════════════════════════════════════════════════════════════
+// 설정 화면이 열릴 때 서비스 계정 주소를 채워 준다
+async function loadGcalInfo() {
+  const el = document.getElementById('cs-gcal-sa');
+  if (!el) return;
+  try {
+    const { data } = await sb.functions.invoke('gcal-sync', { body: { action: 'info' } });
+    if (data && data.serviceAccount) el.value = data.serviceAccount;
+    else if (data && !data.hasSecret) el.placeholder = '서버에 서비스 계정 키가 없습니다 (관리자 문의)';
+    else el.placeholder = '주소를 불러오지 못했습니다';
+  } catch (_) { el.placeholder = 'gcal-sync 함수가 배포되지 않았습니다'; }
+}
+
+function copyGcalSa() {
+  const el = document.getElementById('cs-gcal-sa');
+  if (!el || !el.value) { showUploadToast('아직 주소를 불러오지 못했어요'); return; }
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(el.value)
+      .then(() => showUploadToast('📋 복사됐어요'), () => showUploadToast('복사 실패'));
+  } else { el.select(); document.execCommand('copy'); showUploadToast('📋 복사됐어요'); }
+}
+
+// 캘린더를 TCS 가 대신 만든다 — 공동체가 구글 콘솔을 만질 필요가 없게
+async function createGcal() {
+  const box = document.getElementById('cs-gcal-msg');
+  const btn = document.getElementById('gcal-make-btn');
+  const idEl = document.getElementById('cs-gcal');
+  if (idEl && idEl.value.trim() &&
+      !confirm('이미 연결된 캘린더가 있습니다.\n새로 만들면 그쪽으로 바뀝니다. 계속할까요?')) return;
+  if (btn) { btn.disabled = true; btn.textContent = '만드는 중…'; }
+  if (box) box.innerHTML = '<span style="color:var(--ink3)">캘린더를 만들고 권한을 넘기는 중…</span>';
+  try {
+    const { data, error } = await sb.functions.invoke('gcal-sync', {
+      body: { action: 'create', force: true,
+              timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone },
+    });
+    const msg = (data && data.error) || (error && (error.message || String(error)));
+    if (!data || !data.ok) {
+      if (box) box.innerHTML = `<span style="color:#b91c1c">❌ ${escHtml(msg || '만들지 못했습니다')}</span>`;
+      return;
+    }
+    if (idEl) idEl.value = data.calendarId;
+    if (box) box.innerHTML =
+      `<span style="color:#15803d">✅ <b>${escHtml(data.calendarName || '')}</b> 를 만들었어요.</span><br/>`
+      + (data.shared && data.shared.length
+          ? `<span style="color:var(--ink3)">${escHtml(data.shared.join(', '))} 에 권한을 드렸습니다. 구글 캘린더에서 확인하세요.</span><br/>`
+          : (data.warn
+              ? `<span style="color:#b45309">⚠️ ${escHtml(data.warn)}</span><br/>`
+              : ''))
+      + `<a href="${imAttr(data.link)}" target="_blank" rel="noopener" style="color:var(--accent);font-weight:600">구글 캘린더에서 열기 →</a>`;
+  } catch (e) {
+    if (box) box.innerHTML = `<span style="color:#b91c1c">❌ ${escHtml(e?.message || String(e))}</span>`;
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '캘린더 만들기'; }
+  }
+}
+
 async function checkGcal() {
   const box = document.getElementById('cs-gcal-msg');
   const el = document.getElementById('cs-gcal');
   if (!box || !el) return;
   const raw = el.value.trim();
-  if (!raw) { box.innerHTML = '<span style="color:var(--ink3)">캘린더 ID 를 먼저 넣어주세요.</span>'; return; }
+  if (!raw) { box.innerHTML = '<span style="color:var(--ink3)">먼저 [캘린더 만들기] 를 누르거나, 쓰던 캘린더 ID 를 넣어주세요.</span>'; return; }
   box.innerHTML = '<span style="color:var(--ink3)">확인하는 중…</span>';
   // 저장 전에도 확인할 수 있게, 화면의 값을 먼저 저장한다
   const { error: saveErr } = await sb.from('communities')
