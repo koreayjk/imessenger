@@ -13,6 +13,17 @@ android-package/
 *.apk
 key.properties
 
+# ── 구글 서비스 계정 키 — 절대 커밋 금지 ──────────────────────
+#  캘린더 연동용으로 내려받는 JSON 안에 개인키가 그대로 들어 있습니다.
+#  올라가면 남이 우리 캘린더를 마음대로 읽고 쓸 수 있습니다.
+#  (Supabase 시크릿에만 넣고, 파일은 저장소에 두지 마세요)
+*-service-account*.json
+service-account*.json
+*serviceaccount*.json
+gcloud-key*.json
+*.credentials.json
+client_secret*.json
+
 # ── 로컬 설정 · 비밀값 ────────────────────────────────────────
 .env
 .env.*
