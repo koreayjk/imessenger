@@ -8378,6 +8378,7 @@ async function renderCommunitySettings() {
           <button onclick="checkGcal()" style="height:38px;padding:0 14px;border-radius:9px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);font:600 13px var(--font);cursor:pointer">연결 확인</button>
         </div>
         <div id="cs-gcal-now" style="font-size:12.5px;margin-bottom:10px;padding:9px 11px;border-radius:9px;background:var(--s2);line-height:1.7"></div>
+        <div id="cs-gcal-disc" style="margin-bottom:10px"></div>
         <div id="cs-gcal-msg" style="font-size:12px;margin-bottom:10px;line-height:1.7"></div>
 
         <!-- 누가 자기 구글 캘린더에서도 볼 수 있는지 -->
@@ -8523,6 +8524,12 @@ async function loadGcalInfo() {
     // 지금 어느 캘린더를 보고 있는지 — 이게 안 보이면
     // '만들기' 로 생긴 새 캘린더와 원래 쓰던 캘린더를 헷갈린다
     if (now) {
+      const disc = document.getElementById('cs-gcal-disc');
+      if (disc) {
+        disc.innerHTML = (data && data.calendarId)
+          ? `<button onclick="disconnectGcal()" style="height:32px;padding:0 13px;border-radius:8px;border:1.5px solid #f3ccc6;background:#fff5f4;color:#b91c1c;font:600 12px var(--font);cursor:pointer">연결 끊기</button>`
+          : '';
+      }
       if (!data || !data.calendarId) {
         now.innerHTML = '<span style="color:var(--ink3)">아직 연결된 캘린더가 없습니다.</span>';
       } else {
@@ -8758,6 +8765,31 @@ async function selectGcal(id) {
 
 // 지금 연결된 캘린더가 실제로 열리는지, 거기 뭐가 들어 있는지 확인한다.
 // 연결을 바꾸는 일은 [이 ID 로 연결] · [이걸로 연결] 이 맡는다.
+// 연결 해제 — 구글 캘린더 자체는 그대로 두고 TCS 쪽 연결만 끊는다
+async function disconnectGcal() {
+  const wipe = confirm(
+    '구글 캘린더 연결을 끊습니다.\n\n구글에서 가져온 일정도 TCS 에서 함께 지울까요?\n\n'
+    + '· [확인] — 가져온 일정까지 지웁니다 (개인 캘린더를 잘못 연결했을 때)\n'
+    + '· [취소] — 일정은 TCS 에 남기고 연결만 끊습니다\n\n'
+    + '어느 쪽이든 구글 캘린더의 원본은 지워지지 않습니다.');
+  if (!confirm(wipe
+      ? '가져온 일정을 TCS 에서 지우고 연결을 끊습니다. 계속할까요?'
+      : '일정은 남기고 연결만 끊습니다. 계속할까요?')) return;
+  try {
+    const { data, error } = await sb.functions.invoke('gcal-sync', {
+      body: { action: 'disconnect', removeImported: wipe },
+    });
+    if (!data || !data.ok) { alert('연결을 끊지 못했습니다.\n\n' + (await edgeErrorText(error, data))); return; }
+    alert(wipe
+      ? `연결을 끊고 가져온 일정 ${data.removed || 0}건을 지웠습니다.`
+      : `연결을 끊었습니다. 일정 ${data.unlinked || 0}건은 TCS 에 그대로 있습니다.`);
+    try { localStorage.removeItem(gcalLastSyncKey()); } catch (_) {}
+    loadGcalInfo();
+    renderGcalAcl();
+    const msg = document.getElementById('cs-gcal-msg'); if (msg) msg.innerHTML = '';
+  } catch (e) { alert('연결을 끊지 못했습니다.\n\n' + (e?.message || e)); }
+}
+
 async function checkGcal() {
   const box = document.getElementById('cs-gcal-msg');
   if (!box) return;
@@ -8844,6 +8876,8 @@ async function syncGoogleCalendar() {
         `Sent: ${sent} (new ${r.pushed||0}, updated ${r.updated||0})`),
       t(`구글에서 가져옴: ${r.pulled||0}건`, `Pulled: ${r.pulled||0}`),
     ];
+    if (r.deletedHere) lines.push(t(`구글에서 지워져 TCS 에서도 지움: ${r.deletedHere}건`, `Deleted here: ${r.deletedHere}`));
+    if (r.deletedThere) lines.push(t(`TCS 에서 지워져 구글에서도 지움: ${r.deletedThere}건`, `Deleted there: ${r.deletedThere}`));
     if (Array.isArray(data.problems) && data.problems.length) {
       lines.push('', t('처리하지 못한 것:', 'Could not process:'), ...data.problems);
       console.warn('구글 캘린더 동기화 경고:', data.problems);

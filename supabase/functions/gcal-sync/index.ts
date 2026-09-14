@@ -128,6 +128,9 @@ function toGoogle(ev: any, tz: string) {
   const body: any = {
     summary: ev.title || "(제목 없음)",
     description: ev.description || undefined,
+    // TCS 어느 일정에서 온 것인지 새겨 둔다.
+    // 이게 있어야 'TCS 에서 지워진 것' 을 구글에서 찾아 지울 수 있다.
+    extendedProperties: { private: { tcsId: String(ev.id || "") } },
   };
   if (ev.start_time) {
     body.start = { dateTime: `${startDate}T${(ev.start_time + ":00").slice(0, 8)}`, timeZone: tz };
@@ -138,6 +141,30 @@ function toGoogle(ev: any, tz: string) {
     body.end = { date: addDay(endDate) };   // 구글은 끝이 '다음 날'
   }
   return body;
+}
+
+// 반복 규칙을 사람이 읽는 한 줄로. (TCS 는 반복 일정을 다루지 않으므로
+//  펼치지 않고 한 건으로 두되, 반복이라는 사실은 알려 준다)
+function recurrenceText(rules: string[] | undefined): string {
+  const rule = (rules || []).find((r) => String(r).startsWith("RRULE:"));
+  if (!rule) return "";
+  const get = (k: string) => (rule.match(new RegExp(`${k}=([^;]+)`)) || [])[1] || "";
+  const freq = get("FREQ");
+  const interval = parseInt(get("INTERVAL") || "1", 10) || 1;
+  const DAY: Record<string, string> = { MO: "월", TU: "화", WE: "수", TH: "목", FR: "금", SA: "토", SU: "일" };
+  const days = get("BYDAY").split(",").filter(Boolean)
+    .map((d) => DAY[d.replace(/^[-+]?\d/, "")] || d).join("·");
+  const every = interval > 1 ? `${interval}` : "";
+  const base = freq === "DAILY" ? `${every || ""}일마다`
+    : freq === "WEEKLY" ? (days ? `매주 ${days}요일` : `${every ? every + "주마다" : "매주"}`)
+    : freq === "MONTHLY" ? `${every ? every + "개월마다" : "매월"}`
+    : freq === "YEARLY" ? `${every ? every + "년마다" : "매년"}`
+    : "반복";
+  const until = get("UNTIL").slice(0, 8);
+  const count = get("COUNT");
+  const tail = until ? ` (${until.slice(0,4)}-${until.slice(4,6)}-${until.slice(6,8)}까지)`
+    : count ? ` (${count}회)` : "";
+  return `🔁 ${base}${tail}`;
 }
 
 function fromGoogle(g: any) {
@@ -151,9 +178,12 @@ function fromGoogle(g: any) {
     const back = allDay ? subDay(ed) : ed;
     endOut = back === sd ? null : back;
   }
+  // 반복 일정은 한 건으로 들여오고, 반복이라는 사실을 설명에 적어 둔다
+  const rec = recurrenceText(g.recurrence);
+  const desc = [g.description || "", rec].filter(Boolean).join("\n").trim();
   return {
     title: g.summary || "(제목 없음)",
-    description: g.description || null,
+    description: desc || null,
     start_date: sd,
     end_date: endOut,
     start_time: allDay ? null : (g.start?.dateTime || "").slice(11, 16) || null,
@@ -209,9 +239,34 @@ Deno.serve(async (req) => {
     });
   }
 
-  if (!calId && !["create", "list", "select"].includes(action)) {
+  if (!calId && !["create", "list", "select", "disconnect"].includes(action)) {
     return json({ needsCalendar: true, communityName: comm?.name || "",
       message: "연동할 구글 캘린더가 없습니다. '캘린더 만들기' 를 누르거나, 쓰던 캘린더의 ID 를 넣어주세요." });
+  }
+
+  // ── 연결 해제 ──────────────────────────────────────────────────
+  //   구글 캘린더 자체는 건드리지 않는다. TCS 쪽 연결만 끊는다.
+  //   가져온 일정을 남길지 지울지는 고르게 한다 — 개인 캘린더를 잘못
+  //   연결했다가 푸는 경우가 있어서, 남기면 개인 일정이 계속 보인다.
+  if (action === "disconnect") {
+    let removed = 0, unlinked = 0;
+    if (body?.removeImported) {
+      const { data: gone } = await admin.from("events")
+        .delete().eq("community_id", cid).eq("gcal_origin", "google").select("id");
+      removed = (gone ?? []).length;
+    } else {
+      const { data: kept } = await admin.from("events")
+        .update({ google_event_id: null, gcal_origin: null, gcal_synced_at: null })
+        .eq("community_id", cid).eq("gcal_origin", "google").select("id");
+      unlinked = (kept ?? []).length;
+    }
+    // TCS 가 원본인 일정은 짝만 푼다 (다시 연결하면 새로 올라간다)
+    await admin.from("events")
+      .update({ google_event_id: null, gcal_origin: null, gcal_synced_at: null })
+      .eq("community_id", cid).eq("gcal_origin", "tcs");
+
+    await admin.from("communities").update({ google_calendar_id: null }).eq("id", cid);
+    return json({ ok: true, disconnected: true, removed, unlinked });
   }
 
   let token: string;
@@ -450,7 +505,11 @@ Deno.serve(async (req) => {
     }
   }
 
-  const report: Record<string, number> = { pushed: 0, updated: 0, pulled: 0, skipped: 0 };
+  const report: Record<string, number> = {
+    pushed: 0, updated: 0, pulled: 0, skipped: 0,
+    deletedHere: 0,   // 구글에서 지워져 TCS 에서도 지운 수
+    deletedThere: 0,  // TCS 에서 지워져 구글에서도 지운 수
+  };
   const problems: string[] = [];
   // 무엇이 언제로 들어갔는지 — "보냈다는데 안 보인다" 를 스스로 확인할 수 있게
   const sentSample: string[] = [];
@@ -506,15 +565,47 @@ Deno.serve(async (req) => {
       let pageToken: string | undefined;
       do {
         const q = new URLSearchParams({
-          singleEvents: "true", maxResults: "250", orderBy: "startTime",
+          // singleEvents=false : 반복 일정을 펼치지 않는다.
+          //   펼치면 매주 반복 하나가 2년 반 치 130건으로 쏟아진다.
+          //   대신 대표 일정 한 건만 들여오고 '🔁 매주 …' 를 설명에 적는다.
+          singleEvents: "false",
+          // 지워진 것도 받아야 TCS 쪽에서 같이 지울 수 있다
+          showDeleted: "true",
+          maxResults: "250",
           timeMin: from.toISOString(), timeMax: to.toISOString(),
         });
         if (pageToken) q.set("pageToken", pageToken);
         const page = await gcal(token, `/calendars/${encodeURIComponent(calId)}/events?${q}`);
         for (const g of page.items ?? []) {
-          if (g.status === "cancelled") continue;
+          // 반복 일정 중 '이 회차만 바뀐 것' 은 건너뛴다 (대표 일정으로 이미 들어온다)
+          if (g.recurringEventId) continue;
+
           const { data: exist } = await admin.from("events").select("id, gcal_origin")
             .eq("community_id", cid).eq("google_event_id", g.id).maybeSingle();
+
+          // 구글에서 지워진 일정 → TCS 에서도 지운다 (구글이 원본인 것만)
+          if (g.status === "cancelled") {
+            if (exist && exist.gcal_origin === "google") {
+              await admin.from("events").delete().eq("id", exist.id);
+              report.deletedHere++;
+            }
+            continue;
+          }
+
+          // 우리가 올린 일정인데 TCS 에서 사라졌다면 → 구글에서도 지운다
+          const tcsId = g.extendedProperties?.private?.tcsId;
+          if (tcsId) {
+            const { data: still } = await admin.from("events").select("id").eq("id", tcsId).maybeSingle();
+            if (!still) {
+              try {
+                await gcal(token, `/calendars/${encodeURIComponent(calId)}/events/${encodeURIComponent(g.id)}`,
+                  { method: "DELETE" });
+                report.deletedThere++;
+              } catch (_) { /* 이미 없으면 그만 */ }
+              continue;
+            }
+          }
+
           const mapped = fromGoogle(g);
           if (!mapped.start_date) continue;
           if (exist) {
