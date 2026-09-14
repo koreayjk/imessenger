@@ -8377,6 +8377,7 @@ async function renderCommunitySettings() {
             style="height:38px;padding:0 16px;border-radius:9px;border:none;background:#1d3a5f;color:#fff;font:700 13px var(--font);cursor:pointer">캘린더 만들기</button>
           <button onclick="checkGcal()" style="height:38px;padding:0 14px;border-radius:9px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);font:600 13px var(--font);cursor:pointer">연결 확인</button>
         </div>
+        <div id="cs-gcal-now" style="font-size:12.5px;margin-bottom:10px;padding:9px 11px;border-radius:9px;background:var(--s2);line-height:1.7"></div>
         <div id="cs-gcal-msg" style="font-size:12px;margin-bottom:10px;line-height:1.7"></div>
 
         <!-- 누가 자기 구글 캘린더에서도 볼 수 있는지 -->
@@ -8489,12 +8490,35 @@ async function addRecordOrg(commId) {
 async function loadGcalInfo() {
   const el = document.getElementById('cs-gcal-sa');
   if (!el) return;
+  const now = document.getElementById('cs-gcal-now');
   try {
     const { data } = await sb.functions.invoke('gcal-sync', { body: { action: 'info' } });
     if (data && data.serviceAccount) el.value = data.serviceAccount;
     else if (data && !data.hasSecret) el.placeholder = '서버에 서비스 계정 키가 없습니다 (관리자 문의)';
     else el.placeholder = '주소를 불러오지 못했습니다';
-  } catch (e) { el.placeholder = (await edgeErrorText(e, null)) || 'gcal-sync 함수가 배포되지 않았습니다'; }
+
+    // 지금 어느 캘린더를 보고 있는지 — 이게 안 보이면
+    // '만들기' 로 생긴 새 캘린더와 원래 쓰던 캘린더를 헷갈린다
+    if (now) {
+      if (!data || !data.calendarId) {
+        now.innerHTML = '<span style="color:var(--ink3)">아직 연결된 캘린더가 없습니다.</span>';
+      } else {
+        now.innerHTML = `<span style="color:var(--ink3)">연결된 캘린더</span><br/>
+          <b style="color:var(--ink);overflow-wrap:anywhere">${escHtml(data.calendarId)}</b>`;
+        try {
+          const { data: c } = await sb.functions.invoke('gcal-sync', { body: { action: 'check' } });
+          if (c && c.ok) {
+            now.innerHTML = `<span style="color:var(--ink3)">연결된 캘린더</span><br/>
+              <b style="color:#15803d">📅 ${escHtml(c.calendarName || '')}</b><br/>
+              <span style="font-size:11px;color:var(--ink3);overflow-wrap:anywhere">${escHtml(data.calendarId)}</span>`;
+          }
+        } catch (_) { /* 이름을 못 읽어도 ID 는 보여 준다 */ }
+      }
+    }
+  } catch (e) {
+    el.placeholder = (await edgeErrorText(e, null)) || 'gcal-sync 함수가 배포되지 않았습니다';
+    if (now) now.innerHTML = '<span style="color:#b91c1c">연결 상태를 확인하지 못했습니다.</span>';
+  }
 }
 
 function copyGcalSa() {
@@ -8673,6 +8697,44 @@ async function checkGcal() {
   }
 }
 
+// 일정 화면을 열 때 조용히 한 번 맞춰 준다.
+//  매번 버튼을 눌러야 하면 결국 아무도 안 맞춘다.
+//  다만 열 때마다 구글에 다녀오면 느리고 낭비라서 간격을 둔다.
+const GCAL_AUTO_MIN = 10;          // 분
+let gcalAutoBusy = false;
+
+function gcalLastSyncKey() { return 'gcal_last_sync_' + (CID() || ''); }
+
+async function autoSyncGoogleCalendar() {
+  if (gcalAutoBusy) return;
+  let last = 0;
+  try { last = parseInt(localStorage.getItem(gcalLastSyncKey()) || '0', 10) || 0; } catch (_) {}
+  if (Date.now() - last < GCAL_AUTO_MIN * 60 * 1000) return;
+
+  gcalAutoBusy = true;
+  try {
+    const { data } = await sb.functions.invoke('gcal-sync', {
+      body: { action: 'sync', timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone },
+    });
+    // 캘린더가 없거나 함수가 없으면 조용히 넘어간다 (자동 실행이 사용자를 귀찮게 하면 안 된다)
+    if (!data || !data.ok) return;
+    try { localStorage.setItem(gcalLastSyncKey(), String(Date.now())); } catch (_) {}
+    const r = data.report || {};
+    const moved = (r.pushed || 0) + (r.updated || 0) + (r.pulled || 0);
+    if (r.pulled) {
+      // 새로 들어온 게 있을 때만 화면을 다시 그린다
+      const { data: rows } = await sb.from('events').select('*')
+        .eq('community_id', CID()).order('start_date').order('start_time');
+      calEvents = rows || [];
+      renderCalendar();
+      showUploadToast(t(`📅 구글 캘린더에서 ${r.pulled}건 가져왔어요`, `📅 Pulled ${r.pulled} from Google`));
+    } else if (moved) {
+      showUploadToast(t(`📅 구글 캘린더와 맞췄어요 (${moved}건)`, `📅 Synced with Google (${moved})`));
+    }
+  } catch (_) { /* 자동 실행은 실패해도 말없이 넘어간다 */ }
+  finally { gcalAutoBusy = false; }
+}
+
 // 일정 화면의 '구글 캘린더 동기화' 버튼
 async function syncGoogleCalendar() {
   const btn = document.getElementById('gcal-sync-btn');
@@ -8716,6 +8778,7 @@ async function syncGoogleCalendar() {
     }
     // 오래 기다린 끝에 나오는 결과라 토스트로는 놓치기 쉽다
     alert(t('✅ 구글 캘린더 동기화 완료\n\n','✅ Google Calendar sync done\n\n') + lines.join('\n'));
+    try { localStorage.setItem(gcalLastSyncKey(), String(Date.now())); } catch (_) {}
     if (data.calendarLink && sent && confirm(t('구글 캘린더를 열어 확인할까요?','Open Google Calendar to check?'))) {
       window.open(data.calendarLink, '_blank', 'noopener');
     }
@@ -8931,6 +8994,7 @@ async function saveCommSettings(commId) {
   const { error } = await sb.from('communities').update(updateData).eq('id', commId);
   if (error) { showUploadToast('저장 실패: ' + error.message); return; }
   showUploadToast('✅ 공동체 설정이 저장됐어요!');
+  loadGcalInfo();   // 캘린더를 바꿨을 수 있으니 연결 표시를 다시 읽는다
   // ME의 공동체 정보도 업데이트
   if (ME.selectedCommunity) {
     ME.selectedCommunity.name = name;
@@ -11595,6 +11659,8 @@ function selectEventCat(v) {
 async function loadCalendar() {
   const { data } = await sb.from('events').select('*').eq('community_id', CID()).order('start_date').order('start_time');
   calEvents = data || [];
+  // 화면을 막지 않도록 뒤에서 돌린다
+  setTimeout(() => { try { autoSyncGoogleCalendar(); } catch (_) {} }, 400);
   try {
     const { data: mem } = await sb.from('members').select('id,name,birth_date').eq('community_id', CID()).not('birth_date','is',null);
     calBirthdays = (mem||[])
