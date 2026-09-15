@@ -389,6 +389,14 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
 .adm-btn.sage { background:var(--sage);color:white; }
 .adm-btn.danger { background:#FEE2E2;color:var(--rose); }
 .adm-btn.ghost { background:var(--s3);color:var(--ink2); }
+/* 홈 위젯 격자 — 넓으면 두 칸, 좁으면 한 칸으로 접힌다 */
+.hw-grid { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:14px; align-items:stretch; }
+.hw-cell { min-width:0; }
+.hw-cell.hw-full { grid-column:1 / -1; }
+@media (max-width: 760px) {
+  .hw-grid { grid-template-columns:minmax(0,1fr); }
+  .hw-cell.hw-full { grid-column:auto; }
+}
 .adm-input { width:100%;padding:10px 13px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none;margin-bottom:8px; }
 .adm-input:focus { border-color:var(--accent); }
 .home-grid-4 { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:24px; }
@@ -1176,6 +1184,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
         <div id="adm-tab-channels" onclick="switchAdminTab('channels')" class="adm-tab" style="white-space:nowrap" data-ko="💬 채널" data-en="💬 Channels">💬 채널</div>
         <div id="adm-tab-notices" onclick="switchAdminTab('notices')" class="adm-tab" style="white-space:nowrap" data-ko="📢 공지사항" data-en="📢 Notices">📢 공지사항</div>
         <div id="adm-tab-goals" onclick="switchAdminTab('goals')" class="adm-tab" style="white-space:nowrap" data-ko="🎯 이달의 목표" data-en="🎯 Monthly Goals">🎯 이달의 목표</div>
+        <div id="adm-tab-home" onclick="switchAdminTab('home')" class="adm-tab" style="display:none;white-space:nowrap" data-ko="🧩 홈 꾸미기" data-en="🧩 Edit Home">🧩 홈 꾸미기</div>
       </div>
       <div id="admin-content" style="flex:1;overflow-y:auto;padding:24px 28px"></div>
     </div>
@@ -4199,14 +4208,80 @@ async function submitPrayer(btn) {
 
 // ── 홈 대시보드 ──
 // SVM 컨퍼런스 D-DAY 카운트다운 (매일 자동으로 바뀜 — 오늘 날짜 기준 계산)
-const SVM_DDAY = { y: 2026, m: 11, d: 20 };   // 2026년 11월 20일
-function svmDdayCardHtml() {
-  const target = new Date(SVM_DDAY.y, SVM_DDAY.m - 1, SVM_DDAY.d);
+// ══════════════════════════════════════════
+// 홈 위젯 — 공동체마다 홈 화면을 다르게 꾸민다
+// ══════════════════════════════════════════
+
+// 기본 배치 = 지금까지의 홈 그대로. w: 1=반 칸, 2=한 줄 전체
+const HOME_DEFAULT_LAYOUT = [
+  { k:'mccheyne', w:1 }, { k:'dday', w:1 },
+  { k:'newsletter', w:2 }, { k:'schedule', w:2 },
+];
+
+let _homeLayout = null, _homeLayoutCid = null;
+
+// 저장된 배치를 읽어 온다. 컬럼이 아직 없거나 값이 이상하면 기본 배치로.
+async function loadHomeLayout(force) {
+  const cid = CID();
+  if (!force && _homeLayout && _homeLayoutCid === cid) return _homeLayout;
+  let raw = null;
+  try {
+    const { data } = await sb.from('communities').select('home_widgets').eq('id', cid).single();
+    raw = data ? data.home_widgets : null;
+  } catch(_) { raw = null; }
+  _homeLayoutCid = cid;
+  _homeLayout = normalizeHomeLayout(raw);
+  return _homeLayout;
+}
+
+function normalizeHomeLayout(raw) {
+  if (!Array.isArray(raw) || !raw.length) return HOME_DEFAULT_LAYOUT.map(x => ({...x}));
+  const seen = {};
+  const out = [];
+  raw.forEach(it => {
+    const k = typeof it === 'string' ? it : (it && it.k);
+    if (!k || !HOME_WIDGETS[k] || seen[k]) return;
+    seen[k] = 1;
+    const spec = HOME_WIDGETS[k];
+    let w = (it && +it.w) || spec.w || 1;
+    if (spec.fullOnly) w = 2;
+    out.push({ k, w: w === 2 ? 2 : 1, cfg: (it && it.cfg) || null });
+  });
+  return out.length ? out : HOME_DEFAULT_LAYOUT.map(x => ({...x}));
+}
+
+// ── 위젯 공통 껍데기 ──
+function hwCard(inner, opt) {
+  const o = opt || {};
+  const pad = o.flush ? '0' : '18px 20px';
+  return `<div style="background:var(--surface);border-radius:18px;padding:${pad};box-shadow:0 1px 4px rgba(29,58,95,.07);height:100%;box-sizing:border-box;display:flex;flex-direction:column;overflow:hidden">${inner}</div>`;
+}
+function hwHead(icon, title, right) {
+  return `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px">
+    <div style="font-size:14px;font-weight:700;min-width:0">${icon} ${title}</div>
+    ${right || ''}</div>`;
+}
+function hwEmpty(msg) {
+  return `<div style="flex:1;display:flex;align-items:center;justify-content:center;color:var(--ink3);font-size:12.5px;text-align:center;padding:18px 0;line-height:1.6">${msg}</div>`;
+}
+function hwRow(inner) {
+  return `<div style="border:1px solid var(--border);border-radius:11px;padding:10px 12px;background:var(--bg)">${inner}</div>`;
+}
+
+// ── D-DAY: 공동체마다 날짜·이름을 따로 정한다 ──
+const SVM_DDAY = { y: 2026, m: 11, d: 20 };   // 2026년 11월 20일 (기본값)
+function svmDdayCardHtml(cfg) {
+  const c = cfg || {};
+  const dstr = /^\d{4}-\d{2}-\d{2}$/.test(c.date || '')
+    ? c.date
+    : `${SVM_DDAY.y}-${String(SVM_DDAY.m).padStart(2,'0')}-${String(SVM_DDAY.d).padStart(2,'0')}`;
+  const label = (c.title || '').trim() || t('SVM 컨퍼런스','SVM CONFERENCE');
+  const target = ymdLocal(dstr);
   const now = new Date();
   const t0 = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const diff = Math.round((target - t0) / 86400000);
   const isDday = diff === 0, passed = diff < 0, n = Math.abs(diff);
-  const dateStr = `${SVM_DDAY.y}. ${String(SVM_DDAY.m).padStart(2,'0')}. ${String(SVM_DDAY.d).padStart(2,'0')}`;
+  const dateStr = dstr.replace(/-/g, '. ');
   const ddayTag = isDday ? 'D-DAY' : (passed ? 'D+' + n : 'D-' + n);
   // 스코어보드(플립) 스타일 숫자 카드
   const flip = ch => `<div style="position:relative;min-width:40px;height:60px;border-radius:7px;background:#fff;box-shadow:0 5px 14px rgba(0,0,0,.30);display:flex;align-items:center;justify-content:center;font-family:'Arial Black','Helvetica Neue',Arial,sans-serif;font-weight:900;font-size:38px;color:#111;padding:0 7px">${ch}<div style="position:absolute;left:0;right:0;top:50%;height:2px;background:rgba(0,0,0,.14);margin-top:-1px"></div><div style="position:absolute;left:-2px;top:50%;width:4px;height:9px;background:#cfcfcf;border-radius:2px;transform:translateY(-50%)"></div><div style="position:absolute;right:-2px;top:50%;width:4px;height:9px;background:#cfcfcf;border-radius:2px;transform:translateY(-50%)"></div></div>`;
@@ -4225,12 +4300,311 @@ function svmDdayCardHtml() {
     : t(`${n}일 남았어요`, `${n} days to go`);
   return `<div style="border-radius:18px;background:linear-gradient(155deg,#0f172a,#243247);border:1px solid #0f172a;padding:20px 22px;height:100%;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;position:relative;overflow:hidden">
     <div style="position:absolute;top:-16px;right:-6px;font-size:74px;color:rgba(255,255,255,.05);line-height:1;font-weight:900">✈</div>
-    <div style="font-size:11px;font-weight:800;color:rgba(255,255,255,.55);letter-spacing:.14em;margin-bottom:2px">✦ ${t('SVM 컨퍼런스','SVM CONFERENCE')}</div>
+    <div style="font-size:11px;font-weight:800;color:rgba(255,255,255,.55);letter-spacing:.14em;margin-bottom:2px">✦ ${escHtml(label)}</div>
     <div style="font-size:12.5px;font-weight:600;color:rgba(255,255,255,.8);margin-bottom:16px">${dateStr}${isDday ? '' : ' · ' + ddayTag}</div>
     ${bigBlock}
     <div style="font-size:13px;font-weight:800;color:#c5d9ef;margin-top:15px;letter-spacing:.03em">${isDday ? '' : ddayTag + ' · '}${sub}</div>
   </div>`;
 }
+
+// ── 바로가기에 올릴 수 있는 메뉴 ──
+const HOME_LINKS = [
+  { m:'chat',      i:'💬', ko:'채팅',     en:'Chat' },
+  { m:'calendar',  i:'📅', ko:'일정',     en:'Calendar' },
+  { m:'prayer',    i:'🙏', ko:'기도제목', en:'Prayer' },
+  { m:'note',      i:'📝', ko:'노트',     en:'Notes' },
+  { m:'drive',     i:'📁', ko:'자료실',   en:'Files' },
+  { m:'improve',   i:'💡', ko:'개선창',   en:'Ideas' },
+  { m:'allowance', i:'🐷', ko:'용돈기입장', en:'Allowance' },
+  { m:'school',    i:'🎓', ko:'학사관리', en:'School',   can:() => canAccessSchool() },
+  { m:'tcs',       i:'📄', ko:'생기부',   en:'Records',  can:() => isTeacher() },
+  { m:'store',     i:'🏪', ko:'매점',     en:'Store',    can:() => canAccessSchool() },
+  { m:'approval',  i:'✅', ko:'전자결재', en:'Approval', can:() => canAccessSchool() },
+  { m:'reading',   i:'📚', ko:'Triple School', en:'Triple School' },
+];
+
+// ══ 위젯 등록부 ══
+// w: 기본 너비 · fullOnly: 항상 한 줄 전체 · can: 볼 수 있는 사람 · cfg: 설정 가능 위젯
+const HOME_WIDGETS = {
+
+  mccheyne: {
+    icon:'📖', ko:'맥체인 성경읽기', en:"M'Cheyne Bible Reading",
+    dko:'오늘 읽을 네 구절을 바로 열 수 있어요', den:"Today's four passages, one tap away", w:1,
+    render: async () => hwCard(
+      hwHead('📖', t('맥체인 성경읽기',"M'Cheyne Bible Reading"),
+        `<span style="font-size:11px;color:var(--ink3);white-space:nowrap">${t('오늘의 4구절',"Today's 4 verses")}</span>`) +
+      `<div style="display:flex;flex-direction:column;gap:7px">
+        ${getMcCheyneToday().map((r,i) => `
+        <a href="${getMcCheyneUrl(r)}" target="_blank"
+          style="display:flex;align-items:center;gap:9px;padding:9px 12px;border-radius:10px;background:var(--bg);text-decoration:none;transition:background .12s"
+          onmouseover="this.style.background='var(--asoft)'" onmouseout="this.style.background='var(--bg)'">
+          <div style="width:22px;height:22px;border-radius:6px;background:${['#2a5298','#6F8A5C','#5A7C8B','#7B6BA0'][i]};color:white;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">${i+1}</div>
+          <div style="font-size:13px;font-weight:600;color:var(--ink)">${r}</div>
+        </a>`).join('')}
+      </div>`)
+  },
+
+  dday: {
+    icon:'⏳', ko:'D-DAY 카운트다운', en:'D-DAY Countdown',
+    dko:'행사까지 며칠 남았는지 크게 보여줘요', den:'Big countdown to your event', w:1,
+    cfg:[ { key:'title', ko:'행사 이름', en:'Event name', ph:'예: 여름 수련회' },
+          { key:'date',  ko:'날짜',      en:'Date',       type:'date' } ],
+    render: async (ctx) => svmDdayCardHtml(ctx.cfg)
+  },
+
+  notice: {
+    icon:'📢', ko:'공지사항', en:'Notices',
+    dko:'고정한 공지를 맨 위에 보여줘요', den:'Pinned notices first', w:2,
+    render: async () => {
+      let rows = [];
+      try {
+        const { data } = await sb.from('announcements')
+          .select('id,title,body,pinned,created_at,created_by_name')
+          .eq('community_id', CID())
+          .order('pinned', { ascending:false }).order('created_at', { ascending:false }).limit(3);
+        rows = data || [];
+      } catch(_) {}
+      return hwCard(
+        hwHead('📢', t('공지사항','Notices')) +
+        (rows.length ? `<div style="display:flex;flex-direction:column;gap:9px">
+          ${rows.map(n => hwRow(`
+            <div style="display:flex;align-items:center;gap:7px;margin-bottom:3px;flex-wrap:wrap">
+              ${n.pinned ? `<span style="font-size:10.5px;background:var(--asoft);color:var(--adeep);padding:1px 7px;border-radius:6px;font-weight:700">📌</span>` : ''}
+              <span style="font-size:13.5px;font-weight:700;color:var(--ink)">${escHtml(n.title||'')}</span>
+              <span style="font-size:11px;color:var(--ink3)">${String(n.created_at||'').slice(0,10)}${n.created_by_name ? ' · ' + escHtml(n.created_by_name) : ''}</span>
+            </div>
+            ${n.body ? `<div style="font-size:12.5px;color:var(--ink2);line-height:1.65;white-space:pre-wrap;max-height:80px;overflow:auto">${escHtml(n.body)}</div>` : ''}`)).join('')}
+        </div>` : hwEmpty(t('등록된 공지가 없어요','No notices yet'))));
+    }
+  },
+
+  newsletter: {
+    icon:'✉️', ko:'가정통신문', en:'Newsletter',
+    dko:'학교에서 가정으로 보내는 안내를 띄워요', den:'Notices from school to home', w:2,
+    render: async () => {
+      let rows = [];
+      try {
+        const childGid = ME.group_id || '00000000-0000-0000-0000-000000000000';
+        const { data } = await sb.from('newsletters')
+          .select('id,title,body,sent_date,group_id,author_name')
+          .eq('community_id', CID())
+          .or(`group_id.is.null,group_id.eq.${childGid}`)
+          .order('sent_date', { ascending:false }).limit(3);
+        rows = data || [];
+      } catch(_) {}
+      return hwCard(
+        hwHead('✉️', t('가정통신문','Newsletter'),
+          `<span style="font-size:11px;color:var(--ink3);white-space:nowrap">${t('학교에서 가정으로','School to home')}</span>`) +
+        (rows.length ? `<div style="display:flex;flex-direction:column;gap:10px">
+          ${rows.map(n => hwRow(`
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
+              <span style="font-size:14px;font-weight:700;color:var(--ink)">${escHtml(n.title||'')}</span>
+              <span style="font-size:11px;color:var(--ink3)">${n.sent_date||''}${n.author_name ? ' · ' + escHtml(n.author_name) : ''}</span>
+            </div>
+            ${n.body ? `<div style="font-size:13px;color:var(--ink2);line-height:1.7;white-space:pre-wrap;max-height:140px;overflow:auto">${escHtml(n.body)}</div>` : ''}`)).join('')}
+        </div>` : hwEmpty(t('도착한 가정통신문이 없어요','No newsletters yet'))));
+    }
+  },
+
+  schedule: {
+    icon:'🖼️', ko:'주간 일정표 사진', en:'Weekly Schedule Photo',
+    dko:'사진으로 올린 주간 일정표를 크게 보여줘요', den:'Shows the uploaded weekly schedule image', w:2, fullOnly:true,
+    render: async (ctx) => {
+      let img = null;
+      try {
+        const { data } = await sb.from('schedule_images').select('*').eq('community_id', CID())
+          .order('created_at', { ascending:false }).limit(1);
+        img = (data && data[0]) || null;
+      } catch(_) {}
+      const isAdmin = ctx.isAdmin;
+      return `<div style="background:var(--surface);border-radius:18px;overflow:hidden;box-shadow:0 1px 4px rgba(29,58,95,.07)">
+        <div style="padding:14px 18px 12px;display:flex;align-items:center;justify-content:space-between;gap:8px">
+          <div style="font-size:14px;font-weight:700">📅 ${escHtml(img && img.title ? img.title : t('주간 일정표','Weekly Schedule'))}</div>
+          ${isAdmin ? `<button onclick="showScheduleImageForm()" style="height:28px;padding:0 12px;border-radius:8px;border:1px solid var(--border);background:white;color:var(--ink2);font:500 12px var(--font);cursor:pointer;white-space:nowrap">+ ${t('새 일정 등록','Add Schedule')}</button>` : ''}
+        </div>
+        ${img ? `
+        <div onclick="openImageModal('${img.image_url}')" style="cursor:zoom-in">
+          <img src="${img.image_url}" style="width:100%;display:block;max-height:500px;object-fit:contain;background:var(--bg)"
+            onerror="this.style.display='none';this.nextSibling.style.display='flex'"/>
+          <div style="display:none;height:200px;align-items:center;justify-content:center;color:var(--ink3);font-size:13px">${t('이미지를 불러올 수 없어요','Image failed to load')}</div>
+        </div>` : `
+        <div style="height:200px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--ink3);gap:10px;background:var(--bg)">
+          <div style="font-size:40px">📋</div>
+          <div style="font-size:13px">${isAdmin ? t('주간 일정표를 등록해주세요','Please add the weekly schedule') : t('주간 일정표가 아직 등록되지 않았어요','No weekly schedule yet')}</div>
+          ${isAdmin ? `<button onclick="showScheduleImageForm()" style="height:32px;padding:0 16px;border-radius:9px;border:none;background:var(--sage);color:white;font:600 12px var(--font);cursor:pointer">📷 ${t('지금 등록하기','Add now')}</button>` : ''}
+        </div>`}
+      </div>`;
+    }
+  },
+
+  upcoming: {
+    icon:'📅', ko:'다가오는 일정', en:'Upcoming Events',
+    dko:'오늘부터 가까운 일정 여섯 개를 보여줘요', den:'The next six events from today', w:1,
+    render: async () => {
+      let rows = [];
+      const today = ymdStr(new Date());
+      try {
+        const { data } = await sb.from('events').select('id,title,start_date,start_time,color')
+          .eq('community_id', CID()).gte('start_date', today)
+          .order('start_date').order('start_time').limit(6);
+        rows = data || [];
+      } catch(_) {}
+      const wk = APP_LANG === 'en' ? ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'] : ['일','월','화','수','목','금','토'];
+      return hwCard(
+        hwHead('📅', t('다가오는 일정','Upcoming'),
+          `<span onclick="setMode('calendar')" style="font-size:11px;color:var(--accent);font-weight:600;cursor:pointer;white-space:nowrap">${t('달력','Calendar')} →</span>`) +
+        (rows.length ? `<div style="display:flex;flex-direction:column;gap:7px">
+          ${rows.map(e => {
+            const dt = ymdLocal(e.start_date);
+            const dd = dt ? `${dt.getMonth()+1}/${dt.getDate()} (${wk[dt.getDay()]})` : (e.start_date||'');
+            const isToday = e.start_date === today;
+            return `<div onclick="setMode('calendar')" style="display:flex;align-items:center;gap:9px;padding:8px 11px;border-radius:10px;background:var(--bg);cursor:pointer">
+              <div style="width:4px;align-self:stretch;min-height:26px;border-radius:3px;background:${e.color||'var(--accent)'};flex-shrink:0"></div>
+              <div style="min-width:0;flex:1">
+                <div style="font-size:13px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(e.title||'')}</div>
+                <div style="font-size:11px;color:var(--ink3);margin-top:1px">${dd}${e.start_time ? ' · ' + String(e.start_time).slice(0,5) : ''}</div>
+              </div>
+              ${isToday ? `<span style="font-size:10px;font-weight:800;color:white;background:var(--rose);padding:2px 7px;border-radius:6px;flex-shrink:0">${t('오늘','TODAY')}</span>` : ''}
+            </div>`;
+          }).join('')}
+        </div>` : hwEmpty(t('예정된 일정이 없어요','Nothing scheduled'))));
+    }
+  },
+
+  birthday: {
+    icon:'🎂', ko:'이번 달 생일', en:'Birthdays This Month',
+    dko:'이번 달 생일인 사람을 날짜순으로 모아요', den:'Everyone with a birthday this month', w:1,
+    render: async () => {
+      let list = [];
+      const now = new Date();
+      const mm = String(now.getMonth()+1).padStart(2,'0');
+      const todayD = now.getDate();
+      try {
+        const { data } = await sb.from('members').select('id,name,birth_date')
+          .eq('community_id', CID()).not('birth_date','is',null);
+        list = (data || [])
+          .filter(m => m.name && String(m.birth_date).slice(5,7) === mm)
+          .map(m => ({ name:m.name, d:+String(m.birth_date).slice(8,10) }))
+          .filter(m => m.d >= 1)
+          .sort((a,b) => a.d - b.d);
+      } catch(_) {}
+      return hwCard(
+        hwHead('🎂', t(`${now.getMonth()+1}월의 생일`, 'Birthdays')) +
+        (list.length ? `<div style="display:flex;flex-wrap:wrap;gap:7px">
+          ${list.map(m => {
+            const on = m.d === todayD;
+            return `<div style="display:flex;align-items:center;gap:7px;padding:7px 11px;border-radius:999px;background:${on?'#FDECF4':'var(--bg)'};border:1px solid ${on?'#F5C2D8':'var(--border)'}">
+              <span style="font-size:11px;font-weight:800;color:${on?'#C2417C':'var(--ink3)'}">${m.d}${t('일','')}</span>
+              <span style="font-size:12.5px;font-weight:600;color:var(--ink)">${escHtml(m.name)}</span>
+              ${on ? '<span style="font-size:12px">🎉</span>' : ''}
+            </div>`;
+          }).join('')}
+        </div>` : hwEmpty(t('이번 달 생일인 분이 없어요','No birthdays this month'))));
+    }
+  },
+
+  prayer: {
+    icon:'🙏', ko:'최근 기도제목', en:'Recent Prayers',
+    dko:'가장 최근 기도제목 네 개를 보여줘요', den:'The four most recent prayer requests', w:1,
+    render: async () => {
+      let rows = [];
+      try {
+        const { data } = await sb.from('prayers').select('id,title,member_name,scope,prayer_count,created_at')
+          .eq('community_id', CID()).order('created_at', { ascending:false }).limit(4);
+        rows = data || [];
+      } catch(_) {}
+      const colors = ['#2a5298','#6F8A5C','#5A7C8B','#7B6BA0'];
+      return hwCard(
+        hwHead('🙏', t('최근 기도제목','Recent Prayers'),
+          `<span onclick="setMode('prayer')" style="font-size:11px;color:var(--accent);font-weight:600;cursor:pointer;white-space:nowrap">${t('전체','All')} →</span>`) +
+        (rows.length ? `<div style="display:flex;flex-direction:column;gap:7px">
+          ${rows.map((p,i) => `<div onclick="setMode('prayer')" style="display:flex;align-items:center;gap:9px;padding:8px 11px;border-radius:10px;background:var(--bg);cursor:pointer">
+            <div style="width:24px;height:24px;border-radius:8px;background:${colors[i%colors.length]};color:white;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">${escHtml((p.member_name||'?')[0])}</div>
+            <div style="min-width:0;flex:1">
+              <div style="font-size:13px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(p.title||'')}</div>
+              <div style="font-size:11px;color:var(--ink3);margin-top:1px">${escHtml(p.member_name||'')}${p.scope ? ' · ' + escHtml(p.scope) : ''}</div>
+            </div>
+            ${p.prayer_count ? `<span style="font-size:11px;color:var(--ink3);flex-shrink:0">🙏 ${p.prayer_count}</span>` : ''}
+          </div>`).join('')}
+        </div>` : hwEmpty(t('올라온 기도제목이 없어요','No prayer requests yet'))));
+    }
+  },
+
+  goals: {
+    icon:'🎯', ko:'이달의 목표', en:'Monthly Goals',
+    dko:'관리자가 정한 이번 달 목표를 보여줘요', den:"This month's goals set by an admin", w:1,
+    render: async () => {
+      let goals = [];
+      const now = new Date();
+      const monthStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
+      try {
+        const { data } = await sb.from('monthly_goals').select('goals')
+          .eq('month', monthStr).eq('community_id', CID()).maybeSingle();
+        goals = (data && Array.isArray(data.goals)) ? data.goals : [];
+      } catch(_) {}
+      return hwCard(
+        hwHead('🎯', t(`${now.getMonth()+1}월의 목표`,'Monthly Goals')) +
+        (goals.length ? `<div style="display:flex;flex-direction:column;gap:7px">
+          ${goals.map((g,i) => `<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:10px;background:var(--bg)">
+            <div style="width:20px;height:20px;border-radius:7px;background:var(--asoft);color:var(--adeep);font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0">${i+1}</div>
+            <div style="font-size:13px;font-weight:600;color:var(--ink);word-break:keep-all">${escHtml(String(g))}</div>
+          </div>`).join('')}
+        </div>` : hwEmpty(t('이번 달 목표가 아직 없어요','No goals set for this month'))));
+    }
+  },
+
+  dailyword: {
+    icon:'✝️', ko:'오늘의 말씀', en:'Daily Word',
+    dko:'오늘 등록된 말씀과 본문을 보여줘요', den:"Today's verse and passage", w:1,
+    render: async () => {
+      let row = null;
+      try {
+        const { data } = await sb.from('daily_word').select('*')
+          .eq('community_id', CID()).eq('date', ymdStr(new Date())).maybeSingle();
+        row = data || null;
+      } catch(_) {}
+      return hwCard(
+        hwHead('✝️', t('오늘의 말씀','Daily Word')) +
+        (row ? `<div style="display:flex;flex-direction:column;gap:8px">
+            ${row.title ? `<div style="font-size:14px;font-weight:700;color:var(--ink);word-break:keep-all">${escHtml(row.title)}</div>` : ''}
+            ${row.verse ? `<div style="font-size:12px;font-weight:700;color:var(--adeep)">${escHtml(row.verse)}</div>` : ''}
+            ${row.scripture_text ? `<div style="font-size:13px;color:var(--ink2);line-height:1.75;white-space:pre-wrap;max-height:170px;overflow:auto;word-break:keep-all">${escHtml(row.scripture_text)}</div>` : ''}
+            ${row.url ? `<a href="${escHtml(row.url)}" target="_blank" style="font-size:12px;font-weight:600;color:var(--accent);text-decoration:none">${t('본문 보기','Open passage')} →</a>` : ''}
+          </div>` : hwEmpty(t('오늘 등록된 말씀이 없어요','No word posted today'))));
+    }
+  },
+
+  quicklinks: {
+    icon:'⚡', ko:'바로가기', en:'Quick Links',
+    dko:'자주 쓰는 메뉴를 큼직한 버튼으로 깔아요', den:'Big buttons for the menus you use most', w:2,
+    render: async () => {
+      const links = HOME_LINKS.filter(l => !l.can || l.can());
+      return hwCard(
+        hwHead('⚡', t('바로가기','Quick Links')) +
+        `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(102px,1fr));gap:9px">
+          ${links.map(l => `<div onclick="setMode('${l.m}')" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:14px 8px;border-radius:13px;background:var(--bg);border:1px solid var(--border);cursor:pointer;transition:background .12s"
+            onmouseover="this.style.background='var(--asoft)'" onmouseout="this.style.background='var(--bg)'">
+            <div style="font-size:21px;line-height:1">${l.i}</div>
+            <div style="font-size:12px;font-weight:600;color:var(--ink2);text-align:center;word-break:keep-all">${t(l.ko,l.en)}</div>
+          </div>`).join('')}
+        </div>`);
+    }
+  },
+
+  imusa: {
+    icon:'🏆', ko:'IMUSA 팀 점수', en:'IMUSA Team Scores',
+    dko:'IMUSA 팀빌딩 점수를 실시간으로 받아 와요', den:'Live scores from IMUSA team building', w:1,
+    render: async () => hwCard(
+      `<div id="imusa-score-widget" style="display:contents">` +
+      hwHead('🏆', t('IMUSA 팀 점수','IMUSA Team Scores'),
+        `<a href="https://imusa-team-building.web.app" target="_blank" style="font-size:11px;color:var(--accent);text-decoration:none;font-weight:600;white-space:nowrap">${t('자세히','Details')} →</a>`) +
+      `<div id="imusa-score-inner" style="color:var(--ink3);font-size:13px;text-align:center;padding:8px">${t('불러오는 중...','Loading...')}</div></div>`),
+    after: () => { try { initImusaRealtime(); } catch(_) {} }
+  },
+
+};
+
+const HOME_WIDGET_ORDER = ['notice','schedule','upcoming','quicklinks','newsletter','dday','mccheyne','dailyword','goals','prayer','birthday','imusa'];
 
 async function renderHome() {
   const el = document.getElementById('home-view');
@@ -4238,51 +4612,22 @@ async function renderHome() {
   if (!area) return;
   const d = new Date();
   const wk = ['일','월','화','수','목','금','토'];
-  const isAdmin = isCommunityAdmin();
-  const todayStr = d.toISOString().slice(0,10);
+  const ctxBase = { isAdmin: isCommunityAdmin(), now: d, todayStr: ymdStr(d) };
 
-  // 주간 일정표 로드 (가장 최근 것)
-  const { data: schedImgs } = await sb.from('schedule_images').select('*').eq('community_id', CID())
-    .order('created_at', {ascending: false}).limit(1);
-  const schedImg = schedImgs?.[0] || null;
+  const layout = (await loadHomeLayout()).filter(it => {
+    const spec = HOME_WIDGETS[it.k];
+    return spec && (!spec.can || spec.can());
+  });
 
-  // 가정통신문 로드 (전체 대상 + 내 반 대상). 테이블 미설치 시 조용히 비움
-  let nlHome = [];
-  {
-    const childGid = ME.group_id || '00000000-0000-0000-0000-000000000000';
-    const { data: nlData } = await sb.from('newsletters')
-      .select('id,title,body,sent_date,group_id,author_name')
-      .eq('community_id', CID())
-      .or(`group_id.is.null,group_id.eq.${childGid}`)
-      .order('sent_date', { ascending:false }).limit(3);
-    nlHome = nlData || [];
-  }
-  const nlHomeHtml = nlHome.length ? `
-    <div style="background:var(--surface);border-radius:18px;padding:16px 20px;margin-bottom:20px;box-shadow:0 1px 4px rgba(29,58,95,.07)">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
-        <div style="font-size:14px;font-weight:700">✉️ ${t('가정통신문','Newsletter')}</div>
-        <span style="font-size:11px;color:var(--ink3)">${t('학교에서 가정으로 보내는 안내','Notices from school to home')}</span>
-      </div>
-      <div style="display:flex;flex-direction:column;gap:10px">
-        ${nlHome.map(n => `
-          <div style="border:1px solid var(--border);border-radius:12px;padding:12px 14px;background:var(--bg)">
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
-              <span style="font-size:14px;font-weight:700;color:var(--ink)">${escHtml(n.title||'')}</span>
-              <span style="font-size:11px;color:var(--ink3)">${n.sent_date||''}${n.author_name?` · ${escHtml(n.author_name)}`:''}</span>
-            </div>
-            ${n.body ? `<div style="font-size:13px;color:var(--ink2);line-height:1.7;white-space:pre-wrap;max-height:140px;overflow:auto">${escHtml(n.body)}</div>` : ''}
-          </div>`).join('')}
-      </div>
-    </div>` : '';
-
-  // IMUSA 팀 점수 로드 (실시간은 별도 위젯으로 렌더 후 구독)
-  let imusaHtml = `<div id="imusa-score-widget" style="background:var(--surface);border-radius:18px;padding:18px 20px;box-shadow:0 1px 4px rgba(29,58,95,.07)">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-      <div style="font-size:14px;font-weight:700">🏆 ${t('IMUSA 팀 점수','IMUSA Team Scores')}</div>
-      <a href="https://imusa-team-building.web.app" target="_blank" style="font-size:11px;color:var(--accent);text-decoration:none;font-weight:600">${t('자세히','Details')} →</a>
-    </div>
-    <div id="imusa-score-inner" style="color:var(--ink3);font-size:13px;text-align:center;padding:8px">${t('불러오는 중...','Loading...')}</div>
-  </div>`;
+  // 위젯은 동시에 불러온다 — 하나가 느려도 나머지는 기다리지 않는다
+  const parts = await Promise.all(layout.map(async it => {
+    const spec = HOME_WIDGETS[it.k];
+    try { return await spec.render({ ...ctxBase, cfg: it.cfg || {} }); }
+    catch(e) {
+      console.warn('home widget failed:', it.k, e);
+      return hwCard(hwHead(spec.icon, t(spec.ko, spec.en)) + hwEmpty(t('불러오지 못했어요','Could not load')));
+    }
+  }));
 
   area.innerHTML = `
   <div style="width:100%">
@@ -4290,59 +4635,25 @@ async function renderHome() {
     <div style="margin-bottom:20px;display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px">
       <div>
         <div style="font-size:13px;color:var(--ink3);margin-bottom:4px">${APP_LANG==='en' ? d.toLocaleDateString('en-US',{month:'long',day:'numeric',weekday:'long'}) : (d.getMonth()+1)+'월 '+d.getDate()+'일 '+wk[d.getDay()]+'요일'}</div>
-        <div style="font-size:clamp(20px,2.5vw,26px);font-weight:700;letter-spacing:-.02em">${t('샬롬','Shalom')}, <span style="color:var(--adeep)">${ME.name}</span> 님 👋</div>
+        <div style="font-size:clamp(20px,2.5vw,26px);font-weight:700;letter-spacing:-.02em">${t('샬롬','Shalom')}, <span style="color:var(--adeep)">${escHtml(ME.name||'')}</span> 님 👋</div>
       </div>
-      ${isAdmin ? `<div style="display:flex;gap:8px;flex-wrap:wrap">
+      ${ctxBase.isAdmin ? `<div style="display:flex;gap:8px;flex-wrap:wrap">
         <button onclick="showScheduleImageForm()" style="height:34px;padding:0 14px;border-radius:10px;border:1.5px solid var(--sage);background:white;color:var(--sage);font:600 12px var(--font);cursor:pointer;white-space:nowrap">📷 ${t('주간일정 등록','Add Schedule')}</button>
+        <button onclick="setMode('admin');setTimeout(()=>switchAdminTab('home'),60)" style="height:34px;padding:0 14px;border-radius:10px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:600 12px var(--font);cursor:pointer;white-space:nowrap">🧩 ${t('홈 꾸미기','Edit Home')}</button>
       </div>` : ''}
     </div>
 
-    <!-- 맥체인 / 오늘의 묵상 2등분 -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px">
+    ${parts.length ? `<div class="hw-grid">
+      ${parts.map((h,i) => `<div class="hw-cell${layout[i].w === 2 ? ' hw-full' : ''}">${h}</div>`).join('')}
+    </div>` : `<div style="background:var(--surface);border-radius:18px;padding:44px 20px;text-align:center;box-shadow:0 1px 4px rgba(29,58,95,.07)">
+      <div style="font-size:40px;margin-bottom:12px">🧩</div>
+      <div style="font-size:15px;font-weight:700;color:var(--ink)">${t('홈이 비어 있어요','Your home is empty')}</div>
+      <div style="font-size:13px;color:var(--ink3);margin-top:6px">${ctxBase.isAdmin ? t('관리자 → 홈 꾸미기 에서 위젯을 올려보세요','Add widgets in Admin → Edit Home') : t('관리자가 홈을 꾸미면 여기에 나타나요','Widgets appear here once an admin sets them up')}</div>
+    </div>`}
+  </div>`;
 
-      <!-- 맥체인 성경읽기 -->
-      <div style="background:var(--surface);border-radius:18px;padding:18px 20px;box-shadow:0 1px 4px rgba(29,58,95,.07)">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-          <div style="font-size:14px;font-weight:700">📖 ${t('맥체인 성경읽기',"M'Cheyne Bible Reading")}</div>
-          <span style="font-size:11px;color:var(--ink3)">${t('오늘의 4구절',"Today's 4 verses")}</span>
-        </div>
-        <div style="display:flex;flex-direction:column;gap:7px">
-          ${getMcCheyneToday().map((r,i) => `
-          <a href="${getMcCheyneUrl(r)}" target="_blank"
-            style="display:flex;align-items:center;gap:9px;padding:9px 12px;border-radius:10px;background:var(--bg);text-decoration:none;transition:background .12s"
-            onmouseover="this.style.background='var(--asoft)'" onmouseout="this.style.background='var(--bg)'">
-            <div style="width:22px;height:22px;border-radius:6px;background:${['#2a5298','#6F8A5C','#5A7C8B','#7B6BA0'][i]};color:white;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">${i+1}</div>
-            <div style="font-size:13px;font-weight:600;color:var(--ink)">${r}</div>
-          </a>`).join('')}
-        </div>
-      </div>
-
-      <!-- SVM 컨퍼런스 D-DAY 카운트다운 -->
-      <div>${svmDdayCardHtml()}</div>
-
-    </div>
-
-    ${nlHomeHtml}
-
-    <!-- 주간 일정표 -->
-    <div style="background:var(--surface);border-radius:18px;overflow:hidden;box-shadow:0 1px 4px rgba(29,58,95,.07)">
-      <div style="padding:14px 18px 12px;display:flex;align-items:center;justify-content:space-between">
-        <div style="font-size:14px;font-weight:700">📅 ${schedImg?.title || t('주간 일정표','Weekly Schedule')}</div>
-        ${isAdmin ? `<button onclick="showScheduleImageForm()" style="height:28px;padding:0 12px;border-radius:8px;border:1px solid var(--border);background:white;color:var(--ink2);font:500 12px var(--font);cursor:pointer">+ ${t('새 일정 등록','Add Schedule')}</button>` : ''}
-      </div>
-      ${schedImg ? `
-      <div onclick="openImageModal('${schedImg.image_url}',t('주간 일정표','Weekly Schedule'))" style="cursor:zoom-in">
-        <img src="${schedImg.image_url}" style="width:100%;display:block;max-height:500px;object-fit:contain;background:var(--bg)"
-          onerror="this.style.display='none';this.nextSibling.style.display='flex'"/>
-        <div style="display:none;height:200px;align-items:center;justify-content:center;color:var(--ink3);font-size:13px">${t('이미지를 불러올 수 없어요','Image failed to load')}</div>
-      </div>` : `
-      <div style="height:200px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--ink3);gap:10px;background:var(--bg)">
-        <div style="font-size:40px">📋</div>
-        <div style="font-size:13px">${isAdmin ? t('주간 일정표를 등록해주세요','Please add the weekly schedule') : t('주간 일정표가 아직 등록되지 않았어요','No weekly schedule yet')}</div>
-        ${isAdmin ? `<button onclick="showScheduleImageForm()" style="height:32px;padding:0 16px;border-radius:9px;border:none;background:var(--sage);color:white;font:600 12px var(--font);cursor:pointer">📷 지금 등록하기</button>` : ''}
-      </div>`}
-    </div>
-  </div>`;}
+  layout.forEach(it => { const s = HOME_WIDGETS[it.k]; if (s && s.after) { try { s.after(); } catch(_) {} } });
+}
 
 let imgGallery = [], imgIndex = -1;
 function openImageModal(url, forceIndex) {
@@ -4711,7 +5022,7 @@ let adminTab = 'members';
 
 function switchAdminTab(tab) {
   adminTab = tab;
-  ['communities','mysettings','members','channels','notices','goals'].forEach(t => {
+  ['communities','mysettings','members','channels','notices','goals','home'].forEach(t => {
     const el = document.getElementById('adm-tab-'+t);
     if (!el) return;
     el.classList.toggle('active-adm', t===tab);
@@ -4725,6 +5036,184 @@ function switchAdminTab(tab) {
   else if (tab==='channels') renderAdminChannels();
   else if (tab==='notices') renderAdminNotices();
   else if (tab==='goals') renderAdminGoals();
+  else if (tab==='home') renderAdminHome();
+}
+
+// ══════════════════════════════════════════
+// 홈 꾸미기 — 위젯을 골라서 배치한다 (공동체 관리자)
+// ══════════════════════════════════════════
+let _hwEdit = [];
+let _hwDragFrom = null;
+
+async function renderAdminHome() {
+  const area = document.getElementById('admin-content');
+  if (!area) return;
+  if (!ME.community_id) {
+    area.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink3)">소속 공동체가 없어요</div>';
+    return;
+  }
+  const layout = await loadHomeLayout(true);
+  _hwEdit = layout.map(x => ({ k:x.k, w:x.w, cfg: x.cfg ? {...x.cfg} : {} }));
+  area.innerHTML = `
+    <div style="max-width:1100px;margin:0 auto">
+      <div style="font-size:18px;font-weight:700;color:var(--adeep);margin-bottom:6px">🧩 ${t('홈 꾸미기','Edit Home')}</div>
+      <div style="font-size:13px;color:var(--ink3);margin-bottom:22px;line-height:1.7">
+        ${t('우리 공동체의 홈 화면에 어떤 위젯을 어떤 순서로 놓을지 정해요. 여기서 정한 배치는 공동체 구성원 모두에게 똑같이 보입니다.',
+            'Choose which widgets appear on your community home and in what order. Everyone in the community sees the same layout.')}
+      </div>
+      <div id="hw-edit-body"></div>
+    </div>`;
+  renderHwEditor();
+}
+
+function renderHwEditor() {
+  const body = document.getElementById('hw-edit-body');
+  if (!body) return;
+  const used = {};
+  _hwEdit.forEach(x => used[x.k] = 1);
+  const rest = HOME_WIDGET_ORDER.filter(k => HOME_WIDGETS[k] && !used[k]);
+
+  body.innerHTML = `
+    <div style="display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap">
+
+      <!-- 놓여 있는 위젯 -->
+      <div style="flex:1.35 1 400px;min-width:0">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap">
+          <div style="font-size:14px;font-weight:700">${t('홈에 놓인 위젯','On your home')} <span style="color:var(--ink3);font-weight:600">${_hwEdit.length}</span></div>
+          <div style="display:flex;gap:6px">
+            <button class="adm-btn ghost" onclick="hwResetDefault()">${t('기본값으로','Reset')}</button>
+            <button class="adm-btn primary" onclick="saveHomeWidgets()">${t('저장','Save')}</button>
+          </div>
+        </div>
+        <div id="hw-list" style="display:flex;flex-direction:column;gap:9px">
+          ${_hwEdit.length ? _hwEdit.map((it,i) => hwEditRow(it,i)).join('')
+            : `<div class="adm-card" style="text-align:center;color:var(--ink3);font-size:13px;padding:34px 20px">${t('오른쪽에서 위젯을 눌러 홈에 올려보세요','Tap a widget on the right to add it')}</div>`}
+        </div>
+      </div>
+
+      <!-- 담아 둔 위젯 -->
+      <div style="flex:1 1 300px;min-width:0">
+        <div style="font-size:14px;font-weight:700;margin-bottom:10px;height:30px;display:flex;align-items:center">${t('넣을 수 있는 위젯','Available widgets')}</div>
+        <div style="display:flex;flex-direction:column;gap:9px">
+          ${rest.length ? rest.map(k => {
+            const s = HOME_WIDGETS[k];
+            return `<div class="adm-card" style="margin-bottom:0;padding:13px 15px;display:flex;align-items:center;gap:11px;cursor:pointer" onclick="hwAdd('${k}')">
+              <div style="font-size:19px;flex-shrink:0">${s.icon}</div>
+              <div style="min-width:0;flex:1">
+                <div style="font-size:13.5px;font-weight:700;color:var(--ink)">${t(s.ko,s.en)}</div>
+                <div style="font-size:11.5px;color:var(--ink3);margin-top:2px;line-height:1.5;word-break:keep-all">${t(s.dko,s.den)}</div>
+              </div>
+              <div style="font-size:18px;color:var(--accent);font-weight:700;flex-shrink:0">＋</div>
+            </div>`;
+          }).join('') : `<div class="adm-card" style="text-align:center;color:var(--ink3);font-size:13px;padding:24px 20px">${t('모든 위젯을 홈에 올렸어요','Every widget is on your home')}</div>`}
+        </div>
+      </div>
+    </div>`;
+}
+
+function hwEditRow(it, i) {
+  const s = HOME_WIDGETS[it.k];
+  const last = i === _hwEdit.length - 1;
+  const cfgFields = (s.cfg || []).map(f => {
+    const v = (it.cfg && it.cfg[f.key]) || '';
+    return `<div style="flex:1 1 150px;min-width:0">
+      <div style="font-size:11px;color:var(--ink3);margin-bottom:4px">${t(f.ko,f.en)}</div>
+      <input class="adm-input" style="margin-bottom:0;width:100%;box-sizing:border-box" type="${f.type||'text'}"
+        value="${escHtml(String(v))}" placeholder="${escHtml(f.ph||'')}"
+        oninput="hwSetCfg(${i},'${f.key}',this.value)"/>
+    </div>`;
+  }).join('');
+
+  const arrow = (dir, off) => `<button class="adm-btn ghost" style="padding:0 9px${off ? ';opacity:.3;cursor:default' : ''}" ${off ? 'disabled' : `onclick="hwMove(${i},${dir})"`}>${dir < 0 ? '↑' : '↓'}</button>`;
+
+  // 카드 전체를 항상 draggable 로 두면 설정 칸의 글자를 못 고른다.
+  // ⠿ 손잡이를 누르는 순간에만 드래그를 켠다.
+  return `<div class="adm-card" data-hwrow="${i}" draggable="false" style="margin-bottom:0;padding:13px 15px"
+      ondragover="hwDragOver(event,${i})" ondrop="hwDrop(event,${i})" ondragend="hwDragEnd(this)" ondragstart="hwDragStart(event,${i})">
+    <div style="display:flex;align-items:center;gap:11px">
+      <div onmousedown="hwGrab(this)" onmouseup="hwUngrab(this)" title="${t('끌어서 순서 바꾸기','Drag to reorder')}"
+        style="color:var(--ink3);font-size:15px;flex-shrink:0;line-height:1;cursor:grab;padding:4px 2px">⠿</div>
+      <div style="font-size:19px;flex-shrink:0">${s.icon}</div>
+      <div style="min-width:0;flex:1">
+        <div style="font-size:13.5px;font-weight:700;color:var(--ink)">${t(s.ko,s.en)}</div>
+        <div style="font-size:11.5px;color:var(--ink3);margin-top:2px;line-height:1.5;word-break:keep-all">${t(s.dko,s.den)}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:5px;flex-shrink:0">
+        ${s.fullOnly ? `<span style="font-size:11px;color:var(--ink3);padding:0 6px">${t('한 줄','Full')}</span>`
+          : `<button class="adm-btn ghost" style="padding:0 10px;min-width:52px;justify-content:center" onclick="hwToggleW(${i})" title="${t('너비 바꾸기','Toggle width')}">${it.w === 2 ? t('한 줄','Full') : t('반 칸','Half')}</button>`}
+        ${arrow(-1, i === 0)}${arrow(1, last)}
+        <button class="adm-btn danger" style="padding:0 10px" onclick="hwRemove(${i})" title="${t('홈에서 빼기','Remove')}">✕</button>
+      </div>
+    </div>
+    ${cfgFields ? `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:11px;padding-top:11px;border-top:1px solid var(--border)">${cfgFields}</div>` : ''}
+  </div>`;
+}
+
+function hwGrab(el) { const row = el.closest('[data-hwrow]'); if (row) row.draggable = true; }
+function hwUngrab(el) { const row = el.closest('[data-hwrow]'); if (row) row.draggable = false; }
+
+function hwAdd(k) {
+  const s = HOME_WIDGETS[k];
+  if (!s || _hwEdit.some(x => x.k === k)) return;
+  _hwEdit.push({ k, w: s.fullOnly ? 2 : (s.w || 1), cfg: {} });
+  renderHwEditor();
+}
+function hwRemove(i) { _hwEdit.splice(i, 1); renderHwEditor(); }
+function hwToggleW(i) {
+  const s = HOME_WIDGETS[_hwEdit[i].k];
+  if (s.fullOnly) return;
+  _hwEdit[i].w = _hwEdit[i].w === 2 ? 1 : 2;
+  renderHwEditor();
+}
+function hwMove(i, dir) {
+  const j = i + dir;
+  if (j < 0 || j >= _hwEdit.length) return;
+  const tmp = _hwEdit[i]; _hwEdit[i] = _hwEdit[j]; _hwEdit[j] = tmp;
+  renderHwEditor();
+}
+function hwSetCfg(i, key, val) {
+  if (!_hwEdit[i]) return;
+  if (!_hwEdit[i].cfg) _hwEdit[i].cfg = {};
+  _hwEdit[i].cfg[key] = val;   // 다시 그리지 않는다 — 입력 중 커서가 튀면 안 된다
+}
+function hwResetDefault() {
+  if (!confirm(t('기본 배치로 되돌릴까요? 저장을 눌러야 실제로 바뀝니다.','Reset to the default layout? Nothing changes until you press Save.'))) return;
+  _hwEdit = HOME_DEFAULT_LAYOUT.map(x => ({ k:x.k, w:x.w, cfg:{} }));
+  renderHwEditor();
+}
+
+// 드래그로 순서 바꾸기 (마우스). 터치에서는 ↑ ↓ 버튼을 쓴다.
+function hwDragStart(e, i) { _hwDragFrom = i; try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(i)); } catch(_) {} }
+function hwDragOver(e) { if (_hwDragFrom !== null) { e.preventDefault(); try { e.dataTransfer.dropEffect = 'move'; } catch(_) {} } }
+function hwDrop(e, i) {
+  e.preventDefault();
+  if (_hwDragFrom === null || _hwDragFrom === i) return;
+  const moved = _hwEdit.splice(_hwDragFrom, 1)[0];
+  _hwEdit.splice(i, 0, moved);
+  _hwDragFrom = null;
+  renderHwEditor();
+}
+function hwDragEnd(row) { _hwDragFrom = null; if (row) row.draggable = false; }
+
+async function saveHomeWidgets() {
+  const payload = _hwEdit.map(x => {
+    const s = HOME_WIDGETS[x.k];
+    const row = { k: x.k, w: s.fullOnly ? 2 : (x.w === 2 ? 2 : 1) };
+    // 빈 칸만 있는 설정은 저장하지 않는다
+    const cfg = {};
+    Object.keys(x.cfg || {}).forEach(key => { const v = String(x.cfg[key] || '').trim(); if (v) cfg[key] = v; });
+    if (Object.keys(cfg).length) row.cfg = cfg;
+    return row;
+  });
+  const { error } = await sb.from('communities').update({ home_widgets: payload }).eq('id', CID());
+  if (error) {
+    const miss = /home_widgets/.test(error.message || '') && /column|schema/i.test(error.message || '');
+    showUploadToast(miss ? '저장 실패 — DB 설치(홈위젯_DB설치.sql)를 먼저 해주세요' : '저장 실패: ' + error.message);
+    return;
+  }
+  _homeLayout = normalizeHomeLayout(payload);
+  _homeLayoutCid = CID();
+  showUploadToast(t('✅ 홈 화면이 저장됐어요!','✅ Home layout saved!'));
 }
 
 function initAdminPage() {
@@ -4734,6 +5223,8 @@ function initAdminPage() {
     if (commTab) commTab.style.display = 'block';
     const settingsTab = document.getElementById('adm-tab-mysettings');
     if (settingsTab) settingsTab.style.display = 'block';
+    const homeTab = document.getElementById('adm-tab-home');
+    if (homeTab) homeTab.style.display = 'block';
     const label = document.getElementById('admin-role-label');
     if (label) label.textContent = t('총관리자 — 공동체·멤버·채널 전체 관리','Super Admin — manage all communities, members, channels');
     switchAdminTab('communities');
@@ -4741,6 +5232,8 @@ function initAdminPage() {
     // 공동체 관리자: 공동체 설정 탭 표시, 설정 탭으로 시작
     const settingsTab = document.getElementById('adm-tab-mysettings');
     if (settingsTab) settingsTab.style.display = 'block';
+    const homeTab = document.getElementById('adm-tab-home');
+    if (homeTab) homeTab.style.display = 'block';
     const label = document.getElementById('admin-role-label');
     if (label) label.textContent = t('공동체 관리자 — 공동체 설정 및 멤버 관리','Community Admin — community settings & member management');
     switchAdminTab('mysettings');
