@@ -4207,20 +4207,22 @@ async function submitPrayer(btn) {
 }
 
 // ── 홈 대시보드 ──
-// SVM 컨퍼런스 D-DAY 카운트다운 (매일 자동으로 바뀜 — 오늘 날짜 기준 계산)
 // ══════════════════════════════════════════
 // 홈 위젯 — 공동체마다 홈 화면을 다르게 꾸민다
 // ══════════════════════════════════════════
 
-// 기본 배치 = 지금까지의 홈 그대로. w: 1=반 칸, 2=한 줄 전체
-const HOME_DEFAULT_LAYOUT = [
-  { k:'mccheyne', w:1 }, { k:'dday', w:1 },
-  { k:'newsletter', w:2 }, { k:'schedule', w:2 },
+// 아직 아무것도 안 정한 공동체는 빈 홈 + 안내를 본다.
+// 어느 공동체에나 맞는 중립적인 배치. [추천 배치로 시작] 과 [추천 배치로] 가 이걸 쓴다.
+// w: 1=반 칸, 2=한 줄 전체
+const HOME_STARTER_LAYOUT = [
+  { k:'notice', w:2 },
+  { k:'upcoming', w:1 }, { k:'birthday', w:1 },
+  { k:'quicklinks', w:2 },
 ];
 
 let _homeLayout = null, _homeLayoutCid = null;
 
-// 저장된 배치를 읽어 온다. 컬럼이 아직 없거나 값이 이상하면 기본 배치로.
+// 저장된 배치를 읽어 온다. 아직 안 정했으면 빈 배열 → 홈에 안내가 뜬다.
 async function loadHomeLayout(force) {
   const cid = CID();
   if (!force && _homeLayout && _homeLayoutCid === cid) return _homeLayout;
@@ -4235,7 +4237,9 @@ async function loadHomeLayout(force) {
 }
 
 function normalizeHomeLayout(raw) {
-  if (!Array.isArray(raw) || !raw.length) return HOME_DEFAULT_LAYOUT.map(x => ({...x}));
+  // 배열이 아니면(= 아직 한 번도 안 정함) 빈 홈 → 안내가 뜬다.
+  // 빈 배열은 "일부러 다 뺐다" 는 뜻이므로 그대로 빈 홈.
+  if (!Array.isArray(raw)) return [];
   const seen = {};
   const out = [];
   raw.forEach(it => {
@@ -4247,7 +4251,7 @@ function normalizeHomeLayout(raw) {
     if (spec.fullOnly) w = 2;
     out.push({ k, w: w === 2 ? 2 : 1, cfg: (it && it.cfg) || null });
   });
-  return out.length ? out : HOME_DEFAULT_LAYOUT.map(x => ({...x}));
+  return out;
 }
 
 // ── 위젯 공통 껍데기 ──
@@ -4268,14 +4272,25 @@ function hwRow(inner) {
   return `<div style="border:1px solid var(--border);border-radius:11px;padding:10px 12px;background:var(--bg)">${inner}</div>`;
 }
 
-// ── D-DAY: 공동체마다 날짜·이름을 따로 정한다 ──
-const SVM_DDAY = { y: 2026, m: 11, d: 20 };   // 2026년 11월 20일 (기본값)
-function svmDdayCardHtml(cfg) {
+// ── D-DAY: 공동체마다 행사 이름과 날짜를 직접 정한다 ──
+// 날짜를 안 정했으면 남의 공동체 행사를 보여주지 않고, 정하라고 안내한다.
+function ddayCardHtml(cfg) {
   const c = cfg || {};
-  const dstr = /^\d{4}-\d{2}-\d{2}$/.test(c.date || '')
-    ? c.date
-    : `${SVM_DDAY.y}-${String(SVM_DDAY.m).padStart(2,'0')}-${String(SVM_DDAY.d).padStart(2,'0')}`;
-  const label = (c.title || '').trim() || t('SVM 컨퍼런스','SVM CONFERENCE');
+  const dstr = /^\d{4}-\d{2}-\d{2}$/.test(c.date || '') ? c.date : '';
+  if (!dstr) {
+    return `<div style="border-radius:18px;background:linear-gradient(155deg,#0f172a,#243247);border:1px solid #0f172a;padding:24px 22px;height:100%;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;gap:9px">
+      <div style="font-size:30px;line-height:1">⏳</div>
+      <div style="font-size:14px;font-weight:800;color:#fff">${t('D-DAY 를 정해주세요','Set your D-DAY')}</div>
+      <div style="font-size:12.5px;color:rgba(255,255,255,.65);line-height:1.6;word-break:keep-all">${
+        isCommunityAdmin()
+          ? t('관리자 → 🧩 홈 꾸미기 에서 행사 이름과 날짜를 넣으면 여기에 남은 날이 크게 나와요.',
+              'Add an event name and date in Admin → 🧩 Edit Home and the countdown shows up here.')
+          : t('관리자가 행사 날짜를 넣으면 남은 날이 여기에 나와요.',
+              'The countdown appears once an admin sets the event date.')}</div>
+      ${isCommunityAdmin() ? `<button onclick="openAdminTab('home')" style="margin-top:4px;height:32px;padding:0 15px;border-radius:9px;border:none;background:rgba(255,255,255,.14);color:#fff;font:700 12px var(--font);cursor:pointer">🧩 ${t('홈 꾸미기 열기','Open Edit Home')}</button>` : ''}
+    </div>`;
+  }
+  const label = (c.title || '').trim() || t('우리 공동체 행사','Our Event');
   const target = ymdLocal(dstr);
   const now = new Date();
   const t0 = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -4346,10 +4361,10 @@ const HOME_WIDGETS = {
 
   dday: {
     icon:'⏳', ko:'D-DAY 카운트다운', en:'D-DAY Countdown',
-    dko:'행사까지 며칠 남았는지 크게 보여줘요', den:'Big countdown to your event', w:1,
+    dko:'행사까지 며칠 남았는지 크게 보여줘요 (이름·날짜를 직접 넣어요)', den:'Big countdown to your event (set the name and date)', w:1,
     cfg:[ { key:'title', ko:'행사 이름', en:'Event name', ph:'예: 여름 수련회' },
           { key:'date',  ko:'날짜',      en:'Date',       type:'date' } ],
-    render: async (ctx) => svmDdayCardHtml(ctx.cfg)
+    render: async (ctx) => ddayCardHtml(ctx.cfg)
   },
 
   notice: {
@@ -4606,6 +4621,46 @@ const HOME_WIDGETS = {
 
 const HOME_WIDGET_ORDER = ['notice','schedule','upcoming','quicklinks','newsletter','dday','mccheyne','dailyword','goals','prayer','birthday','imusa'];
 
+// 아직 홈을 안 꾸민 공동체에 보여주는 안내
+function homeSetupGuideHtml(isAdmin) {
+  const chips = ['notice','upcoming','quicklinks','birthday','goals','prayer','dailyword','schedule']
+    .filter(k => HOME_WIDGETS[k])
+    .map(k => `<span style="display:inline-flex;align-items:center;gap:5px;padding:7px 12px;border-radius:999px;background:var(--bg);border:1px solid var(--border);font-size:12.5px;font-weight:600;color:var(--ink2);white-space:nowrap">${HOME_WIDGETS[k].icon} ${t(HOME_WIDGETS[k].ko, HOME_WIDGETS[k].en)}</span>`)
+    .join('');
+
+  if (!isAdmin) {
+    return `<div style="background:var(--surface);border-radius:18px;padding:48px 24px;text-align:center;box-shadow:0 1px 4px rgba(29,58,95,.07)">
+      <div style="font-size:42px;margin-bottom:14px">🧩</div>
+      <div style="font-size:16px;font-weight:700;color:var(--ink)">${t('홈을 준비하고 있어요','Home is being set up')}</div>
+      <div style="font-size:13.5px;color:var(--ink3);margin-top:8px;line-height:1.7;word-break:keep-all">${t('관리자가 홈을 꾸미면 공지·일정·생일 같은 것들이 여기에 나타나요.','Once an admin sets it up, notices, events and birthdays will show up here.')}</div>
+    </div>`;
+  }
+
+  return `<div style="background:var(--surface);border-radius:20px;padding:clamp(26px,4vw,40px) clamp(22px,4vw,38px);box-shadow:0 1px 4px rgba(29,58,95,.07)">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px;flex-wrap:wrap">
+      <div style="font-size:30px;line-height:1">🧩</div>
+      <div style="font-size:clamp(17px,2vw,21px);font-weight:700;color:var(--ink);letter-spacing:-.01em">${t('우리 공동체 홈을 꾸며보세요','Set up your community home')}</div>
+    </div>
+    <div style="font-size:13.5px;color:var(--ink2);line-height:1.8;margin-bottom:20px;max-width:640px;word-break:keep-all">
+      ${t('홈에 무엇을 놓을지 공동체마다 따로 정할 수 있어요. 아래 위젯 중에서 골라 순서와 너비를 정하면, 우리 공동체 사람들 모두가 그 홈을 보게 됩니다.',
+          'Each community decides what goes on its home. Pick from the widgets below, set the order and width, and everyone in your community sees that home.')}
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:24px">${chips}
+      <span style="display:inline-flex;align-items:center;padding:7px 12px;border-radius:999px;font-size:12.5px;font-weight:600;color:var(--ink3)">${t('외 4가지','and 4 more')}</span>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button onclick="openAdminTab('home')"
+        style="height:44px;padding:0 22px;border-radius:12px;border:none;background:var(--accent);color:white;font:700 14px var(--font);cursor:pointer">🧩 ${t('홈 꾸미기 열기','Open Edit Home')}</button>
+      <button onclick="hwQuickStart()"
+        style="height:44px;padding:0 20px;border-radius:12px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);font:600 14px var(--font);cursor:pointer">${t('추천 배치로 바로 시작','Use the starter layout')}</button>
+    </div>
+    <div style="font-size:12px;color:var(--ink3);margin-top:14px;line-height:1.7;word-break:keep-all">
+      ${t('추천 배치 = 공지사항 · 다가오는 일정 · 이번 달 생일 · 바로가기. 나중에 얼마든지 바꿀 수 있어요.',
+          'Starter layout = Notices · Upcoming · Birthdays · Quick Links. You can change it any time.')}
+    </div>
+  </div>`;
+}
+
 async function renderHome() {
   const el = document.getElementById('home-view');
   const area = el ? el.querySelector('#content-area') : null;
@@ -4638,18 +4693,14 @@ async function renderHome() {
         <div style="font-size:clamp(20px,2.5vw,26px);font-weight:700;letter-spacing:-.02em">${t('샬롬','Shalom')}, <span style="color:var(--adeep)">${escHtml(ME.name||'')}</span> 님 👋</div>
       </div>
       ${ctxBase.isAdmin ? `<div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button onclick="showScheduleImageForm()" style="height:34px;padding:0 14px;border-radius:10px;border:1.5px solid var(--sage);background:white;color:var(--sage);font:600 12px var(--font);cursor:pointer;white-space:nowrap">📷 ${t('주간일정 등록','Add Schedule')}</button>
+        ${layout.some(x => x.k === 'schedule') ? `<button onclick="showScheduleImageForm()" style="height:34px;padding:0 14px;border-radius:10px;border:1.5px solid var(--sage);background:white;color:var(--sage);font:600 12px var(--font);cursor:pointer;white-space:nowrap">📷 ${t('주간일정 등록','Add Schedule')}</button>` : ''}
         <button onclick="openAdminTab('home')" style="height:34px;padding:0 14px;border-radius:10px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:600 12px var(--font);cursor:pointer;white-space:nowrap">🧩 ${t('홈 꾸미기','Edit Home')}</button>
       </div>` : ''}
     </div>
 
     ${parts.length ? `<div class="hw-grid">
       ${parts.map((h,i) => `<div class="hw-cell${layout[i].w === 2 ? ' hw-full' : ''}">${h}</div>`).join('')}
-    </div>` : `<div style="background:var(--surface);border-radius:18px;padding:44px 20px;text-align:center;box-shadow:0 1px 4px rgba(29,58,95,.07)">
-      <div style="font-size:40px;margin-bottom:12px">🧩</div>
-      <div style="font-size:15px;font-weight:700;color:var(--ink)">${t('홈이 비어 있어요','Your home is empty')}</div>
-      <div style="font-size:13px;color:var(--ink3);margin-top:6px">${ctxBase.isAdmin ? t('관리자 → 홈 꾸미기 에서 위젯을 올려보세요','Add widgets in Admin → Edit Home') : t('관리자가 홈을 꾸미면 여기에 나타나요','Widgets appear here once an admin sets them up')}</div>
-    </div>`}
+    </div>` : homeSetupGuideHtml(ctxBase.isAdmin)}
   </div>`;
 
   layout.forEach(it => { const s = HOME_WIDGETS[it.k]; if (s && s.after) { try { s.after(); } catch(_) {} } });
@@ -5088,7 +5139,7 @@ function renderHwEditor() {
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap">
           <div style="font-size:14px;font-weight:700">${t('홈에 놓인 위젯','On your home')} <span style="color:var(--ink3);font-weight:600">${_hwEdit.length}</span></div>
           <div style="display:flex;gap:6px">
-            <button class="adm-btn ghost" onclick="hwResetDefault()">${t('기본값으로','Reset')}</button>
+            <button class="adm-btn ghost" onclick="hwResetDefault()">${t('추천 배치로','Starter')}</button>
             <button class="adm-btn primary" onclick="saveHomeWidgets()">${t('저장','Save')}</button>
           </div>
         </div>
@@ -5184,9 +5235,26 @@ function hwSetCfg(i, key, val) {
   _hwEdit[i].cfg[key] = val;   // 다시 그리지 않는다 — 입력 중 커서가 튀면 안 된다
 }
 function hwResetDefault() {
-  if (!confirm(t('기본 배치로 되돌릴까요? 저장을 눌러야 실제로 바뀝니다.','Reset to the default layout? Nothing changes until you press Save.'))) return;
-  _hwEdit = HOME_DEFAULT_LAYOUT.map(x => ({ k:x.k, w:x.w, cfg:{} }));
+  if (!confirm(t('추천 배치로 바꿀까요? 지금 놓인 위젯은 사라집니다. 저장을 눌러야 실제로 바뀝니다.',
+                 'Switch to the starter layout? Your current widgets will be replaced. Nothing changes until you press Save.'))) return;
+  _hwEdit = HOME_STARTER_LAYOUT.map(x => ({ k:x.k, w:x.w, cfg:{} }));
   renderHwEditor();
+}
+
+// 홈의 안내 카드에서 [추천 배치로 시작] — 바로 저장까지 한다
+async function hwQuickStart() {
+  if (!isCommunityAdmin()) return;
+  const payload = HOME_STARTER_LAYOUT.map(x => ({ k:x.k, w:x.w }));
+  const { error } = await sb.from('communities').update({ home_widgets: payload }).eq('id', CID());
+  if (error) {
+    const miss = /home_widgets/.test(error.message || '') && /column|schema/i.test(error.message || '');
+    showUploadToast(miss ? '저장 실패 — DB 설치(홈위젯_DB설치.sql)를 먼저 해주세요' : '저장 실패: ' + error.message);
+    return;
+  }
+  _homeLayout = normalizeHomeLayout(payload);
+  _homeLayoutCid = CID();
+  showUploadToast(t('✅ 추천 배치로 시작했어요! 홈 꾸미기에서 더 바꿀 수 있어요','✅ Started with the starter layout — tweak it in Edit Home'));
+  renderHome();
 }
 
 // 드래그로 순서 바꾸기 (마우스). 터치에서는 ↑ ↓ 버튼을 쓴다.
