@@ -4617,14 +4617,198 @@ const HOME_WIDGETS = {
     after: () => { try { initImusaRealtime(); } catch(_) {} }
   },
 
+  approval: {
+    icon:'✅', ko:'내 결재 차례', en:'Waiting on Me',
+    dko:'지금 내가 결재해야 할 문서만 모아요', den:'Documents waiting for your approval', w:1,
+    can: () => canAccessSchool(),
+    render: async () => {
+      let mine = [];
+      try {
+        const { data } = await sb.from('approval_docs')
+          .select('id,title,template_name,submitter_name,created_at,line,current_step')
+          .eq('community_id', CID()).eq('status', 'pending')
+          .contains('participant_ids', [ME.id])
+          .order('created_at', { ascending:false }).limit(20);
+        // 내 차례인 것만 — 결재선의 지금 단계가 나인 문서
+        mine = (data || []).filter(d => {
+          const line = Array.isArray(d.line) ? d.line : [];
+          const step = line[d.current_step || 0];
+          return step && String(step.approver_id) === String(ME.id);
+        }).slice(0, 4);
+      } catch(_) {}
+      return hwCard(
+        hwHead('✅', t('내 결재 차례','Waiting on Me'),
+          mine.length ? `<span style="font-size:11px;font-weight:800;color:white;background:var(--rose);padding:2px 8px;border-radius:999px">${mine.length}</span>` : '') +
+        (mine.length ? `<div style="display:flex;flex-direction:column;gap:7px">
+          ${mine.map(d => `<div onclick="setMode('approval')" style="display:flex;align-items:center;gap:9px;padding:9px 12px;border-radius:10px;background:var(--bg);cursor:pointer">
+            <div style="width:4px;align-self:stretch;min-height:26px;border-radius:3px;background:var(--gold, #B89146);flex-shrink:0"></div>
+            <div style="min-width:0;flex:1">
+              <div style="font-size:13px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(d.title||'')}</div>
+              <div style="font-size:11px;color:var(--ink3);margin-top:1px">${escHtml(d.submitter_name||'')}${d.template_name ? ' · ' + escHtml(d.template_name) : ''}${d.created_at ? ' · ' + String(d.created_at).slice(0,10) : ''}</div>
+            </div>
+          </div>`).join('')}
+        </div>` : hwEmpty(t('결재할 문서가 없어요 👍','Nothing waiting on you 👍'))));
+    }
+  },
+
+  wallet: {
+    icon:'🐷', ko:'내 용돈 · 예치금', en:'My Money',
+    dko:'내 용돈기입장과 매점 예치금 잔액을 보여줘요', den:'Your allowance and store deposit balance', w:1,
+    render: async () => {
+      // [{cur, bal}] 로 모은다. 통화(원/$)가 섞여 있을 수 있다.
+      const sum = (rows, plus) => {
+        const by = {};
+        (rows || []).forEach(e => {
+          const cur = e.currency || '원';
+          by[cur] = (by[cur] || 0) + (e.type === plus ? 1 : -1) * (Number(e.amount) || 0);
+        });
+        return Object.keys(by).map(cur => ({ cur, bal: by[cur] }));
+      };
+      let allow = [], dep = [];
+      try {
+        const { data } = await sb.from('allowance_entries').select('type,amount,currency').eq('member_id', ME.id);
+        allow = sum(data, 'income');
+      } catch(_) {}
+      try {
+        const { data } = await sb.from('deposit_entries').select('type,amount,currency').eq('member_id', ME.id);
+        dep = sum(data, 'in');
+      } catch(_) {}
+
+      const box = (icon, label, list, grad, mode) => `
+        <div onclick="setMode('${mode}')" style="flex:1 1 140px;min-width:0;background:${grad};border-radius:13px;padding:13px 15px;color:#fff;cursor:pointer">
+          <div style="font-size:11px;opacity:.85;display:flex;align-items:center;gap:5px">${icon} ${label}</div>
+          ${list.length
+            ? list.map(b => `<div style="font-size:19px;font-weight:800;letter-spacing:-.02em;margin-top:3px">${allowMoney(b.bal, b.cur)}</div>`).join('')
+            : `<div style="font-size:15px;font-weight:700;margin-top:4px;opacity:.85">${t('기록 없음','No records')}</div>`}
+        </div>`;
+
+      return hwCard(
+        hwHead('🐷', t('내 용돈 · 예치금','My Money')) +
+        `<div style="display:flex;gap:10px;flex-wrap:wrap">
+          ${box('💰', t('용돈 잔액','Allowance'), allow, 'linear-gradient(135deg,#2a7a5a,#2a5298)', 'allowance')}
+          ${box('🏪', t('매점 예치금','Store Deposit'), dep, 'linear-gradient(135deg,#7B6BA0,#5A7C8B)', 'deposit')}
+        </div>`);
+    }
+  },
+
+  poll: {
+    icon:'🗳️', ko:'진행 중인 투표', en:'Open Polls',
+    dko:'아직 안 끝난 투표를 모아 보여줘요 (내가 있는 채팅방만)', den:'Open polls from the channels you are in', w:1,
+    render: async () => {
+      let rows = [];
+      try {
+        // 내가 볼 수 있는 채널만 — 남의 방 투표가 새면 안 된다
+        const { data: chs } = await sb.from('channels').select('id,name,kind').eq('community_id', CID());
+        const all = chs || [];
+        const { data: mems } = await sb.from('channel_members').select('channel_id').eq('member_id', ME.id);
+        const joined = new Set((mems || []).map(m => m.channel_id));
+        // 총관리자는 채팅 화면에서 DM 을 뺀 전체 채널을 본다 — 같은 규칙을 쓴다
+        const visible = all.filter(c => joined.has(c.id) || (isSuperAdmin() && c.kind !== 'dm'));
+        const nameById = {};
+        visible.forEach(c => { nameById[c.id] = c.name; });
+        const ids = visible.map(c => c.id);
+        if (!ids.length) return pollCardHtml([]);
+
+        const { data: msgs } = await sb.from('messages').select('id,channel_id,text,created_at,sender_name')
+          .in('channel_id', ids).eq('kind', 'poll')
+          .order('created_at', { ascending:false }).limit(30);
+
+        const open = [];
+        (msgs || []).forEach(m => {
+          let meta = null;
+          try { meta = JSON.parse(m.text || '{}'); } catch(_) { return; }
+          if (!meta || !meta.q || pollIsClosed(meta)) return;
+          open.push({ id:m.id, q:meta.q, opts:meta.opts || [], deadline:meta.deadline,
+                      channel:nameById[m.channel_id] || '', channelId:m.channel_id });
+        });
+        rows = open.slice(0, 3);
+
+        if (rows.length) {
+          const { data: votes } = await sb.from('poll_votes').select('message_id,member_id')
+            .in('message_id', rows.map(r => r.id));
+          const cnt = {}, mineSet = {};
+          (votes || []).forEach(v => {
+            cnt[v.message_id] = (cnt[v.message_id] || 0) + 1;
+            if (String(v.member_id) === String(ME.id)) mineSet[v.message_id] = 1;
+          });
+          rows.forEach(r => { r.count = cnt[r.id] || 0; r.voted = !!mineSet[r.id]; });
+        }
+      } catch(_) { rows = []; }
+      return pollCardHtml(rows);
+    }
+  },
+
+  about: {
+    icon:'🏫', ko:'공동체 소개', en:'About Us',
+    dko:'공동체 이름·로고·소개와 구성원 수를 띄워요', den:'Your community name, logo, intro and member count', w:2,
+    render: async () => {
+      let c = null, count = 0;
+      try {
+        const { data } = await sb.from('communities').select('name,description,color,logo_url').eq('id', CID()).maybeSingle();
+        c = data || null;
+      } catch(_) {}
+      try {
+        const { data } = await sb.from('members').select('id,status').eq('community_id', CID());
+        count = (data || []).filter(m => m.status !== 'removed' && m.status !== 'rejected').length;
+      } catch(_) {}
+      const color = (c && c.color) || '#1d3a5f';
+      const name  = (c && c.name) || '';
+      const desc  = (c && c.description) || '';
+      return `<div style="border-radius:18px;background:linear-gradient(135deg,${color},${color}cc);padding:clamp(20px,3vw,28px) clamp(20px,3vw,30px);display:flex;align-items:center;gap:clamp(14px,2vw,20px);flex-wrap:wrap;box-shadow:0 1px 4px rgba(29,58,95,.07)">
+        <div style="width:64px;height:64px;border-radius:17px;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:27px;font-weight:800;color:white;overflow:hidden;flex-shrink:0">
+          ${c && c.logo_url ? `<img src="${escHtml(c.logo_url)}" onerror="this.remove()" style="width:64px;height:64px;object-fit:cover"/>` : escHtml((name || '?')[0])}
+        </div>
+        <div style="min-width:0;flex:1">
+          <div style="font-size:clamp(18px,2.2vw,23px);font-weight:800;color:white;letter-spacing:-.02em;word-break:keep-all">${escHtml(name)}</div>
+          ${desc ? `<div style="font-size:13.5px;color:rgba(255,255,255,.82);margin-top:5px;line-height:1.65;word-break:keep-all">${escHtml(desc)}</div>` : ''}
+        </div>
+        ${count ? `<div style="text-align:center;flex-shrink:0;padding:0 6px">
+          <div style="font-size:24px;font-weight:800;color:white;line-height:1">${count}</div>
+          <div style="font-size:11px;color:rgba(255,255,255,.75);margin-top:3px;white-space:nowrap">${t('명의 구성원','members')}</div>
+        </div>` : ''}
+      </div>`;
+    }
+  },
+
 };
 
-const HOME_WIDGET_ORDER = ['notice','schedule','upcoming','quicklinks','newsletter','dday','mccheyne','dailyword','goals','prayer','birthday','imusa'];
+const HOME_WIDGET_ORDER = ['notice','about','upcoming','quicklinks','approval','poll','schedule','newsletter',
+                          'dday','mccheyne','dailyword','goals','prayer','wallet','birthday','imusa'];
+
+// 진행 중인 투표 카드 — 위젯에서 쓴다
+function pollCardHtml(rows) {
+  return hwCard(
+    hwHead('🗳️', t('진행 중인 투표','Open Polls'),
+      `<span onclick="setMode('chat')" style="font-size:11px;color:var(--accent);font-weight:600;cursor:pointer;white-space:nowrap">${t('채팅','Chat')} →</span>`) +
+    (rows.length ? `<div style="display:flex;flex-direction:column;gap:7px">
+      ${rows.map(r => `<div onclick="goToChannel('${r.channelId}')" style="padding:10px 12px;border-radius:10px;background:var(--bg);cursor:pointer">
+        <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+          <span style="font-size:13px;font-weight:700;color:var(--ink);word-break:keep-all">${escHtml(r.q)}</span>
+          ${r.voted
+            ? `<span style="font-size:10.5px;font-weight:700;background:#E7F3EC;color:#2a7a5a;padding:1px 7px;border-radius:6px;white-space:nowrap">${t('참여함','Voted')}</span>`
+            : `<span style="font-size:10.5px;font-weight:800;background:#FFF3D6;color:#8B6914;padding:1px 7px;border-radius:6px;white-space:nowrap">${t('아직 안 함','Not yet')}</span>`}
+        </div>
+        <div style="font-size:11px;color:var(--ink3);margin-top:3px">
+          ${r.channel ? '# ' + escHtml(r.channel) + ' · ' : ''}${t(`${r.count||0}명 참여`, `${r.count||0} voted`)}${r.deadline ? ' · ~' + fmtPollDeadline(r.deadline) : ''}
+        </div>
+      </div>`).join('')}
+    </div>` : hwEmpty(t('진행 중인 투표가 없어요','No open polls'))));
+}
+
+// 홈에서 채팅방으로 바로 들어간다. 채널 목록이 아직 안 들어왔을 수 있어 잠깐 기다린다.
+async function goToChannel(id) {
+  setMode('chat');
+  for (let i = 0; i < 20; i++) {
+    if (Array.isArray(channels) && channels.some(c => c.id === id)) { openChannel(id); return; }
+    await new Promise(r => setTimeout(r, 100));
+  }
+}
 
 // 아직 홈을 안 꾸민 공동체에 보여주는 안내
 function homeSetupGuideHtml(isAdmin) {
-  const chips = ['notice','upcoming','quicklinks','birthday','goals','prayer','dailyword','schedule']
-    .filter(k => HOME_WIDGETS[k])
+  const shown = HOME_WIDGET_ORDER.filter(k => HOME_WIDGETS[k]).slice(0, 8);
+  const more = HOME_WIDGET_ORDER.filter(k => HOME_WIDGETS[k]).length - shown.length;
+  const chips = shown
     .map(k => `<span style="display:inline-flex;align-items:center;gap:5px;padding:7px 12px;border-radius:999px;background:var(--bg);border:1px solid var(--border);font-size:12.5px;font-weight:600;color:var(--ink2);white-space:nowrap">${HOME_WIDGETS[k].icon} ${t(HOME_WIDGETS[k].ko, HOME_WIDGETS[k].en)}</span>`)
     .join('');
 
@@ -4646,7 +4830,7 @@ function homeSetupGuideHtml(isAdmin) {
           'Each community decides what goes on its home. Pick from the widgets below, set the order and width, and everyone in your community sees that home.')}
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:24px">${chips}
-      <span style="display:inline-flex;align-items:center;padding:7px 12px;border-radius:999px;font-size:12.5px;font-weight:600;color:var(--ink3)">${t('외 4가지','and 4 more')}</span>
+      ${more > 0 ? `<span style="display:inline-flex;align-items:center;padding:7px 12px;border-radius:999px;font-size:12.5px;font-weight:600;color:var(--ink3)">${t('외 ' + more + '가지', 'and ' + more + ' more')}</span>` : ''}
     </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap">
       <button onclick="openAdminTab('home')"
