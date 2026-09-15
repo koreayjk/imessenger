@@ -6,57 +6,14 @@
 --  여러 번 실행해도 안전합니다.
 --
 --  ※ db/총관리자_보호.sql 을 먼저 실행해 두셔야 합니다 (is_super_admin 함수).
+--
+--  사람 찾기는 서버 함수가 필요 없습니다 — members 읽기는 공동체로 막혀 있지
+--  않아서(🏛️ 공동체 → 멤버 보기 가 이미 그렇게 씁니다) 앱이 바로 조회합니다.
+--  옮기는 것만 SECURITY DEFINER 로 합니다. 뒷정리와 안전장치가 필요해서요.
 -- ═══════════════════════════════════════════════════════════════
 
 -- ───────────────────────────────────────────────────────────────
--- 1) 사람 찾기 — 이름이나 이메일로 모든 공동체를 뒤진다
---
---    RLS 때문에 총관리자도 "지금 들어가 있는 공동체"의 멤버만 보입니다.
---    잘못 등록된 사람은 딴 공동체에 있으니 목록에 안 나오죠.
---    그래서 서버 함수로 찾습니다. (총관리자만 호출 가능)
--- ───────────────────────────────────────────────────────────────
-create or replace function public.admin_find_members(p_q text)
-returns table (
-  id              uuid,
-  name            text,
-  email           text,
-  community_role  text,
-  status          text,
-  community_id    uuid,
-  community_name  text,
-  created_at      timestamptz
-)
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  q text := lower(btrim(coalesce(p_q, '')));
-begin
-  if not public.is_super_admin() then
-    raise exception '총관리자만 쓸 수 있습니다' using errcode = '42501';
-  end if;
-  if length(q) < 2 then
-    raise exception '두 글자 이상 입력해 주세요' using errcode = '22023';
-  end if;
-
-  return query
-  select m.id, m.name, m.email, m.community_role, m.status,
-         m.community_id, c.name, m.created_at
-  from public.members m
-  left join public.communities c on c.id = m.community_id
-  where lower(coalesce(m.email, '')) like '%' || q || '%'
-     or lower(coalesce(m.name , '')) like '%' || q || '%'
-  order by m.created_at
-  limit 50;
-end $$;
-
-revoke all on function public.admin_find_members(text) from public, anon;
-grant execute on function public.admin_find_members(text) to authenticated;
-
-
--- ───────────────────────────────────────────────────────────────
--- 2) 공동체 옮기기
+-- 공동체 옮기기
 --
 --    옮기면 이전 공동체의 "자리"에서 떼어냅니다 —
 --      · 반(group_id) · 담임 · 채팅 채널 참여 · 개인 시간표
@@ -211,9 +168,8 @@ grant execute on function public.admin_move_member_community(uuid, uuid, boolean
 NOTIFY pgrst, 'reload schema';
 
 -- ── 확인 ──
--- 아래가 2줄 나오면 설치 완료입니다.
+-- 아래가 1줄 나오면 설치 완료입니다.
 select routine_name
 from information_schema.routines
 where routine_schema = 'public'
-  and routine_name in ('admin_find_members', 'admin_move_member_community')
-order by routine_name;
+  and routine_name = 'admin_move_member_community';
