@@ -9835,6 +9835,183 @@ async function changeMemberCommunityRole(memberId, role) {
   else showUploadToast('✅ 역할이 변경됐어요');
 }
 
+// ══════════════════════════════════════════
+// 멤버 공동체 이동 — 총관리자 전용
+// 가입할 때 공동체를 잘못 고른 사람을 옮긴다.
+// ══════════════════════════════════════════
+
+// 이전 공동체에 남는 기록의 한글 이름
+const MOVE_TBL_KO = {
+  messages:'채팅 메시지', tcs_records:'생활기록부', attendance_daily:'출결',
+  reading_logs:'독서 기록', student_writings:'독후감·후기', allowance_entries:'용돈기입장',
+  deposit_entries:'예치금', prayers:'기도제목', notes:'노트',
+  counseling_logs:'상담 기록', observation_logs:'관찰 기록', health_logs:'보건 기록',
+};
+
+// 화면에 나온 사람을 기억해 둔다 — 이름을 onclick 문자열에 끼워 넣지 않으려고.
+// escHtml 은 따옴표를 안 바꾸기 때문에, 이름에 " 나 ' 가 있으면 속성이 깨진다.
+const _moveKnown = {};
+function moveRemember(m) { if (m && m.id) _moveKnown[m.id] = m; }
+
+let _moveCommCache = null;
+async function moveLoadCommunities(force) {
+  if (_moveCommCache && !force) return _moveCommCache;
+  const { data } = await sb.from('communities').select('id,name,color').order('name');
+  _moveCommCache = data || [];
+  return _moveCommCache;
+}
+
+// DB 설치를 안 했을 때를 알아보기 쉽게
+function moveErrText(err) {
+  const msg = (err && err.message) || '';
+  if (/admin_(find_members|move_member_community)|Could not find the function|schema cache|PGRST202/i.test(msg))
+    return '기능이 아직 설치되지 않았어요 — db/멤버_공동체이동_DB설치.sql 을 Supabase 에서 한 번 실행해주세요';
+  return msg || '알 수 없는 오류';
+}
+
+// ── 사람 찾기 (다른 공동체까지) ──
+async function adminMemberSearch() {
+  const input = document.getElementById('mv-q');
+  const box   = document.getElementById('mv-results');
+  if (!input || !box) return;
+  const q = input.value.trim();
+  if (q.length < 2) { box.innerHTML = `<div style="font-size:12.5px;color:var(--ink3);padding:10px 2px">${t('두 글자 이상 입력해 주세요','Type at least two characters')}</div>`; return; }
+  box.innerHTML = `<div style="font-size:12.5px;color:var(--ink3);padding:10px 2px">${t('찾는 중...','Searching...')}</div>`;
+
+  const { data, error } = await sb.rpc('admin_find_members', { p_q: q });
+  if (error) { box.innerHTML = `<div style="font-size:12.5px;color:var(--rose);padding:10px 2px">${escHtml(moveErrText(error))}</div>`; return; }
+
+  const rows = data || [];
+  if (!rows.length) {
+    box.innerHTML = `<div style="font-size:12.5px;color:var(--ink3);padding:10px 2px">${t('찾는 사람이 없어요','No one found')}</div>`;
+    return;
+  }
+  rows.forEach(moveRemember);
+  box.innerHTML = rows.map(r => {
+    const here = r.community_id === CID();
+    const isSuper = r.community_role === 'super_admin';
+    return `<div style="display:flex;align-items:center;gap:11px;padding:11px 13px;border:1px solid var(--border);border-radius:12px;background:var(--bg);margin-bottom:8px;flex-wrap:wrap">
+      <div style="min-width:0;flex:1 1 220px">
+        <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+          <span style="font-size:13.5px;font-weight:700;color:var(--ink)">${escHtml(r.name||'')}</span>
+          <span style="font-size:11px;color:var(--ink3)">${escHtml(r.community_role||'')}</span>
+          ${r.status && r.status !== 'approved' ? `<span style="font-size:10.5px;font-weight:700;background:#FFF3D6;color:#8B6914;padding:1px 7px;border-radius:6px">${escHtml(r.status)}</span>` : ''}
+        </div>
+        <div style="font-size:12px;color:var(--ink3);margin-top:2px">${escHtml(r.email||'')}</div>
+        <div style="font-size:12px;margin-top:3px">
+          <span style="color:var(--ink3)">${t('현재','Now')}:</span>
+          <span style="font-weight:700;color:var(--adeep)">${escHtml(r.community_name || t('(소속 없음)','(none)'))}</span>
+          ${here ? `<span style="font-size:11px;color:var(--sage);font-weight:600"> · ${t('지금 보고 있는 공동체','current community')}</span>` : ''}
+        </div>
+      </div>
+      ${isSuper
+        ? `<span style="font-size:11px;color:var(--ink3);flex-shrink:0">${t('총관리자는 공동체 전환으로','Super admin — use Switch Community')}</span>`
+        : `<button class="adm-btn primary" style="flex-shrink:0"
+             onclick="showMoveCommunityModal('${r.id}')">🏛️ ${t('공동체 이동','Move')}</button>`}
+    </div>`;
+  }).join('');
+}
+
+// ── 어느 공동체로 옮길지 고르는 창 ──
+async function showMoveCommunityModal(memberId) {
+  const all = await moveLoadCommunities();
+  let m = _moveKnown[memberId];
+  if (!m) {
+    const { data } = await sb.from('members').select('id,name,community_id,community_role').eq('id', memberId).maybeSingle();
+    m = data || null;
+    if (!m) { showUploadToast('그 멤버를 찾을 수 없어요'); return; }
+    moveRemember(m);
+  }
+  const name    = m.name || '';
+  const curCid  = m.community_id || '';
+  const curName = m.community_name || (all.find(c => c.id === curCid) || {}).name || '';
+  const list = all.filter(c => c.id !== curCid);
+  document.getElementById('move-comm-modal')?.remove();
+  const modal = document.createElement('div');
+  modal.id = 'move-comm-modal';
+  modal.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:20px';
+  modal.innerHTML = `
+    <div style="background:var(--surface);border-radius:20px;width:100%;max-width:420px;box-shadow:0 24px 60px rgba(29,58,95,.2);overflow:hidden">
+      <div style="padding:20px 24px;border-bottom:1px solid var(--border)">
+        <div style="font-size:16px;font-weight:700;color:var(--ink)">🏛️ ${t('공동체 이동','Move Community')}</div>
+        <div style="font-size:12.5px;color:var(--ink3);margin-top:4px;line-height:1.6">
+          <b style="color:var(--ink)">${escHtml(name)}</b> ${t('님을 어느 공동체로 옮길까요?','— which community?')}<br>
+          ${t('현재','Now')}: ${escHtml(curName || t('(소속 없음)','(none)'))}
+        </div>
+      </div>
+      <div style="padding:12px;max-height:340px;overflow-y:auto">
+        ${list.length ? list.map(c => `
+          <div onclick="doMoveCommunity('${memberId}','${c.id}')"
+            style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:12px;cursor:pointer"
+            onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background=''">
+            <div style="width:38px;height:38px;border-radius:11px;background:${c.color||'#1d3a5f'};display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:white;flex-shrink:0">${escHtml((c.name||'?')[0])}</div>
+            <div style="font-size:14px;font-weight:600;color:var(--ink)">${escHtml(c.name||'')}</div>
+          </div>`).join('')
+        : `<div style="padding:24px;text-align:center;color:var(--ink3);font-size:13px">${t('옮길 수 있는 다른 공동체가 없어요','No other community to move to')}</div>`}
+      </div>
+      <div style="padding:12px 16px;border-top:1px solid var(--border)">
+        <button onclick="document.getElementById('move-comm-modal').remove()"
+          style="width:100%;height:38px;border-radius:10px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:500 13px var(--font);cursor:pointer">${t('취소','Cancel')}</button>
+      </div>
+    </div>`;
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  document.body.appendChild(modal);
+}
+
+// ── 실제로 옮기기 — 먼저 미리보기로 확인을 받는다 ──
+async function doMoveCommunity(memberId, toCid) {
+  document.getElementById('move-comm-modal')?.remove();
+
+  // 1) 미리보기 (아무것도 바꾸지 않는다)
+  const { data: pre, error: e1 } = await sb.rpc('admin_move_member_community',
+    { p_member_id: memberId, p_community_id: toCid, p_dry_run: true });
+  if (e1) { showUploadToast('이동 실패: ' + moveErrText(e1)); return; }
+
+  const left = (pre && pre.leftovers) || {};
+  const leftLines = Object.keys(left).map(k => `· ${MOVE_TBL_KO[k] || k} ${left[k]}건`).join('\n');
+  const msg =
+    `${pre.member_name} 님을 옮깁니다.\n\n` +
+    `${pre.from_community}  →  ${pre.to_community}\n\n` +
+    `이전 공동체의 반·담임·채팅방·개인 시간표에서 빠집니다.\n` +
+    (leftLines ? `\n${pre.from_community} 에 남는 기록 (따라가지 않아요):\n${leftLines}\n` : '') +
+    `\n진행할까요?`;
+  if (!confirm(msg)) return;
+
+  // 2) 진짜로 옮긴다
+  const { data: res, error: e2 } = await sb.rpc('admin_move_member_community',
+    { p_member_id: memberId, p_community_id: toCid });
+  if (e2) { showUploadToast('이동 실패: ' + moveErrText(e2)); return; }
+
+  const un = (res && res.unlinked) || {};
+  const unTxt = Object.keys(un).map(k => `${k.replace(/_/g,' ')} ${un[k]}건`).join(' · ');
+  showUploadToast(`✅ ${res.member_name} 님을 ${res.to_community} 로 옮겼어요${unTxt ? ' (' + unTxt + ' 정리)' : ''}`);
+
+  // 내 공동체 목록이 바뀌었을 수 있으니 다시 그린다
+  const box = document.getElementById('mv-results');
+  if (box && document.getElementById('mv-q')?.value.trim().length >= 2) await adminMemberSearch();
+  if (adminTab === 'members') renderAdminMembers();
+}
+
+// ── 멤버 관리 화면 맨 위에 붙는 찾기 카드 (총관리자만) ──
+function moveSearchCardHtml() {
+  if (!isSuperAdmin()) return '';
+  return `
+  <div class="adm-card" style="margin-bottom:20px">
+    <div style="font-size:14px;font-weight:700;margin-bottom:5px">🔎 ${t('사람 찾기 · 공동체 이동','Find a person · Move community')}</div>
+    <div style="font-size:12px;color:var(--ink3);margin-bottom:12px;line-height:1.65;word-break:keep-all">
+      ${t('지금 보고 있는 공동체 밖에 있는 사람도 찾습니다. 가입할 때 공동체를 잘못 고른 사람을 여기서 옮기세요.',
+          'Finds people outside the community you are viewing. Use this to fix someone who signed up under the wrong community.')}
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <input id="mv-q" class="adm-input" style="margin-bottom:0;flex:1 1 240px;min-width:0"
+        placeholder="${t('이름 또는 이메일','Name or email')}"
+        onkeydown="if(event.key==='Enter'){event.preventDefault();adminMemberSearch();}"/>
+      <button class="adm-btn primary" style="height:38px;padding:0 18px" onclick="adminMemberSearch()">${t('찾기','Search')}</button>
+    </div>
+    <div id="mv-results" style="margin-top:12px"></div>
+  </div>`;
+}
+
 // ── 멤버 관리 ──
 async function renderAdminMembers() {
   const area = document.getElementById('admin-content');
@@ -9894,6 +10071,8 @@ async function renderAdminMembers() {
     } catch(e) {}
   }
 
+  list.forEach(m => { try { moveRemember(m); } catch(_) {} });
+
   const memberRow = (m, showApproval=false) => `
     <div class="adm-row" style="padding:14px 20px;flex-wrap:wrap;gap:10px">
       <div style="width:38px;height:38px;border-radius:12px;background:${m.color||'#999'};color:white;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;flex-shrink:0">${m.initials||m.name[0]}</div>
@@ -9920,6 +10099,7 @@ async function renderAdminMembers() {
             <option value="community_admin"  ${m.community_role==='community_admin'?'selected':''}>${t('관리자','Admin')}</option>
             ${isSuperAdmin()?`<option value="super_admin" ${m.community_role==='super_admin'?'selected':''}>${t('총관리자','Super Admin')}</option>`:''}
           </select>`}
+          ${(isSuperAdmin() && m.community_role !== 'super_admin') ? `<button class="adm-btn ghost" title="${t('다른 공동체로 옮기기','Move to another community')}" onclick="showMoveCommunityModal('${m.id}')">🏛️</button>` : ''}
           ${m.community_role !== 'super_admin' ? `<button class="adm-btn danger" onclick="deleteMember('${m.id}','${m.name}')">${t('탈퇴','Remove')}</button>` : `<span style="font-size:11px;color:var(--ink3)">${t('총관리자','Super Admin')}</span>`}
         `}
       </div>
@@ -9934,6 +10114,8 @@ async function renderAdminMembers() {
         <div style="font-size:12px;color:var(--ink3);margin-top:3px">${titleNote}</div>
       </div>
     </div>
+
+    ${moveSearchCardHtml()}
 
     ${rolePermGuideHtml()}
 
