@@ -12974,7 +12974,7 @@ function renderCalendar() {
         </div>`).join('');
       const moreEvt = dayEvts.length > 2 ? `<div style="font-size:10px;color:var(--ink3)">+${dayEvts.length-2}${t('개',' more')}</div>` : '';
 
-      html += `<div onclick="selectCalDate('${dateStr}')"
+      html += `<div onclick="selectCalDate('${dateStr}')" title="${t('두 번 누르면 일정 추가','Double-click to add an event')}"
         style="background:${isSelected?'rgba(42,82,152,.07)':'var(--surface)'};height:100%;padding:5px 6px;cursor:pointer;transition:background .1s;overflow:hidden"
         onmouseover="this.style.background='${isSelected?'rgba(42,82,152,.1)':'var(--s2)'}'"
         onmouseout="this.style.background='${isSelected?'rgba(42,82,152,.07)':'var(--surface)'}'">
@@ -13015,7 +13015,20 @@ function renderCalendar() {
   if (calSelectedDate) showDayEvents(calSelectedDate);
 }
 
+// 같은 날짜를 연속으로 두 번 누르면 일정 추가 창을 연다.
+// 브라우저의 dblclick 이벤트는 못 쓴다 — 첫 클릭이 renderCalendar() 로
+// 달력을 통째로 다시 그려서, 두 번째 클릭이 닿는 칸이 다른 노드가 된다.
+let _calLastTap = { date: null, at: 0 };
+const CAL_DBL_MS = 400;
+
 function selectCalDate(dateStr) {
+  const now = Date.now();
+  if (_calLastTap.date === dateStr && now - _calLastTap.at < CAL_DBL_MS) {
+    _calLastTap = { date: null, at: 0 };
+    showEventForm(dateStr);
+    return;
+  }
+  _calLastTap = { date: dateStr, at: now };
   calSelectedDate = dateStr;
   renderCalendar();
   showDayEvents(dateStr);
