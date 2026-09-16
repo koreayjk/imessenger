@@ -389,13 +389,23 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
 .adm-btn.sage { background:var(--sage);color:white; }
 .adm-btn.danger { background:#FEE2E2;color:var(--rose); }
 .adm-btn.ghost { background:var(--s3);color:var(--ink2); }
-/* 홈 위젯 격자 — 넓으면 두 칸, 좁으면 한 칸으로 접힌다 */
-.hw-grid { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:14px; align-items:stretch; }
+/* 홈 위젯 격자 — 넓은 화면은 4칸, 좁아지면 2칸 → 1칸으로 접힌다.
+   너비는 ¼·½·¾·한 줄 네 단계(hw-w1 ~ hw-w4). */
+.hw-grid { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:14px; align-items:stretch; }
 .hw-cell { min-width:0; }
-.hw-cell.hw-full { grid-column:1 / -1; }
+.hw-cell.hw-w1 { grid-column:span 1; }
+.hw-cell.hw-w2 { grid-column:span 2; }
+.hw-cell.hw-w3 { grid-column:span 3; }
+.hw-cell.hw-w4 { grid-column:span 4; }
+@media (max-width: 1199px) {
+  .hw-grid { grid-template-columns:repeat(2, minmax(0,1fr)); }
+  /* 2칸에서는 ¼·½ 은 한 칸, ¾·한 줄 은 두 칸 */
+  .hw-cell.hw-w1, .hw-cell.hw-w2 { grid-column:span 1; }
+  .hw-cell.hw-w3, .hw-cell.hw-w4 { grid-column:span 2; }
+}
 @media (max-width: 760px) {
   .hw-grid { grid-template-columns:minmax(0,1fr); }
-  .hw-cell.hw-full { grid-column:auto; }
+  .hw-cell.hw-w1, .hw-cell.hw-w2, .hw-cell.hw-w3, .hw-cell.hw-w4 { grid-column:span 1; }
 }
 .adm-input { width:100%;padding:10px 13px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none;margin-bottom:8px; }
 .adm-input:focus { border-color:var(--accent); }
@@ -4215,9 +4225,9 @@ async function submitPrayer(btn) {
 // 어느 공동체에나 맞는 중립적인 배치. [추천 배치로 시작] 과 [추천 배치로] 가 이걸 쓴다.
 // w: 1=반 칸, 2=한 줄 전체
 const HOME_STARTER_LAYOUT = [
-  { k:'notice', w:2 },
-  { k:'upcoming', w:1 }, { k:'birthday', w:1 },
-  { k:'quicklinks', w:2 },
+  { k:'notice', w:4 },
+  { k:'upcoming', w:2 }, { k:'birthday', w:2 },
+  { k:'quicklinks', w:4 },
 ];
 
 let _homeLayout = null, _homeLayoutCid = null;
@@ -4247,9 +4257,14 @@ function normalizeHomeLayout(raw) {
     if (!k || !HOME_WIDGETS[k] || seen[k]) return;
     seen[k] = 1;
     const spec = HOME_WIDGETS[k];
-    let w = (it && +it.w) || spec.w || 1;
-    if (spec.fullOnly) w = 2;
-    out.push({ k, w: w === 2 ? 2 : 1, cfg: (it && it.cfg) || null });
+    // 예전에는 격자가 2칸이라 w 가 1(반 칸)·2(한 줄) 였다.
+    // 지금은 4칸이라, v 표시가 없는 옛 값은 2배로 늘려 읽는다.
+    const legacy = !(it && +it.v >= 2);
+    let w = (it && +it.w) || spec.w || 2;
+    if (legacy) w = w * 2;
+    if (spec.fullOnly) w = 4;
+    w = Math.max(1, Math.min(4, Math.round(w)));
+    out.push({ k, w, cfg: (it && it.cfg) || null });
   });
   return out;
 }
@@ -4344,7 +4359,7 @@ const HOME_WIDGETS = {
 
   mccheyne: {
     icon:'📖', ko:'맥체인 성경읽기', en:"M'Cheyne Bible Reading",
-    dko:'오늘 읽을 네 구절을 바로 열 수 있어요', den:"Today's four passages, one tap away", w:1,
+    dko:'오늘 읽을 네 구절을 바로 열 수 있어요', den:"Today's four passages, one tap away", w:2,
     render: async () => hwCard(
       hwHead('📖', t('맥체인 성경읽기',"M'Cheyne Bible Reading"),
         `<span style="font-size:11px;color:var(--ink3);white-space:nowrap">${t('오늘의 4구절',"Today's 4 verses")}</span>`) +
@@ -4361,7 +4376,7 @@ const HOME_WIDGETS = {
 
   dday: {
     icon:'⏳', ko:'D-DAY 카운트다운', en:'D-DAY Countdown',
-    dko:'행사까지 며칠 남았는지 크게 보여줘요 (이름·날짜를 직접 넣어요)', den:'Big countdown to your event (set the name and date)', w:1,
+    dko:'행사까지 며칠 남았는지 크게 보여줘요 (이름·날짜를 직접 넣어요)', den:'Big countdown to your event (set the name and date)', w:2,
     cfg:[ { key:'title', ko:'행사 이름', en:'Event name', ph:'예: 여름 수련회' },
           { key:'date',  ko:'날짜',      en:'Date',       type:'date' } ],
     render: async (ctx) => ddayCardHtml(ctx.cfg)
@@ -4369,7 +4384,7 @@ const HOME_WIDGETS = {
 
   notice: {
     icon:'📢', ko:'공지사항', en:'Notices',
-    dko:'고정한 공지를 맨 위에 보여줘요', den:'Pinned notices first', w:2,
+    dko:'고정한 공지를 맨 위에 보여줘요', den:'Pinned notices first', w:4,
     render: async () => {
       let rows = [];
       try {
@@ -4395,7 +4410,7 @@ const HOME_WIDGETS = {
 
   newsletter: {
     icon:'✉️', ko:'가정통신문', en:'Newsletter',
-    dko:'학교에서 가정으로 보내는 안내를 띄워요', den:'Notices from school to home', w:2,
+    dko:'학교에서 가정으로 보내는 안내를 띄워요', den:'Notices from school to home', w:4,
     render: async () => {
       let rows = [];
       try {
@@ -4423,7 +4438,7 @@ const HOME_WIDGETS = {
 
   schedule: {
     icon:'🖼️', ko:'주간 일정표 사진', en:'Weekly Schedule Photo',
-    dko:'사진으로 올린 주간 일정표를 크게 보여줘요', den:'Shows the uploaded weekly schedule image', w:2, fullOnly:true,
+    dko:'사진으로 올린 주간 일정표를 크게 보여줘요', den:'Shows the uploaded weekly schedule image', w:4, fullOnly:true,
     render: async (ctx) => {
       let img = null;
       try {
@@ -4454,7 +4469,7 @@ const HOME_WIDGETS = {
 
   upcoming: {
     icon:'📅', ko:'다가오는 일정', en:'Upcoming Events',
-    dko:'오늘 이후 가까운 일정 여섯 개 · 여러 날 일정은 기간으로 보여줘요', den:'The next six events, with date ranges for multi-day ones', w:1,
+    dko:'오늘 이후 가까운 일정 여섯 개 · 여러 날 일정은 기간으로 보여줘요', den:'The next six events, with date ranges for multi-day ones', w:2,
     render: async () => {
       let rows = [];
       const now = new Date();
@@ -4509,7 +4524,7 @@ const HOME_WIDGETS = {
 
   birthday: {
     icon:'🎂', ko:'이번 달 생일', en:'Birthdays This Month',
-    dko:'이번 달 생일인 사람을 날짜순으로 모아요', den:'Everyone with a birthday this month', w:1,
+    dko:'이번 달 생일인 사람을 날짜순으로 모아요', den:'Everyone with a birthday this month', w:2,
     render: async () => {
       let list = [];
       const now = new Date();
@@ -4541,7 +4556,7 @@ const HOME_WIDGETS = {
 
   prayer: {
     icon:'🙏', ko:'최근 기도제목', en:'Recent Prayers',
-    dko:'가장 최근 기도제목 네 개를 보여줘요', den:'The four most recent prayer requests', w:1,
+    dko:'가장 최근 기도제목 네 개를 보여줘요', den:'The four most recent prayer requests', w:2,
     render: async () => {
       let rows = [];
       try {
@@ -4568,7 +4583,7 @@ const HOME_WIDGETS = {
 
   goals: {
     icon:'🎯', ko:'이달의 목표', en:'Monthly Goals',
-    dko:'관리자가 정한 이번 달 목표를 보여줘요', den:"This month's goals set by an admin", w:1,
+    dko:'관리자가 정한 이번 달 목표를 보여줘요', den:"This month's goals set by an admin", w:2,
     render: async () => {
       let goals = [];
       const now = new Date();
@@ -4591,7 +4606,7 @@ const HOME_WIDGETS = {
 
   dailyword: {
     icon:'✝️', ko:'오늘의 말씀', en:'Daily Word',
-    dko:'오늘 등록된 말씀과 본문을 보여줘요', den:"Today's verse and passage", w:1,
+    dko:'오늘 등록된 말씀과 본문을 보여줘요', den:"Today's verse and passage", w:2,
     render: async () => {
       let row = null;
       try {
@@ -4612,7 +4627,7 @@ const HOME_WIDGETS = {
 
   quicklinks: {
     icon:'⚡', ko:'바로가기', en:'Quick Links',
-    dko:'자주 쓰는 메뉴를 큼직한 버튼으로 깔아요', den:'Big buttons for the menus you use most', w:2,
+    dko:'자주 쓰는 메뉴를 큼직한 버튼으로 깔아요', den:'Big buttons for the menus you use most', w:4,
     render: async () => {
       const links = HOME_LINKS.filter(l => !l.can || l.can());
       return hwCard(
@@ -4629,7 +4644,7 @@ const HOME_WIDGETS = {
 
   imusa: {
     icon:'🏆', ko:'IMUSA 팀 점수', en:'IMUSA Team Scores',
-    dko:'IMUSA 팀빌딩 점수를 실시간으로 받아 와요', den:'Live scores from IMUSA team building', w:1,
+    dko:'IMUSA 팀빌딩 점수를 실시간으로 받아 와요', den:'Live scores from IMUSA team building', w:2,
     render: async () => hwCard(
       `<div id="imusa-score-widget" style="display:contents">` +
       hwHead('🏆', t('IMUSA 팀 점수','IMUSA Team Scores'),
@@ -4640,7 +4655,7 @@ const HOME_WIDGETS = {
 
   approval: {
     icon:'✅', ko:'내 결재 차례', en:'Waiting on Me',
-    dko:'지금 내가 결재해야 할 문서만 모아요', den:'Documents waiting for your approval', w:1,
+    dko:'지금 내가 결재해야 할 문서만 모아요', den:'Documents waiting for your approval', w:2,
     can: () => canAccessSchool(),
     render: async () => {
       let mine = [];
@@ -4674,7 +4689,7 @@ const HOME_WIDGETS = {
 
   wallet: {
     icon:'🐷', ko:'내 용돈 · 예치금', en:'My Money',
-    dko:'내 용돈기입장과 매점 예치금 잔액을 보여줘요', den:'Your allowance and store deposit balance', w:1,
+    dko:'내 용돈기입장과 매점 예치금 잔액을 보여줘요', den:'Your allowance and store deposit balance', w:2,
     render: async () => {
       // [{cur, bal}] 로 모은다. 통화(원/$)가 섞여 있을 수 있다.
       const sum = (rows, plus) => {
@@ -4714,7 +4729,7 @@ const HOME_WIDGETS = {
 
   poll: {
     icon:'🗳️', ko:'진행 중인 투표', en:'Open Polls',
-    dko:'아직 안 끝난 투표를 모아 보여줘요 (내가 있는 채팅방만)', den:'Open polls from the channels you are in', w:1,
+    dko:'아직 안 끝난 투표를 모아 보여줘요 (내가 있는 채팅방만)', den:'Open polls from the channels you are in', w:2,
     render: async () => {
       let rows = [];
       try {
@@ -4761,7 +4776,7 @@ const HOME_WIDGETS = {
 
   about: {
     icon:'🏫', ko:'공동체 소개', en:'About Us',
-    dko:'공동체 이름·로고·소개와 구성원 수를 띄워요', den:'Your community name, logo, intro and member count', w:2,
+    dko:'공동체 이름·로고·소개와 구성원 수를 띄워요', den:'Your community name, logo, intro and member count', w:4,
     render: async () => {
       let c = null, count = 0;
       try {
@@ -4904,7 +4919,7 @@ async function renderHome() {
     </div>
 
     ${parts.length ? `<div class="hw-grid">
-      ${parts.map((h,i) => `<div class="hw-cell${layout[i].w === 2 ? ' hw-full' : ''}">${h}</div>`).join('')}
+      ${parts.map((h,i) => `<div class="hw-cell hw-w${layout[i].w}">${h}</div>`).join('')}
     </div>` : homeSetupGuideHtml(ctxBase.isAdmin)}
   </div>`;
 
@@ -5316,17 +5331,40 @@ async function renderAdminHome() {
   }
   const layout = await loadHomeLayout(true);
   _hwEdit = layout.map(x => ({ k:x.k, w:x.w, cfg: x.cfg ? {...x.cfg} : {} }));
+  _hwPrevHtml = {};
   if (_seq !== _admSeq) return;   // 늦게 끝났다 — 지금 보고 있는 탭이 아니다
   area.innerHTML = `
-    <div style="max-width:1100px;margin:0 auto">
-      <div style="font-size:18px;font-weight:700;color:var(--adeep);margin-bottom:6px">🧩 ${t('홈 꾸미기','Edit Home')}</div>
-      <div style="font-size:13px;color:var(--ink3);margin-bottom:22px;line-height:1.7">
-        ${t('우리 공동체의 홈 화면에 어떤 위젯을 어떤 순서로 놓을지 정해요. 여기서 정한 배치는 공동체 구성원 모두에게 똑같이 보입니다.',
-            'Choose which widgets appear on your community home and in what order. Everyone in the community sees the same layout.')}
+    <div style="max-width:1180px;margin:0 auto">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:6px">
+        <div style="font-size:18px;font-weight:700;color:var(--adeep)">🧩 ${t('홈 꾸미기','Edit Home')}</div>
+        <div style="display:flex;gap:6px">
+          <button class="adm-btn ghost" onclick="hwResetDefault()">${t('추천 배치로','Starter')}</button>
+          <button class="adm-btn primary" onclick="saveHomeWidgets()">${t('저장','Save')}</button>
+        </div>
+      </div>
+      <div style="font-size:13px;color:var(--ink3);margin-bottom:20px;line-height:1.7;word-break:keep-all">
+        ${t('아래가 실제 홈 화면입니다. 카드를 끌어 자리를 바꾸고, ¼ ½ ¾ 1 로 너비를 정하세요. 여기서 정한 배치는 공동체 구성원 모두에게 똑같이 보입니다.',
+            'Below is your actual home. Drag cards to rearrange and set the width with ¼ ½ ¾ 1. Everyone in the community sees this layout.')}
       </div>
       <div id="hw-edit-body"></div>
     </div>`;
   renderHwEditor();
+}
+
+// 미리보기에 쓸 위젯 HTML 을 한 번만 만들어 두고 재활용한다.
+// 자리를 옮길 때마다 다시 불러오면 느리고 DB 도 아깝다.
+let _hwPrevHtml = {};
+
+async function hwBuildPreview(k) {
+  if (_hwPrevHtml[k] !== undefined) return _hwPrevHtml[k];
+  const spec = HOME_WIDGETS[k];
+  const it = _hwEdit.find(x => x.k === k) || {};
+  try {
+    _hwPrevHtml[k] = await spec.render({ isAdmin: isCommunityAdmin(), now: new Date(), todayStr: ymdStr(new Date()), cfg: it.cfg || {} });
+  } catch(e) {
+    _hwPrevHtml[k] = hwCard(hwHead(spec.icon, t(spec.ko, spec.en)) + hwEmpty(t('불러오지 못했어요','Could not load')));
+  }
+  return _hwPrevHtml[k];
 }
 
 function renderHwEditor() {
@@ -5337,79 +5375,124 @@ function renderHwEditor() {
   const rest = HOME_WIDGET_ORDER.filter(k => HOME_WIDGETS[k] && !used[k]);
 
   body.innerHTML = `
-    <div style="display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap">
+    <div style="background:var(--bg);border:1.5px solid var(--border);border-radius:18px;padding:clamp(12px,1.6vw,18px);margin-bottom:22px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+        <span style="font-size:12px;font-weight:700;color:var(--ink2)">${t('홈 미리보기','Home preview')}</span>
+        <span style="font-size:11.5px;color:var(--ink3)">${t('실제로 보이는 모습이에요','This is what people will see')}</span>
+        <span style="font-size:11.5px;color:var(--ink3);margin-left:auto">${t('놓인 위젯','Placed')} <b style="color:var(--ink2)">${_hwEdit.length}</b></span>
+      </div>
+      ${_hwEdit.length
+        ? `<div class="hw-grid" id="hw-prev-grid">${_hwEdit.map((it,i) => hwPrevCell(it,i)).join('')}</div>`
+        : `<div style="text-align:center;color:var(--ink3);font-size:13px;padding:44px 20px;background:var(--surface);border-radius:14px">${t('아래에서 위젯을 눌러 홈에 올려보세요','Tap a widget below to add it')}</div>`}
+    </div>
 
-      <!-- 놓여 있는 위젯 -->
-      <div style="flex:1.35 1 400px;min-width:0">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap">
-          <div style="font-size:14px;font-weight:700">${t('홈에 놓인 위젯','On your home')} <span style="color:var(--ink3);font-weight:600">${_hwEdit.length}</span></div>
-          <div style="display:flex;gap:6px">
-            <button class="adm-btn ghost" onclick="hwResetDefault()">${t('추천 배치로','Starter')}</button>
-            <button class="adm-btn primary" onclick="saveHomeWidgets()">${t('저장','Save')}</button>
+    <div style="font-size:14px;font-weight:700;margin-bottom:10px">${t('넣을 수 있는 위젯','Available widgets')}</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:9px">
+      ${rest.length ? rest.map(k => {
+        const s = HOME_WIDGETS[k];
+        return `<div class="adm-card" style="margin-bottom:0;padding:13px 15px;display:flex;align-items:center;gap:11px;cursor:pointer" onclick="hwAdd('${k}')">
+          <div style="font-size:19px;flex-shrink:0">${s.icon}</div>
+          <div style="min-width:0;flex:1">
+            <div style="font-size:13.5px;font-weight:700;color:var(--ink)">${t(s.ko,s.en)}</div>
+            <div style="font-size:11.5px;color:var(--ink3);margin-top:2px;line-height:1.5;word-break:keep-all">${t(s.dko,s.den)}</div>
           </div>
-        </div>
-        <div id="hw-list" style="display:flex;flex-direction:column;gap:9px">
-          ${_hwEdit.length ? _hwEdit.map((it,i) => hwEditRow(it,i)).join('')
-            : `<div class="adm-card" style="text-align:center;color:var(--ink3);font-size:13px;padding:34px 20px">${t('오른쪽에서 위젯을 눌러 홈에 올려보세요','Tap a widget on the right to add it')}</div>`}
-        </div>
-      </div>
-
-      <!-- 담아 둔 위젯 -->
-      <div style="flex:1 1 300px;min-width:0">
-        <div style="font-size:14px;font-weight:700;margin-bottom:10px;height:30px;display:flex;align-items:center">${t('넣을 수 있는 위젯','Available widgets')}</div>
-        <div style="display:flex;flex-direction:column;gap:9px">
-          ${rest.length ? rest.map(k => {
-            const s = HOME_WIDGETS[k];
-            return `<div class="adm-card" style="margin-bottom:0;padding:13px 15px;display:flex;align-items:center;gap:11px;cursor:pointer" onclick="hwAdd('${k}')">
-              <div style="font-size:19px;flex-shrink:0">${s.icon}</div>
-              <div style="min-width:0;flex:1">
-                <div style="font-size:13.5px;font-weight:700;color:var(--ink)">${t(s.ko,s.en)}</div>
-                <div style="font-size:11.5px;color:var(--ink3);margin-top:2px;line-height:1.5;word-break:keep-all">${t(s.dko,s.den)}</div>
-              </div>
-              <div style="font-size:18px;color:var(--accent);font-weight:700;flex-shrink:0">＋</div>
-            </div>`;
-          }).join('') : `<div class="adm-card" style="text-align:center;color:var(--ink3);font-size:13px;padding:24px 20px">${t('모든 위젯을 홈에 올렸어요','Every widget is on your home')}</div>`}
-        </div>
-      </div>
+          <div style="font-size:18px;color:var(--accent);font-weight:700;flex-shrink:0">＋</div>
+        </div>`;
+      }).join('') : `<div class="adm-card" style="text-align:center;color:var(--ink3);font-size:13px;padding:24px 20px">${t('모든 위젯을 홈에 올렸어요','Every widget is on your home')}</div>`}
     </div>`;
+
+  // 위젯 본문은 뒤에서 채운다 — 한 칸이 느려도 나머지가 기다리지 않는다
+  _hwEdit.forEach(async (it) => {
+    const html = await hwBuildPreview(it.k);
+    const slot = document.getElementById('hw-prev-body-' + it.k);
+    if (slot) slot.innerHTML = html;
+  });
 }
 
-function hwEditRow(it, i) {
+const HW_WLABEL = ['', '¼', '½', '¾', '1'];
+
+function hwPrevCell(it, i) {
   const s = HOME_WIDGETS[it.k];
   const last = i === _hwEdit.length - 1;
-  const cfgFields = (s.cfg || []).map(f => {
-    const v = (it.cfg && it.cfg[f.key]) || '';
-    return `<div style="flex:1 1 150px;min-width:0">
-      <div style="font-size:11px;color:var(--ink3);margin-bottom:4px">${t(f.ko,f.en)}</div>
-      <input class="adm-input" style="margin-bottom:0;width:100%;box-sizing:border-box" type="${f.type||'text'}"
-        value="${escHtml(String(v))}" placeholder="${escHtml(f.ph||'')}"
-        oninput="hwSetCfg(${i},'${f.key}',this.value)"/>
-    </div>`;
-  }).join('');
+  const wBtn = (w) => `<button onclick="hwSetW(${i},${w})" title="${HW_WLABEL[w]}"
+    style="width:25px;height:23px;border:none;border-radius:6px;cursor:pointer;font:700 11px var(--font);
+    background:${it.w===w?'var(--accent)':'var(--s3)'};color:${it.w===w?'#fff':'var(--ink2)'}">${HW_WLABEL[w]}</button>`;
+  const mv = (dir, off) => `<button ${off?'disabled':`onclick="hwMove(${i},${dir})"`} title="${dir<0?t('앞으로','Move left'):t('뒤로','Move right')}"
+    style="width:23px;height:23px;border:none;border-radius:6px;cursor:${off?'default':'pointer'};font:700 12px var(--font);
+    background:var(--s3);color:var(--ink2);opacity:${off?.3:1}">${dir<0?'←':'→'}</button>`;
 
-  const arrow = (dir, off) => `<button class="adm-btn ghost" style="padding:0 9px${off ? ';opacity:.3;cursor:default' : ''}" ${off ? 'disabled' : `onclick="hwMove(${i},${dir})"`}>${dir < 0 ? '↑' : '↓'}</button>`;
-
-  // 카드 전체를 항상 draggable 로 두면 설정 칸의 글자를 못 고른다.
-  // ⠿ 손잡이를 누르는 순간에만 드래그를 켠다.
-  return `<div class="adm-card" data-hwrow="${i}" draggable="false" style="margin-bottom:0;padding:13px 15px"
-      ondragover="hwDragOver(event,${i})" ondrop="hwDrop(event,${i})" ondragend="hwDragEnd(this)" ondragstart="hwDragStart(event,${i})">
-    <div style="display:flex;align-items:center;gap:11px">
-      <div onmousedown="hwGrab(this)" onmouseup="hwUngrab(this)" title="${t('끌어서 순서 바꾸기','Drag to reorder')}"
-        style="color:var(--ink3);font-size:15px;flex-shrink:0;line-height:1;cursor:grab;padding:4px 2px">⠿</div>
-      <div style="font-size:19px;flex-shrink:0">${s.icon}</div>
-      <div style="min-width:0;flex:1">
-        <div style="font-size:13.5px;font-weight:700;color:var(--ink)">${t(s.ko,s.en)}</div>
-        <div style="font-size:11.5px;color:var(--ink3);margin-top:2px;line-height:1.5;word-break:keep-all">${t(s.dko,s.den)}</div>
-      </div>
-      <div style="display:flex;align-items:center;gap:5px;flex-shrink:0">
-        ${s.fullOnly ? `<span style="font-size:11px;color:var(--ink3);padding:0 6px">${t('한 줄','Full')}</span>`
-          : `<button class="adm-btn ghost" style="padding:0 10px;min-width:52px;justify-content:center" onclick="hwToggleW(${i})" title="${t('너비 바꾸기','Toggle width')}">${it.w === 2 ? t('한 줄','Full') : t('반 칸','Half')}</button>`}
-        ${arrow(-1, i === 0)}${arrow(1, last)}
-        <button class="adm-btn danger" style="padding:0 10px" onclick="hwRemove(${i})" title="${t('홈에서 빼기','Remove')}">✕</button>
-      </div>
+  // 조작 막대는 카드 "위" 에 따로 둔다. 카드 위에 겹쳐 놓으면
+  // D-DAY 처럼 가운데 정렬된 내용이 가려진다.
+  return `<div class="hw-cell hw-w${it.w}" data-hwrow="${i}" draggable="false"
+      ondragover="hwDragOver(event,${i})" ondrop="hwDrop(event,${i})" ondragend="hwDragEnd(this)" ondragstart="hwDragStart(event,${i})"
+      style="display:flex;flex-direction:column;gap:6px">
+    <div style="display:flex;align-items:center;gap:4px;padding:3px 5px;background:var(--surface);border:1px solid var(--border);border-radius:9px;flex-wrap:wrap">
+      <div onmousedown="hwGrab(this)" onmouseup="hwUngrab(this)" title="${t('끌어서 자리 바꾸기','Drag to move')}"
+        style="width:20px;height:23px;display:flex;align-items:center;justify-content:center;cursor:grab;color:var(--ink3);font-size:13px">⠿</div>
+      <span style="font-size:11.5px;font-weight:700;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1">${s.icon} ${t(s.ko,s.en)}</span>
+      ${mv(-1, i===0)}${mv(1, last)}
+      ${s.fullOnly ? `<span style="padding:0 6px;font-size:10.5px;font-weight:700;color:var(--ink3);white-space:nowrap">${t('한 줄','Full')}</span>`
+        : `<div style="display:flex;gap:2px">${wBtn(1)}${wBtn(2)}${wBtn(3)}${wBtn(4)}</div>`}
+      ${(s.cfg||[]).length ? `<button onclick="hwOpenCfg(${i})" title="${t('설정','Settings')}"
+        style="width:23px;height:23px;border:none;border-radius:6px;cursor:pointer;font-size:12px;background:var(--s3)">⚙</button>` : ''}
+      <button onclick="hwRemove(${i})" title="${t('홈에서 빼기','Remove')}"
+        style="width:23px;height:23px;border:none;border-radius:6px;cursor:pointer;font:700 12px var(--font);background:#FEE2E2;color:var(--rose)">✕</button>
     </div>
-    ${cfgFields ? `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:11px;padding-top:11px;border-top:1px solid var(--border)">${cfgFields}</div>` : ''}
+    <!-- 미리보기 본문 — 클릭이 안 먹게 막아 둔다 (여기서 채팅방으로 튀면 안 된다) -->
+    <div id="hw-prev-body-${it.k}" style="pointer-events:none;user-select:none;flex:1;min-height:0">
+      ${hwCard(hwHead(s.icon, t(s.ko,s.en)) + hwEmpty(t('불러오는 중...','Loading...')))}
+    </div>
   </div>`;
+}
+
+// 위젯별 설정 (D-DAY 의 행사 이름·날짜 같은 것)
+function hwOpenCfg(i) {
+  const it = _hwEdit[i]; if (!it) return;
+  const s = HOME_WIDGETS[it.k];
+  document.getElementById('hw-cfg-modal')?.remove();
+  const m = document.createElement('div');
+  m.id = 'hw-cfg-modal';
+  m.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:20px';
+  m.innerHTML = `
+    <div style="background:var(--surface);border-radius:20px;width:100%;max-width:400px;box-shadow:0 24px 60px rgba(29,58,95,.2);overflow:hidden">
+      <div style="padding:20px 24px;border-bottom:1px solid var(--border);font-size:16px;font-weight:700">${s.icon} ${t(s.ko,s.en)}</div>
+      <div style="padding:18px 24px">
+        ${(s.cfg||[]).map(f => `
+          <div style="margin-bottom:14px">
+            <div style="font-size:12px;color:var(--ink3);margin-bottom:5px">${t(f.ko,f.en)}</div>
+            <input id="hwcfg-${f.key}" class="adm-input" style="margin-bottom:0" type="${f.type||'text'}"
+              value="${escHtml(String((it.cfg && it.cfg[f.key]) || ''))}" placeholder="${escHtml(f.ph||'')}"/>
+          </div>`).join('')}
+      </div>
+      <div style="padding:12px 20px;border-top:1px solid var(--border);display:flex;gap:8px">
+        <button onclick="document.getElementById('hw-cfg-modal').remove()"
+          style="flex:1;height:40px;border-radius:11px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:600 13px var(--font);cursor:pointer">${t('취소','Cancel')}</button>
+        <button onclick="hwSaveCfg(${i})"
+          style="flex:1.4;height:40px;border-radius:11px;border:none;background:var(--accent);color:white;font:700 13px var(--font);cursor:pointer">${t('확인','OK')}</button>
+      </div>
+    </div>`;
+  m.addEventListener('click', e => { if (e.target === m) m.remove(); });
+  document.body.appendChild(m);
+}
+
+function hwSaveCfg(i) {
+  const it = _hwEdit[i]; if (!it) return;
+  const s = HOME_WIDGETS[it.k];
+  it.cfg = it.cfg || {};
+  (s.cfg||[]).forEach(f => {
+    const el = document.getElementById('hwcfg-' + f.key);
+    if (el) it.cfg[f.key] = el.value;
+  });
+  document.getElementById('hw-cfg-modal')?.remove();
+  delete _hwPrevHtml[it.k];   // 설정이 바뀌었으니 미리보기를 다시 만든다
+  renderHwEditor();
+}
+
+function hwSetW(i, w) {
+  const it = _hwEdit[i]; if (!it) return;
+  if (HOME_WIDGETS[it.k].fullOnly) return;
+  it.w = Math.max(1, Math.min(4, w));
+  renderHwEditor();
 }
 
 function hwGrab(el) { const row = el.closest('[data-hwrow]'); if (row) row.draggable = true; }
@@ -5418,16 +5501,10 @@ function hwUngrab(el) { const row = el.closest('[data-hwrow]'); if (row) row.dra
 function hwAdd(k) {
   const s = HOME_WIDGETS[k];
   if (!s || _hwEdit.some(x => x.k === k)) return;
-  _hwEdit.push({ k, w: s.fullOnly ? 2 : (s.w || 1), cfg: {} });
+  _hwEdit.push({ k, w: s.fullOnly ? 4 : (s.w || 2), cfg: {} });
   renderHwEditor();
 }
 function hwRemove(i) { _hwEdit.splice(i, 1); renderHwEditor(); }
-function hwToggleW(i) {
-  const s = HOME_WIDGETS[_hwEdit[i].k];
-  if (s.fullOnly) return;
-  _hwEdit[i].w = _hwEdit[i].w === 2 ? 1 : 2;
-  renderHwEditor();
-}
 function hwMove(i, dir) {
   const j = i + dir;
   if (j < 0 || j >= _hwEdit.length) return;
@@ -5443,13 +5520,14 @@ function hwResetDefault() {
   if (!confirm(t('추천 배치로 바꿀까요? 지금 놓인 위젯은 사라집니다. 저장을 눌러야 실제로 바뀝니다.',
                  'Switch to the starter layout? Your current widgets will be replaced. Nothing changes until you press Save.'))) return;
   _hwEdit = HOME_STARTER_LAYOUT.map(x => ({ k:x.k, w:x.w, cfg:{} }));
+  _hwPrevHtml = {};
   renderHwEditor();
 }
 
 // 홈의 안내 카드에서 [추천 배치로 시작] — 바로 저장까지 한다
 async function hwQuickStart() {
   if (!isCommunityAdmin()) return;
-  const payload = HOME_STARTER_LAYOUT.map(x => ({ k:x.k, w:x.w }));
+  const payload = HOME_STARTER_LAYOUT.map(x => ({ k:x.k, w:x.w, v:2 }));
   const { error } = await sb.from('communities').update({ home_widgets: payload }).eq('id', CID());
   if (error) {
     const miss = /home_widgets/.test(error.message || '') && /column|schema/i.test(error.message || '');
@@ -5478,7 +5556,7 @@ function hwDragEnd(row) { _hwDragFrom = null; if (row) row.draggable = false; }
 async function saveHomeWidgets() {
   const payload = _hwEdit.map(x => {
     const s = HOME_WIDGETS[x.k];
-    const row = { k: x.k, w: s.fullOnly ? 2 : (x.w === 2 ? 2 : 1) };
+    const row = { k: x.k, w: s.fullOnly ? 4 : Math.max(1, Math.min(4, x.w || 2)), v: 2 };
     // 빈 칸만 있는 설정은 저장하지 않는다
     const cfg = {};
     Object.keys(x.cfg || {}).forEach(key => { const v = String(x.cfg[key] || '').trim(); if (v) cfg[key] = v; });
