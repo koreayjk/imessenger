@@ -17081,6 +17081,10 @@ const certSpec = (type) => (CERT_TYPES[type] || CERT_TYPES.enroll)[certLang];
 
 let certStudentId = '';
 let certPrefill = { name:'', birth:'', school:'' };
+// 고른 증명서 종류와 직접입력 내용은 화면을 다시 그려도 남아야 한다.
+// (학생을 바꾸면 renderCert 가 폼을 통째로 다시 만든다)
+let certType = 'enroll';
+let certCustomText = '';
 
 let certSubTab = 'issue';        // issue | log
 let certLog = [];
@@ -17127,7 +17131,9 @@ function renderCert() {
   const main = document.getElementById('school-main');
   const s = schoolStudents.find(x => x.id === certStudentId);
   const studentOpts = schoolStudents.map(x => `<option value="${x.id}" ${x.id===certStudentId?'selected':''}>${x.name}${x.grade?` (${x.grade})`:''}</option>`).join('');
-  const typeOpts = Object.entries(CERT_TYPES).map(([k,v]) => `<option value="${k}">${v[certLang].label}</option>`).join('');
+  if (!CERT_TYPES[certType]) certType = 'enroll';
+  const typeOpts = Object.entries(CERT_TYPES).map(([k,v]) =>
+    `<option value="${k}"${k===certType?' selected':''}>${v[certLang].label}</option>`).join('');
   const orgOpts = tcsOrgs.length ? tcsOrgs.map(o => `<option value="${o.id}" ${o.id===tcsSelectedOrgId?'selected':''}>${o.name}</option>`).join('')
     : `<option value="">${t('기관 미등록','No organization registered')}</option>`;
   const sealOpts = `<option value="">${t('직인 없음','No seal')}</option>`
@@ -17157,9 +17163,9 @@ function renderCert() {
         <div><label style="${lbl}">${t('학년','Grade')}</label><input id="cert-grade" value="${escAttr(s?s.grade||'':'')}" style="${inp};width:100%"/></div>
         <div><label style="${lbl}">${t('학교명','School name')}</label><input id="cert-school" value="${escAttr(certPrefill.school||'')}" style="${inp};width:100%"/></div>
       </div>
-      <div id="cert-custom-wrap" style="display:none;margin-bottom:14px">
+      <div id="cert-custom-wrap" style="display:${certType==='custom'?'block':'none'};margin-bottom:14px">
         <label style="${lbl}">${t('증명 내용 (직접입력)','Certificate text (custom)')}</label>
-        <textarea id="cert-custom" placeholder="${t('증명할 내용을 입력하세요','Enter the text to certify')}" style="width:100%;min-height:80px;padding:12px;border:1px solid var(--border);border-radius:9px;font:400 14px var(--font);color:var(--ink);line-height:1.7;resize:vertical"></textarea>
+        <textarea id="cert-custom" oninput="certCustomText=this.value" placeholder="${t('증명할 내용을 입력하세요. 예: 위 학생은 본교에서 2025년 9월부터 2026년 5월까지 COG 사역팀으로 활동하였음을 증명합니다.','Enter the text to certify')}" style="width:100%;min-height:90px;padding:12px;border:1px solid var(--border);border-radius:9px;font:400 14px var(--font);color:var(--ink);line-height:1.7;resize:vertical">${escHtml(certCustomText)}</textarea>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
         <div><label style="${lbl}">${t('발급 사유','Purpose')}</label><input id="cert-reason" value="${t('제출용','For submission')}" style="${inp};width:100%"/></div>
@@ -17175,6 +17181,7 @@ function renderCert() {
       <div style="font-size:12px;color:var(--ink3);margin-top:12px;line-height:1.7">${t('학생을 고르면 인적·학적 정보가 자동으로 채워집니다(필요시 수정 가능). <b>발급 기관</b>은 관리자 → 공동체 설정의 ‘기록부 기관’에서 로고와 함께 등록할 수 있어요.','Selecting a student auto-fills personal and academic info (editable if needed). You can register the <b>issuing organization</b> with its logo under Admin → Community Settings → “Record Organizations”.')}</div>
     </div>` : ''}
   </div>`;
+  certSyncType();   // 드롭다운과 직접입력 칸을 맞춘다
 }
 
 function certLangBtnCss(on) {
@@ -17331,7 +17338,22 @@ async function voidCertificate(id) {
 
 function certChangeStudent(id) { certLoadStudent(id).then(renderCert); }
 function certOnType(v) {
-  document.getElementById('cert-custom-wrap').style.display = v === 'custom' ? 'block' : 'none';
+  certType = CERT_TYPES[v] ? v : 'enroll';
+  const wrap = document.getElementById('cert-custom-wrap');
+  if (wrap) wrap.style.display = certType === 'custom' ? 'block' : 'none';
+  if (certType === 'custom') setTimeout(() => document.getElementById('cert-custom')?.focus(), 30);
+}
+
+// 화면을 다시 그린 뒤 드롭다운과 직접입력 칸이 따로 놀지 않게 맞춘다.
+// 브라우저가 새로고침 때 select 값을 되살려 놓으면 change 가 안 일어나,
+// 종류는 '직접입력' 인데 입력칸은 숨어 있는 상태가 된다.
+function certSyncType() {
+  const sel = document.getElementById('cert-type');
+  if (!sel) return;
+  if (sel.value !== certType && CERT_TYPES[sel.value]) certType = sel.value;
+  else sel.value = certType;
+  const wrap = document.getElementById('cert-custom-wrap');
+  if (wrap) wrap.style.display = certType === 'custom' ? 'block' : 'none';
 }
 
 // 증서 문서 한 장을 만든다.
@@ -17425,13 +17447,24 @@ function buildCertOpts(d) {
       .pf { display: none !important; }
 
       /* ── 한 장을 가득 채우는 이중 테두리 ──
-         A4 297mm 에서 @page 여백 11mm 씩을 빼면 275mm.
-         273mm 로 잡아 반올림 때문에 두 장이 되는 일을 막는다. */
-      .cf { position: relative; min-height: 273mm; padding: 4.5mm;
-            border: 1px solid #b9a06a; background: #fff; }
-      .c-in { position: relative; min-height: 264mm; height: 100%;
-              border: 2.5px solid #1d3a5f; padding: 16mm 15mm 13mm;
-              display: flex; flex-direction: column; }
+         높이를 mm 로 못 박으면 안 된다. 기기마다 인쇄 여백이 달라서
+         (아이폰·아이패드는 @page 를 무시하고 ½인치=12.7mm 를 쓴다)
+         고정 높이가 인쇄 가능 높이를 1~2mm 넘으면 꼬리만 둘째 장으로 넘어간다.
+         그래서 종이가 주는 만큼 늘어나게 한다. */
+      .pw { display: flex; flex-direction: column; }
+      .cf { position: relative; flex: 1; min-height: 240mm; padding: 4.5mm;
+            border: 1px solid #b9a06a; background: #fff;
+            display: flex; flex-direction: column;
+            break-inside: avoid; page-break-inside: avoid; }
+      .c-in { position: relative; flex: 1; min-height: 0;
+              border: 2.5px solid #1d3a5f; padding: 12mm 15mm 10mm;
+              display: flex; flex-direction: column;
+              break-inside: avoid; page-break-inside: avoid; }
+      @media print {
+        /* 페이지 높이를 끝까지 물려준다 — 그래야 flex 가 한 장에 딱 맞춘다 */
+        html, body, .pw { height: 100%; }
+        .cf { min-height: 0; }
+      }
 
       /* 모서리 장식 — 안쪽 테두리 네 귀에 짧은 금색 갈고리 */
       .c-cn { position: absolute; width: 7mm; height: 7mm; }
@@ -17451,7 +17484,7 @@ function buildCertOpts(d) {
       .c-head { text-align: center; position: relative; z-index: 1; }
       .c-head h1 { font-size: 33pt; font-weight: 700; color: #14181f;
                    letter-spacing: .42em; text-indent: .42em; line-height: 1.25; margin: 0; }
-      .c-sub { margin-top: 7mm; font-size: 9.5pt; color: #8b7440;
+      .c-sub { margin-top: 5.5mm; font-size: 9.5pt; color: #8b7440;
                letter-spacing: .34em; text-indent: .34em; }
       /* 라틴 문자는 자간을 줄이고, 증서 특유의 블랙레터를 쓴다.
          (한글에는 대응하는 글꼴이 없어 명조 그대로 둔다)
@@ -17472,7 +17505,7 @@ function buildCertOpts(d) {
       .c-org.lat { letter-spacing: .1em; text-indent: 0; }
       .c-rep.lat { letter-spacing: .05em; }
       .c-orn { display: flex; align-items: center; justify-content: center;
-               gap: 9px; margin-top: 7mm; }
+               gap: 9px; margin-top: 5.5mm; }
       .c-orn i { display: block; width: 26mm; height: 1px; background: #b9a06a; }
       .c-orn b { color: #b9a06a; font-size: 8pt; line-height: 1; }
 
@@ -17480,7 +17513,7 @@ function buildCertOpts(d) {
       .c-mid { flex: 1; display: flex; flex-direction: column; justify-content: center;
                position: relative; z-index: 1; }
       .c-info { width: 126mm; margin: 0 auto; }
-      .c-row { display: flex; align-items: baseline; gap: 9mm; padding: 3.4mm 0;
+      .c-row { display: flex; align-items: baseline; gap: 9mm; padding: 3mm 0;
                border-bottom: 1px solid #e4e8ef; }
       .c-row:last-child { border-bottom: none; }
       .c-lb { flex: none; width: 33mm; font-size: 10pt; color: #6b7688;
@@ -17490,7 +17523,7 @@ function buildCertOpts(d) {
 
       /* ── 본문 — 가운데 여백을 넉넉히 먹여 위아래 균형을 잡는다 ── */
       .c-body { display: flex; flex-direction: column; align-items: center;
-                margin-top: 15mm; padding: 0 4mm; }
+                margin-top: 9mm; padding: 0 4mm; }
       /* 한글은 keep-all 이 없으면 낱말 한가운데서 잘린다 ('증명합 / 니다') */
       .c-stmt { font-size: 13pt; line-height: 2.35; text-align: center;
                 letter-spacing: .03em; color: #14181f; max-width: 132mm; margin: 0;
@@ -17498,18 +17531,19 @@ function buildCertOpts(d) {
       .c-stmt.s2 { font-size: 12pt; line-height: 2.1;  max-width: 138mm; }
       .c-stmt.s3 { font-size: 11pt; line-height: 1.95; max-width: 142mm; text-align: justify;
                    text-align-last: center; }
-      .c-reason { margin: 8mm 0 0; font-size: 10pt; color: #6b7688; letter-spacing: .1em; }
+      .c-reason { margin: 6mm 0 0; font-size: 10pt; color: #6b7688; letter-spacing: .1em; }
 
       /* ── 명의 ── */
-      .c-foot { text-align: center; position: relative; z-index: 1; }
+      .c-foot { text-align: center; position: relative; z-index: 1;
+               break-inside: avoid; page-break-inside: avoid; }
       .c-date { font-size: 12pt; letter-spacing: .22em; text-indent: .22em;
-                color: #14181f; margin-bottom: 11mm; }
-      .c-logo { height: 15mm; max-width: 55mm; object-fit: contain;
-                display: block; margin: 0 auto 5mm; }
+                color: #14181f; margin-bottom: 7mm; }
+      .c-logo { height: 12mm; max-width: 55mm; object-fit: contain;
+                display: block; margin: 0 auto 4mm; }
       .c-org { font-size: 19pt; font-weight: 700; color: #1d3a5f;
                letter-spacing: .32em; text-indent: .32em;
                word-break: keep-all; overflow-wrap: break-word; line-height: 1.45; }
-      .c-rep { margin-top: 6mm; font-size: 12.5pt; letter-spacing: .14em;
+      .c-rep { margin-top: 4.5mm; font-size: 12.5pt; letter-spacing: .14em;
                display: inline-flex; align-items: center; }
       .c-seal { flex: none; width: 13mm; height: 13mm; margin-left: 4mm;
                 border: 1.5px solid #b3392c; border-radius: 50%;
@@ -17533,7 +17567,8 @@ function buildCertOpts(d) {
 
 // 발급 — 번호를 서버에서 받아 대장에 남긴 뒤 인쇄한다.
 async function printCertificate() {
-  const type = document.getElementById('cert-type').value;
+  certSyncType();
+  const type = certType;
   const name = document.getElementById('cert-name').value.trim();
   const birth = document.getElementById('cert-birth').value.trim();
   const grade = document.getElementById('cert-grade').value.trim();
@@ -17551,7 +17586,8 @@ async function printCertificate() {
   const ct = certSpec(type);                 // 앱 언어가 아니라 '증서 언어'를 따른다
   const docLabel = ct.docLabel || ct.label;
   const stmt = type === 'custom'
-    ? (document.getElementById('cert-custom').value.trim() || certT('위 사실을 증명합니다.','This certifies the above facts.'))
+    ? ((document.getElementById('cert-custom')?.value || certCustomText || '').trim()
+        || certT('위 사실을 증명합니다.','This certifies the above facts.'))
     : ct.stmt;
 
   // 창은 클릭 직후에 열어야 한다. 서버에 물어본 뒤에 열면 팝업 차단에 걸린다.
