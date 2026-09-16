@@ -17085,6 +17085,7 @@ let certPrefill = { name:'', birth:'', school:'' };
 // (학생을 바꾸면 renderCert 가 폼을 통째로 다시 만든다)
 let certType = 'enroll';
 let certCustomTitle = '';
+let certCustomSub = '';
 let certCustomText = '';
 
 let certSubTab = 'issue';        // issue | log
@@ -17165,10 +17166,20 @@ function renderCert() {
         <div><label style="${lbl}">${t('학교명','School name')}</label><input id="cert-school" value="${escAttr(certPrefill.school||'')}" style="${inp};width:100%"/></div>
       </div>
       <div id="cert-custom-wrap" style="display:${certType==='custom'?'block':'none'};margin-bottom:14px">
-        <label style="${lbl}">${t('증명서 이름','Certificate title')}</label>
-        <input id="cert-custom-title" oninput="certCustomTitle=this.value" value="${escAttr(certCustomTitle)}"
-          placeholder="${t('예: 활동증명서 · 봉사활동 확인서 (비우면 “증 명 서”)','e.g. Certificate of Activity (blank = “Certificate”)')}"
-          style="${inp};width:100%;margin-bottom:12px"/>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:12px">
+          <div>
+            <label style="${lbl}">${t('증명서 이름','Certificate title')}</label>
+            <input id="cert-custom-title" oninput="certCustomTitle=this.value" value="${escAttr(certCustomTitle)}"
+              placeholder="${t('예: 활동증명서 (비우면 “증 명 서”)','e.g. Certificate of Activity')}"
+              style="${inp};width:100%"/>
+          </div>
+          <div>
+            <label style="${lbl}">${t('아래 작은 줄','Line beneath')}</label>
+            <input id="cert-custom-sub" oninput="certCustomSub=this.value" value="${escAttr(certCustomSub)}"
+              placeholder="${t('예: CERTIFICATE OF ACTIVITY (비우면 CERTIFICATE)','e.g. CERTIFICATE OF ACTIVITY')}"
+              style="${inp};width:100%"/>
+          </div>
+        </div>
         <label style="${lbl}">${t('증명 내용','Certificate text')}</label>
         <textarea id="cert-custom" oninput="certCustomText=this.value" placeholder="${t('증명할 내용을 입력하세요. 예: 위 학생은 본교에서 2025년 9월부터 2026년 5월까지 COG 사역팀으로 활동하였음을 증명합니다.','Enter the text to certify')}" style="width:100%;min-height:90px;padding:12px;border:1px solid var(--border);border-radius:9px;font:400 14px var(--font);color:var(--ink);line-height:1.7;resize:vertical">${escHtml(certCustomText)}</textarea>
       </div>
@@ -17317,7 +17328,7 @@ function reprintCertificate(id) {
   if (!r) { showUploadToast(t('기록을 찾지 못했어요','Record not found')); return; }
   const spec = (CERT_TYPES[r.type] || {})[r.lang === 'en' ? 'en' : 'ko'] || {};
   openPrintDoc(buildCertOpts({
-    lang: r.lang, type: r.type, docLabel: r.doc_label, sub: spec.sub || '',
+    lang: r.lang, type: r.type, docLabel: r.doc_label, sub: r.doc_sub || spec.sub || '',
     no: r.cert_no, name: r.student_name, birth: r.birth, grade: r.grade, school: r.school,
     stmt: r.statement, reason: r.reason, date: r.issue_date, rep: r.rep,
     orgName: r.org_name, orgLogo: r.org_logo_url, sealUrl: r.seal_url,
@@ -17592,7 +17603,10 @@ async function printCertificate() {
   // 직접입력은 증명서 이름을 직접 정한다. 비우면 기본값('증 명 서')
   const typedTitle = type === 'custom'
     ? ((document.getElementById('cert-custom-title')?.value || certCustomTitle || '').trim()) : '';
+  const typedSub = type === 'custom'
+    ? ((document.getElementById('cert-custom-sub')?.value || certCustomSub || '').trim()) : '';
   const docLabel = typedTitle || ct.docLabel || ct.label;
+  const docSub = typedSub || ct.sub || '';
   const stmt = type === 'custom'
     ? ((document.getElementById('cert-custom')?.value || certCustomText || '').trim()
         || certT('위 사실을 증명합니다.','This certifies the above facts.'))
@@ -17605,7 +17619,7 @@ async function printCertificate() {
     + t('발급 중…','Issuing…') + '</body>');
 
   const d = {
-    lang: certLang, type, docLabel, sub: ct.sub || '',
+    lang: certLang, type, docLabel, sub: docSub,
     name, birth, grade, school,
     stmt, reason, date, rep, no: typedNo,
     orgName: org ? org.name : (school || ''),
@@ -17617,7 +17631,7 @@ async function printCertificate() {
   let recorded = null, failMsg = '';
   try {
     const { data, error } = await sb.rpc('issue_certificate', { p: {
-      community_id: CID(), cert_no: typedNo, lang: certLang, type, doc_label: docLabel,
+      community_id: CID(), cert_no: typedNo, lang: certLang, type, doc_label: docLabel, doc_sub: typedSub,
       student_id: certStudentId || null, student_name: name,
       birth, grade, school, statement: stmt, reason, issue_date: date,
       org_id: orgId || null, org_name: d.orgName, org_logo_url: d.orgLogo,
