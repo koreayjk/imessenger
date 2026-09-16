@@ -17084,6 +17084,7 @@ let certPrefill = { name:'', birth:'', school:'' };
 // 고른 증명서 종류와 직접입력 내용은 화면을 다시 그려도 남아야 한다.
 // (학생을 바꾸면 renderCert 가 폼을 통째로 다시 만든다)
 let certType = 'enroll';
+let certCustomTitle = '';
 let certCustomText = '';
 
 let certSubTab = 'issue';        // issue | log
@@ -17164,7 +17165,11 @@ function renderCert() {
         <div><label style="${lbl}">${t('학교명','School name')}</label><input id="cert-school" value="${escAttr(certPrefill.school||'')}" style="${inp};width:100%"/></div>
       </div>
       <div id="cert-custom-wrap" style="display:${certType==='custom'?'block':'none'};margin-bottom:14px">
-        <label style="${lbl}">${t('증명 내용 (직접입력)','Certificate text (custom)')}</label>
+        <label style="${lbl}">${t('증명서 이름','Certificate title')}</label>
+        <input id="cert-custom-title" oninput="certCustomTitle=this.value" value="${escAttr(certCustomTitle)}"
+          placeholder="${t('예: 활동증명서 · 봉사활동 확인서 (비우면 “증 명 서”)','e.g. Certificate of Activity (blank = “Certificate”)')}"
+          style="${inp};width:100%;margin-bottom:12px"/>
+        <label style="${lbl}">${t('증명 내용','Certificate text')}</label>
         <textarea id="cert-custom" oninput="certCustomText=this.value" placeholder="${t('증명할 내용을 입력하세요. 예: 위 학생은 본교에서 2025년 9월부터 2026년 5월까지 COG 사역팀으로 활동하였음을 증명합니다.','Enter the text to certify')}" style="width:100%;min-height:90px;padding:12px;border:1px solid var(--border);border-radius:9px;font:400 14px var(--font);color:var(--ink);line-height:1.7;resize:vertical">${escHtml(certCustomText)}</textarea>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
@@ -17341,7 +17346,7 @@ function certOnType(v) {
   certType = CERT_TYPES[v] ? v : 'enroll';
   const wrap = document.getElementById('cert-custom-wrap');
   if (wrap) wrap.style.display = certType === 'custom' ? 'block' : 'none';
-  if (certType === 'custom') setTimeout(() => document.getElementById('cert-custom')?.focus(), 30);
+  if (certType === 'custom') setTimeout(() => document.getElementById('cert-custom-title')?.focus(), 30);
 }
 
 // 화면을 다시 그린 뒤 드롭다운과 직접입력 칸이 따로 놀지 않게 맞춘다.
@@ -17584,7 +17589,10 @@ async function printCertificate() {
   if (!name) { showUploadToast(t('성명을 입력하세요','Enter a name')); return; }
 
   const ct = certSpec(type);                 // 앱 언어가 아니라 '증서 언어'를 따른다
-  const docLabel = ct.docLabel || ct.label;
+  // 직접입력은 증명서 이름을 직접 정한다. 비우면 기본값('증 명 서')
+  const typedTitle = type === 'custom'
+    ? ((document.getElementById('cert-custom-title')?.value || certCustomTitle || '').trim()) : '';
+  const docLabel = typedTitle || ct.docLabel || ct.label;
   const stmt = type === 'custom'
     ? ((document.getElementById('cert-custom')?.value || certCustomText || '').trim()
         || certT('위 사실을 증명합니다.','This certifies the above facts.'))
