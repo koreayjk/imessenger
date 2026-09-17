@@ -10461,6 +10461,51 @@ async function storageListAll(prefix) {
   return { items: out, capped: true };
 }
 
+// 한 번 센 값은 잠깐 들고 있는다 — 탭을 왔다갔다 할 때마다 다시 훑으면 느리다
+let _storageCache = null;   // { at, data }
+const STORAGE_TTL = 5 * 60 * 1000;
+
+async function fillStorageCard(seq, force) {
+  if (!document.getElementById('adm-storage')) return;
+  let f;
+  try {
+    const fresh = _storageCache && !force && (Date.now() - _storageCache.at < STORAGE_TTL);
+    f = fresh ? _storageCache.data : await storageUsage();
+    if (!fresh) _storageCache = { at: Date.now(), data: f };
+  } catch (e) {
+    const b = document.getElementById('adm-storage'); if (b) b.remove();
+    return;
+  }
+  if (seq !== undefined && seq !== _admSeq) return;   // 그 사이 다른 탭으로 갔다
+  const box = document.getElementById('adm-storage');
+  if (!box) return;
+
+  const pct = Math.min(100, f.total / 1073741824);    // 100GB 대비 %
+  const fmt = (b) => b >= 1073741824 ? (b/1073741824).toFixed(2) + 'GB'
+                   : b >= 1048576 ? (b/1048576).toFixed(1) + 'MB'
+                   : (b/1024).toFixed(0) + 'KB';
+  const rows = f.byFolder.filter(x => x.bytes > 0)
+    .map(x => `<div style="display:flex;align-items:center;gap:8px;font-size:12px;padding:3px 0">
+        <span style="flex:1;color:var(--ink2)">${STORAGE_LABEL[x.name] || x.name}</span>
+        <span style="color:var(--ink3)">${x.count}${t('개','')}</span>
+        <span style="width:70px;text-align:right;font-weight:600;color:var(--ink)">${fmt(x.bytes)}</span>
+      </div>`).join('');
+  box.innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+      <div style="font-size:14px;font-weight:700">💾 ${t('스토리지 사용량','Storage Usage')}</div>
+      <span style="font-size:11px;color:var(--ink3)">${t('Supabase Pro 파일 저장 100GB 기준','of the 100GB file storage on Supabase Pro')}</span>
+      <button class="adm-btn ghost" style="margin-left:auto" onclick="fillStorageCard(undefined, true)">${t('다시 계산','Recalculate')}</button>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px">
+      <div style="flex:1;background:var(--s3);border-radius:999px;height:10px;overflow:hidden">
+        <div style="height:100%;background:${pct > 80 ? 'var(--rose)' : 'var(--accent)'};border-radius:999px;width:${Math.max(pct,0.4).toFixed(2)}%"></div>
+      </div>
+      <div style="font-size:13px;font-weight:700;white-space:nowrap">${fmt(f.total)} / 100GB</div>
+    </div>
+    <div style="font-size:11px;color:var(--ink3);margin-top:6px">${t('파일 '+f.count+'개','' + f.count + ' files')}${f.capped ? t(' · 일부 폴더는 앞부분만 셌어요',' · some folders only partly counted') : ''}</div>
+    ${rows ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--bs)">${rows}</div>` : ''}`;
+}
+
 async function storageUsage(maxDepth = 2) {
   let total = 0, count = 0, capped = false;
   const byFolder = [];
@@ -10530,40 +10575,16 @@ async function renderAdminMembers() {
     : { super_admin:'총관리자', community_admin:'관리자', teacher:'교사', staff:'간사', student:'학생', member:'멤버' };
   const roleColor = { super_admin:'#7c3aed', community_admin:'#1d4ed8', teacher:'#0369a1', staff:'#b45309', student:'#15803d', member:'#6b7280' };
 
-  // 스토리지 사용량 (총관리자만)
-  let storageHtml = '';
-  if (isSuperAdmin()) {
-    try {
-      const f = await storageUsage();
-      const gb = f.total / 1073741824;
-      const pct = Math.min(100, gb / 100 * 100);
-      const fmt = (b) => b >= 1073741824 ? (b/1073741824).toFixed(2) + 'GB'
-                       : b >= 1048576 ? (b/1048576).toFixed(1) + 'MB'
-                       : (b/1024).toFixed(0) + 'KB';
-      const rows = f.byFolder.filter(x => x.bytes > 0)
-        .map(x => `<div style="display:flex;align-items:center;gap:8px;font-size:12px;padding:3px 0">
-            <span style="flex:1;color:var(--ink2)">${STORAGE_LABEL[x.name] || x.name}</span>
-            <span style="color:var(--ink3)">${x.count}${t('개','')}</span>
-            <span style="width:70px;text-align:right;font-weight:600;color:var(--ink)">${fmt(x.bytes)}</span>
-          </div>`).join('');
-      storageHtml = `
-        <div class="adm-card" style="margin-bottom:20px">
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
-            <div style="font-size:14px;font-weight:700">💾 ${t('스토리지 사용량','Storage Usage')}</div>
-            <span style="font-size:11px;color:var(--ink3)">${t('Supabase Pro 파일 저장 100GB 기준','of the 100GB file storage on Supabase Pro')}</span>
-          </div>
-          <div style="display:flex;align-items:center;gap:12px">
-            <div style="flex:1;background:var(--s3);border-radius:999px;height:10px;overflow:hidden">
-              <div style="height:100%;background:${pct > 80 ? 'var(--rose)' : 'var(--accent)'};border-radius:999px;width:${Math.max(pct,0.4).toFixed(2)}%"></div>
-            </div>
-            <div style="font-size:13px;font-weight:700;white-space:nowrap">${fmt(f.total)} / 100GB</div>
-          </div>
-          <div style="font-size:11px;color:var(--ink3);margin-top:6px">${t('파일 '+f.count+'개','' + f.count + ' files')}${f.capped ? t(' · 일부 폴더는 앞부분만 셌어요',' · some folders only partly counted') : ''}</div>
-          ${rows ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--bs)">${rows}</div>` : ''}
-        </div>`;
-    } catch(e) {}
-  }
-
+  // 스토리지 사용량 — 버킷 전체를 훑느라 몇 초 걸린다.
+  // 여기서 기다리면 멤버 목록이 그만큼 늦게 뜬다. 자리만 잡고 뒤에서 채운다.
+  const storageHtml = isSuperAdmin()
+    ? `<div class="adm-card" id="adm-storage" style="margin-bottom:20px">
+         <div style="display:flex;align-items:center;gap:8px">
+           <div style="font-size:14px;font-weight:700">💾 ${t('스토리지 사용량','Storage Usage')}</div>
+           <span style="font-size:11.5px;color:var(--ink3)">${t('계산 중…','Calculating…')}</span>
+         </div>
+       </div>`
+    : '';
   const memberRow = (m, showApproval=false) => `
     <div class="adm-row" style="padding:14px 20px;flex-wrap:wrap;gap:10px">
       <div style="width:38px;height:38px;border-radius:12px;background:${m.color||'#999'};color:white;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;flex-shrink:0">${m.initials||m.name[0]}</div>
@@ -10644,6 +10665,8 @@ async function renderAdminMembers() {
         <button class="adm-btn danger" onclick="deleteMember('${m.id}','${m.name}')">${t('삭제','Delete')}</button>
       </div>`).join('')}
     </div>` : ''}`;
+
+  if (isSuperAdmin()) fillStorageCard(_seq);   // 목록을 먼저 보여주고 용량은 뒤에서
 }
 
 // ── 역할·권한 안내표 ──
