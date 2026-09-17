@@ -5097,9 +5097,13 @@ async function handleScheduleFile(input) {
 async function uploadScheduleImage(file, dateStr) {
   showUploadToast('일정 사진 업로드 중... ⏳');
   try {
+    // 폰 사진은 3~5MB 다. 모든 구성원의 홈에 매번 뜨므로 전송량을 가장 많이 먹는다.
+    // 확대해서 보는 그림이라 채팅 사진(1600)보다는 크게 남긴다.
+    file = await shrinkImage(file, { maxDim: 2200, quality: 0.88 });
     const ext = file.name.split('.').pop();
     const path = `schedule/${dateStr}_${Date.now()}.${ext}`;
-    const { error } = await sb.storage.from('messenger').upload(path, file, { upsert: true });
+    // 경로에 시각이 들어가 덮어쓰이지 않는다 → 오래 캐시해도 안전
+    const { error } = await sb.storage.from('messenger').upload(path, file, { cacheControl: '31536000', upsert: true });
     if (error) throw error;
     const { data: urlData } = sb.storage.from('messenger').getPublicUrl(path);
     await sb.from('schedule_images').insert({
@@ -7547,17 +7551,17 @@ async function saveMockItem() {
   const answerPaths = [];
   try {
     for (let i = 0; i < tcsMockState.files.length; i++) {
-      const f = tcsMockState.files[i];
+      const f = await shrinkImage(tcsMockState.files[i], { maxDim: 2000, quality: 0.85 });
       const ext = (f.name.split('.').pop() || 'jpg').toLowerCase();
       const path = `mockexam/${tcsCurrentStudent.id}/${Date.now()}_exam_${i}.${ext}`;
-      const { error } = await sb.storage.from('messenger').upload(path, f, { cacheControl: '3600', upsert: false });
+      const { error } = await sb.storage.from('messenger').upload(path, f, { cacheControl: '31536000', upsert: false });
       if (!error) filePaths.push(path);
     }
     for (let i = 0; i < (tcsMockState.answerFiles || []).length; i++) {
-      const f = tcsMockState.answerFiles[i];
+      const f = await shrinkImage(tcsMockState.answerFiles[i], { maxDim: 2000, quality: 0.85 });
       const ext = (f.name.split('.').pop() || 'jpg').toLowerCase();
       const path = `mockexam/${tcsCurrentStudent.id}/${Date.now()}_ans_${i}.${ext}`;
-      const { error } = await sb.storage.from('messenger').upload(path, f, { cacheControl: '3600', upsert: false });
+      const { error } = await sb.storage.from('messenger').upload(path, f, { cacheControl: '31536000', upsert: false });
       if (!error) answerPaths.push(path);
     }
   } catch (e) {}
@@ -9361,9 +9365,10 @@ async function uploadOrgLogo(input) {
   const file = input.files[0];
   if (!file) return;
   showUploadToast('로고 업로드 중... ⏳');
-  const ext = file.name.split('.').pop();
+  const small = await shrinkImage(file, { maxDim: 512, keepAlpha: true, minSize: 60 * 1024 });
+  const ext = small.name.split('.').pop();
   const path = `orgs/${CID()}/${Date.now()}.${ext}`;
-  const { error } = await sb.storage.from('messenger').upload(path, file, { cacheControl: '3600', upsert: true });
+  const { error } = await sb.storage.from('messenger').upload(path, small, { cacheControl: '31536000', upsert: true });
   if (error) { showUploadToast('업로드 실패 😥'); return; }
   const { data: urlData } = sb.storage.from('messenger').getPublicUrl(path);
   const url = urlData.publicUrl + '?t=' + Date.now();
@@ -9948,9 +9953,11 @@ async function uploadCommLogo(input, commId) {
   const file = input.files[0];
   if (!file) return;
   showUploadToast('로고 업로드 중... ⏳');
-  const ext = file.name.split('.').pop();
-  const path = `community/${commId}/logo.${ext}`;
-  const { error } = await sb.storage.from('messenger').upload(path, file, { cacheControl: '3600', upsert: true });
+  const small = await shrinkImage(file, { maxDim: 512, keepAlpha: true, minSize: 60 * 1024 });
+  const ext = small.name.split('.').pop();
+  // 전에는 logo.png 로 덮어썼다. 같은 주소라 캐시를 길게 잡으면 옛 로고가 남는다.
+  const path = `community/${commId}/logo_${Date.now()}.${ext}`;
+  const { error } = await sb.storage.from('messenger').upload(path, small, { cacheControl: '31536000', upsert: true });
   if (error) { showUploadToast('업로드 실패 😥'); return; }
   const { data: urlData } = sb.storage.from('messenger').getPublicUrl(path);
   const url = urlData.publicUrl + '?t=' + Date.now();
@@ -10422,6 +10429,66 @@ function moveSearchCardHtml() {
   </div>`;
 }
 
+// ── 스토리지 사용량 ──
+// 전에는 chat/ 과 schedule/ 만 셌다. 노트 첨부·결재 첨부·로고·직인·모의고사가
+// 빠져서 실제보다 적게 나왔다. 이제 버킷 전체를 훑는다.
+const STORAGE_LABEL = {
+  chat:'채팅 사진·파일', schedule:'주간 일정표', notes:'노트 첨부', approvals:'결재 첨부',
+  mockexam:'모의고사 스캔', orgs:'기관 로고', community:'공동체 로고', seals:'직인',
+};
+
+// 한 폴더의 파일을 모두 읽는다 (1000개씩 끊어서)
+async function storageListAll(prefix) {
+  const out = [];
+  for (let page = 0; page < 12; page++) {          // 최대 12,000개까지
+    const { data, error } = await sb.storage.from('messenger')
+      .list(prefix, { limit: 1000, offset: page * 1000 });
+    if (error || !data || !data.length) return { items: out, capped: false };
+    out.push(...data);
+    if (data.length < 1000) return { items: out, capped: false };
+  }
+  return { items: out, capped: true };
+}
+
+async function storageUsage(maxDepth = 2) {
+  let total = 0, count = 0, capped = false;
+  const byFolder = [];
+
+  const walk = async (prefix, depth) => {
+    const { items, capped: c } = await storageListAll(prefix);
+    if (c) capped = true;
+    let bytes = 0, n = 0;
+    const subs = [];
+    for (const e of items) {
+      const path = prefix ? prefix + '/' + e.name : e.name;
+      // 파일에는 id 가 있고, 폴더에는 없다
+      if (e.id) { bytes += (e.metadata && e.metadata.size) || 0; n++; }
+      else if (depth > 0) subs.push(path);
+    }
+    // 하위 폴더는 한꺼번에 (채널이 많으면 하나씩 기다리기엔 느리다)
+    for (let i = 0; i < subs.length; i += 8) {
+      const got = await Promise.all(subs.slice(i, i + 8).map(pp => walk(pp, depth - 1)));
+      got.forEach(g => { bytes += g.bytes; n += g.n; });
+    }
+    return { bytes, n };
+  };
+
+  const { items: roots } = await storageListAll('');
+  const folders = roots.filter(e => !e.id).map(e => e.name);
+  roots.filter(e => e.id).forEach(e => { total += (e.metadata && e.metadata.size) || 0; count++; });
+
+  for (let i = 0; i < folders.length; i += 4) {
+    const got = await Promise.all(folders.slice(i, i + 4).map(async name => {
+      const g = await walk(name, maxDepth - 1);
+      return { name, bytes: g.bytes, count: g.n };
+    }));
+    got.forEach(g => { byFolder.push(g); total += g.bytes; count += g.count; });
+  }
+
+  byFolder.sort((a, b) => b.bytes - a.bytes);
+  return { total, count, byFolder, capped };
+}
+
 // ── 멤버 관리 ──
 async function renderAdminMembers() {
   const _seq = _admSeq;
@@ -10456,33 +10523,35 @@ async function renderAdminMembers() {
   let storageHtml = '';
   if (isSuperAdmin()) {
     try {
-      const { data: chatFiles } = await sb.storage.from('messenger').list('chat', { limit: 1000 });
-      const { data: schedFiles } = await sb.storage.from('messenger').list('schedule', { limit: 1000 });
-      const allFiles = [];
-      if (chatFiles) {
-        for (const folder of chatFiles) {
-          const { data: files } = await sb.storage.from('messenger').list(`chat/${folder.name}`, { limit: 1000 });
-          if (files) files.forEach(f => allFiles.push({ ...f, path: `chat/${folder.name}/${f.name}` }));
-        }
-      }
-      if (schedFiles) schedFiles.forEach(f => allFiles.push({ ...f, path: `schedule/${f.name}` }));
-      const totalBytes = allFiles.reduce((s,f) => s + (f.metadata?.size||0), 0);
-      const totalMB = (totalBytes/1048576).toFixed(1);
+      const f = await storageUsage();
+      const gb = f.total / 1073741824;
+      const pct = Math.min(100, gb / 100 * 100);
+      const fmt = (b) => b >= 1073741824 ? (b/1073741824).toFixed(2) + 'GB'
+                       : b >= 1048576 ? (b/1048576).toFixed(1) + 'MB'
+                       : (b/1024).toFixed(0) + 'KB';
+      const rows = f.byFolder.filter(x => x.bytes > 0)
+        .map(x => `<div style="display:flex;align-items:center;gap:8px;font-size:12px;padding:3px 0">
+            <span style="flex:1;color:var(--ink2)">${STORAGE_LABEL[x.name] || x.name}</span>
+            <span style="color:var(--ink3)">${x.count}${t('개','')}</span>
+            <span style="width:70px;text-align:right;font-weight:600;color:var(--ink)">${fmt(x.bytes)}</span>
+          </div>`).join('');
       storageHtml = `
         <div class="adm-card" style="margin-bottom:20px">
-          <div style="font-size:14px;font-weight:700;margin-bottom:10px">💾 ${t('스토리지 사용량','Storage Usage')}</div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+            <div style="font-size:14px;font-weight:700">💾 ${t('스토리지 사용량','Storage Usage')}</div>
+            <span style="font-size:11px;color:var(--ink3)">${t('Supabase Pro 파일 저장 100GB 기준','of the 100GB file storage on Supabase Pro')}</span>
+          </div>
           <div style="display:flex;align-items:center;gap:12px">
             <div style="flex:1;background:var(--s3);border-radius:999px;height:10px;overflow:hidden">
-              <div style="height:100%;background:var(--accent);border-radius:999px;width:${Math.min(100,totalBytes/1048576/102400*100).toFixed(2)}%"></div>
+              <div style="height:100%;background:${pct > 80 ? 'var(--rose)' : 'var(--accent)'};border-radius:999px;width:${Math.max(pct,0.4).toFixed(2)}%"></div>
             </div>
-            <div style="font-size:13px;font-weight:600;white-space:nowrap">${totalMB}MB / 100GB</div>
+            <div style="font-size:13px;font-weight:700;white-space:nowrap">${fmt(f.total)} / 100GB</div>
           </div>
-          <div style="font-size:11px;color:var(--ink3);margin-top:6px">${t('파일 '+allFiles.length+'개', allFiles.length+' files')}</div>
+          <div style="font-size:11px;color:var(--ink3);margin-top:6px">${t('파일 '+f.count+'개','' + f.count + ' files')}${f.capped ? t(' · 일부 폴더는 앞부분만 셌어요',' · some folders only partly counted') : ''}</div>
+          ${rows ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--bs)">${rows}</div>` : ''}
         </div>`;
     } catch(e) {}
   }
-
-  list.forEach(m => { try { moveRemember(m); } catch(_) {} });
 
   const memberRow = (m, showApproval=false) => `
     <div class="adm-row" style="padding:14px 20px;flex-wrap:wrap;gap:10px">
@@ -11349,21 +11418,39 @@ function clearPendingFiles() {
 }
 
 // 이미지 업로드 전 자동 압축·리사이즈 (대역폭·용량 절감) — GIF/작은 파일/비이미지는 그대로
-async function compressImage(file, maxDim = 1600, quality = 0.82) {
+// 올리기 전에 그림을 줄인다. 저장 용량과 (더 중요하게) 전송량을 아낀다.
+//  · keepAlpha: 로고·직인처럼 배경이 투명해야 하는 그림은 PNG 로 남긴다.
+//    JPEG 로 바꾸면 투명한 곳이 검정/흰색으로 메워진다.
+//  · GIF(움직임) · SVG(벡터) 는 손대지 않는다.
+async function shrinkImage(file, opt) {
+  const o = opt || {};
+  const maxDim = o.maxDim || 1600, quality = o.quality || 0.82;
+  const floor = o.minSize === undefined ? 300 * 1024 : o.minSize;
   try {
-    if (!file || !file.type || !file.type.startsWith('image/') || file.type === 'image/gif') return file;
-    if (file.size < 300 * 1024) return file;   // 이미 작으면 압축 이득 없음
+    if (!file || !file.type || !file.type.startsWith('image/')) return file;
+    if (file.type === 'image/gif' || file.type === 'image/svg+xml') return file;
     const dataUrl = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); });
     const img = await new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = dataUrl; });
     let w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
     if (!w || !h) return file;
-    if (Math.max(w, h) > maxDim) { const s = maxDim / Math.max(w, h); w = Math.round(w * s); h = Math.round(h * s); }
+    const over = Math.max(w, h) > maxDim;
+    if (!over && file.size < floor) return file;   // 작고 이미 작은 파일은 건드릴 이득이 없다
+    if (over) { const sc = maxDim / Math.max(w, h); w = Math.round(w * sc); h = Math.round(h * sc); }
     const c = document.createElement('canvas'); c.width = w; c.height = h;
-    c.getContext('2d').drawImage(img, 0, 0, w, h);
-    const blob = await new Promise(res => c.toBlob(res, 'image/jpeg', quality));
+    const ctx = c.getContext('2d');
+    const png = !!o.keepAlpha && /png|webp/.test(file.type);
+    if (!png) { ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h); }   // JPEG 는 투명을 못 쓴다 — 흰 바탕을 깐다
+    ctx.drawImage(img, 0, 0, w, h);
+    const blob = await new Promise(res => png ? c.toBlob(res, 'image/png') : c.toBlob(res, 'image/jpeg', quality));
     if (!blob || blob.size >= file.size) return file;   // 더 커지면 원본 유지
-    return new File([blob], file.name.replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' });
-  } catch(_) { return file; }
+    const ext = png ? 'png' : 'jpg';
+    return new File([blob], String(file.name || 'image').replace(/\.[^.]+$/, '') + '.' + ext,
+                    { type: png ? 'image/png' : 'image/jpeg' });
+  } catch (_) { return file; }
+}
+
+async function compressImage(file, maxDim = 1600, quality = 0.82) {
+  return shrinkImage(file, { maxDim, quality });
 }
 
 async function uploadFileGetMeta(file) {
@@ -13868,9 +13955,10 @@ function apprShareAdd(val){
 function apprShareRemove(i){ apprDraft.shares.splice(i,1); document.getElementById('appr-shares').innerHTML=apprSharesHtml(); }
 
 async function apprUpload(file){
+  file = await shrinkImage(file, { maxDim: 2000, quality: 0.85 });   // 문서 스캔 사진이 크다
   const safe = (file.name||'file').replace(/[^\w.\-]/g,'_');
   const path = `approvals/${CID()}/${Date.now()}_${Math.random().toString(36).slice(2,7)}_${safe}`;
-  const { error } = await sb.storage.from('messenger').upload(path, file, { upsert:false });
+  const { error } = await sb.storage.from('messenger').upload(path, file, { cacheControl:'31536000', upsert:false });
   if (error) throw error;
   const { data } = sb.storage.from('messenger').getPublicUrl(path);
   return { name:file.name, url:data.publicUrl, size:file.size };
