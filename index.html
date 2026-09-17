@@ -4531,11 +4531,9 @@ const HOME_WIDGETS = {
       const mm = String(now.getMonth()+1).padStart(2,'0');
       const todayD = now.getDate();
       try {
-        const { data } = await sb.from('members').select('id,name,birth_date')
-          .eq('community_id', CID()).not('birth_date','is',null);
-        list = (data || [])
-          .filter(m => m.name && String(m.birth_date).slice(5,7) === mm)
-          .map(m => ({ name:m.name, d:+String(m.birth_date).slice(8,10) }))
+        list = (await loadBirthdayList())
+          .filter(b => b.md.slice(0,2) === mm)
+          .map(b => ({ name:b.name, d:+b.md.slice(3,5) }))
           .filter(m => m.d >= 1)
           .sort((a,b) => a.d - b.d);
       } catch(_) {}
@@ -5976,11 +5974,12 @@ async function saveProfile() {
 }
 
 // members 업데이트 — 존재하지 않는 컬럼이 있으면 그 컬럼만 제거하고 재시도
-async function updateMemberResilient(updates) {
+async function updateMemberResilient(updates, memberId) {
   const payload = { ...updates };
   const skipped = [];
+  const id = memberId || ME.id;
   for (let i = 0; i < 12; i++) {
-    const { error } = await sb.from('members').update(payload).eq('id', ME.id);
+    const { error } = await sb.from('members').update(payload).eq('id', id);
     if (!error) return { ok: true, saved: payload, skipped };
     const msg = error.message || '';
     // PostgREST/Postgres 의 '컬럼 없음' 메시지에서 컬럼명 추출
@@ -8545,8 +8544,36 @@ async function saveTcsSection(sectionId) {
 
   if (error) { showUploadToast('저장 실패 😥 ' + error.message); return; }
   tcsRecords[sectionId] = data;
+  if (sectionId === 'personal') await tcsMirrorPersonal(data);
   showUploadToast('✅ 저장됐어요!');
   renderTcsSectionList();
+}
+
+// 인적사항은 members 표에도 같이 적어 둔다.
+// 캘린더 생일·생일 위젯·증명서는 members 를 보기 때문에, 여기만 저장하면
+// 학생부에는 생일이 있는데 달력에는 안 나오는 상태가 된다.
+const TCS_PERSONAL_MIRROR = {
+  birth:'birth_date', gender:'gender', nationality:'nationality', native_lang:'native_lang',
+  guardian:'guardian_name', contact:'guardian_phone', address:'address',
+};
+async function tcsMirrorPersonal(data) {
+  if (!tcsCurrentStudent || !tcsCurrentStudent.id) return;
+  const up = {};
+  Object.keys(TCS_PERSONAL_MIRROR).forEach(k => {
+    if (data[k] === undefined) return;             // 화면에 없던 칸은 건드리지 않는다
+    const col = TCS_PERSONAL_MIRROR[k];
+    const v = String(data[k] || '').trim();
+    if (col === 'birth_date') {
+      // date 컬럼이라 형식이 맞아야 한다. 아니면 아예 보내지 않는다.
+      if (!v) { up[col] = null; return; }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return;
+      up[col] = v;
+    } else {
+      up[col] = v || null;
+    }
+  });
+  if (!Object.keys(up).length) return;
+  try { await updateMemberResilient(up, tcsCurrentStudent.id); } catch (_) {}
 }
 
 // ── TCS 미리보기 ──
@@ -12991,14 +13018,36 @@ async function loadCalendar() {
   calEvents = data || [];
   // 화면을 막지 않도록 뒤에서 돌린다
   setTimeout(() => { try { autoSyncGoogleCalendar(); } catch (_) {} }, 400);
-  try {
-    const { data: mem } = await sb.from('members').select('id,name,birth_date').eq('community_id', CID()).not('birth_date','is',null);
-    calBirthdays = (mem||[])
-      .filter(m => m.birth_date && m.name)
-      .map(m => ({ member_id:m.id, name:m.name, md:String(m.birth_date).slice(5,10) }))
-      .filter(b => /^\d{2}-\d{2}$/.test(b.md));
-  } catch(_) { calBirthdays = []; }
+  try { calBirthdays = await loadBirthdayList(); } catch(_) { calBirthdays = []; }
   renderCalendar();
+}
+
+// 공동체의 생일 목록. 두 곳을 본다 —
+//  · members.birth_date          (내 프로필 · 멤버 관리에서 넣은 값)
+//  · tcs_records.personal.birth  (학사 → 학생 개인정보에서 넣은 값)
+// 학사에서 넣은 생일이 members 에 안 적혀 있던 옛 기록도 달력에 나오게 하려고
+// 둘을 합친다. members 쪽이 있으면 그것을 쓴다.
+async function loadBirthdayList() {
+  const by = {};
+  try {
+    const { data } = await sb.from('members').select('id,name,birth_date,status').eq('community_id', CID());
+    (data || []).forEach(m => {
+      if (!m.name || m.status === 'removed' || m.status === 'rejected') return;
+      const md = String(m.birth_date || '').slice(5, 10);
+      by[m.id] = { member_id: m.id, name: m.name, md: /^\d{2}-\d{2}$/.test(md) ? md : null };
+    });
+  } catch (_) {}
+  try {
+    const { data } = await sb.from('tcs_records').select('student_id,data')
+      .eq('community_id', CID()).eq('section', 'personal');
+    (data || []).forEach(r => {
+      const who = by[r.student_id];
+      if (!who || who.md) return;                    // 멤버가 아니거나 이미 있으면 건드리지 않는다
+      const md = String((r.data && r.data.birth) || '').slice(5, 10);
+      if (/^\d{2}-\d{2}$/.test(md)) who.md = md;
+    });
+  } catch (_) {}
+  return Object.values(by).filter(x => x.md);
 }
 
 // 특정 날짜(YYYY-MM-DD)의 생일 → 가짜 이벤트 배열 (2/29은 평년엔 말일로 보정)
