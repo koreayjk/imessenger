@@ -11832,12 +11832,30 @@ function imNoteEmptyHtml() {
   </div>`;
 }
 
+// 지금 고른 '보기'에 이 노트가 들어가는가
+function imNoteInScope(n) {
+  if (imNoteScope === 'mine') return imNoteIsMine(n);
+  if (imNoteScope === 'community') return n.visibility === 'community';
+  if (imNoteScope === 'tome') return !imNoteIsMine(n) && n.visibility === 'selected';
+  return true;
+}
+
+// 버튼에 쓸 공개 상태
+function imShareLabel(n) {
+  if (!n) return '🔒 ' + t('나만 보기','Private');
+  if (n.visibility === 'community') return '🌐 ' + t('공동체 공개','Everyone');
+  if (n.visibility === 'selected') {
+    const cnt = (n.share_members || []).length + (n.share_groups || []).length;
+    return '👥 ' + t('일부 공개 ' + cnt, 'Shared with ' + cnt);
+  }
+  return '🔒 ' + t('나만 보기','Private');
+}
+
 // ── 목록 ──
 function imNoteFiltered() {
   const q = imNoteQ.trim().toLowerCase();
   return imNotes.filter(n => {
-    if (imNoteScope === 'mine' && !imNoteIsMine(n)) return false;
-    if (imNoteScope === 'community' && n.visibility !== 'community') return false;
+    if (!imNoteInScope(n)) return false;
     if (imNoteTag && !(n.tags || []).includes(imNoteTag)) return false;
     if (imNoteBook && (n.notebook || IM_NOTEBOOK_DEFAULT) !== imNoteBook) return false;
     if (!q) return true;
@@ -11847,7 +11865,7 @@ function imNoteFiltered() {
 }
 // 왼쪽 노트북/태그 목록 (에버노트식)
 function imSideHtml() {
-  const scoped = imNotes.filter(n => imNoteScope === 'mine' ? imNoteIsMine(n) : n.visibility === 'community');
+  const scoped = imNotes.filter(n => imNoteInScope(n));
   const bookCount = {};
   scoped.forEach(n => { const b = n.notebook || IM_NOTEBOOK_DEFAULT; bookCount[b] = (bookCount[b] || 0) + 1; });
   const books = Object.keys(bookCount).sort((a, b) => a.localeCompare(b, 'ko'));
@@ -11868,6 +11886,7 @@ function imSideHtml() {
   return head(t('보기','Scope'))
     + row(imNoteScope === 'mine', '🔒', t('내 노트','My notes'), imNotes.filter(imNoteIsMine).length, "imSetScope('mine')")
     + row(imNoteScope === 'community', '🌐', t('공동체 공개','Shared'), imNotes.filter(n => n.visibility === 'community').length, "imSetScope('community')")
+    + row(imNoteScope === 'tome', '👥', t('나에게 공유됨','Shared with me'), imNotes.filter(n => !imNoteIsMine(n) && n.visibility === 'selected').length, "imSetScope('tome')")
     + head(t('노트북','Notebooks'))
     + row(!imNoteBook, '📚', t('전체','All'), scoped.length, 'imPickBook(null)')
     + books.map(b => row(imNoteBook === b, '📓', escHtml(b), bookCount[b], `imPickBook('${escAttr(b)}')`)).join('')
@@ -12180,7 +12199,7 @@ function imNoteEditorHtml() {
     <span id="im-save-state" style="font-size:11.5px;color:var(--ink3)"></span>
     ${mine ? `
       <button onclick="imTogglePin()" title="${imAttr(t('맨 위에 고정','Pin to top'))}" style="height:32px;padding:0 11px;border:1.5px solid ${n.pinned?'#1d3a5f':'var(--border)'};background:${n.pinned?'#1d3a5f':'var(--surface)'};color:${n.pinned?'#fff':'var(--ink2)'};border-radius:9px;cursor:pointer;font:600 12px var(--font)">📌</button>
-      <button onclick="imToggleVisibility()" style="height:32px;padding:0 12px;border:1.5px solid var(--border);background:var(--surface);border-radius:9px;cursor:pointer;font:600 12px var(--font);color:var(--ink2)">${n.visibility==='community' ? '🌐 ' + t('공동체 공개','Shared') : '🔒 ' + t('나만 보기','Private')}</button>
+      <button onclick="imOpenShare()" title="${t('공유 범위 정하기','Set who can see this')}" style="height:32px;padding:0 12px;border:1.5px solid ${n.visibility==='private'?'var(--border)':'var(--accent)'};background:var(--surface);border-radius:9px;cursor:pointer;font:600 12px var(--font);color:${n.visibility==='private'?'var(--ink2)':'var(--adeep)'}">${imShareLabel(n)}</button>
       <button onclick="imDeleteNote()" style="height:32px;padding:0 12px;border:1.5px solid var(--border);background:var(--surface);border-radius:9px;cursor:pointer;font:600 12px var(--font);color:var(--rose)">${t('삭제','Delete')}</button>
     ` : `<span style="font-size:11.5px;color:var(--ink3)">${t('다른 사람의 공개 노트예요 (읽기 전용)','Shared by another member (read-only)')}</span>`}
   </div>
@@ -12281,15 +12300,162 @@ async function imTogglePin() {
   if (error) { imToast(t('변경 실패','Update failed')); return; }
   n.pinned = next; renderNotePage();
 }
-async function imToggleVisibility() {
-  const n = imNoteCur; if (!n || !imNoteIsMine(n)) return;
-  const next = n.visibility === 'community' ? 'private' : 'community';
-  if (next === 'community' && !confirm(t('이 노트를 공동체 전체에게 공개할까요?','Share this note with the whole community?'))) return;
-  const { error } = await sb.from('notes').update({ visibility: next }).eq('id', n.id);
-  if (error) { imToast(t('변경 실패','Update failed')); return; }
-  n.visibility = next; renderNotePage();
-  imToast(next === 'community' ? t('🌐 공동체 전체에 공개했어요','🌐 Shared with the community') : t('🔒 나만 보도록 되돌렸어요','🔒 Back to private'));
+// ══════════════════════════════════════════
+// 노트 공유 — 나만 / 공동체 전체 / 고른 사람·반만
+// ══════════════════════════════════════════
+let imShareDraft = null;   // { vis, members:Set, groups:Set }
+let imShareQ = '';
+
+async function imOpenShare() {
+  const n = imNoteCur;
+  if (!n || !imNoteIsMine(n)) return;
+  imShareDraft = {
+    vis: n.visibility || 'private',
+    members: new Set(n.share_members || []),
+    groups: new Set(n.share_groups || []),
+  };
+  imShareQ = '';
+  // 반 목록은 없을 수도 있다 (학교를 안 쓰는 공동체)
+  if (!Array.isArray(imShareGroups)) imShareGroups = [];
+  try {
+    const { data } = await sb.from('student_groups').select('id,name')
+      .eq('community_id', CID()).order('sort').order('name');
+    imShareGroups = data || [];
+  } catch (_) { imShareGroups = []; }
+  try {
+    const { data } = await sb.from('members').select('id,name,community_role,status')
+      .eq('community_id', CID()).order('name');
+    imShareMembers = (data || []).filter(m => m.id !== ME.id && m.status !== 'removed' && m.status !== 'rejected');
+  } catch (_) { imShareMembers = []; }
+  renderShareModal();
 }
+let imShareGroups = [], imShareMembers = [];
+
+function renderShareModal() {
+  document.getElementById('im-share-modal')?.remove();
+  const d = imShareDraft; if (!d) return;
+  const m = document.createElement('div');
+  m.id = 'im-share-modal';
+  m.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px';
+  m.innerHTML = `
+    <div style="background:var(--surface);border-radius:20px;width:100%;max-width:460px;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 24px 60px rgba(29,58,95,.22);overflow:hidden">
+      <div style="padding:19px 22px;border-bottom:1px solid var(--border)">
+        <div style="font-size:16px;font-weight:700">🔗 ${t('노트 공유','Share note')}</div>
+        <div style="font-size:12px;color:var(--ink3);margin-top:3px">${t('누가 이 노트를 볼 수 있는지 정해요','Choose who can see this note')}</div>
+      </div>
+      <div style="padding:14px 18px;overflow-y:auto;flex:1;min-height:0">
+        ${imShareOpt('private','🔒', t('나만 보기','Only me'), t('아무도 볼 수 없어요','Nobody else can see it'))}
+        ${imShareOpt('community','🌐', t('공동체 전체','Everyone in the community'), t('우리 공동체 구성원 모두','All members of your community'))}
+        ${imShareOpt('selected','👥', t('고른 사람만','Only the people I pick'), t('아래에서 반이나 멤버를 고르세요','Pick classes or members below'))}
+        <div id="im-share-pick" style="display:${d.vis==='selected'?'block':'none'};margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+          ${imShareGroups.length ? `
+            <div style="font:800 10.5px var(--font);color:var(--ink3);letter-spacing:.06em;margin-bottom:7px">${t('반 · 그룹','CLASSES')}</div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">
+              ${imShareGroups.map(g => imShareChip('g', g.id, g.name, d.groups.has(g.id))).join('')}
+            </div>` : ''}
+          <div style="font:800 10.5px var(--font);color:var(--ink3);letter-spacing:.06em;margin-bottom:7px">${t('멤버','MEMBERS')}</div>
+          <input id="im-share-q" value="${escAttr(imShareQ)}" placeholder="${t('이름으로 찾기','Search by name')}"
+            oninput="imShareSearch(this.value)"
+            style="width:100%;box-sizing:border-box;height:34px;padding:0 11px;border:1.5px solid var(--border);border-radius:9px;font:13px var(--font);outline:none;margin-bottom:9px"/>
+          <div style="display:flex;flex-wrap:wrap;gap:6px">
+            ${imShareMemberList().map(x => imShareChip('m', x.id, x.name, d.members.has(x.id))).join('')
+              || `<div style="font-size:12px;color:var(--ink3);padding:6px 2px">${t('찾는 사람이 없어요','No one found')}</div>`}
+          </div>
+        </div>
+      </div>
+      <div style="padding:12px 18px;border-top:1px solid var(--border);display:flex;align-items:center;gap:8px">
+        <div style="flex:1;font-size:12px;color:var(--ink3)">${imShareSummary()}</div>
+        <button onclick="document.getElementById('im-share-modal').remove()"
+          style="height:38px;padding:0 15px;border-radius:10px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:600 13px var(--font);cursor:pointer">${t('취소','Cancel')}</button>
+        <button onclick="imSaveShare()"
+          style="height:38px;padding:0 20px;border-radius:10px;border:none;background:var(--accent);color:white;font:700 13px var(--font);cursor:pointer">${t('저장','Save')}</button>
+      </div>
+    </div>`;
+  m.addEventListener('click', e => { if (e.target === m) m.remove(); });
+  document.body.appendChild(m);
+}
+
+function imShareOpt(v, icon, title, desc) {
+  const on = imShareDraft.vis === v;
+  return `<div onclick="imSharePick('${v}')"
+    style="display:flex;align-items:flex-start;gap:11px;padding:11px 13px;border-radius:12px;cursor:pointer;margin-bottom:6px;
+    border:1.5px solid ${on?'var(--accent)':'var(--border)'};background:${on?'var(--asoft)':'var(--surface)'}">
+    <div style="font-size:17px;line-height:1.2">${icon}</div>
+    <div style="min-width:0;flex:1">
+      <div style="font-size:13.5px;font-weight:700;color:var(--ink)">${title}</div>
+      <div style="font-size:11.5px;color:var(--ink3);margin-top:2px;word-break:keep-all">${desc}</div>
+    </div>
+    <div style="width:17px;height:17px;border-radius:50%;border:1.5px solid ${on?'var(--accent)':'var(--border)'};background:${on?'var(--accent)':'transparent'};flex-shrink:0;margin-top:2px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px">${on?'✓':''}</div>
+  </div>`;
+}
+
+function imShareChip(kind, id, name, on) {
+  return `<span onclick="imShareToggle('${kind}','${id}')"
+    style="display:inline-flex;align-items:center;gap:5px;padding:6px 11px;border-radius:999px;cursor:pointer;
+    border:1.5px solid ${on?'var(--accent)':'var(--border)'};background:${on?'var(--accent)':'var(--bg)'};
+    color:${on?'#fff':'var(--ink2)'};font:600 12.5px var(--font);white-space:nowrap">
+    ${on?'✓ ':''}${escHtml(name || '')}</span>`;
+}
+
+function imShareMemberList() {
+  const q = imShareQ.trim().toLowerCase();
+  const picked = imShareMembers.filter(x => imShareDraft.members.has(x.id));
+  if (!q) return picked.concat(imShareMembers.filter(x => !imShareDraft.members.has(x.id)).slice(0, 40));
+  return imShareMembers.filter(x => String(x.name || '').toLowerCase().includes(q)).slice(0, 60);
+}
+
+function imShareSummary() {
+  const d = imShareDraft;
+  if (d.vis === 'private') return t('나만 볼 수 있어요','Only you');
+  if (d.vis === 'community') return t('공동체 전체','Everyone');
+  const g = d.groups.size, mm = d.members.size;
+  if (!g && !mm) return t('아직 아무도 안 골랐어요','Nobody picked yet');
+  return [g ? t(g + '개 반', g + ' classes') : '', mm ? t(mm + '명', mm + ' members') : ''].filter(Boolean).join(' · ');
+}
+
+function imSharePick(v) { imShareDraft.vis = v; renderShareModal(); }
+function imShareToggle(kind, id) {
+  const set = kind === 'g' ? imShareDraft.groups : imShareDraft.members;
+  if (set.has(id)) set.delete(id); else set.add(id);
+  renderShareModal();
+}
+function imShareSearch(v) {
+  imShareQ = v;
+  renderShareModal();
+  const el = document.getElementById('im-share-q');
+  if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
+}
+
+async function imSaveShare() {
+  const n = imNoteCur, d = imShareDraft;
+  if (!n || !d || !imNoteIsMine(n)) return;
+  if (d.vis === 'selected' && !d.groups.size && !d.members.size) {
+    imToast(t('볼 사람을 한 명 이상 골라주세요','Pick at least one person or class'));
+    return;
+  }
+  const up = {
+    visibility: d.vis,
+    share_members: d.vis === 'selected' ? [...d.members] : [],
+    share_groups:  d.vis === 'selected' ? [...d.groups]  : [],
+  };
+  let { error } = await sb.from('notes').update(up).eq('id', n.id);
+  // 컬럼을 아직 안 깔았으면 '나만/전체' 까지만이라도 되게
+  if (error && /share_(members|groups)/.test(error.message || '')) {
+    if (d.vis === 'selected') {
+      imToast('일부 공개는 DB 설치가 필요해요 — IM노트_일부공개_DB설치.sql 을 실행해주세요');
+      return;
+    }
+    ({ error } = await sb.from('notes').update({ visibility: d.vis }).eq('id', n.id));
+  }
+  if (error) { imToast(t('변경 실패: ','Update failed: ') + (error.message || '')); return; }
+  Object.assign(n, up);
+  document.getElementById('im-share-modal')?.remove();
+  renderNotePage();
+  imToast(d.vis === 'community' ? t('🌐 공동체 전체에 공개했어요','🌐 Shared with everyone')
+        : d.vis === 'selected'  ? t('👥 고른 사람에게만 공개했어요','👥 Shared with the people you picked')
+        : t('🔒 나만 보도록 되돌렸어요','🔒 Back to private'));
+}
+
 async function imDeleteNote() {
   const n = imNoteCur; if (!n || !imNoteIsMine(n)) return;
   if (!confirm(t('이 노트를 삭제할까요? 되돌릴 수 없어요.','Delete this note? This cannot be undone.'))) return;
