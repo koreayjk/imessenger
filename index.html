@@ -9242,6 +9242,7 @@ async function renderCommunitySettings() {
         <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           <div id="org-logo-preview" style="width:44px;height:44px;border-radius:10px;background:var(--s2);display:flex;align-items:center;justify-content:center;font-size:18px;overflow:hidden;flex-shrink:0">🏷️</div>
           <input id="org-name-input" type="text" placeholder="기관 이름 (예: IM선교회 한국본부)" style="flex:1;min-width:150px;height:38px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--s2);font:13px var(--font);outline:none"/>
+          <input id="org-addr-input" type="text" placeholder="기관 주소 (증서 아래에 찍힘)" style="flex:1.4;min-width:180px;height:38px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--s2);font:13px var(--font);outline:none"/>
           <input type="file" id="org-logo-input" accept="image/*" style="display:none" onchange="uploadOrgLogo(this)"/>
           <input type="hidden" id="org-logo-url" value=""/>
           <button onclick="document.getElementById('org-logo-input').click()" style="height:38px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:600 12px var(--font);cursor:pointer">📷 로고</button>
@@ -9382,9 +9383,19 @@ async function addRecordOrg(commId) {
   const name = document.getElementById('org-name-input').value.trim();
   const logo = document.getElementById('org-logo-url').value;
   if (!name) { showUploadToast('기관 이름을 입력하세요'); return; }
-  const { error } = await sb.from('record_orgs').insert({ community_id: commId, name, logo_url: logo || null });
+  const addr = (document.getElementById('org-addr-input')?.value || '').trim();
+  const row = { community_id: commId, name, logo_url: logo || null };
+  if (addr) row.address = addr;
+  let { error } = await sb.from('record_orgs').insert(row);
+  // 주소 컬럼을 아직 안 깔았으면 주소만 빼고 다시 넣는다
+  if (error && /address/.test(error.message || '')) {
+    delete row.address;
+    ({ error } = await sb.from('record_orgs').insert(row));
+    if (!error) showUploadToast('기관은 추가됐어요 — 주소를 쓰려면 증명서_입소양식_DB설치.sql 을 실행해주세요');
+  }
   if (error) { showUploadToast('추가 실패: ' + error.message); return; }
   showUploadToast('✅ 기관이 추가됐어요');
+  const ai = document.getElementById('org-addr-input'); if (ai) ai.value = '';
   document.getElementById('org-name-input').value = '';
   document.getElementById('org-logo-url').value = '';
   const pv = document.getElementById('org-logo-preview'); if (pv) pv.innerHTML = '🏷️';
@@ -17144,17 +17155,22 @@ async function renderPublicNewsletter(id) {
 //   sub   : 제목 아래 작게 놓는 반대 언어 표기
 //   stmt  : 본문 문구
 const CERT_TYPES = {
-  enroll: {
-    ko: { label:'재학증명서', sub:'CERTIFICATE OF ENROLLMENT',
-          stmt:'위 학생은 본교에 재학 중임을 증명합니다.' },
-    en: { label:'Certificate of Enrollment', sub:'재 학 증 명 서',
-          stmt:'This certifies that the above student is currently enrolled at this school.' },
+  // 본문의 {d} 는 입소일로 바뀐다 (예: 8월 21일 / August 21)
+  admit: {
+    ko: { label:'입소증명서', docLabel:'입 소 증 명 서', sub:'CERTIFICATE OF ADMISSION',
+          needDate:true, dateLabel:'입소일',
+          stmt:'위 사람은 {d}에 입소하여 본 공동체에 소속되어 있음을 확인합니다.' },
+    en: { label:'Certificate of Admission', docLabel:'Certificate of Admission', sub:'입 소 증 명 서',
+          needDate:true, dateLabel:'Date of admission',
+          stmt:'This certifies that the above person was admitted on {d} and belongs to this community.' },
   },
-  grad: {
-    ko: { label:'졸업증명서', sub:'CERTIFICATE OF GRADUATION',
-          stmt:'위 학생은 본교 소정의 전 과정을 이수하고 졸업하였음을 증명합니다.' },
-    en: { label:'Certificate of Graduation', sub:'졸 업 증 명 서',
-          stmt:'This certifies that the above student completed all prescribed courses and graduated from this school.' },
+  admit_pre: {
+    ko: { label:'입소예정증명서', docLabel:'입 소 예 정 증 명 서', sub:'CERTIFICATE OF EXPECTED ADMISSION',
+          needDate:true, dateLabel:'입소 예정일',
+          stmt:'위 사람은 본 공동체에 {d}부터 입소할 예정임을 확인합니다.' },
+    en: { label:'Certificate of Expected Admission', docLabel:'Certificate of Expected Admission', sub:'입 소 예 정 증 명 서',
+          needDate:true, dateLabel:'Expected date of admission',
+          stmt:'This certifies that the above person is scheduled to be admitted to this community on {d}.' },
   },
   // 직접입력은 드롭다운 이름과 증서 제목이 달라야 한다 ('직접입력'이 찍히면 안 됨)
   custom: {
@@ -17162,16 +17178,27 @@ const CERT_TYPES = {
     en: { label:'Custom',   docLabel:'Certificate', sub:'증 명 서',  stmt:'' },
   },
 };
+// '2026-08-21' → '8월 21일' / 'August 21'. 형식이 다르면 그대로 둔다.
+const CERT_MON_EN = ['','January','February','March','April','May','June',
+                     'July','August','September','October','November','December'];
+function certDayText(v, lang) {
+  const m = String(v || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return String(v || '');
+  const mo = parseInt(m[2], 10), dy = parseInt(m[3], 10);
+  return lang === 'en' ? `${CERT_MON_EN[mo]} ${dy}, ${m[1]}` : `${mo}월 ${dy}일`;
+}
+
 // 증서에 쓸 언어 (앱 언어와 별개). 기본값은 앱 언어를 따라간다.
 let certLang = (APP_LANG === 'en') ? 'en' : 'ko';
 const certT = (ko, en) => (certLang === 'en' ? en : ko);
-const certSpec = (type) => (CERT_TYPES[type] || CERT_TYPES.enroll)[certLang];
+const certSpec = (type) => (CERT_TYPES[type] || CERT_TYPES.admit)[certLang];
 
 let certStudentId = '';
-let certPrefill = { name:'', birth:'', school:'' };
+let certPrefill = { name:'', birth:'', school:'', address:'' };
 // 고른 증명서 종류와 직접입력 내용은 화면을 다시 그려도 남아야 한다.
 // (학생을 바꾸면 renderCert 가 폼을 통째로 다시 만든다)
-let certType = 'enroll';
+let certType = 'admit';
+let certAdmitDate = '';
 let certCustomTitle = '';
 let certCustomSub = '';
 let certCustomText = '';
@@ -17204,11 +17231,15 @@ function certTabsHtml() {
 async function certLoadStudent(id) {
   certStudentId = id;
   const s = schoolStudents.find(x => x.id === id);
-  certPrefill = { name: s ? s.name : '', birth:'', school:'' };
+  certPrefill = { name: s ? s.name : '', birth: (s && s.birth_date) || '', school:'', address: (s && s.address) || '' };
   const { data } = await sb.from('tcs_records').select('section,data')
     .eq('student_id', id).in('section', ['personal','school']);
   (data||[]).forEach(r => {
-    if (r.section === 'personal') { certPrefill.birth = r.data?.birth || ''; if (r.data?.name_ko) certPrefill.name = r.data.name_ko; }
+    if (r.section === 'personal') {
+      certPrefill.birth = r.data?.birth || certPrefill.birth;
+      certPrefill.address = r.data?.address || certPrefill.address;
+      if (r.data?.name_ko) certPrefill.name = r.data.name_ko;
+    }
     if (r.section === 'school')   { certPrefill.school = r.data?.school_name || ''; }
   });
 }
@@ -17221,7 +17252,7 @@ function renderCert() {
   const main = document.getElementById('school-main');
   const s = schoolStudents.find(x => x.id === certStudentId);
   const studentOpts = schoolStudents.map(x => `<option value="${x.id}" ${x.id===certStudentId?'selected':''}>${x.name}${x.grade?` (${x.grade})`:''}</option>`).join('');
-  if (!CERT_TYPES[certType]) certType = 'enroll';
+  if (!CERT_TYPES[certType]) certType = 'admit';
   const typeOpts = Object.entries(CERT_TYPES).map(([k,v]) =>
     `<option value="${k}"${k===certType?' selected':''}>${v[certLang].label}</option>`).join('');
   const orgOpts = tcsOrgs.length ? tcsOrgs.map(o => `<option value="${o.id}" ${o.id===tcsSelectedOrgId?'selected':''}>${o.name}</option>`).join('')
@@ -17250,8 +17281,14 @@ function renderCert() {
         <div><label style="${lbl}">${t('증명서 종류','Certificate type')}</label><select id="cert-type" onchange="certOnType(this.value)" style="${inp};width:100%">${typeOpts}</select></div>
         <div><label style="${lbl}">${t('성명','Name')}</label><input id="cert-name" value="${escAttr(certPrefill.name||(s?s.name:''))}" style="${inp};width:100%"/></div>
         <div><label style="${lbl}">${t('생년월일','Date of birth')}</label><input id="cert-birth" value="${escAttr(certPrefill.birth||(s?s.birth_date||'':''))}" placeholder="${t('예: 2010-03-15','e.g. 2010-03-15')}" style="${inp};width:100%"/></div>
-        <div><label style="${lbl}">${t('학년','Grade')}</label><input id="cert-grade" value="${escAttr(s?s.grade||'':'')}" style="${inp};width:100%"/></div>
-        <div><label style="${lbl}">${t('학교명','School name')}</label><input id="cert-school" value="${escAttr(certPrefill.school||'')}" style="${inp};width:100%"/></div>
+        <div style="grid-column:1/3"><label style="${lbl}">${t('주소','Address')}</label><input id="cert-address" value="${escAttr(certPrefill.address||(s?s.address||'':''))}" placeholder="${t('예: 경기도 고양시 덕양구 백양로 65, 1704호','e.g. 65 Baekyang-ro, Goyang-si')}" style="${inp};width:100%"/></div>
+        <div><label style="${lbl}">${t('학년 (없으면 비움)','Grade (optional)')}</label><input id="cert-grade" value="${escAttr(s?s.grade||'':'')}" style="${inp};width:100%"/></div>
+        <div><label style="${lbl}">${t('학교명 (없으면 비움)','School (optional)')}</label><input id="cert-school" value="${escAttr(certPrefill.school||'')}" style="${inp};width:100%"/></div>
+      </div>
+      <div id="cert-date-wrap" style="display:none;margin-bottom:14px">
+        <label style="${lbl}" id="cert-admit-label">${t('입소일','Date of admission')}</label>
+        <input id="cert-admit" type="date" value="${escAttr(certAdmitDate)}" oninput="certAdmitDate=this.value" style="${inp};width:100%;max-width:240px"/>
+        <div style="font-size:11.5px;color:var(--ink3);margin-top:5px">${t('이 날짜가 증명서 문장에 들어갑니다.','This date appears in the certificate sentence.')}</div>
       </div>
       <div id="cert-custom-wrap" style="display:${certType==='custom'?'block':'none'};margin-bottom:14px">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:12px">
@@ -17277,6 +17314,7 @@ function renderCert() {
         <div><label style="${lbl}">${t('발급번호','Certificate no.')}</label><input id="cert-no" value="" placeholder="${t('비우면 자동 부여','Auto if left blank')}" style="${inp};width:100%"/></div>
         <div><label style="${lbl}">${t('발급 기관','Issuing organization')}</label><select id="cert-org" style="${inp};width:100%">${orgOpts}</select></div>
         <div style="grid-column:1/3"><label style="${lbl}">${t('직인','Seal')}</label><select id="cert-seal" style="${inp};width:100%">${sealOpts}</select></div>
+        <div style="grid-column:1/3"><label style="${lbl}">${t('발급 기관 주소 (증서 아래 기관명 밑에)','Issuing organization address')}</label><input id="cert-org-addr" value="${escAttr((tcsOrgs.find(o=>o.id===tcsSelectedOrgId)?.address)||'')}" placeholder="${t('예: 충남 논산시 벌곡면 황룡재로 324','e.g. 324 Hwangnyongjae-ro, Nonsan-si')}" style="${inp};width:100%"/></div>
         <div style="grid-column:1/3"><label style="${lbl}">${t('대표자 명의 (직인 표기)','Representative name (for seal)')}</label><input id="cert-rep" value="${escAttr((tcsOrgs.find(o=>o.id===tcsSelectedOrgId)?.name)||'')}${t(' 장',' Head')}" placeholder="${t('예: ○○학교장 / 대표 홍길동','e.g. Principal of ○○ School / Rep. Hong Gil-dong')}" style="${inp};width:100%"/></div>
       </div>
       <div style="display:flex;justify-content:flex-end;gap:8px">
@@ -17418,8 +17456,9 @@ function reprintCertificate(id) {
   openPrintDoc(buildCertOpts({
     lang: r.lang, type: r.type, docLabel: r.doc_label, sub: r.doc_sub || spec.sub || '',
     no: r.cert_no, name: r.student_name, birth: r.birth, grade: r.grade, school: r.school,
+    address: r.address,
     stmt: r.statement, reason: r.reason, date: r.issue_date, rep: r.rep,
-    orgName: r.org_name, orgLogo: r.org_logo_url, sealUrl: r.seal_url,
+    orgName: r.org_name, orgLogo: r.org_logo_url, orgAddress: r.org_address, sealUrl: r.seal_url,
     voided: !!r.voided_at,
   }));
 }
@@ -17442,9 +17481,8 @@ async function voidCertificate(id) {
 
 function certChangeStudent(id) { certLoadStudent(id).then(renderCert); }
 function certOnType(v) {
-  certType = CERT_TYPES[v] ? v : 'enroll';
-  const wrap = document.getElementById('cert-custom-wrap');
-  if (wrap) wrap.style.display = certType === 'custom' ? 'block' : 'none';
+  certType = CERT_TYPES[v] ? v : 'admit';
+  certSyncType();
   if (certType === 'custom') setTimeout(() => document.getElementById('cert-custom-title')?.focus(), 30);
 }
 
@@ -17458,6 +17496,14 @@ function certSyncType() {
   else sel.value = certType;
   const wrap = document.getElementById('cert-custom-wrap');
   if (wrap) wrap.style.display = certType === 'custom' ? 'block' : 'none';
+  // 입소일은 입소·입소예정 증명서에만 쓴다
+  const spec = certSpec(certType) || {};
+  const dw = document.getElementById('cert-date-wrap');
+  if (dw) dw.style.display = spec.needDate ? 'block' : 'none';
+  const dl = document.getElementById('cert-admit-label');
+  if (dl && spec.dateLabel) dl.textContent = spec.dateLabel;
+  const di = document.getElementById('cert-admit');
+  if (di && spec.needDate && !di.value) { di.value = attTodayStr(); certAdmitDate = di.value; }
 }
 
 // 증서 문서 한 장을 만든다.
@@ -17470,6 +17516,7 @@ function buildCertOpts(d) {
   const no = d.no || '', reason = d.reason || '', rep = d.rep || '';
   const orgName = d.orgName || '', orgLogo = d.orgLogo || '', sealUrl = d.sealUrl || '';
   const birth = d.birth || '', grade = d.grade || '', school = d.school || '';
+  const address = d.address || '', orgAddress = d.orgAddress || '';
   const sub = d.sub || '';
 
   // 넓은 자간·블랙레터는 라틴 문자에만 쓴다 (한글에는 대응 글꼴이 없다)
@@ -17520,13 +17567,14 @@ function buildCertOpts(d) {
           <section class="c-info">
             ${row(tr('성 명','Name'), name)}
             ${row(tr('생년월일','Date of Birth'), ymdText(birth))}
+            ${row(tr('주 소','Address'), address)}
             ${row(tr('학 년','Grade'), grade)}
             ${row(tr('학 교','School'), school)}
+            ${row(tr('용 도','Purpose'), reason)}
           </section>
 
           <section class="c-body">
             <p class="c-stmt${stmtClass}${lat(stmt)}">${escHtml(stmt)}</p>
-            ${reason ? `<p class="c-reason">${tr('발급 사유','Purpose')} · ${escHtml(reason)}</p>` : ''}
           </section>
           </div>
 
@@ -17534,6 +17582,7 @@ function buildCertOpts(d) {
             <div class="c-date${lat(dateKo)}">${escHtml(dateKo)}</div>
             ${orgLogo ? `<img class="c-logo" src="${imAttr(orgLogo)}" onerror="this.remove()"/>` : ''}
             <div class="c-org${lat(orgName)}">${escHtml(orgName)}</div>
+            ${orgAddress ? `<div class="c-oaddr${lat(orgAddress)}">${escHtml(orgAddress)}</div>` : ''}
             ${rep ? `<div class="c-rep${lat(rep)}">${escHtml(rep)}${
               sealUrl ? `<img class="c-stamp" src="${imAttr(sealUrl)}" onerror="this.remove()"/>`
                    : `<span class="c-seal">${tr('印','SEAL')}</span>`}</div>` : ''}
@@ -17599,7 +17648,7 @@ function buildCertOpts(d) {
                        font-size: 34pt; font-weight: 400; letter-spacing: .02em;
                        text-indent: 0; line-height: 1.3; }
       /* 라틴 본문 — 명조의 라틴 글자는 볼품없다. 어디에나 있는 세리프로 바꾼다 */
-      .c-vl.lat, .c-stmt.lat, .c-date.lat, .c-org.lat, .c-rep.lat, .c-sub.lat, .c-lb.lat {
+      .c-vl.lat, .c-stmt.lat, .c-date.lat, .c-org.lat, .c-oaddr.lat, .c-rep.lat, .c-sub.lat, .c-lb.lat {
         font-family: Georgia,'Times New Roman','Nanum Myeongjo',serif; }
       .c-stmt.lat { font-size: 13.5pt; }
       .c-stmt.lat.s2 { font-size: 12.5pt; }
@@ -17635,7 +17684,6 @@ function buildCertOpts(d) {
       .c-stmt.s2 { font-size: 12pt; line-height: 2.1;  max-width: 138mm; }
       .c-stmt.s3 { font-size: 11pt; line-height: 1.95; max-width: 142mm; text-align: justify;
                    text-align-last: center; }
-      .c-reason { margin: 6mm 0 0; font-size: 10pt; color: #6b7688; letter-spacing: .1em; }
 
       /* ── 명의 ── */
       .c-foot { text-align: center; position: relative; z-index: 1;
@@ -17647,6 +17695,8 @@ function buildCertOpts(d) {
       .c-org { font-size: 19pt; font-weight: 700; color: #1d3a5f;
                letter-spacing: .32em; text-indent: .32em;
                word-break: keep-all; overflow-wrap: break-word; line-height: 1.45; }
+      .c-oaddr { margin-top: 3mm; font-size: 10.5pt; color: #4a5568;
+                 letter-spacing: .06em; word-break: keep-all; }
       .c-rep { margin-top: 4.5mm; font-size: 12.5pt; letter-spacing: .14em;
                display: inline-flex; align-items: center; }
       .c-seal { flex: none; width: 13mm; height: 13mm; margin-left: 4mm;
@@ -17677,6 +17727,8 @@ async function printCertificate() {
   const birth = document.getElementById('cert-birth').value.trim();
   const grade = document.getElementById('cert-grade').value.trim();
   const school = document.getElementById('cert-school').value.trim();
+  const address = (document.getElementById('cert-address')?.value || '').trim();
+  const orgAddress = (document.getElementById('cert-org-addr')?.value || '').trim();
   const reason = document.getElementById('cert-reason').value.trim();
   const date = document.getElementById('cert-date').value || attTodayStr();
   const typedNo = document.getElementById('cert-no').value.trim();
@@ -17695,10 +17747,18 @@ async function printCertificate() {
     ? ((document.getElementById('cert-custom-sub')?.value || certCustomSub || '').trim()) : '';
   const docLabel = typedTitle || ct.docLabel || ct.label;
   const docSub = typedSub || ct.sub || '';
+  // 입소일을 '8월 21일' 처럼 사람이 읽는 형태로 바꿔 문장에 끼운다
+  const admitRaw = (document.getElementById('cert-admit')?.value || certAdmitDate || '').trim();
+  const admitText = certDayText(admitRaw, certLang);
+  if (ct.needDate && !admitRaw) {
+    showUploadToast(t((ct.dateLabel || '입소일') + '을 골라주세요', 'Please pick the ' + (ct.dateLabel || 'date')));
+    document.getElementById('cert-admit')?.focus();
+    return;
+  }
   const stmt = type === 'custom'
     ? ((document.getElementById('cert-custom')?.value || certCustomText || '').trim()
         || certT('위 사실을 증명합니다.','This certifies the above facts.'))
-    : ct.stmt;
+    : String(ct.stmt || '').replace('{d}', admitText);
 
   // 창은 클릭 직후에 열어야 한다. 서버에 물어본 뒤에 열면 팝업 차단에 걸린다.
   const win = window.open('', '_blank');
@@ -17708,9 +17768,10 @@ async function printCertificate() {
 
   const d = {
     lang: certLang, type, docLabel, sub: docSub,
-    name, birth, grade, school,
+    name, birth, grade, school, address,
     stmt, reason, date, rep, no: typedNo,
     orgName: org ? org.name : (school || ''),
+    orgAddress,
     orgLogo: org ? (org.logo_url || '') : '',
     sealUrl: seal ? seal.image_url : '',
   };
@@ -17721,8 +17782,8 @@ async function printCertificate() {
     const { data, error } = await sb.rpc('issue_certificate', { p: {
       community_id: CID(), cert_no: typedNo, lang: certLang, type, doc_label: docLabel, doc_sub: typedSub,
       student_id: certStudentId || null, student_name: name,
-      birth, grade, school, statement: stmt, reason, issue_date: date,
-      org_id: orgId || null, org_name: d.orgName, org_logo_url: d.orgLogo,
+      birth, grade, school, address, statement: stmt, reason, issue_date: date,
+      org_id: orgId || null, org_name: d.orgName, org_logo_url: d.orgLogo, org_address: orgAddress,
       rep, seal_url: d.sealUrl,
     }});
     if (error) throw error;
