@@ -745,8 +745,9 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
 </div>
 
 <!-- 공동체 선택 화면 -->
-<div id="community-select-screen" style="display:none;position:fixed;inset:0;z-index:150;background:var(--bg);flex-direction:column;align-items:center;justify-content:center;padding:24px">
-  <div style="max-width:640px;width:100%">
+<div id="community-select-screen" style="display:none;position:fixed;inset:0;z-index:150;background:var(--bg);flex-direction:column;align-items:center;justify-content:flex-start;padding:24px;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain">
+  <!-- margin:auto 0 → 짧으면 가운데, 길면 위부터 쌓이고 스크롤된다 (justify-content:center 는 넘칠 때 위가 잘린다) -->
+  <div style="max-width:640px;width:100%;margin:auto 0;flex-shrink:0">
     <div style="text-align:center;margin-bottom:36px">
       <img src="./tcs_logo.png" alt="TCS"
         style="width:72px;height:72px;object-fit:contain;margin-bottom:14px;opacity:.85"
@@ -754,7 +755,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
       <div style="font-size:26px;font-weight:700;color:var(--adeep);margin-bottom:6px" data-ko="공동체 선택" data-en="Select Community">공동체 선택</div>
       <div style="font-size:14px;color:var(--ink3)" data-ko="입장할 공동체를 선택해주세요" data-en="Choose a community to enter">입장할 공동체를 선택해주세요</div>
     </div>
-    <div id="community-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px;margin-bottom:24px"></div>
+    <div id="community-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:11px;margin-bottom:24px"></div>
     <div id="community-select-msg" style="text-align:center;font-size:13px;color:var(--ink3)"></div>
   </div>
 </div>
@@ -1832,11 +1833,15 @@ async function doSignIn() {
     // 각 공동체 관리자·교사·학생 등은 본인 소속 공동체로 바로 진입
     if (isSuperAdmin()) {
       const { data: multiCommunities } = await sb.from('communities').select('*').order('name');
-      if (multiCommunities && multiCommunities.length > 1) {
-        showCommunitySelect(multiCommunities);
-      } else {
-        enterApp();
+      const commList = multiCommunities || [];
+      // 지난번에 들어갔던 공동체가 아직 있으면 고르는 화면 없이 바로 들어간다.
+      // 공동체를 바꾸려면 앱 안의 🏛️ 공동체 전환을 쓰면 된다.
+      const lastOk = ME.community_id && commList.some(c => c.id === ME.community_id);
+      if (commList.length > 1 && !lastOk) {
+        showCommunitySelect(commList);
+        return;
       }
+      enterApp();
       return;
     }
 
@@ -1868,17 +1873,17 @@ function showCommunitySelect(communities) {
   const list = document.getElementById('community-list');
   list.innerHTML = communities.map(c => `
     <div onclick="enterCommunity('${c.id}')"
-      style="background:var(--surface);border:1.5px solid var(--border);border-radius:18px;
-      padding:20px 16px;text-align:center;cursor:pointer;transition:border-color .15s var(--ease-out),transform .15s var(--ease-out);
+      style="background:var(--surface);border:1.5px solid var(--border);border-radius:16px;
+      padding:14px 10px;text-align:center;cursor:pointer;transition:border-color .15s var(--ease-out),transform .15s var(--ease-out);
       border-top:4px solid ${c.color||'var(--accent)'}"
       onmouseover="this.style.borderColor='${c.color||'var(--accent)'}';hoverLift(this,'translateY(-2px)')"
       onmouseout="this.style.borderColor='var(--border)';this.style.borderTopColor='${c.color||'var(--accent)'}';this.style.transform=''">
-      <div style="position:relative;width:52px;height:52px;border-radius:12px;overflow:hidden;background:${c.color||'var(--accent)'};
-          display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:white;margin:0 auto 10px">
+      <div style="position:relative;width:44px;height:44px;border-radius:11px;overflow:hidden;background:${c.color||'var(--accent)'};
+          display:flex;align-items:center;justify-content:center;font-size:19px;font-weight:700;color:white;margin:0 auto 8px">
           ${(c.name||'?')[0]}${c.logo_url ? `<img src="${c.logo_url}" onerror="this.remove()" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover"/>` : ''}
         </div>
-      <div style="font-size:14px;font-weight:700;color:var(--ink);margin-bottom:4px">${c.name}</div>
-      ${c.description ? `<div style="font-size:11px;color:var(--ink3)">${c.description}</div>` : ''}
+      <div style="font-size:13.5px;font-weight:700;color:var(--ink);margin-bottom:3px;word-break:keep-all">${c.name}</div>
+      ${c.description ? `<div style="font-size:11px;color:var(--ink3);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${c.description}</div>` : ''}
     </div>`).join('');
 }
 
@@ -1887,6 +1892,8 @@ async function enterCommunity(communityId) {
   const { data: community } = await sb.from('communities').select('*').eq('id', communityId).single();
   if (community) ME.selectedCommunity = community;
   ME.community_id = communityId;   // ← 선택한 공동체를 활성 공동체로 설정 (데이터 격리)
+  // 다음 로그인 때 이 공동체로 바로 들어가도록 남겨 둔다
+  try { await sb.from('members').update({ community_id: communityId }).eq('id', ME.id); } catch(_) {}
   document.getElementById('community-select-screen').style.display = 'none';
   enterApp();
 }
