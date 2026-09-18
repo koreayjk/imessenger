@@ -13956,6 +13956,14 @@ function renderGisHome() {
 let _signStrokes = [];       // [[{x,y},...], ...] — 되돌리기용으로 획 단위로 들고 있는다
 let _signOnDone = null;
 
+// 맥북(터치 없는 맥)인지 — 트랙패드 안내를 그 사람한테만 보여준다
+function isMacTrackpad() {
+  try {
+    const p = navigator.platform || navigator.userAgent || '';
+    return /Mac/.test(p) && (navigator.maxTouchPoints || 0) < 2;
+  } catch (_) { return false; }
+}
+
 function openSignPad(onDone) {
   _signStrokes = [];
   _signOnDone = onDone || null;
@@ -13967,7 +13975,9 @@ function openSignPad(onDone) {
     <div style="background:var(--surface);border-radius:20px;width:100%;max-width:520px;box-shadow:0 24px 60px rgba(29,58,95,.25);overflow:hidden">
       <div style="padding:18px 22px;border-bottom:1px solid var(--border)">
         <div style="font-size:16px;font-weight:700">✍️ ${t('서명 그리기','Draw your signature')}</div>
-        <div style="font-size:12px;color:var(--ink3);margin-top:3px">${t('아래 칸에 서명하세요 — 손가락·애플펜슬·마우스 다 되고, 맥북 트랙패드는 꾹 누른 채로 움직이면 그려져요','Sign in the box below — finger, Apple Pencil, mouse, or a MacBook trackpad (press and hold while you move)')}</div>
+        <div style="font-size:12px;color:var(--ink3);margin-top:3px">${isMacTrackpad()
+          ? t('트랙패드를 꾹 누른 채로 움직이면 그려져요. 누르는 게 불편하면 아래 💡 를 펼쳐 보세요','Press and hold the trackpad while you move. If that feels awkward, open the 💡 tip below')
+          : t('아래 칸에 서명하세요 — 손가락·애플펜슬·마우스 다 됩니다','Sign in the box below — finger, Apple Pencil, or mouse')}</div>
       </div>
       <div style="padding:16px 18px">
         <div style="position:relative;border:1.5px dashed var(--border);border-radius:12px;background:#fff;overflow:hidden">
@@ -13975,7 +13985,16 @@ function openSignPad(onDone) {
           <div id="sign-hint" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#c3ccd9;font:600 15px var(--font);pointer-events:none">${t('여기에 서명','Sign here')}</div>
           <div style="position:absolute;left:24px;right:24px;bottom:48px;height:1px;background:#e6ebf2;pointer-events:none"></div>
         </div>
-        <div style="font-size:11.5px;color:var(--ink3);margin-top:7px;line-height:1.6">${t('트랙패드가 잘 안 그려지면 · 마음에 안 들면 → 종이에 서명해 사진을 찍고 아래 [그림 올리기] 로 올려도 돼요. 흰 배경은 자동으로 지워져요.','If the trackpad feels awkward, sign on paper, photograph it and use [Upload image] instead — the white background is removed automatically.')}</div>
+        ${isMacTrackpad() ? `<details style="margin-top:9px;background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:9px 12px">
+          <summary style="font-size:12px;font-weight:700;color:var(--ink2);cursor:pointer;list-style:none">${t('💡 클릭 안 하고 손가락만으로 그리고 싶다면','💡 Draw without clicking (MacBook trackpad)')}</summary>
+          <div style="font-size:11.5px;color:var(--ink3);line-height:1.75;margin-top:7px;word-break:keep-all">
+            ${t('맥 설정을 한 번 바꾸면 트랙패드를 누르지 않고 그릴 수 있어요.','One macOS setting lets you draw without pressing the trackpad.')}<br/>
+            <b style="color:var(--ink2)">${t('시스템 설정 → 손쉬운 사용 → 포인터 제어 → 트랙패드 옵션','System Settings → Accessibility → Pointer Control → Trackpad Options')}</b><br/>
+            ${t('→ [끌기 스타일] 을 <b>세 손가락 끌기</b> 로 바꾸면, 세 손가락을 얹고 움직이는 것만으로 그려집니다. 손가락을 떼면 획이 끝나요.','→ set [Dragging style] to <b>Three Finger Drag</b>. Then just rest three fingers and move — lifting them ends the stroke.')}<br/>
+            ${t('→ 또는 [끌기 스타일] 을 <b>탭하여 끌기</b> 로 하면, 한 번 톡 두드린 뒤 손가락을 움직이면 그려져요.','→ or set it to <b>Tap to Drag</b>: tap once, then move your finger.')}
+          </div>
+        </details>` : ''}
+        <div style="font-size:11.5px;color:var(--ink3);margin-top:7px;line-height:1.7;word-break:keep-all">${t('더 예쁘게 하려면 → ① 휴대폰·아이패드로 TCS 에 들어와 손가락으로 서명하기 (제일 잘 나와요) ② 종이에 서명해 사진 찍고 아래 [그림 올리기]. 흰 배경은 자동으로 지워져요.','For a nicer result → ① open TCS on your phone or iPad and sign with your finger (best result) ② sign on paper, photograph it and use [Upload image] — the white background is removed automatically.')}</div>
       </div>
       <div style="padding:12px 18px;border-top:1px solid var(--border);display:flex;gap:8px;align-items:center">
         <button onclick="signUndo()" style="height:38px;padding:0 13px;border-radius:10px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:600 12.5px var(--font);cursor:pointer">${t('↶ 한 획 지우기','↶ Undo')}</button>
