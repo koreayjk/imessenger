@@ -14245,9 +14245,14 @@ async function submitApprDoc(){
   apprDraft=null; apprSubMode='sent'; renderApprSubnav(); renderApprMain();
 }
 
+// 문서함에서 관리자가 공동체 전체를 볼지 (서버 정책도 관리자에게 전체 조회를 허용한다)
+let apprArchiveAll = true;
+function apprCanSeeAll() { return isCommunityAdmin(); }
+
 async function loadApprDocs(kind){
   let q = sb.from('approval_docs').select('*').eq('community_id', CID());
   if(kind==='sent') q = q.eq('submitter_id', ME.id);
+  else if(kind==='archive' && apprCanSeeAll() && apprArchiveAll) { /* 관리자: 전체 */ }
   else q = q.contains('participant_ids', [ME.id]);
   q = q.order('created_at', { ascending:false });
   const { data, error } = await q;
@@ -14270,6 +14275,12 @@ function apprMyRole(d) {
              : t('결재 차례','To approve'));
   }
   if (!roles.length && (d.shares||[]).some(x => String(x.member_id) === String(ME.id))) roles.push(t('공유받음','Shared'));
+  if (!roles.length) {
+    // 관리자가 남의 문서를 보는 경우 — 지금 누구 차례인지가 제일 궁금하다
+    const step = (d.line || [])[d.current_step || 0];
+    if (d.status === 'pending' && step && step.approver_name) return t(step.approver_name + ' 결재 대기', 'Waiting on ' + step.approver_name);
+    return '';
+  }
   return roles.join(' · ');
 }
 // 내가 결재한 날
@@ -14277,6 +14288,8 @@ function apprMyActedAt(d) {
   const mine = (d.line || []).find(a => String(a.approver_id) === String(ME.id));
   return (mine && mine.acted_at) ? String(mine.acted_at).slice(0,10) : '';
 }
+
+async function setApprArchiveAll(v) { apprArchiveAll = v; _apprCache = { kind:null, docs:[] }; await renderApprList('archive'); }
 
 let apprArchiveFilter = 'all';   // all | pending | approved | rejected
 let apprArchiveQ = '';
@@ -14317,7 +14330,13 @@ async function renderApprList(kind, useCache){
       style="height:28px;padding:0 12px;border-radius:99px;cursor:pointer;font:600 12px var(--font);white-space:nowrap;
       border:1.5px solid ${apprArchiveFilter===v?'#1d3a5f':'var(--border)'};
       background:${apprArchiveFilter===v?'#1d3a5f':'var(--surface)'};color:${apprArchiveFilter===v?'#fff':'var(--ink2)'}">${label} ${cnt[v]}</button>`;
-    chips = `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+    const scopeBtn = (v, label) => `<button onclick="setApprArchiveAll(${v})"
+      style="height:28px;padding:0 13px;border:none;border-radius:8px;cursor:pointer;font:600 12px var(--font);white-space:nowrap;
+      background:${apprArchiveAll===v?'#1d3a5f':'transparent'};color:${apprArchiveAll===v?'#fff':'var(--ink2)'}">${label}</button>`;
+    const scope = apprCanSeeAll() ? `<div style="display:inline-flex;gap:2px;background:var(--s2);border:1px solid var(--border);border-radius:9px;padding:3px;margin-bottom:10px">
+        ${scopeBtn(true, t('공동체 전체','Whole community'))}${scopeBtn(false, t('내 문서만','Mine only'))}
+      </div>` : '';
+    chips = scope + `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
         ${chip('all',t('전체','All'))}${chip('pending',t('진행 중','In progress'))}${chip('approved',t('승인','Approved'))}${chip('rejected',t('반려·취소','Rejected'))}
       </div>
       <input id="appr-arch-q" value="${escAttr(apprArchiveQ)}" oninput="apprArchiveSearch(this.value)"
@@ -14329,9 +14348,12 @@ async function renderApprList(kind, useCache){
     const q = apprArchiveQ.trim().toLowerCase();
     if (q) shown = shown.filter(d => [d.title, d.submitter_name, d.template_name]
       .some(v => String(v || '').toLowerCase().includes(q)));
-    hint = `<div style="font-size:12px;color:var(--ink3);margin-bottom:12px;line-height:1.7;word-break:keep-all">${t(
-      '내가 올렸거나 · 결재했거나 · 공유받은 문서가 모두 모입니다. 결재를 끝낸 문서도 여기서 다시 볼 수 있어요.',
-      'Everything you submitted, approved, or were shared on. Documents you already approved stay here.')}</div>`;
+    hint = `<div style="font-size:12px;color:var(--ink3);margin-bottom:12px;line-height:1.7;word-break:keep-all">${
+      (apprCanSeeAll() && apprArchiveAll)
+        ? t('관리자는 공동체의 모든 결재 문서를 볼 수 있습니다. 결재를 끝낸 문서도 여기 남아요.',
+            'Admins can see every approval document in the community, including ones already completed.')
+        : t('내가 올렸거나 · 결재했거나 · 공유받은 문서가 모두 모입니다. 결재를 끝낸 문서도 여기서 다시 볼 수 있어요.',
+            'Everything you submitted, approved, or were shared on. Documents you already approved stay here.')}</div>`;
   }
 
   const rows = shown.map(d => {
