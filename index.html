@@ -9060,7 +9060,10 @@ ${o.serif ? '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?fami
           i.addEventListener('load', res); i.addEventListener('error', res);
         }); });
       if (document.fonts && document.fonts.ready) wait.push(document.fonts.ready);
-      Promise.all(wait).then(function () { setTimeout(function () { try { window.print(); } catch (e) {} }, 120); });
+      Promise.all(wait).then(function () { setTimeout(function () {
+        if (window.__fitOnePage) { try { window.__fitOnePage(); } catch (e) {} }   // 한 장에 맞춰 줄일 게 있으면 지금
+        try { window.print(); } catch (e) {}
+      }, 120); });
     }
     if (document.readyState === 'complete') go();
     else window.addEventListener('load', go);
@@ -13964,14 +13967,15 @@ function openSignPad(onDone) {
     <div style="background:var(--surface);border-radius:20px;width:100%;max-width:520px;box-shadow:0 24px 60px rgba(29,58,95,.25);overflow:hidden">
       <div style="padding:18px 22px;border-bottom:1px solid var(--border)">
         <div style="font-size:16px;font-weight:700">✍️ ${t('서명 그리기','Draw your signature')}</div>
-        <div style="font-size:12px;color:var(--ink3);margin-top:3px">${t('아래 칸에 손가락이나 마우스로 서명하세요','Sign in the box below with your finger or mouse')}</div>
+        <div style="font-size:12px;color:var(--ink3);margin-top:3px">${t('아래 칸에 서명하세요 — 손가락·애플펜슬·마우스 다 되고, 맥북 트랙패드는 꾹 누른 채로 움직이면 그려져요','Sign in the box below — finger, Apple Pencil, mouse, or a MacBook trackpad (press and hold while you move)')}</div>
       </div>
       <div style="padding:16px 18px">
         <div style="position:relative;border:1.5px dashed var(--border);border-radius:12px;background:#fff;overflow:hidden">
-          <canvas id="sign-canvas" style="display:block;width:100%;height:190px;touch-action:none;cursor:crosshair"></canvas>
+          <canvas id="sign-canvas" style="display:block;width:100%;height:215px;touch-action:none;cursor:crosshair"></canvas>
           <div id="sign-hint" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#c3ccd9;font:600 15px var(--font);pointer-events:none">${t('여기에 서명','Sign here')}</div>
-          <div style="position:absolute;left:24px;right:24px;bottom:42px;height:1px;background:#e6ebf2;pointer-events:none"></div>
+          <div style="position:absolute;left:24px;right:24px;bottom:48px;height:1px;background:#e6ebf2;pointer-events:none"></div>
         </div>
+        <div style="font-size:11.5px;color:var(--ink3);margin-top:7px;line-height:1.6">${t('트랙패드가 잘 안 그려지면 · 마음에 안 들면 → 종이에 서명해 사진을 찍고 아래 [그림 올리기] 로 올려도 돼요. 흰 배경은 자동으로 지워져요.','If the trackpad feels awkward, sign on paper, photograph it and use [Upload image] instead — the white background is removed automatically.')}</div>
       </div>
       <div style="padding:12px 18px;border-top:1px solid var(--border);display:flex;gap:8px;align-items:center">
         <button onclick="signUndo()" style="height:38px;padding:0 13px;border-radius:10px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:600 12.5px var(--font);cursor:pointer">${t('↶ 한 획 지우기','↶ Undo')}</button>
@@ -13996,7 +14000,7 @@ function signBindCanvas() {
   c.height = Math.round(r.height * dpr);
   const ctx = c.getContext('2d');
   ctx.scale(dpr, dpr);
-  ctx.lineWidth = 2.4; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#14181f';
+  ctx.lineWidth = 2.7; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#14181f';
 
   let drawing = false, cur = null;
   const pos = (e) => {
@@ -14006,17 +14010,30 @@ function signBindCanvas() {
   };
   const start = (e) => {
     e.preventDefault(); drawing = true; cur = [pos(e)]; _signStrokes.push(cur);
+    // 트랙패드·마우스로 그리면 손이 칸 밖으로 잘 나간다 — 포인터를 붙잡아 획이 끊기지 않게
+    try { c.setPointerCapture(e.pointerId); } catch (_) {}
+    // 붙잡기가 안 먹는 브라우저 보험 — 창 어디서 손을 떼도 획을 닫는다 (그리는 동안만 달아 둔다)
+    window.addEventListener('pointerup', end);
     document.getElementById('sign-hint')?.remove();
   };
   const move = (e) => {
     if (!drawing) return;
     e.preventDefault();
-    const p = pos(e); cur.push(p); signRedraw();
+    const p = pos(e), last = cur[cur.length - 1];
+    // 1px 도 안 움직인 점은 버린다 (트랙패드 잔떨림이 선을 지저분하게 만든다)
+    if (last && Math.abs(p.x - last.x) + Math.abs(p.y - last.y) < 1.1) return;
+    cur.push(p); signRedraw();
   };
-  const end = () => { drawing = false; cur = null; };
+  const end = (e) => {
+    if (!drawing) return;
+    drawing = false; cur = null;
+    window.removeEventListener('pointerup', end);
+    try { if (e && e.pointerId != null) c.releasePointerCapture(e.pointerId); } catch (_) {}
+  };
 
   c.onpointerdown = start; c.onpointermove = move;
-  c.onpointerup = end; c.onpointerleave = end; c.onpointercancel = end;
+  c.onpointerup = end; c.onpointercancel = end;
+  c.onlostpointercapture = end;
 }
 
 function signRedraw() {
@@ -14026,13 +14043,21 @@ function signRedraw() {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, c.width, c.height);
   ctx.scale(dpr, dpr);
-  ctx.lineWidth = 2.4; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#14181f';
+  ctx.lineWidth = 2.7; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#14181f';
   _signStrokes.forEach(st => {
     if (!st.length) return;
     ctx.beginPath();
     if (st.length === 1) { ctx.arc(st[0].x, st[0].y, 1.2, 0, Math.PI * 2); ctx.fillStyle = '#14181f'; ctx.fill(); return; }
     ctx.moveTo(st[0].x, st[0].y);
-    for (let i = 1; i < st.length; i++) ctx.lineTo(st[i].x, st[i].y);
+    if (st.length === 2) ctx.lineTo(st[1].x, st[1].y);
+    else {
+      // 점과 점 사이를 중간점으로 이어 곡선으로 — 트랙패드로 그려도 손글씨처럼 보인다
+      for (let i = 1; i < st.length - 1; i++) {
+        ctx.quadraticCurveTo(st[i].x, st[i].y, (st[i].x + st[i+1].x) / 2, (st[i].y + st[i+1].y) / 2);
+      }
+      const e = st[st.length - 1];
+      ctx.quadraticCurveTo(e.x, e.y, e.x, e.y);
+    }
     ctx.stroke();
   });
 }
@@ -14178,6 +14203,8 @@ async function initApprovalPage() {
   apprDraft = null;
   const main = document.getElementById('approval-main');
   if (main) main.innerHTML = `<div style="text-align:center;padding:60px;color:var(--ink3);font-size:13px">${t('불러오는 중...','Loading...')}</div>`;
+  // 문서 머리에 찍을 기관 (기록부 기관 프리셋을 그대로 쓴다)
+  if (!tcsOrgs.length) { try { await loadRecordOrgs(); } catch(e){} }
   // 양식 로드
   try {
     const { data, error } = await sb.from('approval_templates').select('*').eq('community_id', CID()).order('sort').order('created_at');
@@ -14254,9 +14281,10 @@ function startApprCompose(id, builtin) {
   let fields = t.fields || [], items = t.items || {enabled:false}, fileUrl = null;
   if (t.kind === 'file') { fields = [{key:'body',label:'내용 / 작성 안내',type:'textarea'}]; items = {enabled:false}; fileUrl = t.file_url || null; }
   apprDraft = {
-    template: { name: t.name, kind: t.kind||'form', fields, items, dbId: builtin?null:t.id, fileUrl },
+    template: { name: t.name, kind: t.kind||'form', fields, items, dbId: builtin?null:t.id, srcId: id, fileUrl },
     items: items.enabled ? [{}] : [],
     attachments: [], line: [], shares: [],
+    orgId: tcsSelectedOrgId || (tcsOrgs[0] && tcsOrgs[0].id) || '',
   };
   renderApprMain();
 }
@@ -14278,6 +14306,7 @@ function renderApprCompose() {
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px">
         <div style="margin-bottom:12px"><label style="font-size:12px;font-weight:700;color:var(--ink3);display:block;margin-bottom:5px">${window.t('제목 *','Title *')}</label>
           <input id="appr-title" value="${escAttr(t.name)}" style="${apprInp}"/></div>
+        ${apprOrgPickerHtml()}
         ${t.fileUrl?`<div style="margin-bottom:12px;background:var(--s2);border:1px solid var(--border);border-radius:9px;padding:10px 12px;font-size:12.5px"><a href="${t.fileUrl}" target="_blank" style="color:var(--accent);font-weight:700">${window.t('📄 양식 파일 내려받기','📄 Download form file')}</a>${window.t(' — 작성한 파일을 아래 첨부에 올려주세요.',' — Attach your completed file below.')}</div>`:''}
         ${fieldsHtml}
         ${t.items.enabled?`<div style="margin-top:6px"><label style="font-size:12px;font-weight:700;color:var(--ink3);display:block;margin-bottom:6px">${window.t('내역','Items')}</label><div id="appr-items">${apprItemsHtml()}</div></div>`:''}
@@ -14422,7 +14451,9 @@ async function submitApprDoc(){
   if(!title){ showUploadToast(window.t('제목을 입력하세요','Please enter a title')); return; }
   if(!apprDraft.line.length){ showUploadToast(window.t('결재자를 1명 이상 지정하세요','Please add at least one approver')); return; }
   const t = apprDraft.template;
-  const form_data = { _fields: t.fields };
+  const form_data = { _fields: t.fields, _src: t.srcId || null };
+  const _org = tcsOrgs.find(o => o.id === (document.getElementById('appr-org')?.value || apprDraft.orgId));
+  if (_org) form_data._org = { id:_org.id, name:_org.name||'', logo:_org.logo_url||'', address:_org.address||'' };
   t.fields.forEach(f=>{ const el=document.getElementById('appr-f-'+f.key); if(el) form_data[f.key]=el.value; });
   if(t.items && t.items.enabled){ form_data._items = apprDraft.items.filter(r=>Object.values(r).some(v=>String(v||'').trim())); form_data._itemsMeta = t.items; }
   const line = apprDraft.line.map((a,i)=>({ order:i, approver_id:a.approver_id, approver_name:a.approver_name, status: i===0?'pending':'waiting', comment:'', acted_at:null }));
@@ -14680,41 +14711,234 @@ async function cancelApprDoc(id){
   showUploadToast(t('상신을 취소했어요','Submission canceled')); apprSubMode='sent'; await initApprovalPage();
 }
 
+// ── 결재 문서에 찍을 기관 ──────────────────────────────────────
+// 기록부에 등록해 둔 기관(record_orgs)을 그대로 쓴다 — 로고·이름·주소가 한 벌로 온다.
+function apprOrgPickerHtml(){
+  const lbl = 'font-size:12px;font-weight:700;color:var(--ink3);display:block;margin-bottom:5px';
+  if (!tcsOrgs.length) return `<div style="margin-bottom:12px;background:var(--s2);border:1px solid var(--border);border-radius:9px;padding:9px 12px;font-size:11.5px;color:var(--ink3);line-height:1.6">${window.t('문서 머리에 찍을 기관이 아직 없어요. TCS 관리 → 기록부 기관에서 로고·주소와 함께 등록하면 결재 문서 위쪽에 들어갑니다.','No issuing organization yet. Register one (logo and address) under TCS admin → Record organizations and it will be printed at the top of approval documents.')}</div>`;
+  const sel = apprDraft.orgId;
+  return `<div style="margin-bottom:12px"><label style="${lbl}">${window.t('발급 기관','Issuing organization')}</label>
+    <select id="appr-org" onchange="apprDraft.orgId=this.value" style="${apprInp}">
+      ${tcsOrgs.map(o=>`<option value="${o.id}" ${o.id===sel?'selected':''}>${escHtml(o.name)}</option>`).join('')}
+      <option value="" ${sel?'':'selected'}>${window.t('(공동체 이름 사용)','(Use community name)')}</option>
+    </select>
+    <div style="font-size:11.5px;color:var(--ink3);margin-top:4px">${window.t('로고·기관명·주소가 인쇄물 맨 위에 들어가요.','The logo, name and address are printed at the top of the document.')}</div>
+  </div>`;
+}
+// 문서에 박아 둔 기관 → 없으면 지금 고른 기관 → 없으면 공동체 이름
+function apprOrgOf(d){
+  const o = (d && d.form_data && d.form_data._org) || null;
+  if (o && (o.name || o.logo)) return { name:o.name||'', logo:o.logo||'', address:o.address||'' };
+  const p = printOrgInfo();
+  let addr = '';
+  try { const x = (tcsOrgs||[]).find(v => v.name === p.name); if (x) addr = x.address || ''; } catch(_){}
+  return { name:p.name||'', logo:p.logo||'', address:addr };
+}
+// 금액 한글 — 지출 서류는 '일금 ○○○원정' 이 있어야 서류다워진다
+function apprNumToKorean(n){
+  n = Math.floor(Math.abs(Number(n)||0));
+  if (!n) return '영';
+  const D=['','일','이','삼','사','오','육','칠','팔','구'], U=['','십','백','천'], B=['','만','억','조','경'];
+  let out='', bi=0;
+  while (n > 0 && bi < B.length) {
+    const chunk = n % 10000; n = Math.floor(n/10000);
+    if (chunk) {
+      let sfx='';
+      for (let i=0;i<4;i++){ const dg = Math.floor(chunk/Math.pow(10,i))%10; if (dg) sfx = D[dg]+U[i]+sfx; }
+      out = sfx + B[bi] + out;
+    }
+    bi++;
+  }
+  return out;
+}
+// 양식마다 맺음말이 다르다
+function apprClosingText(src, fd){
+  const expense = t('위와 같이 지출을 결의하오니 재가하여 주시기 바랍니다.','We hereby resolve the above expenditure and request your approval.');
+  if (src === 'builtin:expense') return expense;
+  if (src === 'builtin:leave')    return t('위와 같이 신청하오니 허가하여 주시기 바랍니다.','We hereby submit the above request and ask for your permission.');
+  if (src === 'builtin:proposal') return t('위와 같이 품의하오니 재가하여 주시기 바랍니다.','We hereby submit the above proposal for your approval.');
+  if (!src && fd && fd._itemsMeta && fd._itemsMeta.sumKey === 'amount') return expense;
+  return t('위와 같이 제출하오니 재가하여 주시기 바랍니다.','We hereby submit the above for your approval.');
+}
+function apprDateLine(iso){
+  const d = iso ? new Date(iso) : new Date();
+  if (isNaN(d.getTime())) return printToday();
+  if (APP_LANG === 'en') return d.toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'});
+  const z = n => String(n).padStart(2,'0');
+  return `${d.getFullYear()} 년 ${z(d.getMonth()+1)} 월 ${z(d.getDate())} 일`;
+}
+
 function printApprDoc(id){
   sb.from('approval_docs').select('*').eq('id',id).single().then(({data:d})=>{
     if(!d) return;
-    const fd=d.form_data||{};
-    const fieldsRows=(fd._fields||[]).filter(f=>String(fd[f.key]||'').trim()).map(f=>`<tr><th>${escHtml(f.label)}</th><td>${escHtml(fd[f.key])}</td></tr>`).join('');
-    let itemsTbl='';
-    if(fd._items && fd._itemsMeta && fd._items.length){ const it=fd._itemsMeta,cols=it.columns;
-      itemsTbl=`<table class="items"><thead><tr>${cols.map(c=>`<th>${c.label}</th>`).join('')}</tr></thead><tbody>${fd._items.map(r=>`<tr>${cols.map(c=>`<td class="${c.type==='number'?'r':''}">${escHtml(c.type==='number'?apprWon(r[c.key]||0):(r[c.key]||''))}</td>`).join('')}</tr>`).join('')}</tbody></table><div class="sum">${it.sumLabel}: ${apprWon((fd._items||[]).reduce((a,r)=>a+(Number(r[it.sumKey])||0),0))}</div>`; }
-    // 서명이 있으면 '승인' 글자 대신 서명을 찍는다 (한국 결재란 관행)
-    const lineBoxes=(d.line||[]).map(a=>`<div class="appr-box"><div class="al">${escHtml(a.approver_name)}</div><div class="ast ${a.status}">${
-      a.sign_url ? `<img class="asig" src="${imAttr(a.sign_url)}" onerror="this.remove()"/>`
-                 : (({approved:t('승인','Approved'),rejected:t('반려','Rejected'),pending:t('대기','Pending'),waiting:t('대기','Waiting')})[a.status]||'')
-    }</div><div class="ad">${a.acted_at?a.acted_at.slice(0,10):''}</div></div>`).join('');
+    const fd  = d.form_data || {};
+    const src = fd._src || '';
+    const org = apprOrgOf(d);
+    const line = d.line || [];
+
+    // ── 결재란 (문서 오른쪽 위) ──
+    const stWord = { approved:t('승인','Approved'), rejected:t('반려','Rejected'), pending:t('대기','Pending'), waiting:t('대기','Waiting') };
+    const signBox = line.length ? `<table class="asign">
+      <tr><td class="alab" rowspan="3">${t('결<br/>재','A<br/>P<br/>P')}</td>${line.map(a=>`<th>${escHtml(a.approver_name||'')}</th>`).join('')}</tr>
+      <tr>${line.map(a=>`<td class="acel ${a.status}">${
+        a.sign_url ? `<img src="${imAttr(a.sign_url)}" onerror="this.remove()"/>`
+                   : (a.status==='approved'||a.status==='rejected' ? stWord[a.status] : '')
+      }</td>`).join('')}</tr>
+      <tr>${line.map(a=>`<td class="adt">${a.acted_at?String(a.acted_at).slice(0,10).replace(/-/g,'.').slice(2):''}</td>`).join('')}</tr>
+    </table>` : '';
+
+    // ── 머리글: 기관 + 결재란 ──
+    const head = `<div class="ahead">
+      <div class="ho">
+        ${org.logo?`<img class="hlogo" src="${imAttr(org.logo)}" onerror="this.remove()"/>`:''}
+        <div class="hot"><div class="hname">${escHtml(org.name)}</div>${org.address?`<div class="haddr">${escHtml(org.address)}</div>`:''}</div>
+      </div>
+      ${signBox}
+    </div>`;
+
+    // ── 제목 + 문서 정보 ── (완결 안 된 문서는 제목 옆에 상태 도장을 찍는다)
+    const wmWord = { pending:t('진행 중','IN PROGRESS'), rejected:t('반 려','REJECTED'), canceled:t('회 수','WITHDRAWN') }[d.status] || '';
+    const wm = wmWord ? `<div class="awmrow"><span class="awm">${escHtml(wmWord)}</span></div>` : '';
+    const docNo = `${String(d.created_at||'').slice(0,10).replace(/-/g,'')}-${String(d.id||'').replace(/-/g,'').slice(0,4).toUpperCase()}`;
+    const titleHtml = `${wm}<div class="atitle"><h1>${escHtml(d.title||'')}</h1></div>
+      <table class="ameta"><tr>
+        <th>${t('문서번호','Doc. No.')}</th><td>${escHtml(docNo)}</td>
+        <th>${t('상신일','Date')}</th><td>${String(d.created_at||'').slice(0,10).replace(/-/g,'. ')}</td>
+        <th>${t('상신자','Submitted by')}</th><td>${escHtml(d.submitter_name||'')}</td>
+      </tr></table>`;
+
+    // ── 본문 항목: 짧은 건 두 칸씩, 긴 글은 한 줄 통째로 ──
+    const fields  = (fd._fields||[]).filter(f => String(fd[f.key]||'').trim());
+    const shortF  = fields.filter(f => f.type !== 'textarea');
+    const longF   = fields.filter(f => f.type === 'textarea');
+    let rows = '';
+    for (let i=0;i<shortF.length;i+=2){
+      const a = shortF[i], b = shortF[i+1];
+      rows += `<tr><th>${escHtml(a.label)}</th><td${b?'':' colspan="3"'}>${escHtml(fd[a.key])}</td>`
+            + (b?`<th>${escHtml(b.label)}</th><td>${escHtml(fd[b.key])}</td>`:'') + `</tr>`;
+    }
+    rows += longF.map(f=>`<tr><th>${escHtml(f.label)}</th><td colspan="3" class="wrap">${escHtml(fd[f.key])}</td></tr>`).join('');
+    const fieldsTbl = rows ? `<table class="ftbl"><colgroup><col style="width:20%"/><col style="width:30%"/><col style="width:20%"/><col style="width:30%"/></colgroup><tbody>${rows}</tbody></table>` : '';
+
+    // ── 내역 표 + 합계 + 일금 ──
+    let itemsTbl = '', wonLine = '';
+    if (fd._items && fd._itemsMeta && fd._items.length){
+      const it = fd._itemsMeta, cols = it.columns || [];
+      const total = fd._items.reduce((a,r)=>a+(Number(r[it.sumKey])||0),0);
+      const sumIdx = cols.findIndex(c => c.key === it.sumKey);
+      const body = fd._items.map((r,i)=>`<tr><td class="c">${i+1}</td>${cols.map(c=>`<td class="${c.type==='number'?'r':''}">${escHtml(c.type==='number'?apprWon(r[c.key]||0):(r[c.key]||''))}</td>`).join('')}</tr>`).join('');
+      const totRow = (sumIdx === cols.length-1)
+        ? `<tr class="tot"><td class="c" colspan="${cols.length}">${escHtml(it.sumLabel||t('합 계','Total'))}</td><td class="r">${apprWon(total)}</td></tr>`
+        : `<tr class="tot"><td class="c" colspan="${sumIdx+1}">${escHtml(it.sumLabel||t('합 계','Total'))}</td><td class="r">${apprWon(total)}</td>${'<td></td>'.repeat(Math.max(0, cols.length-sumIdx-1))}</tr>`;
+      itemsTbl = `<div class="asec">${escHtml(t('내 역','Details'))}</div>
+        <table class="items"><thead><tr><th class="no">No</th>${cols.map(c=>`<th${c.type==='number'?' class="amt"':''}>${escHtml(c.label)}</th>`).join('')}</tr></thead>
+        <tbody>${body}${totRow}</tbody></table>`;
+      wonLine = APP_LANG === 'en'
+        ? `<div class="won">Total <b>${apprWon(total)}</b></div>`
+        : `<div class="won">일금 <b>${apprNumToKorean(total)}원정</b> (${apprWon(total)})</div>`;
+    }
+
+    // ── 결재 의견 / 반려 사유 ──
+    const notes = line.filter(a => String(a.comment||'').trim());
+    const notesHtml = notes.length ? `<div class="asec">${escHtml(t('결재 의견','Approver comments'))}</div><table class="ftbl"><colgroup><col style="width:20%"/><col/></colgroup><tbody>${
+      notes.map(a=>`<tr><th>${escHtml(a.approver_name||'')}${a.status==='rejected'?` (${t('반려','Rejected')})`:''}</th><td class="wrap">${escHtml(a.comment)}</td></tr>`).join('')
+    }</tbody></table>` : '';
+
+    // ── 맺음말 + 신청인 ──
+    const closing = `<div class="aclose">
+      <div class="cstmt">${escHtml(apprClosingText(src, fd))}</div>
+      <div class="cdate">${escHtml(apprDateLine(d.created_at))}</div>
+      <div class="csig">${t('신 청 인','Applicant')} <b>${escHtml(d.submitter_name||'')}</b> <span class="pseal">${t('인','S')}</span></div>
+    </div>`;
+
+    const att = (d.attachments||[]).length
+      ? `<div class="att"><b>${t('첨부','Attachments')}</b> ${d.attachments.map(f=>escHtml(f.name)).join(' · ')}</div>` : '';
+
+    // 한 장에 딱 맞춘다 — 넘치면 인쇄 직전에 조금씩 줄인다
+    const fitJs = `<script>
+window.__fitOnePage = function(){
+  try{
+    var box = document.getElementById('afit'); if(!box) return;
+    box.style.zoom = '';
+    var probe = document.createElement('div');
+    probe.style.cssText = 'position:absolute;left:-9999px;top:0;width:1mm;height:100mm';
+    document.body.appendChild(probe);
+    var mmPx = probe.offsetHeight / 100; probe.remove();
+    if (!mmPx) return;
+    var pf = document.querySelector('.pf');
+    var foot = pf ? (pf.offsetHeight + 8 * mmPx) : 0;
+    var avail = 264 * mmPx - foot;
+    var h = box.offsetHeight;
+    if (h > avail && avail > 0) box.style.zoom = Math.max(0.55, avail / h);
+  } catch(e){}
+};
+window.addEventListener('load', function(){ window.__fitOnePage(); });
+<\/script>`;
+
     openPrintDoc({
-      title: d.title, docTitle: d.title,
-      subtitle: `${escHtml(d.template_name||'')} · ${t('상신','By')} ${escHtml(d.submitter_name||'')} · ${(d.created_at||'').slice(0,10)}`,
-      body: `<div class="appr-line">${lineBoxes}</div>
-        ${fieldsRows?`<table class="fields">${fieldsRows}</table>`:''}
-        ${itemsTbl}
-        ${(d.attachments||[]).length?`<div class="att">${t('첨부','Attachments')}: ${d.attachments.map(f=>escHtml(f.name)).join(', ')}</div>`:''}`,
-      footerNote: t('전자결재','Approval'),
+      title: d.title,
+      letterhead: false,          // 머리글을 직접 그린다 (결재란이 같은 줄에 온다)
+      margin: '13mm 14mm 13mm',
+      body: `<div id="afit">${head}${titleHtml}${fieldsTbl}${itemsTbl}${wonLine}${notesHtml}${closing}${att}</div>${fitJs}`,
+      footerNote: `${d.template_name||''} · ${t('전자결재','Electronic approval')} · ${docNo}`,   // buildPrintDoc 이 다시 escape 한다
       extraCss: `
-        .appr-line { display: flex; gap: 6px; justify-content: flex-end; margin-bottom: 6mm; }
-        .appr-box { border: 1px solid #40506b; width: 76px; text-align: center; font-size: 8.5pt; }
-        .appr-box .al { border-bottom: 1px solid #40506b; padding: 3px 0; background: #eef2f8; font-weight: 700; }
-        .appr-box .ast { padding: 9px 0; font-weight: 700; height: 34px; box-sizing: border-box;
-                         display: flex; align-items: center; justify-content: center; }
-        .appr-box .ast .asig { max-width: 68px; max-height: 30px; object-fit: contain; }
-        .appr-box .ast.approved { color: #15803d; } .appr-box .ast.rejected { color: #c0392b; }
-        table.fields th { width: 124px; text-align: left; }
-        table.fields td { text-align: left; }
-        table.items th { background: #1d3a5f; color: #fff; }
-        table.items td.r, table.items th:last-child { text-align: right; }
-        .sum { text-align: right; font-weight: 800; font-size: 12pt; margin-bottom: 4mm; }
-        .att { font-size: 9pt; color: #5b6577; margin-top: 4mm; }`,
+        #afit { position: relative; }
+        /* ── 머리글 ── */
+        .ahead { display: flex; align-items: flex-start; justify-content: space-between; gap: 12mm;
+                 border-bottom: 2.5px solid #1d3a5f; padding-bottom: 3mm; margin-bottom: 1mm; break-inside: avoid; }
+        .ho { display: flex; align-items: center; gap: 9px; min-width: 0; padding-top: 2px; }
+        .hlogo { height: 34px; max-width: 120px; object-fit: contain; }
+        .hname { font-size: 13pt; font-weight: 800; color: #1d3a5f; letter-spacing: .03em; line-height: 1.25; }
+        .haddr { font-size: 8.5pt; color: #5b6577; line-height: 1.4; margin-top: 1px; }
+        /* ── 결재란 ── */
+        table.asign { width: auto; border-collapse: collapse; margin: 0; flex-shrink: 0; }
+        table.asign th, table.asign td { border: 1px solid #40506b; padding: 0; }
+        .asign .alab { width: 18px; background: #eef2f8; color: #1d3a5f; font-size: 8pt; font-weight: 800;
+                       text-align: center; line-height: 1.3; }
+        .asign th { min-width: 58px; max-width: 78px; background: #eef2f8; color: #1d3a5f;
+                    font-size: 8.5pt; font-weight: 700; text-align: center; padding: 2px 4px; }
+        .asign .acel { height: 34px; text-align: center; font-size: 8.5pt; font-weight: 700; color: #8695ad; }
+        .asign .acel.approved { color: #15803d; } .asign .acel.rejected { color: #c0392b; }
+        .asign .acel img { max-width: 70px; max-height: 30px; object-fit: contain; vertical-align: middle; }
+        .asign .adt { height: 15px; text-align: center; font-size: 7.5pt; color: #5b6577; }
+        /* ── 제목 ── */
+        .atitle { text-align: center; margin: 4mm 0 4mm; break-after: avoid; }
+        .atitle h1 { font-size: 21pt; font-weight: 800; letter-spacing: .28em; text-indent: .28em; color: #14181f; }
+        table.ameta { width: 100%; border-collapse: collapse; margin: 0 0 4mm; }
+        .ameta th, .ameta td { border: 1px solid #c3cddb; padding: 3px 8px; font-size: 9pt; }
+        .ameta th { background: #f4f7fb; color: #40506b; font-weight: 700; width: 13%; white-space: nowrap; text-align: center; }
+        .ameta td { text-align: center; color: #14181f; }
+        /* ── 항목 표 ── */
+        table.ftbl { width: 100%; border-collapse: collapse; margin: 0 0 4mm; }
+        .ftbl th, .ftbl td { border: 1px solid #c3cddb; padding: 5px 9px; font-size: 10pt; vertical-align: middle; }
+        .ftbl th { background: #f4f7fb; color: #1d3a5f; font-weight: 700; text-align: center; }
+        .ftbl td { text-align: left; }
+        .ftbl td.wrap { white-space: pre-wrap; line-height: 1.6; vertical-align: top; }
+        /* ── 내역 ── */
+        .asec { font-size: 10.5pt; font-weight: 800; color: #1d3a5f; margin: 0 0 1.5mm;
+                padding-left: 7px; border-left: 3px solid #1d3a5f; break-after: avoid; }
+        table.items { width: 100%; border-collapse: collapse; margin: 0 0 2mm; }
+        .items th, .items td { border: 1px solid #c3cddb; padding: 4px 8px; font-size: 10pt; }
+        .items thead th { background: #1d3a5f; color: #fff; font-weight: 700; text-align: center; }
+        .items th.no { width: 30px; } .items th.amt { width: 24%; }
+        .items td.c { text-align: center; } .items td.r { text-align: right; }
+        .items tr.tot td { background: #f4f7fb; font-weight: 800; color: #1d3a5f; }
+        .won { text-align: right; font-size: 11pt; margin: 0 0 5mm; letter-spacing: .01em; }
+        .won b { font-weight: 800; color: #14181f; }
+        /* ── 맺음말 ── */
+        .aclose { text-align: center; margin: 7mm 0 0; break-inside: avoid; }
+        .cstmt { font-size: 11pt; letter-spacing: .02em; }
+        .cdate { font-size: 11pt; margin-top: 6mm; letter-spacing: .08em; }
+        .csig  { font-size: 11pt; margin-top: 4mm; letter-spacing: .06em; }
+        .csig b { font-weight: 800; margin: 0 4px; letter-spacing: .12em; }
+        .att { font-size: 9pt; color: #5b6577; margin-top: 6mm; padding-top: 3px; border-top: 1px dashed #c3cddb; }
+        .att b { color: #40506b; }
+        /* ── 상태 도장 (완결 전 문서만) ── */
+        .awmrow { text-align: right; margin: 4mm 2mm 0 0; break-after: avoid; }
+        .awm { display: inline-block; transform: rotate(-11deg);
+               border: 2.5px solid #c0392b; border-radius: 5px; padding: 2px 11px;
+               color: #c0392b; font-size: 12.5pt; font-weight: 800; letter-spacing: .12em;
+               white-space: nowrap; opacity: .88; }`,
     });
   });
 }
