@@ -14012,7 +14012,7 @@ function apprSubnavHtml() {
     return `<button onclick="setApprSubMode('${m}')" style="height:30px;padding:0 13px;border:none;border-radius:8px;font:600 12px var(--font);cursor:pointer;background:${on?'#1d3a5f':'transparent'};color:${on?'#fff':'var(--ink2)'};display:inline-flex;align-items:center;gap:5px">${label}${badge?`<span style="background:#e53935;color:#fff;font-size:10px;font-weight:700;border-radius:99px;min-width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;padding:0 4px">${badge}</span>`:''}</button>`;
   };
   return `<div style="display:inline-flex;gap:2px;background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:3px">
-    ${tab('new',t('＋ 새 결재','＋ New'))}${tab('inbox',t('결재 대기','Inbox'), apprInboxCount||0)}${tab('sent',t('내 상신함','Sent'))}${tab('shared',t('공유 문서','Shared'))}${tab('templates',t('양식 관리','Forms'))}
+    ${tab('new',t('＋ 새 결재','＋ New'))}${tab('inbox',t('결재 대기','Inbox'), apprInboxCount||0)}${tab('sent',t('내 상신함','Sent'))}${tab('archive',t('📁 문서함','📁 Archive'))}${tab('shared',t('공유 문서','Shared'))}${tab('templates',t('양식 관리','Forms'))}
   </div>`;
 }
 function renderApprSubnav() { const sn = document.getElementById('subnav-approval'); if (sn) sn.innerHTML = apprSubnavHtml(); }
@@ -14255,18 +14255,86 @@ async function loadApprDocs(kind){
   let docs = data || [];
   if(kind==='inbox') docs = docs.filter(d => d.status==='pending' && d.line[d.current_step] && d.line[d.current_step].approver_id===ME.id);
   if(kind==='shared') docs = docs.filter(d => d.status==='approved' && (d.shares||[]).some(s=>s.member_id===ME.id) && d.submitter_id!==ME.id);
+  // 문서함은 거르지 않는다 — 내가 올렸든 결재했든 공유받았든 전부
   return { docs };
 }
 
-async function renderApprList(kind){
+// 이 문서에서 내가 뭘 했나
+function apprMyRole(d) {
+  const roles = [];
+  if (d.submitter_id === ME.id) roles.push(t('상신','Submitted'));
+  const mine = (d.line || []).find(a => String(a.approver_id) === String(ME.id));
+  if (mine) {
+    roles.push(mine.status === 'approved' ? t('결재함','Approved')
+             : mine.status === 'rejected' ? t('반려함','Rejected')
+             : t('결재 차례','To approve'));
+  }
+  if (!roles.length && (d.shares||[]).some(x => String(x.member_id) === String(ME.id))) roles.push(t('공유받음','Shared'));
+  return roles.join(' · ');
+}
+// 내가 결재한 날
+function apprMyActedAt(d) {
+  const mine = (d.line || []).find(a => String(a.approver_id) === String(ME.id));
+  return (mine && mine.acted_at) ? String(mine.acted_at).slice(0,10) : '';
+}
+
+let apprArchiveFilter = 'all';   // all | pending | approved | rejected
+let apprArchiveQ = '';
+// 한 글자 칠 때마다 DB 를 다시 부르면 느리고, 다시 그리는 사이 입력칸 커서가 날아간다.
+// 받아 둔 목록으로만 다시 그린다.
+let _apprCache = { kind: null, docs: [] };
+async function setApprArchiveFilter(v) { apprArchiveFilter = v; await renderApprList('archive', true); }
+async function apprArchiveSearch(v) {
+  apprArchiveQ = v;
+  await renderApprList('archive', true);
+  const el = document.getElementById('appr-arch-q');
+  if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
+}
+
+async function renderApprList(kind, useCache){
   const main = document.getElementById('approval-main');
-  main.innerHTML = `<div style="text-align:center;padding:50px;color:var(--ink3);font-size:13px">${t('불러오는 중...','Loading...')}</div>`;
-  const r = await loadApprDocs(kind);
-  if(r.missing){ apprTblMissing=true; main.innerHTML=apprSetupHtml(); return; }
-  const docs = r.docs;
-  const title = { inbox:t('결재 대기','Inbox'), sent:t('내 상신함','Sent'), shared:t('공유 문서','Shared') }[kind];
-  const empty = { inbox:t('결재할 문서가 없어요.','No documents to approve.'), sent:t('상신한 문서가 없어요.','No submitted documents.'), shared:t('공유받은 문서가 없어요.','No shared documents.') }[kind];
-  const rows = docs.map(d => {
+  let docs;
+  if (useCache && _apprCache.kind === kind) {
+    docs = _apprCache.docs;                       // 거르기·찾기는 받아 둔 것으로
+  } else {
+    main.innerHTML = `<div style="text-align:center;padding:50px;color:var(--ink3);font-size:13px">${t('불러오는 중...','Loading...')}</div>`;
+    const r = await loadApprDocs(kind);
+    if(r.missing){ apprTblMissing=true; main.innerHTML=apprSetupHtml(); return; }
+    docs = r.docs;
+    _apprCache = { kind, docs };
+  }
+  const title = { inbox:t('결재 대기','Inbox'), sent:t('내 상신함','Sent'), shared:t('공유 문서','Shared'), archive:t('📁 문서함','📁 Archive') }[kind];
+  const empty = { inbox:t('결재할 문서가 없어요.','No documents to approve.'), sent:t('상신한 문서가 없어요.','No submitted documents.'), shared:t('공유받은 문서가 없어요.','No shared documents.'), archive:t('아직 관련된 문서가 없어요.','No documents yet.') }[kind];
+
+  // ── 문서함: 상태로 거르고 제목·상신자로 찾는다 ──
+  let shown = docs, chips = '', hint = '';
+  if (kind === 'archive') {
+    const cnt = { all: docs.length,
+      pending:  docs.filter(d => d.status === 'pending').length,
+      approved: docs.filter(d => d.status === 'approved').length,
+      rejected: docs.filter(d => ['rejected','canceled'].includes(d.status)).length };
+    const chip = (v, label) => `<button onclick="setApprArchiveFilter('${v}')"
+      style="height:28px;padding:0 12px;border-radius:99px;cursor:pointer;font:600 12px var(--font);white-space:nowrap;
+      border:1.5px solid ${apprArchiveFilter===v?'#1d3a5f':'var(--border)'};
+      background:${apprArchiveFilter===v?'#1d3a5f':'var(--surface)'};color:${apprArchiveFilter===v?'#fff':'var(--ink2)'}">${label} ${cnt[v]}</button>`;
+    chips = `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+        ${chip('all',t('전체','All'))}${chip('pending',t('진행 중','In progress'))}${chip('approved',t('승인','Approved'))}${chip('rejected',t('반려·취소','Rejected'))}
+      </div>
+      <input id="appr-arch-q" value="${escAttr(apprArchiveQ)}" oninput="apprArchiveSearch(this.value)"
+        placeholder="${t('제목이나 상신자로 찾기','Search by title or submitter')}"
+        style="width:100%;box-sizing:border-box;height:36px;padding:0 12px;border:1.5px solid var(--border);border-radius:10px;font:13px var(--font);outline:none;margin-bottom:12px"/>`;
+    if (apprArchiveFilter === 'pending')  shown = docs.filter(d => d.status === 'pending');
+    if (apprArchiveFilter === 'approved') shown = docs.filter(d => d.status === 'approved');
+    if (apprArchiveFilter === 'rejected') shown = docs.filter(d => ['rejected','canceled'].includes(d.status));
+    const q = apprArchiveQ.trim().toLowerCase();
+    if (q) shown = shown.filter(d => [d.title, d.submitter_name, d.template_name]
+      .some(v => String(v || '').toLowerCase().includes(q)));
+    hint = `<div style="font-size:12px;color:var(--ink3);margin-bottom:12px;line-height:1.7;word-break:keep-all">${t(
+      '내가 올렸거나 · 결재했거나 · 공유받은 문서가 모두 모입니다. 결재를 끝낸 문서도 여기서 다시 볼 수 있어요.',
+      'Everything you submitted, approved, or were shared on. Documents you already approved stay here.')}</div>`;
+  }
+
+  const rows = shown.map(d => {
     const approved = (d.line||[]).filter(a=>a.status==='approved').length;
     const prog = `${approved}/${(d.line||[]).length}`;
     return `<div onclick="openApprDoc('${d.id}')" style="display:flex;align-items:center;gap:12px;padding:13px 15px;border:1px solid var(--border);border-radius:12px;margin-bottom:9px;background:var(--surface);cursor:pointer"
@@ -14275,6 +14343,7 @@ async function renderApprList(kind){
       <div style="flex:1;min-width:0">
         <div style="font-size:14px;font-weight:700;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(d.title)}</div>
         <div style="font-size:11.5px;color:var(--ink3)">${escHtml(d.template_name||'')} · ${t('상신','By')} ${escHtml(d.submitter_name||'')} · ${(d.created_at||'').slice(0,10)}</div>
+        ${kind==='archive' ? `<div style="font-size:11px;color:var(--adeep);font-weight:600;margin-top:2px">${apprMyRole(d)}${apprMyActedAt(d)?` · ${apprMyActedAt(d)}`:''}</div>` : ''}
       </div>
       <div style="text-align:right;flex-shrink:0">
         ${apprStatusBadge(d.status)}
@@ -14283,8 +14352,10 @@ async function renderApprList(kind){
     </div>`;
   }).join('');
   main.innerHTML = `<div style="max-width:900px;margin:0 auto">
-    <div style="font-size:16px;font-weight:800;color:var(--ink);margin-bottom:14px">${title} <span style="font-size:12px;color:var(--ink3)">${docs.length}${t('건',' items')}</span></div>
-    ${docs.length ? rows : `<div style="text-align:center;padding:50px;color:var(--ink3);font-size:13px">${empty}</div>`}
+    <div style="font-size:16px;font-weight:800;color:var(--ink);margin-bottom:${kind==='archive'?'8px':'14px'}">${title} <span style="font-size:12px;color:var(--ink3)">${shown.length}${t('건',' items')}</span></div>
+    ${hint}${chips}
+    ${shown.length ? rows : `<div style="text-align:center;padding:50px;color:var(--ink3);font-size:13px">${
+      kind==='archive' && (apprArchiveQ || apprArchiveFilter!=='all') ? t('조건에 맞는 문서가 없어요.','No documents match.') : empty}</div>`}
   </div>`;
 }
 
