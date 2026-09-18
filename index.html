@@ -5793,6 +5793,8 @@ async function renderProfilePage() {
         </div>
       </div>
 
+      ${mySignatureCardHtml()}
+
       ${!isStudent() ? `
       <!-- 학교 정보 (교사/관리자만) -->
       <div class="adm-card" style="margin-bottom:16px">
@@ -13944,6 +13946,195 @@ function renderGisHome() {
   </div>`;
 }
 
+// ══════════════════════════════════════════════════════════════════
+//  개인 서명(싸인)
+//   프로필에 한 번 그려 두면 전자결재 승인 때 결재란에 자동으로 찍힌다.
+// ══════════════════════════════════════════════════════════════════
+let _signStrokes = [];       // [[{x,y},...], ...] — 되돌리기용으로 획 단위로 들고 있는다
+let _signOnDone = null;
+
+function openSignPad(onDone) {
+  _signStrokes = [];
+  _signOnDone = onDone || null;
+  document.getElementById('sign-modal')?.remove();
+  const m = document.createElement('div');
+  m.id = 'sign-modal';
+  m.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:16px';
+  m.innerHTML = `
+    <div style="background:var(--surface);border-radius:20px;width:100%;max-width:520px;box-shadow:0 24px 60px rgba(29,58,95,.25);overflow:hidden">
+      <div style="padding:18px 22px;border-bottom:1px solid var(--border)">
+        <div style="font-size:16px;font-weight:700">✍️ ${t('서명 그리기','Draw your signature')}</div>
+        <div style="font-size:12px;color:var(--ink3);margin-top:3px">${t('아래 칸에 손가락이나 마우스로 서명하세요','Sign in the box below with your finger or mouse')}</div>
+      </div>
+      <div style="padding:16px 18px">
+        <div style="position:relative;border:1.5px dashed var(--border);border-radius:12px;background:#fff;overflow:hidden">
+          <canvas id="sign-canvas" style="display:block;width:100%;height:190px;touch-action:none;cursor:crosshair"></canvas>
+          <div id="sign-hint" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#c3ccd9;font:600 15px var(--font);pointer-events:none">${t('여기에 서명','Sign here')}</div>
+          <div style="position:absolute;left:24px;right:24px;bottom:42px;height:1px;background:#e6ebf2;pointer-events:none"></div>
+        </div>
+      </div>
+      <div style="padding:12px 18px;border-top:1px solid var(--border);display:flex;gap:8px;align-items:center">
+        <button onclick="signUndo()" style="height:38px;padding:0 13px;border-radius:10px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:600 12.5px var(--font);cursor:pointer">${t('↶ 한 획 지우기','↶ Undo')}</button>
+        <button onclick="signClear()" style="height:38px;padding:0 13px;border-radius:10px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:600 12.5px var(--font);cursor:pointer">${t('전부 지우기','Clear')}</button>
+        <div style="flex:1"></div>
+        <button onclick="document.getElementById('sign-modal').remove()" style="height:38px;padding:0 15px;border-radius:10px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:600 13px var(--font);cursor:pointer">${t('취소','Cancel')}</button>
+        <button onclick="signSave()" style="height:38px;padding:0 20px;border-radius:10px;border:none;background:var(--accent);color:#fff;font:700 13px var(--font);cursor:pointer">${t('저장','Save')}</button>
+      </div>
+    </div>`;
+  m.addEventListener('click', e => { if (e.target === m) m.remove(); });
+  document.body.appendChild(m);
+  signBindCanvas();
+}
+
+function signBindCanvas() {
+  const c = document.getElementById('sign-canvas');
+  if (!c) return;
+  // 화면 배율만큼 크게 잡아야 선이 뭉개지지 않는다
+  const dpr = Math.min(window.devicePixelRatio || 1, 3);
+  const r = c.getBoundingClientRect();
+  c.width = Math.round(r.width * dpr);
+  c.height = Math.round(r.height * dpr);
+  const ctx = c.getContext('2d');
+  ctx.scale(dpr, dpr);
+  ctx.lineWidth = 2.4; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#14181f';
+
+  let drawing = false, cur = null;
+  const pos = (e) => {
+    const b = c.getBoundingClientRect();
+    const p = e.touches ? e.touches[0] : e;
+    return { x: p.clientX - b.left, y: p.clientY - b.top };
+  };
+  const start = (e) => {
+    e.preventDefault(); drawing = true; cur = [pos(e)]; _signStrokes.push(cur);
+    document.getElementById('sign-hint')?.remove();
+  };
+  const move = (e) => {
+    if (!drawing) return;
+    e.preventDefault();
+    const p = pos(e); cur.push(p); signRedraw();
+  };
+  const end = () => { drawing = false; cur = null; };
+
+  c.onpointerdown = start; c.onpointermove = move;
+  c.onpointerup = end; c.onpointerleave = end; c.onpointercancel = end;
+}
+
+function signRedraw() {
+  const c = document.getElementById('sign-canvas'); if (!c) return;
+  const dpr = Math.min(window.devicePixelRatio || 1, 3);
+  const ctx = c.getContext('2d');
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, c.width, c.height);
+  ctx.scale(dpr, dpr);
+  ctx.lineWidth = 2.4; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#14181f';
+  _signStrokes.forEach(st => {
+    if (!st.length) return;
+    ctx.beginPath();
+    if (st.length === 1) { ctx.arc(st[0].x, st[0].y, 1.2, 0, Math.PI * 2); ctx.fillStyle = '#14181f'; ctx.fill(); return; }
+    ctx.moveTo(st[0].x, st[0].y);
+    for (let i = 1; i < st.length; i++) ctx.lineTo(st[i].x, st[i].y);
+    ctx.stroke();
+  });
+}
+
+function signUndo() { _signStrokes.pop(); signRedraw(); }
+function signClear() { _signStrokes = []; signRedraw(); }
+
+// 그린 부분만 잘라내어 투명 PNG 로 만든다 (여백이 붙으면 결재란에서 작게 보인다)
+function signToBlob() {
+  const c = document.getElementById('sign-canvas');
+  if (!c || !_signStrokes.some(s => s.length)) return null;
+  const dpr = Math.min(window.devicePixelRatio || 1, 3);
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  _signStrokes.forEach(st => st.forEach(p => {
+    if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
+  }));
+  const pad = 6;
+  minX = Math.max(0, minX - pad); minY = Math.max(0, minY - pad);
+  maxX = maxX + pad; maxY = maxY + pad;
+  const w = Math.max(1, Math.round((maxX - minX) * dpr));
+  const h = Math.max(1, Math.round((maxY - minY) * dpr));
+  const out = document.createElement('canvas');
+  out.width = w; out.height = h;
+  out.getContext('2d').drawImage(c, Math.round(minX * dpr), Math.round(minY * dpr), w, h, 0, 0, w, h);
+  return new Promise(res => out.toBlob(res, 'image/png'));
+}
+
+async function signSave() {
+  const blob = await signToBlob();
+  if (!blob) { showUploadToast(t('서명을 먼저 그려주세요','Please draw your signature first')); return; }
+  document.getElementById('sign-modal')?.remove();
+  await saveMySignature(blob);
+}
+
+// 파일로 올리는 길도 열어 둔다 (이미 만들어 둔 서명 그림이 있는 경우)
+async function signPickFile(input) {
+  const f = input.files && input.files[0];
+  input.value = '';
+  if (!f) return;
+  const small = await shrinkImage(f, { maxDim: 600, keepAlpha: true, minSize: 20 * 1024 });
+  await saveMySignature(small);
+}
+
+async function saveMySignature(blob) {
+  showUploadToast(t('서명 저장 중… ⏳','Saving signature… ⏳'));
+  try {
+    const path = `signatures/${ME.id}/${Date.now()}.png`;
+    const { error: upErr } = await sb.storage.from('messenger')
+      .upload(path, blob, { cacheControl: '31536000', upsert: true, contentType: 'image/png' });
+    if (upErr) throw upErr;
+    const { data } = sb.storage.from('messenger').getPublicUrl(path);
+    const url = data.publicUrl;
+    const res = await updateMemberResilient({ signature_url: url });
+    if (!res.ok) throw (res.error || { message: '저장 실패' });
+    if ((res.skipped || []).includes('signature_url')) {
+      showUploadToast('서명 칸이 아직 없어요 — db/전자결재_개인서명_DB설치.sql 을 실행해주세요');
+      return;
+    }
+    ME.signature_url = url;
+    showUploadToast(t('✅ 서명을 저장했어요','✅ Signature saved'));
+    if (typeof renderProfilePage === 'function' && mode === 'profile') renderProfilePage();
+  } catch (e) {
+    showUploadToast(t('서명 저장 실패: ','Could not save signature: ') + (e.message || e));
+  }
+}
+
+async function clearMySignature() {
+  if (!confirm(t('등록한 서명을 지울까요?\n\n이미 결재한 문서에 찍힌 서명은 그대로 남습니다.',
+                 'Remove your saved signature?\n\nSignatures already stamped on approved documents stay as they are.'))) return;
+  const res = await updateMemberResilient({ signature_url: null });
+  if (!res.ok) { showUploadToast(t('지우기 실패','Could not remove')); return; }
+  ME.signature_url = null;
+  showUploadToast(t('서명을 지웠어요','Signature removed'));
+  if (typeof renderProfilePage === 'function' && mode === 'profile') renderProfilePage();
+}
+
+// 프로필의 서명 칸
+function mySignatureCardHtml() {
+  const has = !!ME.signature_url;
+  return `
+    <div class="adm-card" style="margin-bottom:16px">
+      <div style="font-size:14px;font-weight:700;color:var(--adeep);margin-bottom:6px">✍️ ${t('내 서명','My signature')}</div>
+      <div style="font-size:12px;color:var(--ink3);margin-bottom:14px;line-height:1.7;word-break:keep-all">
+        ${t('여기에 서명을 등록해 두면, 전자결재에서 승인할 때 결재란에 자동으로 찍힙니다.',
+            'Register your signature here and it will be stamped in the approval box when you approve a document.')}
+      </div>
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+        <div style="width:190px;height:80px;border:1.5px solid var(--border);border-radius:11px;background:#fff;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0">
+          ${has ? `<img src="${imAttr(ME.signature_url)}" onerror="this.remove()" style="max-width:174px;max-height:66px;object-fit:contain"/>`
+                : `<span style="color:var(--ink3);font-size:12.5px">${t('아직 없어요','Not set')}</span>`}
+        </div>
+        <div style="display:flex;flex-direction:column;gap:7px">
+          <button onclick="openSignPad()" style="height:36px;padding:0 15px;border-radius:10px;border:none;background:var(--accent);color:#fff;font:700 12.5px var(--font);cursor:pointer">✍️ ${t(has?'다시 그리기':'서명 그리기', has?'Draw again':'Draw signature')}</button>
+          <input type="file" id="sign-file" accept="image/*" style="display:none" onchange="signPickFile(this)"/>
+          <button onclick="document.getElementById('sign-file').click()" style="height:36px;padding:0 15px;border-radius:10px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:600 12.5px var(--font);cursor:pointer">🖼️ ${t('그림 올리기','Upload image')}</button>
+          ${has ? `<button onclick="clearMySignature()" style="height:32px;padding:0 15px;border-radius:10px;border:1.5px solid var(--border);background:white;color:var(--rose);font:600 12px var(--font);cursor:pointer">${t('지우기','Remove')}</button>` : ''}
+        </div>
+      </div>
+    </div>`;
+}
+
 // ═══════════════════════════════════════════════════════════════════
 //  전자결재(서류 결재) — 상신 → 결재선 승인 → 최종 완료 → 공유
 // ═══════════════════════════════════════════════════════════════════
@@ -14390,6 +14581,7 @@ async function openApprDoc(id){
   const lineHtml = (d.line||[]).map((a,i)=>`<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
     <div style="width:22px;height:22px;border-radius:50%;background:${a.status==='approved'?'#15803d':a.status==='rejected'?'#c0392b':a.status==='pending'?'#b45309':'#cbd5e1'};color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">${i+1}</div>
     <div style="flex:1"><div style="font-size:13.5px;font-weight:600">${escHtml(a.approver_name)}</div>${a.comment?`<div style="font-size:11.5px;color:var(--ink3)">"${escHtml(a.comment)}"</div>`:''}</div>
+    ${a.sign_url?`<img src="${imAttr(a.sign_url)}" onerror="this.remove()" style="height:30px;max-width:96px;object-fit:contain;flex-shrink:0" alt="${t('서명','signature')}"/>`:''}
     <div style="text-align:right">${apprStepBadge(a.status)}${a.acted_at?`<div style="font-size:10.5px;color:var(--ink3)">${a.acted_at.slice(0,16).replace('T',' ')}</div>`:''}</div>
   </div>`).join('');
   const shareHtml = (d.shares||[]).length ? (d.shares.map(s=>`<span style="font-size:11.5px;color:#1d3a5f;background:var(--asoft);padding:2px 9px;border-radius:99px">${escHtml(s.member_name)}</span>`).join(' ')) : `<span style="font-size:12px;color:var(--ink3)">${t('없음','None')}</span>`;
@@ -14454,7 +14646,9 @@ async function approveApprDoc(id){
   const step = d.current_step;
   if(d.status!=='pending' || !d.line[step] || d.line[step].approver_id!==ME.id){ showUploadToast(t('지금 결재할 차례가 아니에요','It is not your turn to approve right now')); return; }
   const line = d.line.map(x=>({...x}));
-  line[step] = {...line[step], status:'approved', comment, acted_at:new Date().toISOString()};
+  // 등록해 둔 서명을 이 단계에 찍는다. 나중에 서명을 바꿔도 이미 결재한 문서는 그대로 남는다.
+  line[step] = {...line[step], status:'approved', comment, acted_at:new Date().toISOString(),
+                sign_url: ME.signature_url || null};
   const history = (d.history||[]).concat([{ ts:new Date().toISOString(), actor_id:ME.id, actor_name:ME.name, action:'승인', comment }]);
   let update;
   const isFinal = step >= line.length-1;
@@ -14494,7 +14688,11 @@ function printApprDoc(id){
     let itemsTbl='';
     if(fd._items && fd._itemsMeta && fd._items.length){ const it=fd._itemsMeta,cols=it.columns;
       itemsTbl=`<table class="items"><thead><tr>${cols.map(c=>`<th>${c.label}</th>`).join('')}</tr></thead><tbody>${fd._items.map(r=>`<tr>${cols.map(c=>`<td class="${c.type==='number'?'r':''}">${escHtml(c.type==='number'?apprWon(r[c.key]||0):(r[c.key]||''))}</td>`).join('')}</tr>`).join('')}</tbody></table><div class="sum">${it.sumLabel}: ${apprWon((fd._items||[]).reduce((a,r)=>a+(Number(r[it.sumKey])||0),0))}</div>`; }
-    const lineBoxes=(d.line||[]).map(a=>`<div class="appr-box"><div class="al">${escHtml(a.approver_name)}</div><div class="ast ${a.status}">${({approved:t('승인','Approved'),rejected:t('반려','Rejected'),pending:t('대기','Pending'),waiting:t('대기','Waiting')})[a.status]||''}</div><div class="ad">${a.acted_at?a.acted_at.slice(0,10):''}</div></div>`).join('');
+    // 서명이 있으면 '승인' 글자 대신 서명을 찍는다 (한국 결재란 관행)
+    const lineBoxes=(d.line||[]).map(a=>`<div class="appr-box"><div class="al">${escHtml(a.approver_name)}</div><div class="ast ${a.status}">${
+      a.sign_url ? `<img class="asig" src="${imAttr(a.sign_url)}" onerror="this.remove()"/>`
+                 : (({approved:t('승인','Approved'),rejected:t('반려','Rejected'),pending:t('대기','Pending'),waiting:t('대기','Waiting')})[a.status]||'')
+    }</div><div class="ad">${a.acted_at?a.acted_at.slice(0,10):''}</div></div>`).join('');
     openPrintDoc({
       title: d.title, docTitle: d.title,
       subtitle: `${escHtml(d.template_name||'')} · ${t('상신','By')} ${escHtml(d.submitter_name||'')} · ${(d.created_at||'').slice(0,10)}`,
@@ -14507,7 +14705,9 @@ function printApprDoc(id){
         .appr-line { display: flex; gap: 6px; justify-content: flex-end; margin-bottom: 6mm; }
         .appr-box { border: 1px solid #40506b; width: 76px; text-align: center; font-size: 8.5pt; }
         .appr-box .al { border-bottom: 1px solid #40506b; padding: 3px 0; background: #eef2f8; font-weight: 700; }
-        .appr-box .ast { padding: 9px 0; font-weight: 700; }
+        .appr-box .ast { padding: 9px 0; font-weight: 700; height: 34px; box-sizing: border-box;
+                         display: flex; align-items: center; justify-content: center; }
+        .appr-box .ast .asig { max-width: 68px; max-height: 30px; object-fit: contain; }
         .appr-box .ast.approved { color: #15803d; } .appr-box .ast.rejected { color: #c0392b; }
         table.fields th { width: 124px; text-align: left; }
         table.fields td { text-align: left; }
