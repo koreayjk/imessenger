@@ -16230,6 +16230,7 @@ async function pushAllAttToTcs() {
 const TT_DAYS = [[1,t('월','Mon')],[2,t('화','Tue')],[3,t('수','Wed')],[4,t('목','Thu')],[5,t('금','Fri')]];
 let ttGroup = '';        // '' = 공통(전체), else group_id
 let ttPeriods = 7;       // 표시 교시 수
+const TT_MAX_PERIODS = 16;   // 야간 수업까지 — 개인 시간표가 밤 12시까지라 교시도 맞춰 늘렸다
 let ttMap = {};          // 'day-period' -> {subject,teacher,room}
 let ttView = 'edit';     // 'edit'(반별 편집) | 'teacher'(교사별 보기)
 let ttTeacher = '';      // 교사별 보기에서 선택된 교사명
@@ -16258,7 +16259,7 @@ async function loadTimetable() {
   (data||[]).forEach(r => { ttMap[`${r.day}-${r.period}`] = { subject:r.subject||'', teacher:r.teacher||'', room:r.room||'' }; });
   // 저장된 최대 교시에 맞춰 표 크기 자동 확장
   const maxP = Math.max(0, ...(data||[]).map(r => r.period));
-  if (maxP > ttPeriods) ttPeriods = Math.min(10, maxP);
+  if (maxP > ttPeriods) ttPeriods = Math.min(TT_MAX_PERIODS, maxP);
 }
 
 async function loadTimetableAll() {
@@ -16266,7 +16267,7 @@ async function loadTimetableAll() {
   if (error) throw error;
   ttAllRows = data || [];
   const maxP = Math.max(0, ...ttAllRows.map(r => r.period));
-  if (maxP > ttPeriods) ttPeriods = Math.min(10, maxP);
+  if (maxP > ttPeriods) ttPeriods = Math.min(TT_MAX_PERIODS, maxP);
 }
 
 function ttViewToggleHtml() {
@@ -16360,7 +16361,8 @@ function renderTimetableGrid() {
   const main = document.getElementById('school-main');
   const groupOpts = `<option value="" ${ttGroup===''?'selected':''}>${t('공통(전체) 시간표','Common (All) Timetable')}</option>` +
     tcsGroups.map(g => `<option value="${g.id}" ${ttGroup===g.id?'selected':''}>${g.name}</option>`).join('');
-  const periodOpts = [4,5,6,7,8,9,10].map(n => `<option value="${n}" ${ttPeriods===n?'selected':''}>${n}${t('교시',' periods')}</option>`).join('');
+  const periodOpts = Array.from({length: TT_MAX_PERIODS - 3}, (_, i) => i + 4)
+    .map(n => `<option value="${n}" ${ttPeriods===n?'selected':''}>${n}${t('교시',' periods')}</option>`).join('');
 
   const inputStyle = 'width:100%;border:1px solid var(--border);border-radius:6px;padding:5px 6px;font:600 12px var(--font);color:var(--ink);background:var(--surface)';
   const subStyle = 'width:100%;border:none;border-bottom:1px solid transparent;padding:4px 2px;font:700 12.5px var(--font);color:var(--ink);background:transparent;text-align:center';
@@ -16403,7 +16405,7 @@ function renderTimetableGrid() {
 }
 
 function changeTtGroup(v) { ttGroup = v; renderTimetableHub(); }
-function changeTtPeriods(v) { ttPeriods = parseInt(v) || 7; renderTimetableGrid(); }
+function changeTtPeriods(v) { ttPeriods = Math.max(1, Math.min(TT_MAX_PERIODS, parseInt(v) || 7)); renderTimetableGrid(); }
 
 async function saveTimetable() {
   const val = id => (document.getElementById(id)?.value || '').trim();
