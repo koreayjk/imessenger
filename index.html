@@ -7631,6 +7631,39 @@ async function deleteMockItem(i) {
 // ── Triple School 필독서 현황 ──
 const READING_CATEGORIES = ['Gospel School', 'Disciple School', 'Calling School'];
 const READING_CAT_ORDER = { 'Gospel School': 0, 'Disciple School': 1, 'Calling School': 2 };
+
+// 한글책 / 영어책 — 같은 책이라도 읽은 언어를 따로 센다 (기록도 따로 쌓인다)
+const READING_LANGS = ['ko', 'en'];
+const READING_LANG_LABEL = { ko: ['📕 한글책', '📕 Korean'], en: ['📗 영어책', '📗 English'] };
+// lang 칼럼을 아직 안 깔았으면 기존 책은 전부 영어책으로 본다
+function bookLang(b) { return (b && b.lang === 'ko') ? 'ko' : 'en'; }
+let readingLang = (() => { try { return localStorage.getItem('tcs_reading_lang') === 'ko' ? 'ko' : 'en'; } catch (_) { return 'en'; } })();
+function readingLangBooks(lang) { return readingBooks.filter(b => bookLang(b) === (lang || readingLang)); }
+function readingLangName(l) { return t(READING_LANG_LABEL[l || readingLang][0], READING_LANG_LABEL[l || readingLang][1]); }
+function setReadingLang(l) {
+  readingLang = (l === 'ko') ? 'ko' : 'en';
+  try { localStorage.setItem('tcs_reading_lang', readingLang); } catch (_) {}
+  readingStudentFilter.cat = 'all';
+  const tcsView = document.getElementById('tcs-view');
+  if (isTeacher() && tcsView && tcsView.style.display !== 'none' && tcsSubMode === 'reading') renderTcsReadingUnified();
+  else initReadingPage();
+}
+function readingLangTabs() {
+  const seg = (l) => {
+    const on = readingLang === l, n = readingLangBooks(l).length;
+    return `<button onclick="setReadingLang('${l}')" style="flex:1;height:40px;border:none;border-radius:9px;cursor:pointer;font:800 13.5px var(--font);display:flex;align-items:center;justify-content:center;gap:6px;${on ? 'background:#1d3a5f;color:#fff' : 'background:transparent;color:var(--ink2)'}">${readingLangName(l)}<span style="font-size:11px;font-weight:700;padding:1px 7px;border-radius:99px;${on ? 'background:rgba(255,255,255,.22)' : 'background:var(--s3);color:var(--ink3)'}">${n}</span></button>`;
+  };
+  return `<div style="display:flex;gap:3px;background:var(--s2);border:1px solid var(--border);border-radius:12px;padding:3px;margin-bottom:14px">${READING_LANGS.map(seg).join('')}</div>`;
+}
+// 이 언어에 책이 하나도 없을 때
+function readingLangEmptyHtml() {
+  const ko = readingLang === 'ko';
+  return `<div style="text-align:center;color:var(--ink3);font-size:13px;padding:36px 16px;line-height:1.9;word-break:keep-all">
+    ${t(`${readingLangName()} 으로 등록된 책이 아직 없어요.`, `No books registered under ${readingLangName()} yet.`)}<br/>
+    ${ko ? t('한글 도서목록을 넣으려면 <b>db/트리플스쿨_한글도서_DB설치.sql</b> 을 Supabase → SQL Editor 에서 실행하거나, 아래 [책 관리]에서 직접 추가하세요.','Run <b>db/트리플스쿨_한글도서_DB설치.sql</b> in Supabase → SQL Editor, or add books under [Manage Books] below.')
+        : t('아래 [책 관리]에서 추가할 수 있어요.','You can add books under [Manage Books] below.')}
+  </div>`;
+}
 let readingBooks = [];
 let readingMyLogs = [];
 let readingNotes = [];   // 현재 여는 책의 '읽으며 쌓은 기록'(이어쓰기)
@@ -7813,7 +7846,7 @@ function renderReadingList() {
   const readMap = {}; readingMyLogs.forEach(l => readMap[l.book_id] = l);
   const q = (readingStudentFilter.q || '').trim().toLowerCase();
   const cat = readingStudentFilter.cat;
-  const books = readingBooks.filter(b => {
+  const books = readingLangBooks().filter(b => {
     if (cat !== 'all' && b.category !== cat) return false;
     if (q && !((b.title || '').toLowerCase().includes(q) || (b.author || '').toLowerCase().includes(q))) return false;
     return true;
@@ -7847,17 +7880,22 @@ function renderReadingList() {
 function renderReadingStudent() {
   const page = document.getElementById('reading-page');
   const readMap = {}; readingMyLogs.forEach(l => readMap[l.book_id] = l);
-  const total = readingBooks.length;
+  const langBooks = readingLangBooks();
+  const total = langBooks.length;
 
-  if (!total) {
+  if (!readingBooks.length) {
     page.innerHTML = `<div style="max-width:760px">${readingModeToggle()}<div style="text-align:center;color:var(--ink3);font-size:13px;padding:40px;line-height:1.8">${t('아직 등록된 필독서가 없어요.<br>선생님(관리자)이 [TCS → Triple School → 책 관리]에서 책을 추가하면<br>여기서 읽은 책을 눌러 기록할 수 있어요.','No reading books have been registered yet.<br>Once a teacher (admin) adds books under [TCS → Triple School → Manage Books],<br>you can tap a book here to log it.')}</div></div>`;
     return;
   }
+  if (!total) {
+    page.innerHTML = `<div style="max-width:760px">${readingModeToggle()}${readingLangTabs()}${readingLangEmptyHtml()}</div>`;
+    return;
+  }
 
-  const readCount = readingBooks.filter(b => readMap[b.id]).length;
+  const readCount = langBooks.filter(b => readMap[b.id]).length;
   const pct = Math.round(readCount / total * 100);
   const catStat = c => {
-    const list = readingBooks.filter(b => b.category === c);
+    const list = langBooks.filter(b => b.category === c);
     const r = list.filter(b => readMap[b.id]).length;
     return { total: list.length, read: r, pct: list.length ? Math.round(r / list.length * 100) : 0 };
   };
@@ -7873,8 +7911,9 @@ function renderReadingStudent() {
 
   page.innerHTML = `<div style="max-width:760px">
     ${readingModeToggle()}
+    ${readingLangTabs()}
     <div style="background:linear-gradient(135deg,#1d3a5f,#2a5298);border-radius:16px;padding:16px 20px;margin-bottom:12px;color:white">
-      <div style="display:flex;justify-content:space-between;align-items:baseline"><div style="font-size:13px;opacity:.8">${t('나의 필독서 진도 (전체)','My Reading Progress (All)')}</div><div style="font-size:22px;font-weight:800">${readCount} / ${total}${t('권',' books')}</div></div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline"><div style="font-size:13px;opacity:.8">${readingLangName()} ${t('진도','progress')}</div><div style="font-size:22px;font-weight:800">${readCount} / ${total}${t('권',' books')}</div></div>
       <div style="background:rgba(255,255,255,.25);border-radius:99px;height:8px;margin-top:10px;overflow:hidden"><div style="height:100%;width:${pct}%;background:white;border-radius:99px;transition:width .4s var(--ease-out)"></div></div>
     </div>
     <div style="display:flex;gap:8px;margin-bottom:14px">${READING_CATEGORIES.map(catCard).join('')}</div>
@@ -8063,9 +8102,12 @@ async function renderReadingAdmin() {
     const { data: lg } = await sb.from('reading_logs').select('student_id,book_id').in('student_id', ids);
     logs = lg || [];
   }
-  const total = readingBooks.length;
+  const langBooks = readingLangBooks();
+  const langIds = new Set(langBooks.map(b => b.id));
+  logs = logs.filter(l => langIds.has(l.book_id));      // 지금 보고 있는 언어의 책만 센다
+  const total = langBooks.length;
   const byStudent = {}; studs.forEach(s => byStudent[s.id] = 0);
-  const byBook = {}; readingBooks.forEach(b => byBook[b.id] = 0);
+  const byBook = {}; langBooks.forEach(b => byBook[b.id] = 0);
   logs.forEach(l => { if (byStudent[l.student_id] !== undefined) byStudent[l.student_id]++; if (byBook[l.book_id] !== undefined) byBook[l.book_id]++; });
   const avg = studs.length ? (logs.length / studs.length) : 0;
 
@@ -8074,7 +8116,7 @@ async function renderReadingAdmin() {
   const summary = `
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px">
       <div style="background:var(--s2);border-radius:12px;padding:14px"><div style="font-size:12px;color:var(--ink3)">${t('학생 수','Students')}</div><div style="font-size:22px;font-weight:800;color:var(--adeep)">${studs.length}</div></div>
-      <div style="background:var(--s2);border-radius:12px;padding:14px"><div style="font-size:12px;color:var(--ink3)">${t('등록된 필독서','Registered Books')}</div><div style="font-size:22px;font-weight:800;color:var(--adeep)">${total}${t('권',' books')}</div></div>
+      <div style="background:var(--s2);border-radius:12px;padding:14px"><div style="font-size:12px;color:var(--ink3)">${readingLangName()}</div><div style="font-size:22px;font-weight:800;color:var(--adeep)">${total}${t('권',' books')}</div></div>
       <div style="background:var(--s2);border-radius:12px;padding:14px"><div style="font-size:12px;color:var(--ink3)">${t('평균 읽은 권수','Avg. Books Read')}</div><div style="font-size:22px;font-weight:800;color:var(--adeep)">${avg.toFixed(1)}${t('권',' books')}</div></div>
     </div>`;
 
@@ -8088,7 +8130,7 @@ async function renderReadingAdmin() {
     </div>`;
   }).join('') : `<div style="font-size:13px;color:var(--ink3);padding:12px 0">${t('등록된 학생이 없어요','No students registered')}</div>`;
 
-  const popular = [...readingBooks].sort((a, b) => (byBook[b.id] || 0) - (byBook[a.id] || 0)).slice(0, 10);
+  const popular = [...langBooks].sort((a, b) => (byBook[b.id] || 0) - (byBook[a.id] || 0)).slice(0, 10);
   const popularRows = popular.length ? popular.map(b => `
     <div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border)">
       <div style="flex:1;font-size:13px;color:var(--ink)">${b.title} <span style="font-size:11px;color:var(--ink3)">${b.category}</span></div>
@@ -8098,7 +8140,7 @@ async function renderReadingAdmin() {
   // 책 관리 (교사·관리자)
   let manageHtml = '';
   if (canManage) {
-    const bookList = groupBooksByStep(readingBooks).map(({ step, books }) => {
+    const bookList = groupBooksByStep(langBooks).map(({ step, books }) => {
       const cats = {}; books.forEach(b => { (cats[b.category] = cats[b.category] || []).push(b); });
       const catOrder = [...READING_CATEGORIES.filter(c => cats[c]), ...Object.keys(cats).filter(c => !READING_CATEGORIES.includes(c))];
       const inner = catOrder.map(cat => `
@@ -8111,10 +8153,12 @@ async function renderReadingAdmin() {
     }).join('');
     const catOpts = READING_CATEGORIES.map(c => `<option value="${c}">${READING_CAT_SHORT[c] || c}</option>`).join('');
     const stepOpts = `<option value="">${t('Step 없음','No Step')}</option>` + [1,2,3,4].map(n => `<option value="${n}">Step ${n}</option>`).join('');
+    const langOpts = readingLangOpts();
     manageHtml = `
       <div style="font-size:14px;font-weight:700;color:var(--adeep);margin:0 0 10px">📚 ${t('책 관리','Manage Books')} <span style="font-size:11px;font-weight:500;color:var(--ink3)">${t('(전 공동체 공통 목록)','(shared list for all communities)')}</span></div>
       <div class="adm-card" style="margin-bottom:24px">
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+          <select id="rb-lang" style="height:38px;padding:0 10px;border-radius:9px;border:1.5px solid var(--border);background:white;font:13px var(--font);cursor:pointer">${langOpts}</select>
           <select id="rb-step" style="height:38px;padding:0 10px;border-radius:9px;border:1.5px solid var(--border);background:white;font:13px var(--font);cursor:pointer">${stepOpts}</select>
           <select id="rb-cat" style="height:38px;padding:0 10px;border-radius:9px;border:1.5px solid var(--border);background:white;font:13px var(--font);cursor:pointer">${catOpts}</select>
           <input id="rb-title" type="text" placeholder="${t('책 제목','Book title')}" style="flex:1;min-width:150px;height:38px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--s2);font:13px var(--font);outline:none"/>
@@ -8128,6 +8172,7 @@ async function renderReadingAdmin() {
 
   page.innerHTML = `<div style="max-width:760px">
     ${readingModeToggle()}
+    ${readingLangTabs()}
     ${summary}
     ${manageHtml}
     <div style="font-size:14px;font-weight:700;color:var(--adeep);margin:0 0 8px">👥 ${t('학생별 진도','Progress by Student')}</div>
@@ -8187,12 +8232,14 @@ async function renderTcsReadingUnified() {
   const byBook = {}; readingBooks.forEach(b => byBook[b.id] = 0);
   allLogs.forEach(l => { if (byBook[l.book_id] !== undefined) byBook[l.book_id]++; });
 
-  const total = readingBooks.length;
-  const readCount = readingBooks.filter(b => readMap[b.id]).length;
-  const catStat = c => { const list = readingBooks.filter(b => b.category === c); const r = list.filter(b => readMap[b.id]).length; return { total: list.length, read: r, pct: list.length ? Math.round(r / list.length * 100) : 0 }; };
+
+  const langBooks = readingLangBooks();
+  const total = langBooks.length;
+  const readCount = langBooks.filter(b => readMap[b.id]).length;
+  const catStat = c => { const list = langBooks.filter(b => b.category === c); const r = list.filter(b => readMap[b.id]).length; return { total: list.length, read: r, pct: list.length ? Math.round(r / list.length * 100) : 0 }; };
   const catCards = READING_CATEGORIES.map(c => { const s = catStat(c); return `<div style="flex:1;min-width:0;background:var(--s2);border-radius:11px;padding:11px 12px"><div style="font-size:12px;font-weight:700;color:var(--adeep)">${READING_CAT_SHORT[c] || c}</div><div style="font-size:16px;font-weight:800;color:var(--ink);margin:2px 0 6px">${s.read}<span style="font-size:12px;font-weight:500;color:var(--ink3)">/${s.total}</span></div><div style="background:var(--s3);border-radius:99px;height:6px;overflow:hidden"><div style="height:100%;width:${s.pct}%;background:#2a5298"></div></div></div>`; }).join('');
 
-  const readBooks = readingBooks.filter(b => readMap[b.id]);
+  const readBooks = langBooks.filter(b => readMap[b.id]);
   const readRows = readBooks.length ? readBooks.map(b => {
     const l = readMap[b.id];
     const wc = countWords(l.report || '');
@@ -8212,7 +8259,7 @@ async function renderTcsReadingUnified() {
   </div>`; }).join('') : `<div style="font-size:13px;color:var(--ink3);padding:12px 0">${t('아직 읽은 책 기록이 없어요','No reading records yet')}</div>`;
 
   // 메모만 있고 아직 최종 제출 안 한 책 (진행 중) — 횟수만 표시
-  const notedUnfinished = readingBooks.filter(b => (noteCounts[b.id]||0) > 0 && !readMap[b.id]);
+  const notedUnfinished = langBooks.filter(b => (noteCounts[b.id]||0) > 0 && !readMap[b.id]);
   const notedRows = notedUnfinished.length ? notedUnfinished.map(b => `
     <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;border:1px dashed var(--border);border-radius:9px;margin-bottom:6px">
       <div style="flex:1;min-width:0;font-size:12.5px;color:var(--ink)">${b.title} <span style="font-size:11px;color:var(--ink3)">${READING_CAT_SHORT[b.category] || b.category}</span></div>
@@ -8220,7 +8267,7 @@ async function renderTcsReadingUnified() {
       <span style="font-size:10.5px;color:#8b6914;font-weight:700">${t('미제출','Not submitted')}</span>
     </div>`).join('') : '';
 
-  const bookList = groupBooksByStep(readingBooks).map(({ step, books }) => {
+  const bookList = groupBooksByStep(langBooks).map(({ step, books }) => {
     const cats = {}; books.forEach(b => { (cats[b.category] = cats[b.category] || []).push(b); });
     const catOrder = [...READING_CATEGORIES.filter(c => cats[c]), ...Object.keys(cats).filter(c => !READING_CATEGORIES.includes(c))];
     const inner = catOrder.map(cat => `
@@ -8233,13 +8280,15 @@ async function renderTcsReadingUnified() {
   }).join('');
   const catOpts = READING_CATEGORIES.map(c => `<option value="${c}">${READING_CAT_SHORT[c] || c}</option>`).join('');
   const stepOpts = `<option value="">${t('Step 없음','No Step')}</option>` + [1,2,3,4].map(n => `<option value="${n}">Step ${n}</option>`).join('');
+  const langOpts = readingLangOpts();
 
-  const popular = [...readingBooks].sort((a, b) => (byBook[b.id] || 0) - (byBook[a.id] || 0)).slice(0, 10);
+  const popular = [...langBooks].sort((a, b) => (byBook[b.id] || 0) - (byBook[a.id] || 0)).slice(0, 10);
   const popularRows = popular.length ? popular.map(b => `<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border)"><div style="flex:1;font-size:13px;color:var(--ink)">${b.title} <span style="font-size:11px;color:var(--ink3)">${READING_CAT_SHORT[b.category] || b.category}</span></div><div style="font-size:12px;font-weight:600;color:#1d4ed8">${byBook[b.id] || 0}${t('명',' students')}</div></div>`).join('') : `<div style="font-size:13px;color:var(--ink3);padding:12px 0">${t('데이터 없음','No data')}</div>`;
 
   main.innerHTML = `<div style="max-width:720px">
+    ${readingLangTabs()}
     <div style="background:linear-gradient(135deg,#1d3a5f,#2a5298);border-radius:14px;padding:14px 18px;margin-bottom:12px;color:white">
-      <div style="display:flex;justify-content:space-between;align-items:baseline"><div style="font-size:13px;opacity:.85">${t(`${tcsCurrentStudent.name} 학생 · 읽은 책`, `${tcsCurrentStudent.name} · Books Read`)}</div><div style="font-size:20px;font-weight:800">${readCount} / ${total}${t('권',' books')}</div></div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline"><div style="font-size:13px;opacity:.85">${t(`${tcsCurrentStudent.name} 학생 · ${readingLangName()}`, `${tcsCurrentStudent.name} · ${readingLangName()}`)}</div><div style="font-size:20px;font-weight:800">${readCount} / ${total}${t('권',' books')}</div></div>
     </div>
     <div style="display:flex;gap:8px;margin-bottom:16px">${catCards}</div>
     <div style="font-size:13px;font-weight:700;color:var(--adeep);margin:0 0 8px">📖 ${t(`${tcsCurrentStudent.name} 학생이 읽은 책 · 독후감`, `Books ${tcsCurrentStudent.name} has read · Reports`)}</div>
@@ -8250,6 +8299,7 @@ async function renderTcsReadingUnified() {
     <div style="font-size:14px;font-weight:700;color:var(--adeep);margin:0 0 10px">📚 ${t('책 관리','Manage Books')} <span style="font-size:11px;font-weight:500;color:var(--ink3)">${t('(전 공동체 공통 목록)','(shared list for all communities)')}</span></div>
     <div class="adm-card" style="margin-bottom:22px">
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+        <select id="rb-lang" style="height:38px;padding:0 10px;border-radius:9px;border:1.5px solid var(--border);background:white;font:13px var(--font);cursor:pointer">${langOpts}</select>
         <select id="rb-step" style="height:38px;padding:0 10px;border-radius:9px;border:1.5px solid var(--border);background:white;font:13px var(--font);cursor:pointer">${stepOpts}</select>
         <select id="rb-cat" style="height:38px;padding:0 10px;border-radius:9px;border:1.5px solid var(--border);background:white;font:13px var(--font);cursor:pointer">${catOpts}</select>
         <input id="rb-title" type="text" placeholder="${t('책 제목','Book title')}" style="flex:1;min-width:150px;height:38px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--s2);font:13px var(--font);outline:none"/>
@@ -8474,6 +8524,10 @@ async function refreshReadingAfterBookChange() {
   else initReadingPage();
 }
 
+function readingLangOpts() {
+  return READING_LANGS.map(l => `<option value="${l}" ${l === readingLang ? 'selected' : ''}>${readingLangName(l)}</option>`).join('');
+}
+
 async function addReadingBook() {
   if (!canAccessSchool()) { showUploadToast(t('책을 추가할 권한이 없어요','You do not have permission to add books')); return; }
   const cat = document.getElementById('rb-cat').value;
@@ -8481,13 +8535,22 @@ async function addReadingBook() {
   const author = document.getElementById('rb-author').value.trim();
   const publisher = (document.getElementById('rb-publisher')?.value || '').trim();
   const stepVal = document.getElementById('rb-step')?.value;
+  const langVal = document.getElementById('rb-lang')?.value === 'ko' ? 'ko' : 'en';
   if (!title) { showUploadToast(t('책 제목을 입력하세요','Please enter a book title')); return; }
-  const row = { category: cat, title, author };
+  const row = { category: cat, title, author, lang: langVal };
   if (publisher) row.publisher = publisher;
   if (stepVal) row.step = Number(stepVal);
-  const { error } = await sb.from('reading_books').insert(row);
+  let { error } = await sb.from('reading_books').insert(row);
+  // lang 칼럼을 아직 안 깔았으면 언어만 빼고 넣는다
+  if (error && /lang/.test(error.message || '')) {
+    delete row.lang;
+    ({ error } = await sb.from('reading_books').insert(row));
+    if (!error) { showUploadToast(t('책은 추가됐어요 — 한글책/영어책을 나누려면 db/트리플스쿨_한글도서_DB설치.sql 을 실행해주세요','Book added — run db/트리플스쿨_한글도서_DB설치.sql to separate Korean and English books')); refreshReadingAfterBookChange(); return; }
+  }
   if (error) { showUploadToast(t('추가 실패 😥 ','Add failed 😥 ') + error.message + t(' (db/트리플스쿨_도서목록.sql 실행 필요할 수 있어요)',' (you may need to run db/트리플스쿨_도서목록.sql)')); return; }
   showUploadToast(t('✅ 책이 추가됐어요','✅ Book added'));
+  // 방금 넣은 책이 보이도록 그 언어 칸으로 옮겨 준다
+  if (langVal !== readingLang) { setReadingLang(langVal); return; }
   refreshReadingAfterBookChange();
 }
 async function deleteReadingBook(id) {
