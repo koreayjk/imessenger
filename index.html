@@ -6586,6 +6586,7 @@ function openTcsSection(sectionId) {
 function getTcsSectionFields(sectionId) {
   const F = {
     personal: [
+      {key:'photo', label:t('증명사진','ID Photo'), type:'photo'},
       {key:'name_ko', label:t('성명 (한글)','Name (Korean)'), type:'text', placeholder:t('홍길동','Hong Gildong')},
       {key:'name_en', label:t('성명 (영문)','Name (English)'), type:'text', placeholder:'Hong Gildong'},
       {key:'birth', label:t('생년월일','Date of Birth'), type:'date'},
@@ -8565,6 +8566,26 @@ function renderTcsField(field, value) {
   const labelStyle = 'font-size:12px;font-weight:600;color:var(--ink3);margin-bottom:6px;display:block;text-transform:uppercase;letter-spacing:.04em';
   const inputStyle = 'width:100%;padding:10px 13px;border-radius:10px;border:1.5px solid var(--border);background:var(--s2);font:14px var(--font);color:var(--ink);outline:none;transition:border-color .15s';
 
+  // 증명사진 — 값은 숨은 칸에 URL 로 들고 있다가 저장할 때 같이 올라간다
+  if (field.type === 'photo') {
+    return `<div style="margin-bottom:18px">
+      <label style="${labelStyle}">${field.label}</label>
+      <div style="display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap">
+        <div id="tcs-photo-box" style="width:105px;height:140px;border:1.5px solid var(--border);border-radius:9px;background:var(--s2);display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0">
+          ${val ? `<img src="${imAttr(val)}" onerror="this.parentNode.innerHTML='<span style=&quot;font-size:11.5px;color:var(--ink3)&quot;>${t('사진 없음','No photo')}</span>'" style="width:100%;height:100%;object-fit:cover"/>`
+                : `<span style="font-size:11.5px;color:var(--ink3);text-align:center;line-height:1.6">${t('3 × 4 cm','3 × 4 cm')}<br/>${t('증명사진','ID photo')}</span>`}
+        </div>
+        <div style="display:flex;flex-direction:column;gap:7px">
+          <input type="file" id="tcs-photo-file" accept="image/*" style="display:none" onchange="tcsPickPhoto(this)"/>
+          <button type="button" onclick="document.getElementById('tcs-photo-file').click()" style="height:36px;padding:0 15px;border-radius:9px;border:none;background:var(--accent);color:#fff;font:700 12.5px var(--font);cursor:pointer">📷 ${t(val?'사진 바꾸기':'사진 올리기', val?'Change photo':'Upload photo')}</button>
+          ${val ? `<button type="button" onclick="tcsClearPhoto()" style="height:32px;padding:0 15px;border-radius:9px;border:1.5px solid var(--border);background:white;color:#c0392b;font:600 12px var(--font);cursor:pointer">${t('지우기','Remove')}</button>` : ''}
+          <div style="font-size:11px;color:var(--ink3);line-height:1.6;max-width:230px;word-break:keep-all">${t('세로로 긴 사진이 좋아요. 가로:세로 3:4 로 잘라서 기록부 오른쪽 위 사진란에 들어갑니다.','A portrait photo works best. It is cropped to 3:4 and printed in the photo box at the top right of the record.')}</div>
+        </div>
+      </div>
+      <input type="hidden" id="tcs-${field.key}" value="${escAttr(val)}"/>
+    </div>`;
+  }
+
   if (field.type === 'textarea') {
     return `<div style="margin-bottom:16px">
       <label style="${labelStyle}">${field.label}</label>
@@ -8592,7 +8613,56 @@ function renderTcsField(field, value) {
   </div>`;
 }
 
-async function saveTcsSection(sectionId) {
+// ── 증명사진 올리기 ─────────────────────────────────────────────
+// 3:4 로 가운데를 잘라 세로 800px 로 줄여 올린다 (원본 그대로면 기록부가 무거워진다)
+async function tcsCropPhoto(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
+    const H = 800, W = 600;                       // 3 : 4
+    const scale = Math.max(W / img.width, H / img.height);
+    const dw = img.width * scale, dh = img.height * scale;
+    const c = document.createElement('canvas'); c.width = W; c.height = H;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
+    ctx.drawImage(img, (W - dw) / 2, (H - dh) / 2, dw, dh);
+    const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.88));
+    return blob || file;
+  } catch (_) {
+    return file;                                  // 못 자르면 원본이라도 올린다
+  } finally { URL.revokeObjectURL(url); }
+}
+
+async function tcsPickPhoto(input) {
+  const file = (input.files || [])[0]; input.value = '';
+  if (!file || !tcsCurrentStudent) return;
+  if (!/^image\//.test(file.type)) { showUploadToast(t('이미지 파일을 올려주세요','Please choose an image file')); return; }
+  showUploadToast(t('사진 올리는 중...','Uploading photo...'));
+  try {
+    const blob = await tcsCropPhoto(file);
+    const path = `students/${CID()}/${tcsCurrentStudent.id}/photo_${Date.now()}.jpg`;
+    const { error } = await sb.storage.from('messenger').upload(path, blob, { cacheControl: '31536000', upsert: false, contentType: 'image/jpeg' });
+    if (error) throw error;
+    const { data } = sb.storage.from('messenger').getPublicUrl(path);
+    const hidden = document.getElementById('tcs-photo');
+    if (hidden) hidden.value = data.publicUrl;
+    const ok = await saveTcsSection('personal', { stay: true });   // 바로 저장 — 안 그러면 올린 줄 알고 나가 버린다
+    if (ok) showUploadToast(t('✅ 증명사진이 저장됐어요','✅ ID photo saved'));
+  } catch (e) {
+    showUploadToast(t('사진 올리기 실패: ','Photo upload failed: ') + (e.message || e));
+  }
+}
+
+async function tcsClearPhoto() {
+  if (!confirm(t('증명사진을 지울까요?','Remove the ID photo?'))) return;
+  const hidden = document.getElementById('tcs-photo');
+  if (hidden) hidden.value = '';
+  const ok = await saveTcsSection('personal', { stay: true });
+  if (ok) showUploadToast(t('증명사진을 지웠어요','ID photo removed'));
+}
+
+async function saveTcsSection(sectionId, opts) {
+  const o = opts || {};
   const fields = getTcsSectionFields(sectionId);
   const data = {};
   fields.forEach(f => {
@@ -8601,7 +8671,8 @@ async function saveTcsSection(sectionId) {
   });
 
   // 기재 금지사항이 섞여 있으면 짚어 준다 (막지는 않는다)
-  const joined = Object.values(data).join('\n');
+  // 사진은 URL 이라 검사 대상이 아니다
+  const joined = fields.filter(f => f.type !== 'photo').map(f => data[f.key] || '').join('\n');
   if (!tcsConfirmForbidden(joined, sectionId)) return;
 
   // upsert
@@ -8614,11 +8685,13 @@ async function saveTcsSection(sectionId) {
     updated_by: ME.id,
   }, { onConflict: 'student_id,section' });
 
-  if (error) { showUploadToast('저장 실패 😥 ' + error.message); return; }
+  if (error) { showUploadToast('저장 실패 😥 ' + error.message); return false; }
   tcsRecords[sectionId] = data;
   if (sectionId === 'personal') await tcsMirrorPersonal(data);
+  if (o.stay) { openTcsSection(sectionId); return true; }   // 사진만 바꾼 경우 — 목록으로 튕기지 않는다
   showUploadToast('✅ 저장됐어요!');
   renderTcsSectionList();
+  return true;
 }
 
 // 인적사항은 members 표에도 같이 적어 둔다.
@@ -8751,6 +8824,12 @@ const TCS_DOC_CSS = `
   border-radius:999px; font-size:9.5pt; font-weight:700; color:#1d3a5f; }
 
 /* 학생 기본 정보 (문서 상단 고정 표) */
+.tcsdoc .tdoc-idwrap { display:flex; align-items:flex-start; gap:4mm; margin-bottom:6mm; break-inside:avoid; }
+.tcsdoc .tdoc-idwrap table.tdoc-id { flex:1; margin-bottom:0; }
+.tcsdoc .tdoc-photo { position:relative; width:30mm; height:40mm; border:1px solid #9fb3cc; background:#f6f9fd;
+                      display:flex; align-items:center; justify-content:center; overflow:hidden; flex-shrink:0; }
+.tcsdoc .tdoc-photo img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; }
+.tcsdoc .tdoc-photo span { font-size:8.5pt; color:#8fa3bd; text-align:center; line-height:1.7; letter-spacing:.06em; }
 .tcsdoc table.tdoc-id { width:100%; border-collapse:collapse; margin-bottom:6mm; break-inside:avoid; }
 .tcsdoc table.tdoc-id th, .tcsdoc table.tdoc-id td { border:1px solid #9fb3cc; padding:6px 10px; font-size:10pt; }
 .tcsdoc table.tdoc-id th { background:#dce6f2; color:#1d3a5f; font-weight:700; width:70px; text-align:center; white-space:nowrap; }
@@ -8828,16 +8907,21 @@ function buildTcsPreviewHtml(lang) {
       <div class="tdoc-sub">STUDENT COMPREHENSIVE RECORD</div>
       ${gf ? `<div class="tdoc-grade">${tcsPrintGradeLabel()}</div>` : ''}
     </div>
-    <table class="tdoc-id">
-      <tr>
-        <th>성 명</th><td>${escHtml(personal.name_ko || s.name || '')}${personal.name_en ? ` <span style="color:#6b7688;font-size:9pt">(${escHtml(personal.name_en)})</span>` : ''}</td>
-        <th>생년월일</th><td>${escHtml(personal.birth || '')}</td>
-      </tr>
-      <tr>
-        <th>학 년</th><td>${escHtml(gf ? tcsPrintGradeLabel() : (s.grade || ''))}</td>
-        <th>학 교</th><td>${escHtml(school.school_name || '')}</td>
-      </tr>
-    </table>`;
+    <div class="tdoc-idwrap">
+      <table class="tdoc-id">
+        <tr>
+          <th>성 명</th><td>${escHtml(personal.name_ko || s.name || '')}${personal.name_en ? ` <span style="color:#6b7688;font-size:9pt">(${escHtml(personal.name_en)})</span>` : ''}</td>
+          <th>생년월일</th><td>${escHtml(personal.birth || '')}</td>
+        </tr>
+        <tr>
+          <th>학 년</th><td>${escHtml(gf ? tcsPrintGradeLabel() : (s.grade || ''))}</td>
+          <th>학 교</th><td>${escHtml(school.school_name || '')}</td>
+        </tr>
+      </table>
+      <div class="tdoc-photo">${personal.photo
+        ? `<img src="${imAttr(personal.photo)}" onerror="this.parentNode.classList.add('empty');this.remove()"/>`
+        : '<span>사 진<br/>3×4cm</span>'}</div>
+    </div>`;
 
   // ── 각 섹션 ──
   const parts = [];
