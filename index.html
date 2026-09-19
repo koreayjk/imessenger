@@ -15612,8 +15612,11 @@ function ttGridHtml(entries, editable) {
   let minH = 24, maxH = 0;
   entries.forEach(e => { minH = Math.min(minH, Math.floor(ttMin(e.start_time)/60)); maxH = Math.max(maxH, Math.ceil(ttMin(e.end_time)/60)); });
   if (minH > maxH) { minH = 7; maxH = 18; }
-  minH = Math.min(minH, 7); maxH = Math.max(maxH, 18);
-  const PPH = editable ? 70 : 46, HEAD = 32;
+  minH = Math.min(minH, 7);
+  // 넣을 때는 새벽부터 밤 12시까지 다 보여준다 — 저녁 수업·알바를 끌어서 넣을 수 있어야 한다.
+  // 볼 때는 등록된 일정 범위에만 맞춘다 (빈 밤 시간으로 카드가 길어지지 않게)
+  maxH = editable ? 24 : Math.max(maxH, 18);
+  const PPH = editable ? 58 : 46, HEAD = 32;
   const gridH = (maxH - minH) * PPH;
   const gutterLabels = [];
   for (let h=minH; h<=maxH; h++) gutterLabels.push(`<span style="position:absolute;top:${(h-minH)*PPH - 6}px;right:5px;font-size:10.5px;color:var(--ink3)">${h}</span>`);
@@ -15774,11 +15777,12 @@ function ttDragEnd() {
   // 짧은 클릭 → 그 시각으로 폼만 채움
   if (dg.curH < 12) {
     dg.preview.remove();
-    const hour = Math.max(0, Math.min(dg.minH + Math.floor(dg.curTop / dg.pph), 22));
+    const hour = Math.max(0, Math.min(dg.minH + Math.floor(dg.curTop / dg.pph), 23));
     const z = n => String(n).padStart(2,'0');
     const dEl = document.getElementById('mtt-day'); if (dEl) dEl.value = dg.day;
     const s = document.getElementById('mtt-start'); if (s) s.value = `${z(hour)}:00`;
-    const e = document.getElementById('mtt-end'); if (e) e.value = `${z(Math.min(hour+1,23))}:00`;
+    // 23시를 누르면 자정을 넘길 수 없으니 23:59 로 (time 입력칸은 24:00 을 못 받는다)
+    const e = document.getElementById('mtt-end'); if (e) e.value = hour >= 23 ? '23:59' : `${z(hour+1)}:00`;
     const subj = document.getElementById('mtt-subject'); if (subj) subj.focus();
     ttDrag = null; return;
   }
