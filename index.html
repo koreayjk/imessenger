@@ -7646,9 +7646,32 @@ function readingLangName(l) { return t(READING_LANG_LABEL[l || readingLang][0], 
 // 거기를 다시 그린다. (예전엔 tcs-view 가 떠 있는지로만 판단해서, 학사 안에서는
 // 안 보이는 #reading-page 를 다시 그리는 바람에 탭을 눌러도 아무 일도 안 일어났다)
 let _readingHost = 'page';   // 'page' | 'tcs'
+let _readingQuiet = false;   // 이미 떠 있는 화면을 갱신하는 중 — '불러오는 중'을 안 끼운다
 function rerenderReading() {
-  if (_readingHost === 'tcs' && tcsCurrentStudent && document.getElementById(tcsMainId)) { renderTcsReadingUnified(); return; }
-  initReadingPage();
+  if (_readingHost === 'tcs' && tcsCurrentStudent && document.getElementById(tcsMainId)) return renderTcsReadingUnified();
+  return initReadingPage();
+}
+
+// 책 하나 지웠다고 목록 맨 위로 튀어 오르면 여러 권 지울 때 괴롭다.
+// 다시 그리는 동안 화면이 잠깐 줄었다 늘어나므로, 스크롤 위치를 적어 뒀다 되돌린다.
+function readingScrollSave() {
+  const start = document.getElementById(_readingHost === 'tcs' ? tcsMainId : 'reading-page');
+  const tops = [];
+  for (let n = start; n; n = n.parentElement) {
+    if (n.scrollHeight > n.clientHeight + 4) tops.push([n, n.scrollTop]);
+  }
+  const doc = document.scrollingElement || document.documentElement;
+  return { tops, win: (window.pageYOffset || doc.scrollTop || 0) };
+}
+function readingScrollRestore(keep) {
+  if (!keep) return;
+  const apply = () => {
+    keep.tops.forEach(([n, v]) => { try { if (n.isConnected) n.scrollTop = v; } catch (_) {} });
+    try { window.scrollTo(0, keep.win); } catch (_) {}
+  };
+  apply();
+  // 다시 그린 직후엔 높이가 아직 안 잡혀 브라우저가 스크롤을 깎는다 — 두 번 더 맞춘다
+  requestAnimationFrame(() => { apply(); requestAnimationFrame(apply); });
 }
 function setReadingLang(l) {
   readingLang = (l === 'ko') ? 'ko' : 'en';
@@ -7771,7 +7794,7 @@ async function initReadingPage() {
   const sn = document.getElementById('subnav-reading'); if (sn) sn.innerHTML = tcsSubnavHtml('reading');
   const page = document.getElementById('reading-page');
   const sub = document.getElementById('reading-header-sub');
-  page.innerHTML = `<div style="text-align:center;padding:40px;color:var(--ink3)">${t('불러오는 중...','Loading...')}</div>`;
+  if (!_readingQuiet) page.innerHTML = `<div style="text-align:center;padding:40px;color:var(--ink3)">${t('불러오는 중...','Loading...')}</div>`;
 
   try {
     const { data: books, error: bErr } = await sb.from('reading_books').select('*').order('category').order('sort').order('title');
@@ -8196,7 +8219,7 @@ async function renderTcsReadingUnified() {
   const main = document.getElementById(tcsMainId);
   if (!main || !tcsCurrentStudent) return;
   _readingHost = 'tcs';
-  main.innerHTML = `<div style="text-align:center;padding:40px;color:var(--ink3)">${t('불러오는 중...','Loading...')}</div>`;
+  if (!_readingQuiet) main.innerHTML = `<div style="text-align:center;padding:40px;color:var(--ink3)">${t('불러오는 중...','Loading...')}</div>`;
 
   try {
     if (!readingBooks.length) {
@@ -8527,8 +8550,13 @@ function refreshReportComments(bookId) {
 
 // 책 추가/삭제 후 화면 갱신 (교사 TCS-Triple School / 학생 reading-view 모두 대응)
 async function refreshReadingAfterBookChange() {
-  try { const { data: books } = await sb.from('reading_books').select('*').order('category').order('sort').order('title'); readingBooks = sortReadingBooks(books || []); } catch (e) {}
-  rerenderReading();
+  const keep = readingScrollSave();
+  _readingQuiet = true;          // 화면을 비우지 않는다 — 비우면 짧아져서 스크롤이 깎인다
+  try {
+    try { const { data: books } = await sb.from('reading_books').select('*').order('category').order('sort').order('title'); readingBooks = sortReadingBooks(books || []); } catch (e) {}
+    await rerenderReading();
+  } finally { _readingQuiet = false; }
+  readingScrollRestore(keep);    // 보던 자리 그대로
 }
 
 function readingLangOpts() {
