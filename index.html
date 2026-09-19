@@ -13826,6 +13826,7 @@ const SCHOOL_TABS = [
   { id:'newsletter', icon:'✉️', label:t('가정통신문','Newsletter'),    group:'admin', admin:true },
   { id:'cert',       icon:'📄', label:t('증명서','Certificates'),     group:'admin', admin:true },
   { id:'tuition',    icon:'💰', label:t('재정','Finance'),           group:'admin', admin:true },
+  { id:'vehicle',    icon:'🚗', label:t('차량','Vehicles'),          group:'admin', admin:true },
 ];
 let schoolSubMode = 'student';
 let schoolStudents = [];
@@ -13937,6 +13938,7 @@ function renderSchoolMain() {
   if (schoolSubMode === 'leave')      return renderApprovalHub();
   if (schoolSubMode === 'timetable')  return renderTimetableHub();
   if (schoolSubMode === 'tuition')    return renderTuitionHub();
+  if (schoolSubMode === 'vehicle')    return renderVehicleHub();
   if (schoolSubMode === 'newsletter') return renderNewsletterHub();
   if (schoolSubMode === 'cert')       return renderCertHub();
   return renderStudent360();
@@ -16488,6 +16490,545 @@ async function saveTimetable() {
   }
   showUploadToast(t('✅ 시간표 저장 완료','✅ Timetable saved'));
   await loadTimetable();
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  🚗 차량관리 — 차량별 정비 주기 · 이력 · 지출
+//  정비 주기 기본값은 일반 승용차 정비 매뉴얼(가혹조건) 기준.
+//  차량마다 다르면 vehicles.intervals 에 덮어쓴다.
+// ════════════════════════════════════════════════════════════════════
+const VEH_TASKS = [
+  { key:'oil',          icon:'🛢️', ko:'엔진오일',          en:'Engine Oil',         mi:5000,   mo:6   },
+  { key:'rotation',     icon:'🔄', ko:'타이어 로테이션',    en:'Tire Rotation',      mi:6000,   mo:6   },
+  { key:'air_filter',   icon:'🌬️', ko:'에어필터',          en:'Air Filter',         mi:15000,  mo:12  },
+  { key:'cabin_filter', icon:'❄️', ko:'캐빈(에어컨) 필터',  en:'Cabin Filter',       mi:15000,  mo:12  },
+  { key:'wiper',        icon:'🌧️', ko:'와이퍼',            en:'Wipers',             mi:null,   mo:12  },
+  { key:'brake',        icon:'🛑', ko:'브레이크 패드·로터', en:'Brake Pads',         mi:30000,  mo:36  },
+  { key:'brake_fluid',  icon:'💧', ko:'브레이크액',         en:'Brake Fluid',        mi:30000,  mo:24  },
+  { key:'coolant',      icon:'🧊', ko:'냉각수',            en:'Coolant',            mi:30000,  mo:24  },
+  { key:'tire',         icon:'🛞', ko:'타이어',            en:'Tires',              mi:40000,  mo:60  },
+  { key:'battery',      icon:'🔋', ko:'배터리',            en:'Battery',            mi:null,   mo:36  },
+  { key:'align',        icon:'📐', ko:'휠 얼라인먼트',      en:'Wheel Alignment',    mi:20000,  mo:24  },
+  { key:'trans',        icon:'⚙️', ko:'미션오일',          en:'Transmission Fluid', mi:60000,  mo:48  },
+  { key:'spark',        icon:'⚡', ko:'점화플러그',         en:'Spark Plugs',        mi:60000,  mo:72  },
+  { key:'ac',           icon:'🌡️', ko:'에어컨 가스',        en:'A/C Recharge',       mi:null,   mo:24  },
+  { key:'timing',       icon:'⏱️', ko:'타이밍벨트',         en:'Timing Belt',        mi:100000, mo:120 },
+  { key:'inspection',   icon:'📋', ko:'정기검사·등록',      en:'Inspection / Reg.',  mi:null,   mo:12  },
+  { key:'insurance',    icon:'🛡️', ko:'보험 갱신',          en:'Insurance',          mi:null,   mo:12  },
+  { key:'fuel',         icon:'⛽', ko:'주유',              en:'Fuel',               mi:null,   mo:null },
+  { key:'repair',       icon:'🔧', ko:'수리·기타',          en:'Repair / Other',     mi:null,   mo:null },
+];
+function vehTask(k){ return VEH_TASKS.find(x => x.key === k) || { key:k, icon:'🔧', ko:k, en:k, mi:null, mo:null }; }
+function vehTaskName(k){ const x = vehTask(k); return t(x.ko, x.en); }
+const vehMoney = n => (n === null || n === undefined || n === '') ? '' : '$' + Number(n).toLocaleString('en-US',{minimumFractionDigits:2, maximumFractionDigits:2});
+const vehMi    = n => (n === null || n === undefined || n === '') ? '' : Number(n).toLocaleString('en-US') + ' mi';
+const vehDate  = d => String(d || '').slice(0,10);
+function vehToday(){ const d = new Date(), z = n => String(n).padStart(2,'0'); return `${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}`; }
+function vehAddMonths(ds, mo){ const d = new Date(ds + 'T00:00:00'); d.setMonth(d.getMonth() + mo); const z = n => String(n).padStart(2,'0'); return `${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}`; }
+function vehDays(a, b){ return Math.round((new Date(b + 'T00:00:00') - new Date(a + 'T00:00:00')) / 86400000); }
+
+let vehicles = [], vehLogs = [];
+let vehSelId = null;                 // 선택된 차량 (null = 목록)
+let vehTabMode = 'due';              // 'due' | 'log' | 'cost'
+let vehLogDraft = null;              // 정비 기록 작성/수정 중
+let vehCarDraft = null;              // 차량 추가/수정 중
+function vehCanEdit(){ return canSeeAdminModules(); }
+
+// ── 이 차량의 이 항목 마지막 기록 ──
+function vehLastLog(vid, key){
+  return vehLogs.filter(l => l.vehicle_id === vid && l.kind === key)
+    .sort((a,b) => vehDate(b.service_date).localeCompare(vehDate(a.service_date)))[0] || null;
+}
+function vehInterval(v, task){
+  const o = (v.intervals && v.intervals[task.key]) || {};
+  return { mi: (o.mi !== undefined && o.mi !== null) ? o.mi : task.mi,
+           mo: (o.mo !== undefined && o.mo !== null) ? o.mo : task.mo };
+}
+// ── 다음 정비가 언제인지 ──
+function vehDue(v, task){
+  const last = vehLastLog(v.id, task.key);
+  const { mi, mo } = vehInterval(v, task);
+  const out = { task, last, mi, mo, state:'none', pct:0, dueDate:null, dueOdo:null, leftDays:null, leftMi:null };
+  if (!last) return out;
+  const today = vehToday(), ld = vehDate(last.service_date);
+  if (mo) {
+    out.dueDate = vehAddMonths(ld, mo);
+    out.leftDays = vehDays(today, out.dueDate);
+    out.pct = Math.max(out.pct, vehDays(ld, today) / (mo * 30.44));
+  }
+  if (mi && last.odometer) {
+    out.dueOdo = Number(last.odometer) + mi;
+    if (v.odometer) {
+      out.leftMi = out.dueOdo - Number(v.odometer);
+      out.pct = Math.max(out.pct, (Number(v.odometer) - Number(last.odometer)) / mi);
+    }
+  }
+  if (!mo && !mi) { out.state = 'logged'; return out; }
+  const over = (out.leftDays !== null && out.leftDays < 0) || (out.leftMi !== null && out.leftMi < 0);
+  const soon = (out.leftDays !== null && out.leftDays <= 30) || (out.leftMi !== null && out.leftMi <= 500);
+  out.state = over ? 'over' : (soon ? 'soon' : 'ok');
+  out.pct = Math.max(0, Math.min(1, out.pct));
+  return out;
+}
+const VEH_STATE = {
+  over:   ['#c0392b','#fdecea','지남','Overdue'],
+  soon:   ['#b45309','#fdf6e3','곧','Due soon'],
+  ok:     ['#15803d','#e8f5ee','여유','OK'],
+  none:   ['#8695ad','#f1f5f9','기록 없음','No record'],
+  logged: ['#40506b','#eef2f8','기록만','Logged'],
+};
+function vehDueLabel(d){
+  if (d.state === 'none') return t('아직 기록이 없어요','No record yet');
+  const bits = [];
+  if (d.leftDays !== null) bits.push(d.leftDays < 0 ? t(`${-d.leftDays}일 지남`, `${-d.leftDays}d overdue`) : t(`${d.leftDays}일 남음`, `${d.leftDays}d left`));
+  if (d.leftMi !== null) bits.push(d.leftMi < 0 ? t(`${Math.abs(d.leftMi).toLocaleString()}mi 지남`, `${Math.abs(d.leftMi).toLocaleString()}mi over`) : t(`${d.leftMi.toLocaleString()}mi 남음`, `${d.leftMi.toLocaleString()}mi left`));
+  return bits.join(' · ') || t('주기 없음','No interval');
+}
+// 급한 순서로 — 기록이 없는 항목은 맨 뒤로 뺀다 (급한 게 아니라 아직 안 적은 것)
+function vehDueSorted(v){
+  const rank = { over:0, soon:1, ok:2, none:3, logged:4 };
+  return VEH_TASKS.filter(x => x.mi || x.mo).map(x => vehDue(v, x))
+    .sort((a,b) => (rank[a.state] - rank[b.state]) || (b.pct - a.pct));
+}
+function vehLogsOf(vid){ return vehLogs.filter(l => l.vehicle_id === vid); }
+function vehTotalCost(vid){ return vehLogsOf(vid).reduce((s,l) => s + (Number(l.cost) || 0), 0); }
+
+// ── 불러오기 ──
+async function renderVehicleHub(){
+  const main = document.getElementById('school-main');
+  main.innerHTML = `<div style="text-align:center;padding:40px;color:var(--ink3);font-size:13px">${t('불러오는 중...','Loading...')}</div>`;
+  try {
+    const { data: vs, error } = await sb.from('vehicles').select('*').eq('community_id', CID()).order('sort').order('plate');
+    if (error) throw error;
+    vehicles = vs || [];
+    const { data: ls, error: le } = await sb.from('vehicle_logs').select('*').eq('community_id', CID()).order('service_date', { ascending:false });
+    if (le) throw le;
+    vehLogs = ls || [];
+  } catch(e) {
+    if (schoolTableMissing(e)) return schoolSetupNeeded(e, 'db/차량관리_DB설치.sql');
+    main.innerHTML = `<div style="color:#b91c1c;padding:30px;text-align:center;font-size:13px">${t('불러오기 실패: ','Failed to load: ')}${e.message || e}</div>`;
+    return;
+  }
+  if (vehSelId && !vehicles.find(v => v.id === vehSelId)) vehSelId = null;
+  renderVehicleMain();
+}
+function renderVehicleMain(){
+  const main = document.getElementById('school-main'); if (!main) return;
+  main.innerHTML = vehSelId ? vehDetailHtml() : vehListHtml();
+}
+function vehOpen(id){ vehSelId = id; vehTabMode = 'due'; vehLogDraft = null; renderVehicleMain(); }
+function vehBack(){ vehSelId = null; vehLogDraft = null; vehCarDraft = null; renderVehicleMain(); }
+function setVehTab(m){ vehTabMode = m; vehLogDraft = null; renderVehicleMain(); }
+
+// ── 차량 목록 ──
+function vehListHtml(){
+  const today = vehToday();
+  let over = 0, soon = 0;
+  vehicles.forEach(v => vehDueSorted(v).forEach(d => { if (d.state === 'over') over++; else if (d.state === 'soon') soon++; }));
+  const yr = new Date().getFullYear();
+  const yearCost = vehLogs.filter(l => vehDate(l.service_date).slice(0,4) === String(yr)).reduce((s,l) => s + (Number(l.cost)||0), 0);
+
+  const card = (v) => {
+    const dues = vehDueSorted(v).filter(d => d.state === 'over' || d.state === 'soon').slice(0,3);
+    const n = vehLogsOf(v.id).length;
+    const last = vehLogsOf(v.id)[0];
+    return `<div onclick="vehOpen('${v.id}')" style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:16px 17px;cursor:pointer;transition:border-color .15s var(--ease-out),box-shadow .15s var(--ease-out)"
+      onmouseover="this.style.borderColor='#2a5298';this.style.boxShadow='0 6px 18px rgba(29,58,95,.1)'" onmouseout="this.style.borderColor='var(--border)';this.style.boxShadow=''">
+      <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:10px">
+        <div style="width:42px;height:42px;border-radius:12px;background:var(--asoft);display:flex;align-items:center;justify-content:center;font-size:21px;flex-shrink:0">🚗</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:16px;font-weight:800;color:var(--ink);letter-spacing:.02em">${escHtml(v.plate || '')}</div>
+          <div style="font-size:11.5px;color:var(--ink3);margin-top:1px">${escHtml([v.name, v.make, v.model, v.year].filter(Boolean).join(' · '))}</div>
+        </div>
+        ${dues.length ? `<span style="flex-shrink:0;font-size:11px;font-weight:800;padding:3px 9px;border-radius:99px;background:${VEH_STATE[dues[0].state][1]};color:${VEH_STATE[dues[0].state][0]}">${dues.filter(d=>d.state==='over').length ? `🔴 ${dues.filter(d=>d.state==='over').length}` : `🟡 ${dues.length}`}</span>` : `<span style="flex-shrink:0;font-size:11px;font-weight:800;padding:3px 9px;border-radius:99px;background:#e8f5ee;color:#15803d">✅</span>`}
+      </div>
+      <div style="display:flex;gap:14px;font-size:12px;color:var(--ink2);margin-bottom:10px;flex-wrap:wrap">
+        <span><b style="font-size:14px;color:var(--ink)">${v.odometer ? Number(v.odometer).toLocaleString() : '—'}</b> mi</span>
+        ${v.odometer_at ? `<span style="color:var(--ink3)">${vehDate(v.odometer_at)} ${t('기준','as of')}</span>` : ''}
+      </div>
+      ${dues.length ? `<div style="display:flex;flex-direction:column;gap:4px;margin-bottom:10px">
+        ${dues.map(d => `<div style="display:flex;align-items:center;gap:6px;font-size:11.5px">
+          <span>${d.task.icon}</span><span style="font-weight:700;color:var(--ink2)">${vehTaskName(d.task.key)}</span>
+          <span style="margin-left:auto;font-weight:700;color:${VEH_STATE[d.state][0]}">${vehDueLabel(d)}</span>
+        </div>`).join('')}
+      </div>` : `<div style="font-size:11.5px;color:var(--ink3);margin-bottom:10px">${t('지금 당장 할 정비는 없어요','Nothing due right now')}</div>`}
+      <div style="display:flex;gap:12px;font-size:11px;color:var(--ink3);border-top:1px solid var(--border);padding-top:9px">
+        <span>${t('기록','Records')} <b style="color:var(--ink2)">${n}</b></span>
+        <span>${t('누적 지출','Total')} <b style="color:var(--ink2)">${vehMoney(vehTotalCost(v.id)) || '$0.00'}</b></span>
+        ${last ? `<span style="margin-left:auto">${t('최근','Last')} ${vehDate(last.service_date)}</span>` : ''}
+      </div>
+    </div>`;
+  };
+
+  const stat = (label, val, sub, color) => `<div style="background:var(--s2);border-radius:13px;padding:13px 15px">
+    <div style="font-size:11.5px;color:var(--ink3)">${label}</div>
+    <div style="font-size:21px;font-weight:800;color:${color || 'var(--adeep)'};margin-top:2px">${val}</div>
+    ${sub ? `<div style="font-size:11px;color:var(--ink3);margin-top:1px">${sub}</div>` : ''}
+  </div>`;
+
+  return `<div style="max-width:1080px;margin:0 auto">
+    ${vehCarDraft ? vehCarFormHtml() : ''}
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:11px;margin-bottom:18px">
+      ${stat(t('관리 차량','Vehicles'), vehicles.length + t('대',''))}
+      ${stat(t('정비 시기 지남','Overdue'), over, over ? t('바로 확인하세요','Check now') : t('없음','None'), over ? '#c0392b' : 'var(--adeep)')}
+      ${stat(t('곧 정비','Due soon'), soon, t('30일 / 500mi 이내','within 30d / 500mi'), soon ? '#b45309' : 'var(--adeep)')}
+      ${stat(t(`${yr}년 지출`, `${yr} spend`), vehMoney(yearCost) || '$0.00')}
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+      <div style="font-size:15px;font-weight:800;color:var(--adeep)">🚗 ${t('차량','Vehicles')}</div>
+      <div style="flex:1"></div>
+      ${vehCanEdit() ? `<button onclick="vehNewCar()" style="height:36px;padding:0 15px;border:none;border-radius:10px;background:#1d3a5f;color:#fff;font:700 12.5px var(--font);cursor:pointer">＋ ${t('차량 추가','Add vehicle')}</button>` : ''}
+    </div>
+    ${vehicles.length
+      ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:13px">${vehicles.map(card).join('')}</div>`
+      : `<div style="text-align:center;padding:50px 20px;color:var(--ink3);font-size:13px;line-height:1.9">${t('아직 등록된 차량이 없어요.<br>[＋ 차량 추가] 로 번호판과 차종을 넣어 주세요.','No vehicles yet.<br>Use [＋ Add vehicle] to register one.')}</div>`}
+  </div>`;
+}
+
+// ── 차량 상세 ──
+function vehDetailHtml(){
+  const v = vehicles.find(x => x.id === vehSelId); if (!v) return vehListHtml();
+  const tab = (m, icon, ko, en) => `<button onclick="setVehTab('${m}')" style="height:36px;padding:0 15px;border:none;border-radius:9px;font:700 12.5px var(--font);cursor:pointer;background:${vehTabMode===m?'#1d3a5f':'transparent'};color:${vehTabMode===m?'#fff':'var(--ink2)'}">${icon} ${t(ko,en)}</button>`;
+  const chip = (label, val, warn) => val ? `<span style="font-size:11.5px;padding:4px 10px;border-radius:99px;background:${warn?'#fdecea':'var(--s2)'};color:${warn?'#c0392b':'var(--ink2)'};font-weight:600">${label} ${vehDate(val)}</span>` : '';
+  const today = vehToday();
+  const expSoon = d => d && vehDays(today, vehDate(d)) <= 30;
+
+  return `<div style="max-width:960px;margin:0 auto">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+      <button onclick="vehBack()" style="height:34px;padding:0 12px;border:1.5px solid var(--border);background:var(--surface);border-radius:9px;cursor:pointer;font:600 12px var(--font);color:var(--ink2)">${t('← 차량 목록','← Vehicles')}</button>
+      <div style="font-size:19px;font-weight:800;color:var(--ink);letter-spacing:.02em">${escHtml(v.plate||'')}</div>
+      <div style="font-size:12.5px;color:var(--ink3)">${escHtml([v.name, v.make, v.model, v.year].filter(Boolean).join(' · '))}</div>
+      <div style="flex:1"></div>
+      ${vehCanEdit() ? `<button onclick="vehEditCar('${v.id}')" style="height:34px;padding:0 13px;border:1.5px solid var(--border);background:var(--surface);border-radius:9px;cursor:pointer;font:600 12px var(--font);color:var(--ink2)">⚙️ ${t('차량 정보','Vehicle info')}</button>` : ''}
+    </div>
+
+    ${vehCarDraft ? vehCarFormHtml() : ''}
+
+    <div style="background:linear-gradient(135deg,#1d3a5f,#2a5298);border-radius:16px;padding:16px 20px;margin-bottom:14px;color:#fff">
+      <div style="display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap">
+        <div>
+          <div style="font-size:12px;opacity:.8">${t('현재 주행거리','Odometer')}</div>
+          <div style="font-size:26px;font-weight:800;line-height:1.2">${v.odometer ? Number(v.odometer).toLocaleString() : '—'}<span style="font-size:14px;font-weight:600;opacity:.85"> mi</span></div>
+          ${v.odometer_at ? `<div style="font-size:11px;opacity:.75;margin-top:1px">${vehDate(v.odometer_at)} ${t('기준','as of')}</div>` : ''}
+        </div>
+        ${vehCanEdit() ? `<div style="display:flex;gap:6px;align-items:center">
+          <input id="veh-odo" type="number" placeholder="${t('주행거리 갱신','Update odometer')}" style="width:130px;height:34px;padding:0 11px;border:none;border-radius:9px;font:13px var(--font);outline:none"/>
+          <button onclick="saveVehOdometer('${v.id}')" style="height:34px;padding:0 13px;border:none;border-radius:9px;background:rgba(255,255,255,.22);color:#fff;font:700 12px var(--font);cursor:pointer">${t('기록','Save')}</button>
+        </div>` : ''}
+        <div style="flex:1"></div>
+        <div style="text-align:right">
+          <div style="font-size:12px;opacity:.8">${t('누적 지출','Total spend')}</div>
+          <div style="font-size:20px;font-weight:800">${vehMoney(vehTotalCost(v.id)) || '$0.00'}</div>
+        </div>
+      </div>
+      ${(v.insurance_exp || v.registration_exp || v.inspection_exp) ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:12px">
+        ${v.insurance_exp ? `<span style="font-size:11.5px;padding:4px 10px;border-radius:99px;background:rgba(255,255,255,${expSoon(v.insurance_exp)?'.3':'.15'});font-weight:600">🛡️ ${t('보험','Insurance')} ${vehDate(v.insurance_exp)}</span>` : ''}
+        ${v.registration_exp ? `<span style="font-size:11.5px;padding:4px 10px;border-radius:99px;background:rgba(255,255,255,${expSoon(v.registration_exp)?'.3':'.15'});font-weight:600">📄 ${t('등록','Registration')} ${vehDate(v.registration_exp)}</span>` : ''}
+        ${v.inspection_exp ? `<span style="font-size:11.5px;padding:4px 10px;border-radius:99px;background:rgba(255,255,255,${expSoon(v.inspection_exp)?'.3':'.15'});font-weight:600">📋 ${t('검사','Inspection')} ${vehDate(v.inspection_exp)}</span>` : ''}
+      </div>` : ''}
+    </div>
+    ${v.note ? `<div style="font-size:12px;color:var(--ink3);background:var(--s2);border-radius:10px;padding:9px 13px;margin-bottom:14px;line-height:1.6">${escHtml(v.note)}</div>` : ''}
+
+    <div style="display:inline-flex;gap:3px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:4px;margin-bottom:14px;flex-wrap:wrap">
+      ${tab('due','🔧','정비 현황','Schedule')}${tab('log','📋','정비 이력','History')}${tab('cost','💵','지출','Costs')}
+    </div>
+    ${vehTabMode === 'due' ? vehDueHtml(v) : vehTabMode === 'log' ? vehLogHtml(v) : vehCostHtml(v)}
+  </div>`;
+}
+
+// ── 탭 1: 정비 현황 (주기표) ──
+function vehDueHtml(v){
+  const all = vehDueSorted(v);
+  const tracked = all.filter(d => d.state !== 'none');
+  const untracked = all.filter(d => d.state === 'none');
+  const rows = tracked.map(d => {
+    const [fg, bg, ko, en] = VEH_STATE[d.state];
+    const barW = Math.round(Math.min(1, d.pct) * 100);
+    const iv = [];
+    if (d.mi) iv.push(`${Number(d.mi).toLocaleString()} mi`);
+    if (d.mo) iv.push(t(`${d.mo}개월`, `${d.mo} mo`));
+    return `<div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid ${fg};border-radius:12px;padding:12px 14px;margin-bottom:8px">
+      <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+        <span style="font-size:17px">${d.task.icon}</span>
+        <span style="font-size:13.5px;font-weight:800;color:var(--ink)">${vehTaskName(d.task.key)}</span>
+        <span style="font-size:10.5px;color:var(--ink3)">${t('주기','every')} ${iv.join(' / ') || '—'}</span>
+        <div style="flex:1"></div>
+        <span style="font-size:11px;font-weight:800;padding:3px 9px;border-radius:99px;background:${bg};color:${fg};white-space:nowrap">${t(ko,en)}</span>
+        ${vehCanEdit() ? `<button onclick="vehNewLog('${v.id}','${d.task.key}')" style="height:28px;padding:0 11px;border:1.5px solid var(--border);background:var(--surface);border-radius:8px;cursor:pointer;font:700 11.5px var(--font);color:var(--ink2);white-space:nowrap">＋ ${t('기록','Log')}</button>` : ''}
+      </div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:11.5px;color:var(--ink3);margin-top:7px">
+        <span>${t('마지막','Last')} <b style="color:var(--ink2)">${vehDate(d.last.service_date)}</b>${d.last.odometer ? ` · ${vehMi(d.last.odometer)}` : ''}</span>
+        ${(d.dueDate || d.dueOdo) ? `<span>${t('다음','Next')} <b style="color:${fg}">${[d.dueDate, d.dueOdo ? vehMi(d.dueOdo) : ''].filter(Boolean).join(' · ')}</b></span>` : ''}
+        <span style="margin-left:auto;font-weight:700;color:${fg}">${vehDueLabel(d)}</span>
+      </div>
+      <div style="background:var(--s3);border-radius:99px;height:5px;margin-top:7px;overflow:hidden"><div style="height:100%;width:${barW}%;background:${fg};border-radius:99px"></div></div>
+    </div>`;
+  }).join('');
+
+  // 아직 한 번도 안 적은 항목 — 한 줄씩 접어 둔다 (급한 게 아니라 목록만 길어진다)
+  const untrackedHtml = untracked.length ? `<details style="margin-top:6px;border:1px solid var(--border);border-radius:12px;background:var(--surface);padding:11px 14px">
+    <summary style="cursor:pointer;font:700 12.5px var(--font);color:var(--ink2)">🗒️ ${t(`아직 기록이 없는 항목 ${untracked.length}개`, `${untracked.length} item(s) with no record yet`)}</summary>
+    <div style="font-size:11px;color:var(--ink3);margin:8px 0 4px;line-height:1.6">${t('한 번만 기록해 두면 그 다음부터 시기를 알려드려요.','Log each one once and the next due date will start showing.')}</div>
+    ${untracked.map(d => `<div style="display:flex;align-items:center;gap:9px;padding:7px 0;border-top:1px solid var(--border)">
+      <span style="font-size:15px">${d.task.icon}</span>
+      <span style="font-size:12.5px;font-weight:600;color:var(--ink2)">${vehTaskName(d.task.key)}</span>
+      <span style="font-size:10.5px;color:var(--ink3)">${t('주기','every')} ${[d.mi ? Number(d.mi).toLocaleString()+' mi' : '', d.mo ? t(`${d.mo}개월`,`${d.mo} mo`) : ''].filter(Boolean).join(' / ')}</span>
+      <div style="flex:1"></div>
+      ${vehCanEdit() ? `<button onclick="vehNewLog('${v.id}','${d.task.key}')" style="height:27px;padding:0 11px;border:1.5px solid var(--border);background:var(--surface);border-radius:8px;cursor:pointer;font:700 11.5px var(--font);color:var(--ink2);white-space:nowrap">＋ ${t('기록','Log')}</button>` : ''}
+    </div>`).join('')}
+  </details>` : '';
+
+  return `${vehLogDraft ? vehLogFormHtml() : ''}
+    <div style="font-size:11.5px;color:var(--ink3);margin-bottom:10px;line-height:1.7;word-break:keep-all">${t('일반 승용차 정비 매뉴얼(가혹조건) 기준 주기예요. 주행거리와 날짜 중 <b>먼저 오는 쪽</b>을 기준으로 알려드립니다. 차종마다 다르면 [⚙️ 차량 정보]에서 주기를 바꿀 수 있어요.','Intervals follow a standard severe-duty maintenance schedule. Whichever comes first — mileage or time — triggers the reminder. Adjust per vehicle under [⚙️ Vehicle info].')}</div>
+    ${rows}${untrackedHtml}`;
+}
+
+// ── 탭 2: 정비 이력 ──
+function vehLogHtml(v){
+  const list = vehLogsOf(v.id).slice().sort((a,b) => vehDate(b.service_date).localeCompare(vehDate(a.service_date)));
+  const rows = list.map(l => {
+    const tk = vehTask(l.kind);
+    return `<div style="display:flex;gap:11px;padding:11px 13px;border:1px solid var(--border);border-radius:11px;margin-bottom:7px;background:var(--surface)">
+      <div style="width:34px;height:34px;border-radius:10px;background:var(--s2);display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0">${tk.icon}</div>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:baseline;gap:7px;flex-wrap:wrap">
+          <span style="font-size:13.5px;font-weight:700;color:var(--ink)">${escHtml(l.title || vehTaskName(l.kind))}</span>
+          <span style="font-size:10.5px;font-weight:700;color:#1d3a5f;background:var(--asoft);padding:1px 7px;border-radius:99px">${vehTaskName(l.kind)}</span>
+        </div>
+        <div style="font-size:11.5px;color:var(--ink3);margin-top:3px;display:flex;gap:12px;flex-wrap:wrap">
+          <span>📅 ${vehDate(l.service_date)}</span>
+          ${l.odometer ? `<span>🛣️ ${vehMi(l.odometer)}</span>` : ''}
+          ${l.vendor ? `<span>🏪 ${escHtml(l.vendor)}</span>` : ''}
+          ${l.warranty_until ? `<span style="color:#15803d;font-weight:700">🛡️ ${t('워런티','Warranty')} ~${vehDate(l.warranty_until)}</span>` : ''}
+        </div>
+        ${l.note ? `<div style="font-size:11px;color:var(--ink3);margin-top:4px;line-height:1.6;white-space:pre-wrap">${escHtml(l.note)}</div>` : ''}
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div style="font-size:14px;font-weight:800;color:var(--ink)">${vehMoney(l.cost) || '—'}</div>
+        ${vehCanEdit() ? `<div style="display:flex;gap:4px;margin-top:6px;justify-content:flex-end">
+          <button onclick="vehEditLog('${l.id}')" title="${t('수정','Edit')}" style="width:26px;height:26px;border:1px solid var(--border);background:var(--surface);border-radius:7px;cursor:pointer;font-size:11px">✏️</button>
+          <button onclick="deleteVehLog('${l.id}')" title="${t('삭제','Delete')}" style="width:26px;height:26px;border:1px solid var(--border);background:var(--surface);border-radius:7px;cursor:pointer;color:#ef4444;font-size:13px">×</button>
+        </div>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+  return `${vehLogDraft ? vehLogFormHtml() : `${vehCanEdit() ? `<button onclick="vehNewLog('${v.id}','oil')" style="height:38px;padding:0 16px;border:none;border-radius:10px;background:#1d3a5f;color:#fff;font:700 13px var(--font);cursor:pointer;margin-bottom:12px">＋ ${t('정비 기록 추가','Add a record')}</button>` : ''}`}
+    ${rows || `<div style="text-align:center;padding:40px;color:var(--ink3);font-size:13px">${t('아직 기록이 없어요','No records yet')}</div>`}`;
+}
+
+// ── 탭 3: 지출 ──
+function vehCostHtml(v){
+  const list = vehLogsOf(v.id).filter(l => Number(l.cost));
+  const byYear = {}, byKind = {};
+  list.forEach(l => {
+    const y = vehDate(l.service_date).slice(0,4);
+    byYear[y] = (byYear[y] || 0) + Number(l.cost);
+    byKind[l.kind] = (byKind[l.kind] || 0) + Number(l.cost);
+  });
+  const total = Object.values(byYear).reduce((a,b) => a+b, 0);
+  const maxK = Math.max(1, ...Object.values(byKind));
+  const years = Object.keys(byYear).sort().reverse();
+  const kinds = Object.keys(byKind).sort((a,b) => byKind[b] - byKind[a]);
+  const noCost = vehLogsOf(v.id).filter(l => !Number(l.cost) && l.cost !== 0).length;
+  return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin-bottom:14px">
+      <div style="font-size:12px;color:var(--ink3)">${t('누적 지출','Total spend')}</div>
+      <div style="font-size:26px;font-weight:800;color:var(--adeep)">${vehMoney(total) || '$0.00'}</div>
+      ${noCost ? `<div style="font-size:11px;color:var(--ink3);margin-top:3px">${t(`금액이 안 적힌 기록 ${noCost}건은 빠져 있어요`, `${noCost} record(s) without a cost are not counted`)}</div>` : ''}
+    </div>
+    <div style="font-size:13px;font-weight:800;color:var(--adeep);margin:0 0 8px">📅 ${t('연도별','By year')}</div>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:6px 14px;margin-bottom:16px">
+      ${years.map(y => `<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)">
+        <span style="font-size:13px;font-weight:700;color:var(--ink2);width:56px">${y}</span>
+        <div style="flex:1;background:var(--s3);border-radius:99px;height:8px;overflow:hidden"><div style="height:100%;width:${Math.round(byYear[y]/Math.max(1,total)*100)}%;background:#2a5298;border-radius:99px"></div></div>
+        <span style="font-size:13px;font-weight:700;color:var(--ink);width:96px;text-align:right">${vehMoney(byYear[y])}</span>
+      </div>`).join('') || `<div style="font-size:12.5px;color:var(--ink3);padding:12px 0">${t('데이터 없음','No data')}</div>`}
+    </div>
+    <div style="font-size:13px;font-weight:800;color:var(--adeep);margin:0 0 8px">🔧 ${t('항목별','By item')}</div>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:6px 14px">
+      ${kinds.map(k => `<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)">
+        <span style="font-size:15px;width:22px">${vehTask(k).icon}</span>
+        <span style="font-size:12.5px;font-weight:600;color:var(--ink2);width:118px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${vehTaskName(k)}</span>
+        <div style="flex:1;background:var(--s3);border-radius:99px;height:8px;overflow:hidden"><div style="height:100%;width:${Math.round(byKind[k]/maxK*100)}%;background:#5A7C8B;border-radius:99px"></div></div>
+        <span style="font-size:12.5px;font-weight:700;color:var(--ink);width:96px;text-align:right">${vehMoney(byKind[k])}</span>
+      </div>`).join('') || `<div style="font-size:12.5px;color:var(--ink3);padding:12px 0">${t('데이터 없음','No data')}</div>`}
+    </div>`;
+}
+
+// ── 정비 기록 작성/수정 ──
+const vehInp = 'height:38px;padding:0 12px;border:1.5px solid var(--border);border-radius:9px;font:13.5px var(--font);color:var(--ink);background:var(--surface);outline:none;width:100%';
+const vehLbl = 'font-size:11.5px;font-weight:700;color:var(--ink3);display:block;margin-bottom:5px';
+function vehNewLog(vid, kind){
+  const v = vehicles.find(x => x.id === vid);
+  vehLogDraft = { id:null, vehicle_id:vid, kind:kind||'oil', title:'', service_date:vehToday(),
+                  odometer: v && v.odometer ? v.odometer : '', cost:'', vendor:'', warranty_until:'', note:'' };
+  renderVehicleMain();
+}
+function vehEditLog(id){
+  const l = vehLogs.find(x => x.id === id); if (!l) return;
+  vehLogDraft = { id:l.id, vehicle_id:l.vehicle_id, kind:l.kind, title:l.title||'', service_date:vehDate(l.service_date),
+                  odometer:l.odometer||'', cost:(l.cost===null||l.cost===undefined)?'':l.cost, vendor:l.vendor||'',
+                  warranty_until:l.warranty_until?vehDate(l.warranty_until):'', note:l.note||'' };
+  vehTabMode = 'log';
+  renderVehicleMain();
+}
+function vehLogCancel(){ vehLogDraft = null; renderVehicleMain(); }
+function vehLogFormHtml(){
+  const d = vehLogDraft;
+  const opts = VEH_TASKS.map(x => `<option value="${x.key}" ${d.kind===x.key?'selected':''}>${x.icon} ${t(x.ko,x.en)}</option>`).join('');
+  return `<div style="background:var(--surface);border:2px solid #2a5298;border-radius:14px;padding:16px 18px;margin-bottom:14px">
+    <div style="font-size:13.5px;font-weight:800;color:var(--adeep);margin-bottom:12px">${d.id ? `✏️ ${t('정비 기록 수정','Edit record')}` : `＋ ${t('정비 기록 추가','Add a record')}`}</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:11px">
+      <div><label style="${vehLbl}">${t('항목','Item')}</label><select id="vl-kind" style="${vehInp};cursor:pointer">${opts}</select></div>
+      <div><label style="${vehLbl}">${t('날짜','Date')}</label><input id="vl-date" type="date" value="${escAttr(d.service_date)}" style="${vehInp}"/></div>
+      <div><label style="${vehLbl}">${t('주행거리 (mi)','Odometer (mi)')}</label><input id="vl-odo" type="number" value="${escAttr(d.odometer)}" placeholder="${t('선택','optional')}" style="${vehInp}"/></div>
+      <div><label style="${vehLbl}">${t('금액 ($)','Cost ($)')}</label><input id="vl-cost" type="number" step="0.01" value="${escAttr(d.cost)}" placeholder="${t('선택','optional')}" style="${vehInp}"/></div>
+      <div style="grid-column:1/-1"><label style="${vehLbl}">${t('내용','What was done')}</label><input id="vl-title" value="${escAttr(d.title)}" placeholder="${t('예: 타이어 4개 교체 (235/60R18)','e.g. 4 tires replaced (235/60R18)')}" style="${vehInp}"/></div>
+      <div><label style="${vehLbl}">${t('정비소','Shop')}</label><input id="vl-vendor" value="${escAttr(d.vendor)}" placeholder="${t('선택','optional')}" style="${vehInp}"/></div>
+      <div><label style="${vehLbl}">${t('워런티 만료','Warranty until')}</label><input id="vl-war" type="date" value="${escAttr(d.warranty_until)}" style="${vehInp}"/></div>
+      <div style="grid-column:1/-1"><label style="${vehLbl}">${t('메모','Note')}</label><textarea id="vl-note" style="${vehInp};height:auto;min-height:54px;padding:9px 12px;line-height:1.6;resize:vertical">${escHtml(d.note)}</textarea></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button onclick="saveVehLog()" style="flex:1;height:42px;border:none;border-radius:10px;background:#1d3a5f;color:#fff;font:800 13.5px var(--font);cursor:pointer">💾 ${t('저장','Save')}</button>
+      <button onclick="vehLogCancel()" style="height:42px;padding:0 18px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:10px;font:600 13px var(--font);cursor:pointer">${t('취소','Cancel')}</button>
+    </div>
+  </div>`;
+}
+async function saveVehLog(){
+  const d = vehLogDraft; if (!d) return;
+  const val = id => (document.getElementById(id)?.value || '').trim();
+  const num = id => { const v = val(id); return v === '' ? null : Number(v); };
+  const row = {
+    community_id: CID(), vehicle_id: d.vehicle_id,
+    kind: val('vl-kind') || 'repair',
+    title: val('vl-title') || null,
+    service_date: val('vl-date') || vehToday(),
+    odometer: num('vl-odo'), cost: num('vl-cost'),
+    vendor: val('vl-vendor') || null,
+    warranty_until: val('vl-war') || null,
+    note: val('vl-note') || null,
+  };
+  if (!row.service_date) { showUploadToast(t('날짜를 넣어주세요','Please enter a date')); return; }
+  let error;
+  if (d.id) ({ error } = await sb.from('vehicle_logs').update(row).eq('id', d.id));
+  else { row.created_by = ME.id; ({ error } = await sb.from('vehicle_logs').insert(row)); }
+  if (error) { showUploadToast(t('저장 실패: ','Save failed: ') + error.message); return; }
+  // 이번 기록의 주행거리가 차량에 적힌 것보다 크면 차량 주행거리도 같이 올린다
+  const v = vehicles.find(x => x.id === d.vehicle_id);
+  if (v && row.odometer && (!v.odometer || row.odometer > Number(v.odometer))) {
+    await sb.from('vehicles').update({ odometer: row.odometer, odometer_at: row.service_date, updated_at: new Date().toISOString() }).eq('id', v.id);
+  }
+  showUploadToast(d.id ? t('✅ 수정됐어요','✅ Updated') : t('✅ 기록했어요','✅ Saved'));
+  vehLogDraft = null;
+  await renderVehicleHub();
+}
+async function deleteVehLog(id){
+  if (!confirm(t('이 정비 기록을 지울까요?','Delete this record?'))) return;
+  const { error } = await sb.from('vehicle_logs').delete().eq('id', id);
+  if (error) { showUploadToast(t('삭제 실패: ','Delete failed: ') + error.message); return; }
+  showUploadToast(t('지웠어요','Deleted'));
+  await renderVehicleHub();
+}
+async function saveVehOdometer(vid){
+  const el = document.getElementById('veh-odo'); const n = Number((el?.value || '').trim());
+  if (!n) { showUploadToast(t('주행거리를 넣어주세요','Please enter the odometer')); return; }
+  const { error } = await sb.from('vehicles').update({ odometer:n, odometer_at:vehToday(), updated_at:new Date().toISOString() }).eq('id', vid);
+  if (error) { showUploadToast(t('저장 실패: ','Save failed: ') + error.message); return; }
+  showUploadToast(t('✅ 주행거리를 갱신했어요','✅ Odometer updated'));
+  await renderVehicleHub();
+}
+
+// ── 차량 추가/수정 (정비 주기 덮어쓰기 포함) ──
+function vehNewCar(){
+  vehCarDraft = { id:null, plate:'', name:'', make:'', model:'', year:'', odometer:'', insurance_exp:'', registration_exp:'', inspection_exp:'', note:'', intervals:{} };
+  renderVehicleMain();
+}
+function vehEditCar(id){
+  const v = vehicles.find(x => x.id === id); if (!v) return;
+  vehCarDraft = { id:v.id, plate:v.plate||'', name:v.name||'', make:v.make||'', model:v.model||'', year:v.year||'',
+                  odometer:v.odometer||'', insurance_exp:v.insurance_exp?vehDate(v.insurance_exp):'',
+                  registration_exp:v.registration_exp?vehDate(v.registration_exp):'',
+                  inspection_exp:v.inspection_exp?vehDate(v.inspection_exp):'',
+                  note:v.note||'', intervals: v.intervals || {} };
+  renderVehicleMain();
+}
+function vehCarCancel(){ vehCarDraft = null; renderVehicleMain(); }
+function vehCarFormHtml(){
+  const d = vehCarDraft;
+  const f = (id, label, val, type, ph) => `<div><label style="${vehLbl}">${label}</label><input id="${id}" type="${type||'text'}" value="${escAttr(val)}" placeholder="${ph||''}" style="${vehInp}"/></div>`;
+  const ivRows = VEH_TASKS.filter(x => x.mi || x.mo).map(x => {
+    const o = d.intervals[x.key] || {};
+    return `<div style="display:flex;align-items:center;gap:7px;padding:5px 0">
+      <span style="font-size:14px;width:20px">${x.icon}</span>
+      <span style="font-size:12px;color:var(--ink2);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t(x.ko,x.en)}</span>
+      <input id="vi-mi-${x.key}" type="number" value="${o.mi!==undefined&&o.mi!==null?o.mi:''}" placeholder="${x.mi||'—'}" style="width:82px;height:32px;padding:0 8px;border:1.5px solid var(--border);border-radius:8px;font:12px var(--font);text-align:right"/>
+      <span style="font-size:11px;color:var(--ink3);width:20px">mi</span>
+      <input id="vi-mo-${x.key}" type="number" value="${o.mo!==undefined&&o.mo!==null?o.mo:''}" placeholder="${x.mo||'—'}" style="width:62px;height:32px;padding:0 8px;border:1.5px solid var(--border);border-radius:8px;font:12px var(--font);text-align:right"/>
+      <span style="font-size:11px;color:var(--ink3);width:30px">${t('개월','mo')}</span>
+    </div>`;
+  }).join('');
+  return `<div style="background:var(--surface);border:2px solid #2a5298;border-radius:14px;padding:16px 18px;margin-bottom:16px">
+    <div style="font-size:13.5px;font-weight:800;color:var(--adeep);margin-bottom:12px">${d.id ? `⚙️ ${t('차량 정보','Vehicle info')}` : `＋ ${t('차량 추가','Add vehicle')}`}</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:11px">
+      ${f('vc-plate', t('번호판 *','Plate *'), d.plate, 'text', 'TKM3660')}
+      ${f('vc-name', t('별칭','Nickname'), d.name, 'text', t('예: 스타리아','e.g. Van'))}
+      ${f('vc-make', t('제조사','Make'), d.make, 'text', 'Honda')}
+      ${f('vc-model', t('모델','Model'), d.model, 'text', 'Odyssey')}
+      ${f('vc-year', t('연식','Year'), d.year, 'number', '2019')}
+      ${f('vc-odo', t('현재 주행거리 (mi)','Odometer (mi)'), d.odometer, 'number', '')}
+      ${f('vc-ins', t('보험 만료','Insurance exp.'), d.insurance_exp, 'date')}
+      ${f('vc-reg', t('등록 만료','Registration exp.'), d.registration_exp, 'date')}
+      ${f('vc-insp', t('정기검사 만료','Inspection exp.'), d.inspection_exp, 'date')}
+      <div style="grid-column:1/-1"><label style="${vehLbl}">${t('메모','Note')}</label><textarea id="vc-note" style="${vehInp};height:auto;min-height:48px;padding:9px 12px;line-height:1.6;resize:vertical">${escHtml(d.note)}</textarea></div>
+    </div>
+    <details style="margin-top:14px;border:1px solid var(--border);border-radius:11px;padding:10px 13px">
+      <summary style="cursor:pointer;font:700 12.5px var(--font);color:var(--ink2)">🔧 ${t('이 차량만 정비 주기 바꾸기','Custom maintenance intervals')}</summary>
+      <div style="font-size:11px;color:var(--ink3);margin:8px 0 6px;line-height:1.6">${t('비워 두면 기본 주기를 씁니다 (회색 숫자가 기본값).','Leave blank to use the default interval (shown in grey).')}</div>
+      ${ivRows}
+    </details>
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button onclick="saveVehCar()" style="flex:1;height:42px;border:none;border-radius:10px;background:#1d3a5f;color:#fff;font:800 13.5px var(--font);cursor:pointer">💾 ${t('저장','Save')}</button>
+      <button onclick="vehCarCancel()" style="height:42px;padding:0 18px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:10px;font:600 13px var(--font);cursor:pointer">${t('취소','Cancel')}</button>
+      ${d.id ? `<button onclick="deleteVehCar('${d.id}')" style="height:42px;padding:0 16px;border:1.5px solid var(--border);background:var(--surface);color:#c0392b;border-radius:10px;font:700 13px var(--font);cursor:pointer">${t('차량 삭제','Delete')}</button>` : ''}
+    </div>
+  </div>`;
+}
+async function saveVehCar(){
+  const d = vehCarDraft; if (!d) return;
+  const val = id => (document.getElementById(id)?.value || '').trim();
+  const num = id => { const v = val(id); return v === '' ? null : Number(v); };
+  const plate = val('vc-plate');
+  if (!plate) { showUploadToast(t('번호판을 넣어주세요','Please enter the plate')); return; }
+  const intervals = {};
+  VEH_TASKS.filter(x => x.mi || x.mo).forEach(x => {
+    const mi = val('vi-mi-' + x.key), mo = val('vi-mo-' + x.key);
+    if (mi !== '' || mo !== '') intervals[x.key] = { mi: mi === '' ? null : Number(mi), mo: mo === '' ? null : Number(mo) };
+  });
+  const row = {
+    community_id: CID(), plate, name: val('vc-name') || null, make: val('vc-make') || null,
+    model: val('vc-model') || null, year: num('vc-year'), odometer: num('vc-odo'),
+    insurance_exp: val('vc-ins') || null, registration_exp: val('vc-reg') || null,
+    inspection_exp: val('vc-insp') || null, note: val('vc-note') || null,
+    intervals: Object.keys(intervals).length ? intervals : null,
+    updated_at: new Date().toISOString(),
+  };
+  if (row.odometer) row.odometer_at = vehToday();
+  let error;
+  if (d.id) ({ error } = await sb.from('vehicles').update(row).eq('id', d.id));
+  else { row.sort = vehicles.length; ({ error } = await sb.from('vehicles').insert(row)); }
+  if (error) { showUploadToast(t('저장 실패: ','Save failed: ') + error.message); return; }
+  showUploadToast(t('✅ 저장됐어요','✅ Saved'));
+  vehCarDraft = null;
+  await renderVehicleHub();
+}
+async function deleteVehCar(id){
+  const v = vehicles.find(x => x.id === id);
+  const n = vehLogsOf(id).length;
+  if (!confirm(t(`${v?v.plate:''} 차량을 지울까요?\n정비 기록 ${n}건도 함께 지워집니다.`, `Delete ${v?v.plate:''}?\nIts ${n} maintenance record(s) will be deleted too.`))) return;
+  const { error } = await sb.from('vehicles').delete().eq('id', id);
+  if (error) { showUploadToast(t('삭제 실패: ','Delete failed: ') + error.message); return; }
+  showUploadToast(t('지웠어요','Deleted'));
+  vehSelId = null; vehCarDraft = null;
+  await renderVehicleHub();
 }
 
 // ════════════════════════════════════════════════════════════════════
