@@ -5659,6 +5659,15 @@ const AVATAR_EMOJIS = [
   '⚽','🏀','🎸','🎨','📚','✏️','🎯','🏆','❤️','💙','💚','💜',
 ];
 const AVATAR_COLORS = ['#1d3a5f','#2a5298','#2a7ab8','#5A7C8B','#6F8A5C','#4C7363','#15803d','#b45309','#B05865','#c0392b','#7B6BA0','#7c3aed'];
+// 이모지 72개를 늘 펼쳐 두면 프로필 화면이 이모지 판이 된다 — 눌렀을 때만 연다
+let _avOpen = false;
+function toggleAvatarPicker() {
+  _avOpen = !_avOpen;
+  const box = document.getElementById('av-picker');
+  const arr = document.getElementById('av-picker-arrow');
+  if (box) box.style.display = _avOpen ? 'block' : 'none';
+  if (arr) arr.textContent = _avOpen ? '▲' : '▼';
+}
 
 // 아바타(이모지·글자) 저장 → initials 필드에 저장(모든 아바타에 즉시 반영)
 async function saveMyAvatar(val) {
@@ -5671,7 +5680,15 @@ async function saveMyAvatar(val) {
   const mmav = document.getElementById('mobile-av'); if (mmav) mmav.textContent = val;
   if (members[ME.id]) members[ME.id].initials = val;   // 내 메시지 아바타 즉시 반영
   showUploadToast('아바타가 바뀌었어요 ✅');
-  renderProfilePage();
+  // 바뀐 곳만 손본다 — 통째로 다시 그리면 골라 둔 판이 닫히고 화면이 맨 위로 튄다
+  const pv = document.getElementById('av-preview');
+  if (!pv) { renderProfilePage(); return; }
+  pv.textContent = val;
+  document.querySelectorAll('#av-picker [data-av]').forEach(b => {
+    const on = b.getAttribute('data-av') === val;
+    b.style.borderColor = on ? '#1d3a5f' : 'var(--border)';
+    b.style.background = on ? 'var(--asoft)' : 'var(--surface)';
+  });
 }
 
 // 아바타 배경색 저장
@@ -5683,7 +5700,12 @@ async function saveMyAvatarColor(c) {
   const mmav = document.getElementById('mobile-av'); if (mmav) mmav.style.background = c;
   if (members[ME.id]) members[ME.id].color = c;
   showUploadToast('아바타 색이 바뀌었어요 🎨');
-  renderProfilePage();
+  const pv = document.getElementById('av-preview');
+  if (!pv) { renderProfilePage(); return; }
+  pv.style.background = c;
+  document.querySelectorAll('#av-picker [data-avc]').forEach(b => {
+    b.style.borderColor = b.getAttribute('data-avc') === c ? '#111' : 'transparent';
+  });
 }
 
 async function renderProfilePage() {
@@ -5742,20 +5764,27 @@ async function renderProfilePage() {
         <div style="font-size:14px;font-weight:700;color:var(--adeep);margin-bottom:4px">🎨 ${t('내 아바타 꾸미기','Customize My Avatar')}</div>
         <div style="font-size:12px;color:var(--ink3);margin-bottom:14px">${t('채팅과 목록에 보이는 내 아이콘이에요. 마음에 드는 이모지나 글자로 바꿔보세요!','This is the icon shown in chat and lists. Pick an emoji or letter you like!')}</div>
         <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;flex-wrap:wrap">
-          <div style="width:60px;height:60px;border-radius:18px;background:${ME.color||'#1d3a5f'};display:flex;align-items:center;justify-content:center;font-size:30px;color:#fff;flex-shrink:0">${ME.initials||ME.name?.[0]||'?'}</div>
+          <div id="av-preview" style="width:60px;height:60px;border-radius:18px;background:${ME.color||'#1d3a5f'};display:flex;align-items:center;justify-content:center;font-size:30px;color:#fff;flex-shrink:0">${ME.initials||ME.name?.[0]||'?'}</div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             <button onclick="saveMyAvatar((ME.name||'?')[0])" style="height:38px;padding:0 14px;border:1.5px solid var(--border);background:var(--surface);border-radius:10px;font:700 12.5px var(--font);color:var(--ink2);cursor:pointer">🔤 ${t('이름 첫 글자로','First letter')}</button>
             <input id="avatar-custom" maxlength="4" placeholder="${t('직접 입력','Custom')}" style="width:110px;height:38px;padding:0 12px;border:1.5px solid var(--border);border-radius:10px;font:15px var(--font);text-align:center;outline:none" onkeydown="if(event.key==='Enter')saveMyAvatar(this.value)"/>
             <button onclick="saveMyAvatar(document.getElementById('avatar-custom').value)" style="height:38px;padding:0 14px;border:none;background:#1d3a5f;color:#fff;border-radius:10px;font:700 12.5px var(--font);cursor:pointer">${t('적용','Apply')}</button>
           </div>
         </div>
-        <div style="font-size:12px;font-weight:700;color:var(--ink2);margin-bottom:8px">${t('이모지 고르기','Choose an emoji')}</div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(46px,1fr));gap:8px">
-          ${AVATAR_EMOJIS.map(e => `<button onclick="saveMyAvatar('${e}')" style="height:46px;border:1.5px solid ${ME.initials===e?'#1d3a5f':'var(--border)'};background:${ME.initials===e?'var(--asoft)':'var(--surface)'};border-radius:12px;font-size:24px;cursor:pointer">${e}</button>`).join('')}
-        </div>
-        <div style="font-size:12px;font-weight:700;color:var(--ink2);margin:16px 0 8px">${t('배경 색','Background color')}</div>
-        <div style="display:flex;gap:9px;flex-wrap:wrap">
-          ${AVATAR_COLORS.map(c => `<button onclick="saveMyAvatarColor('${c}')" title="배경색" style="width:36px;height:36px;border-radius:11px;background:${c};border:3px solid ${ME.color===c?'#111':'transparent'};cursor:pointer;box-shadow:0 0 0 1px var(--border)"></button>`).join('')}
+        <button onclick="toggleAvatarPicker()" style="width:100%;height:42px;padding:0 14px;border:1.5px solid var(--border);background:var(--s2);border-radius:11px;cursor:pointer;display:flex;align-items:center;gap:8px;font:700 12.5px var(--font);color:var(--ink2)">
+          🎨 ${t('이모지 · 배경색 고르기','Pick an emoji · background color')}
+          <span style="margin-left:auto;font-size:11px;font-weight:600;color:var(--ink3)">${t(`이모지 ${AVATAR_EMOJIS.length}개`, `${AVATAR_EMOJIS.length} emojis`)}</span>
+          <span id="av-picker-arrow" style="font-size:10px;color:var(--ink3)">${_avOpen ? '▲' : '▼'}</span>
+        </button>
+        <div id="av-picker" style="display:${_avOpen ? 'block' : 'none'};margin-top:12px">
+          <div style="font-size:12px;font-weight:700;color:var(--ink2);margin-bottom:8px">${t('이모지 고르기','Choose an emoji')}</div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(46px,1fr));gap:8px;max-height:222px;overflow-y:auto;padding:2px">
+            ${AVATAR_EMOJIS.map(e => `<button data-av="${e}" onclick="saveMyAvatar('${e}')" style="height:46px;border:1.5px solid ${ME.initials===e?'#1d3a5f':'var(--border)'};background:${ME.initials===e?'var(--asoft)':'var(--surface)'};border-radius:12px;font-size:24px;cursor:pointer">${e}</button>`).join('')}
+          </div>
+          <div style="font-size:12px;font-weight:700;color:var(--ink2);margin:16px 0 8px">${t('배경 색','Background color')}</div>
+          <div style="display:flex;gap:9px;flex-wrap:wrap">
+            ${AVATAR_COLORS.map(c => `<button data-avc="${c}" onclick="saveMyAvatarColor('${c}')" title="${t('배경색','Background color')}" style="width:36px;height:36px;border-radius:11px;background:${c};border:3px solid ${ME.color===c?'#111':'transparent'};cursor:pointer;box-shadow:0 0 0 1px var(--border)"></button>`).join('')}
+          </div>
         </div>
       </div>
 
