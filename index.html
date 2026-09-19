@@ -7641,13 +7641,20 @@ function bookLang(b) { return (b && b.lang === 'ko') ? 'ko' : 'en'; }
 let readingLang = (() => { try { return localStorage.getItem('tcs_reading_lang') === 'ko' ? 'ko' : 'en'; } catch (_) { return 'en'; } })();
 function readingLangBooks(lang) { return readingBooks.filter(b => bookLang(b) === (lang || readingLang)); }
 function readingLangName(l) { return t(READING_LANG_LABEL[l || readingLang][0], READING_LANG_LABEL[l || readingLang][1]); }
+// 필독서 화면은 네 군데에서 보인다 — 독립 탭(#reading-page), TCS 탭(#tcs-main),
+// 학사 학생페이지 임베드(#s360-tcs, 두 경로). 마지막으로 그린 곳을 기억해 두고
+// 거기를 다시 그린다. (예전엔 tcs-view 가 떠 있는지로만 판단해서, 학사 안에서는
+// 안 보이는 #reading-page 를 다시 그리는 바람에 탭을 눌러도 아무 일도 안 일어났다)
+let _readingHost = 'page';   // 'page' | 'tcs'
+function rerenderReading() {
+  if (_readingHost === 'tcs' && tcsCurrentStudent && document.getElementById(tcsMainId)) { renderTcsReadingUnified(); return; }
+  initReadingPage();
+}
 function setReadingLang(l) {
   readingLang = (l === 'ko') ? 'ko' : 'en';
   try { localStorage.setItem('tcs_reading_lang', readingLang); } catch (_) {}
   readingStudentFilter.cat = 'all';
-  const tcsView = document.getElementById('tcs-view');
-  if (isTeacher() && tcsView && tcsView.style.display !== 'none' && tcsSubMode === 'reading') renderTcsReadingUnified();
-  else initReadingPage();
+  rerenderReading();
 }
 function readingLangTabs() {
   const seg = (l) => {
@@ -7760,6 +7767,7 @@ function renderTcsMain() {
 }
 
 async function initReadingPage() {
+  _readingHost = 'page';
   const sn = document.getElementById('subnav-reading'); if (sn) sn.innerHTML = tcsSubnavHtml('reading');
   const page = document.getElementById('reading-page');
   const sub = document.getElementById('reading-header-sub');
@@ -8187,6 +8195,7 @@ async function renderReadingAdmin() {
 async function renderTcsReadingUnified() {
   const main = document.getElementById(tcsMainId);
   if (!main || !tcsCurrentStudent) return;
+  _readingHost = 'tcs';
   main.innerHTML = `<div style="text-align:center;padding:40px;color:var(--ink3)">${t('불러오는 중...','Loading...')}</div>`;
 
   try {
@@ -8519,10 +8528,7 @@ function refreshReportComments(bookId) {
 // 책 추가/삭제 후 화면 갱신 (교사 TCS-Triple School / 학생 reading-view 모두 대응)
 async function refreshReadingAfterBookChange() {
   try { const { data: books } = await sb.from('reading_books').select('*').order('category').order('sort').order('title'); readingBooks = sortReadingBooks(books || []); } catch (e) {}
-  const tcsView = document.getElementById('tcs-view');
-  const tcsVisible = tcsView && tcsView.style.display !== 'none';
-  if (isTeacher() && tcsVisible && tcsSubMode === 'reading') renderTcsReadingUnified();
-  else initReadingPage();
+  rerenderReading();
 }
 
 function readingLangOpts() {
