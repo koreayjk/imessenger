@@ -16834,6 +16834,7 @@ function vehDetailHtml(){
       <div style="font-size:19px;font-weight:800;color:var(--ink);letter-spacing:.02em">${escHtml(v.plate||'')}</div>
       <div style="font-size:12.5px;color:var(--ink3)">${escHtml([v.name, v.make, v.model, v.year].filter(Boolean).join(' · '))}</div>
       <div style="flex:1"></div>
+      ${vehCanEdit() ? `<button onclick="vehNewLog('${v.id}','repair')" style="height:34px;padding:0 14px;border:none;border-radius:9px;background:#1d3a5f;color:#fff;cursor:pointer;font:700 12px var(--font)">＋ ${t('정비·수리 기록','Add record')}</button>` : ''}
       ${vehCanEdit() ? `<button onclick="vehEditCar('${v.id}')" style="height:34px;padding:0 13px;border:1.5px solid var(--border);background:var(--surface);border-radius:9px;cursor:pointer;font:600 12px var(--font);color:var(--ink2)">⚙️ ${t('차량 정보','Vehicle info')}</button>` : ''}
     </div>
 
@@ -16913,9 +16914,36 @@ function vehDueHtml(v){
     </div>`).join('')}
   </details>` : '';
 
+  // 주기가 없는 항목 — 고장 나서 고친 것, 주유. 표에는 안 잡히니 따로 자리를 준다
+  const oneOff = VEH_TASKS.filter(x => !x.mi && !x.mo).map(x => {
+    const list = vehLogsOf(v.id).filter(l => l.kind === x.key)
+      .sort((a,b) => vehDate(b.service_date).localeCompare(vehDate(a.service_date)));
+    const total = list.reduce((a,l) => a + (Number(l.cost) || 0), 0);
+    return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:8px">
+      <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+        <span style="font-size:17px">${x.icon}</span>
+        <span style="font-size:13.5px;font-weight:800;color:var(--ink)">${t(x.ko, x.en)}</span>
+        <span style="font-size:10.5px;color:var(--ink3)">${t('주기 없음 · 생길 때마다','No interval · as needed')}</span>
+        <div style="flex:1"></div>
+        ${list.length ? `<span style="font-size:11.5px;color:var(--ink3)">${t(`${list.length}건`, `${list.length}`)} · <b style="color:var(--ink2)">${vehMoney(total) || '$0.00'}</b></span>` : ''}
+        ${vehCanEdit() ? `<button onclick="vehNewLog('${v.id}','${x.key}')" style="height:28px;padding:0 11px;border:1.5px solid var(--border);background:var(--surface);border-radius:8px;cursor:pointer;font:700 11.5px var(--font);color:var(--ink2);white-space:nowrap">＋ ${t('기록','Log')}</button>` : ''}
+      </div>
+      ${list.length ? `<div style="margin-top:7px;display:flex;flex-direction:column;gap:3px">
+        ${list.slice(0,3).map(l => `<div style="display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--ink3)">
+          <span style="color:var(--ink2);font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(l.title || t(x.ko,x.en))}</span>
+          <span>${vehDate(l.service_date)}</span>
+          <span style="font-weight:700;color:var(--ink2);width:82px;text-align:right">${vehMoney(l.cost) || '—'}</span>
+        </div>`).join('')}
+        ${list.length > 3 ? `<div onclick="setVehTab('log')" style="font-size:11px;color:#1d4ed8;cursor:pointer;margin-top:2px">${t(`+ ${list.length - 3}건 더 — 정비 이력에서 보기`, `+ ${list.length - 3} more — see history`)}</div>` : ''}
+      </div>` : `<div style="font-size:11.5px;color:var(--ink3);margin-top:6px">${t('기록 없음','No records')}</div>`}
+    </div>`;
+  }).join('');
+
   return `${vehLogDraft ? vehLogFormHtml() : ''}
     <div style="font-size:11.5px;color:var(--ink3);margin-bottom:10px;line-height:1.7;word-break:keep-all">${t('일반 승용차 정비 매뉴얼(가혹조건) 기준 주기예요. 주행거리와 날짜 중 <b>먼저 오는 쪽</b>을 기준으로 알려드립니다. 차종마다 다르면 [⚙️ 차량 정보]에서 주기를 바꿀 수 있어요.','Intervals follow a standard severe-duty maintenance schedule. Whichever comes first — mileage or time — triggers the reminder. Adjust per vehicle under [⚙️ Vehicle info].')}</div>
-    ${rows}${untrackedHtml}`;
+    ${rows}${untrackedHtml}
+    <div style="font-size:13px;font-weight:800;color:var(--adeep);margin:18px 0 8px">🔧 ${t('수리 · 기타','Repairs & other')}</div>
+    ${oneOff}`;
 }
 
 // ── 탭 2: 정비 이력 ──
