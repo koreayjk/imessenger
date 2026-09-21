@@ -4449,9 +4449,12 @@ function photoShow(n) {
   st.i = n;
   const cur = a.dataset.on === '1' ? a : b;
   const nxt = cur === a ? b : a;
-  nxt.onload = () => { nxt.style.opacity = '1'; cur.style.opacity = '0'; nxt.dataset.on = '1'; cur.dataset.on = '0'; };
-  nxt.onerror = () => { if (it.thumb && nxt.getAttribute('src') !== it.thumb) nxt.src = it.thumb; };
-  nxt.src = it.url;
+  const fg = nxt.querySelector('[data-r="fg"]'), bg = nxt.querySelector('[data-r="bg"]');
+  if (!fg) return;
+  fg.onload = () => { nxt.style.opacity = '1'; cur.style.opacity = '0'; nxt.dataset.on = '1'; cur.dataset.on = '0'; };
+  // 큰 주소가 안 되면 드라이브가 준 썸네일로
+  fg.onerror = () => { if (it.thumb && fg.getAttribute('src') !== it.thumb) { fg.src = it.thumb; if (bg) bg.src = it.thumb; } };
+  fg.src = it.url; if (bg) bg.src = it.url;
   const cap = document.getElementById('hw-photo-cap');
   if (cap) cap.textContent = `${n + 1} / ${st.items.length}`;
   const lnk = document.getElementById('hw-photo-link');
@@ -4478,7 +4481,7 @@ async function hwFillDriveFolders(key, cur) {
       : t('자료실 폴더 아래에 하위 폴더가 없어요. 구글 드라이브에서 사진 폴더를 하나 만들어 주세요.','No subfolders yet — create a photo folder in Google Drive.');
   } catch (e) {
     sel.innerHTML = `<option value="${escAttr(cur || '')}">${t('불러오지 못했어요','Could not load')}</option>`;
-    if (msg) msg.textContent = t('자료실(구글 드라이브) 연결이 먼저 필요해요. 관리자 → 공동체 설정에서 드라이브 폴더를 등록하세요.','Connect Google Drive first — set the Drive folder under Admin → Community settings.');
+    if (msg) msg.innerHTML = t('<b>자료실(구글 드라이브) 연결이 먼저 필요해요.</b><br>관리자 → 공동체 설정 → 📁 자료실 폴더 에 드라이브 폴더 ID 를 넣어 주세요. (일정의 캘린더 연결과는 다른 칸이에요)','<b>Connect Google Drive first.</b><br>Admin → Community settings → 📁 Files folder. This is not the Calendar connection.');
   }
 }
 
@@ -4486,10 +4489,12 @@ const HOME_WIDGETS = {
 
   photos: {
     icon:'🖼️', ko:'사진', en:'Photos',
-    dko:'구글 드라이브 폴더의 사진을 슬라이드로 넘겨 보여줘요', den:'Slideshow from a Google Drive folder', w:2,
+    dko:'자료실과 같은 구글 드라이브의 사진 폴더를 슬라이드로 보여줘요 (일정의 캘린더 연결과는 별개)',
+    den:'Slideshow from a Google Drive folder — the same Drive as Files, not the Calendar link', w:2,
     cfg: [
       { key:'folder', type:'driveFolder', ko:'사진 폴더 (자료실 폴더 안)', en:'Photo folder (inside the Files folder)' },
       { key:'sec',    type:'number',      ko:'몇 초마다 넘길까요',        en:'Seconds per photo', ph:'6' },
+      { key:'h',      type:'number',      ko:'높이 (px · 기본 340 · 세로 사진이 많으면 크게)', en:'Height (px · default 340)', ph:'340' },
       { key:'title',  type:'text',        ko:'제목 (비우면 폴더 이름)',   en:'Title (blank = folder name)' },
     ],
     render: async (ctx) => {
@@ -4498,7 +4503,12 @@ const HOME_WIDGETS = {
       const head = (extra) => hwHead('🖼️', t('사진','Photos'), extra);
       if (!folder) {
         return hwCard(head('') + hwEmpty(ctx.isAdmin
-          ? t('보여줄 사진 폴더를 아직 안 골랐어요.<br>[🧩 홈 꾸미기] 에서 ⚙️ 를 눌러 구글 드라이브 폴더를 고르세요.','No photo folder chosen yet.<br>Pick a Google Drive folder with ⚙️ in [🧩 Edit Home].')
+          ? t('보여줄 사진 폴더를 아직 안 골랐어요.<br>[🧩 홈 꾸미기] 에서 ⚙️ 를 눌러 폴더를 고르세요.'
+              + '<div style="margin-top:9px;font-size:11px;color:#1d4ed8;background:#eff6ff;border:1px solid #bfdbfe;border-radius:9px;padding:8px 10px;line-height:1.7;text-align:left;word-break:keep-all">'
+              + '📁 사진은 <b>자료실과 같은 구글 드라이브</b>를 씁니다.<br>일정에서 연결하는 <b>구글 캘린더와는 다른 연결</b>이에요.</div>',
+              'No photo folder chosen yet.<br>Pick a folder with ⚙️ in [🧩 Edit Home].'
+              + '<div style="margin-top:9px;font-size:11px;color:#1d4ed8;background:#eff6ff;border:1px solid #bfdbfe;border-radius:9px;padding:8px 10px;line-height:1.7;text-align:left">'
+              + '📁 Photos use <b>the same Google Drive as Files</b> — not the Google Calendar used by the Calendar page.</div>')
           : t('아직 사진 폴더가 연결되지 않았어요','No photo folder connected yet')));
       }
       let pack;
@@ -4511,13 +4521,19 @@ const HOME_WIDGETS = {
         return hwCard(head('') + hwEmpty(t('이 폴더에 사진이 없어요.<br>구글 드라이브에서 사진을 넣으면 바로 보여요.','No photos in this folder.<br>Drop some into Google Drive and they show up here.')));
       }
       _photoState = { items: pack.items, i: 0, sec: Math.max(2, Math.min(60, Number(cfg.sec) || 6)) };
+      const H = Math.max(180, Math.min(700, Number(cfg.h) || 340));
       const title = String(cfg.title || '').trim() || pack.name || t('사진','Photos');
       const many = pack.items.length > 1;
       const nav = (d, sym, side) => `<button onclick="photoJump(${d})" title="${d < 0 ? t('이전','Prev') : t('다음','Next')}"
         style="position:absolute;${side}:8px;top:50%;transform:translateY(-50%);width:30px;height:30px;border:none;border-radius:50%;background:rgba(15,23,42,.42);color:#fff;font:700 14px var(--font);cursor:pointer;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)">${sym}</button>`;
-      return hwCard(`<div id="hw-photo" style="position:relative;flex:1;width:100%;min-width:0;min-height:200px;border-radius:18px;overflow:hidden;background:#0f172a">
-        <img id="hw-photo-a" data-on="1" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .55s var(--ease-out)"/>
-        <img id="hw-photo-b" data-on="0" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .55s var(--ease-out)"/>
+      // 사진마다 가로·세로가 달라서 꽉 채우면(cover) 위아래가 잘린다.
+      // 원본은 통째로 보여주고(contain), 빈 자리는 같은 사진을 흐리게 깔아 메운다.
+      const layer = (id, on) => `<div id="hw-photo-${id}" data-on="${on}" style="position:absolute;inset:0;opacity:0;transition:opacity .55s var(--ease-out)">
+          <img data-r="bg" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:blur(22px) brightness(.55);transform:scale(1.18)"/>
+          <img data-r="fg" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain"/>
+        </div>`;
+      return hwCard(`<div id="hw-photo" style="position:relative;flex:1;width:100%;min-width:0;min-height:${H}px;border-radius:18px;overflow:hidden;background:#0f172a">
+        ${layer('a', '1')}${layer('b', '0')}
         <div style="position:absolute;left:0;right:0;top:0;height:62px;background:linear-gradient(to bottom,rgba(15,23,42,.55),transparent);pointer-events:none"></div>
         <div style="position:absolute;left:14px;right:14px;top:11px;display:flex;align-items:center;gap:8px;pointer-events:none">
           <span style="font-size:13.5px;font-weight:800;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.45);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">🖼️ ${escHtml(title)}</span>
@@ -5635,6 +5651,11 @@ function hwOpenCfg(i) {
       <div style="padding:20px 24px;border-bottom:1px solid var(--border);font-size:16px;font-weight:700">${s.icon} ${t(s.ko,s.en)}</div>
       <div style="padding:18px 24px">
         ${(s.cfg||[]).map(f => f.type === 'driveFolder' ? `
+          <div style="font-size:11.5px;color:#1d4ed8;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:10px 12px;line-height:1.75;margin-bottom:12px;word-break:keep-all">
+            📁 ${t('사진은 <b>자료실과 같은 구글 드라이브</b>에서 가져옵니다.','Photos come from <b>the same Google Drive as Files</b>.')}<br>
+            ${t('아래 목록은 <b>관리자 → 공동체 설정 → 자료실 폴더</b> 에 등록한 폴더 <u>바로 아래</u>의 폴더들이에요.','The list below shows folders directly inside the one set at <b>Admin → Community settings → Files folder</b>.')}<br>
+            ⚠️ ${t('<b>일정에서 연결하는 구글 캘린더와는 다른 연결</b>이에요. 캘린더는 서비스 계정 주소를 공유하고, 드라이브는 폴더를 링크로 공유합니다.','<b>This is a different connection from the Google Calendar</b> used by the Calendar page.')}
+          </div>
           <div style="margin-bottom:14px">
             <div style="font-size:12px;color:var(--ink3);margin-bottom:5px">${t(f.ko,f.en)}</div>
             <select id="hwcfg-${f.key}" class="adm-input" style="margin-bottom:0;cursor:pointer">
@@ -9789,6 +9810,11 @@ async function renderCommunitySettings() {
             드라이브 폴더 주소 <b>drive.google.com/drive/folders/<span style="color:#1d4ed8">여기</span></b> 의 마지막 부분을 넣으세요.<br>
             폴더는 <b>'링크가 있는 모든 사용자 — 뷰어'</b> 로 공유되어 있어야 합니다. 비워두면 기본 폴더를 씁니다.
           </div>
+          <div style="font-size:11px;color:#1d4ed8;background:#eff6ff;border:1px solid #bfdbfe;border-radius:9px;padding:9px 11px;line-height:1.7;margin-top:8px;word-break:keep-all">
+            ℹ️ <b>아래 구글 캘린더 연동과는 다른 연결이에요.</b><br>
+            캘린더는 <b>서비스 계정 주소</b>를 캘린더에 공유하고, 여기 드라이브는 <b>폴더를 링크로</b> 공유합니다. 둘 다 따로 해주셔야 해요.<br>
+            홈의 <b>🖼️ 사진 위젯</b>도 이 폴더 <u>안에 있는 하위 폴더</u>를 씁니다.
+          </div>
         </div>
 
         <!-- 저장 버튼 -->
@@ -9822,7 +9848,8 @@ async function renderCommunitySettings() {
         <div style="font-size:12px;color:var(--ink3);margin-bottom:12px;line-height:1.7">
           버튼을 누르면 이 공동체 전용 캘린더를 <b>TCS가 대신 만들고</b>,
           지금 로그인한 분의 구글 계정에 권한까지 넘겨 드립니다.
-          구글 콘솔을 만지실 필요 없어요.
+          구글 콘솔을 만지실 필요 없어요.<br>
+          <span style="color:#1d4ed8">ℹ️ 위 <b>자료실 폴더(구글 드라이브)</b> 와는 별개 연결이에요. 자료실·사진은 드라이브, 일정은 캘린더입니다.</span>
         </div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
           <button onclick="createGcal()" id="gcal-make-btn"
