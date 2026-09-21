@@ -881,7 +881,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
   <!-- 3) 메인 콘텐츠 -->
   <div id="main">
     <!-- 채팅 뷰 -->
-    <div id="chat-view" style="display:flex;flex-direction:column;height:100%">
+    <div id="chat-view" style="display:none;flex-direction:column;height:100%">
       <div id="empty">
         <div class="big">💬</div>
         <h3>채널을 선택해주세요</h3>
@@ -1975,8 +1975,17 @@ function enterApp() {
     const myAvEl = document.getElementById('my-av');
     if (myAvEl) myAvEl.title = `${ME.name} (총관리자)`;
   }
+  restoreLastChrome();   // 보던 화면부터 띄우고 (채팅 화면이 먼저 비치지 않게)
   initPresence();
   init();
+}
+
+// 새로고침 직후 곧바로 부른다 — 데이터(채널·멤버)를 기다리지 않고
+// 보던 화면의 틀(사이드바·머리글·뷰)부터 띄운다. 내용은 init()이 끝난 뒤
+// restoreLastState()가 채운다. 이게 없으면 채팅 화면이 잠깐 비쳤다가 넘어간다.
+function restoreLastChrome() {
+  const saved = sessionStorage.getItem('last_mode') || 'home';
+  try { setMode(saved, { chromeOnly: true }); } catch (_) { try { setMode('home', { chromeOnly: true }); } catch (_) {} }
 }
 
 async function restoreLastState() {
@@ -2264,7 +2273,12 @@ async function init() {
 }
 
 // ── 사이드바 모드 전환 ──
-function setMode(m) {
+function setMode(m, opts) {
+  // opts.chromeOnly = 새로고침 직후 '틀'만 먼저 그리는 모드.
+  // 사이드바·머리글·어느 뷰를 띄울지는 즉시 정하고, 데이터가 필요한 렌더는 건너뛴다.
+  // (건너뛴 렌더는 init()이 데이터를 받아온 뒤 restoreLastState()가 다시 부른다)
+  const boot = !!(opts && opts.chromeOnly);
+  const go = fn => { if (!boot) fn(); };
   mode = m;
   sessionStorage.setItem('last_mode', m);   // 새로고침 시 현재 페이지 복원용 (early return 전에 저장)
   // 화면 전환 시 대화방 전체화면 해제(하단 탭바 복귀) — 대화 열면 openChannel이 다시 설정
@@ -2319,29 +2333,34 @@ function setMode(m) {
     panel.style.display = 'flex';
   }
 
-  if (m==='prayer') { loadPrayers(); renderPrayerPanel(); }
-  if (m==='home') renderHome();
-  if (m==='chat') { renderPanel(); sessionStorage.removeItem('last_channel_id'); }
-  if (m==='calendar') { loadCalendar(); }
-  if (m==='admin') { if(isCommunityAdmin()) initAdminPage(); else setMode('home'); return; }
-  if (m==='tcs') { if(isTeacher()){ tcsSubMode='record'; initTcsPage(); } else setMode('gishome'); return; }
-  if (m==='gishome') { if(isTeacher()){ setMode('tcs'); return; } initGisHome(); }
-  if (m==='mock') { if(isTeacher()){ tcsSubMode='mock'; initTcsPage(); } else setMode('home'); return; }
-  if (m==='reading') { if(isTeacher()){ tcsSubMode='reading'; initTcsPage(); } else initReadingPage(); return; }
-  if (m==='school') { if(canAccessSchool()){ schoolSection='school'; initSchoolPage(); } else setMode('home'); return; }
-  if (m==='ops')    { if(canSeeAdminModules()){ schoolSection='ops'; initSchoolPage(); } else setMode('home'); return; }
-  if (m==='store') { if(canAccessSchool()){ initStorePage(); } else setMode('home'); return; }
-  if (m==='approval') { if(canAccessSchool()){ initApprovalPage(); } else setMode('home'); return; }
-  if (m==='improve') { initImprovePage(); }
-  if (m==='drive') { initDrivePage(); }
-  if (m==='note') { initNotePage(); }
-  if (m==='allowance') { initAllowancePage(); }
-  if (m==='deposit') { initDepositPage(); }
-  if (m==='mytt') { initMyTimetable(); }
-  if (m==='leave') { initLeavePage(); }
-  if (m==='bookreport') { writingKind='book'; initWritingPage(); }
-  if (m==='review') { writingKind='activity'; initWritingPage(); }
-  if (m==='profile') { renderProfilePage(); }
+  if (m==='prayer') { go(loadPrayers); go(renderPrayerPanel); }
+  if (m==='home') go(renderHome);
+  if (m==='chat') { go(renderPanel); if (!boot) sessionStorage.removeItem('last_channel_id'); }
+  if (m==='calendar') { go(loadCalendar); }
+  if (m==='admin') { if(isCommunityAdmin()) go(initAdminPage); else setMode('home', opts); return; }
+  if (m==='tcs') { if(isTeacher()){ tcsSubMode='record'; go(initTcsPage); } else setMode('gishome', opts); return; }
+  if (m==='gishome') { if(isTeacher()){ setMode('tcs', opts); return; } go(initGisHome); }
+  if (m==='mock') { if(isTeacher()){ tcsSubMode='mock'; go(initTcsPage); } else setMode('home', opts); return; }
+  if (m==='reading') { if(isTeacher()){ tcsSubMode='reading'; go(initTcsPage); } else go(initReadingPage); return; }
+  if (m==='school' || m==='ops') {
+    const okSec = (m==='ops') ? canSeeAdminModules() : canAccessSchool();
+    if (!okSec) { setMode('home', opts); return; }
+    schoolSection = (m==='ops') ? 'ops' : 'school';
+    if (boot) syncSchoolHeader(); else initSchoolPage();
+    return;
+  }
+  if (m==='store') { if(canAccessSchool()){ go(initStorePage); } else setMode('home', opts); return; }
+  if (m==='approval') { if(canAccessSchool()){ go(initApprovalPage); } else setMode('home', opts); return; }
+  if (m==='improve') { go(initImprovePage); }
+  if (m==='drive') { go(initDrivePage); }
+  if (m==='note') { go(initNotePage); }
+  if (m==='allowance') { go(initAllowancePage); }
+  if (m==='deposit') { go(initDepositPage); }
+  if (m==='mytt') { go(initMyTimetable); }
+  if (m==='leave') { go(initLeavePage); }
+  if (m==='bookreport') { writingKind='book'; go(initWritingPage); }
+  if (m==='review') { writingKind='activity'; go(initWritingPage); }
+  if (m==='profile') { go(renderProfilePage); }
   document.getElementById('panel-title').textContent = {
     chat:t('채팅','Chat'), prayer:t('기도제목','Prayer'), home:t('홈','Home'), calendar:t('일정','Calendar'),
     admin:t('관리자','Admin'), tcs:t('생기부','Records'), mock:t('모의고사 분석','Mock Exam'), reading:'Triple School',
@@ -14181,6 +14200,18 @@ const SCHOOL_SECTIONS = {
   ops:    { icon:'🗂', name:t('운영관리','Operations'), sub:t('공동체 살림과 문서','Community operations and documents'),    first:'tuition' },
 };
 let schoolSection = 'school';   // 'school' | 'ops'
+
+// 학사/운영 머리글만 맞춘다. 새로고침 직후 데이터가 아직 없을 때
+// 머리글이 엉뚱하게 '학사관리'로 보이지 않도록 setMode(boot)에서 쓴다.
+function syncSchoolHeader() {
+  const sec = SCHOOL_SECTIONS[schoolSection] || SCHOOL_SECTIONS.school;
+  const icon = document.getElementById('school-header-icon');
+  if (icon) icon.textContent = sec.icon;
+  const nm = document.getElementById('school-header-name');
+  if (nm) nm.textContent = sec.name;
+  const sub = document.getElementById('school-header-sub');
+  if (sub) sub.textContent = sec.sub;
+}
 let schoolSubMode = 'student';
 let schoolStudents = [];
 let schoolTeachers = [];
