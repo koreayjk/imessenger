@@ -4314,7 +4314,7 @@ function normalizeHomeLayout(raw) {
 function hwCard(inner, opt) {
   const o = opt || {};
   const pad = o.flush ? '0' : '18px 20px';
-  return `<div style="background:var(--surface);border-radius:18px;padding:${pad};box-shadow:0 1px 4px rgba(29,58,95,.07);height:100%;box-sizing:border-box;display:flex;flex-direction:column;overflow:hidden">${inner}</div>`;
+  return `<div style="background:var(--surface);border-radius:18px;padding:${pad};box-shadow:0 1px 4px rgba(29,58,95,.07);width:100%;height:100%;min-width:0;box-sizing:border-box;display:flex;flex-direction:column;overflow:hidden">${inner}</div>`;
 }
 function hwHead(icon, title, right) {
   return `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px">
@@ -4396,7 +4396,140 @@ const HOME_LINKS = [
 
 // ══ 위젯 등록부 ══
 // w: 기본 너비 · fullOnly: 항상 한 줄 전체 · can: 볼 수 있는 사람 · cfg: 설정 가능 위젯
+// ── 사진 위젯 — 구글 드라이브 폴더를 앨범처럼 ────────────────────────
+// 구글 포토는 2025-03 부터 외부 앱이 남의 앨범을 못 읽는다(스코프 삭제).
+// 드라이브 폴더는 그대로 되고, 자료실이 쓰는 drive-list 를 그대로 쓴다.
+let _drivePhotoCache = {};                       // folderId -> { at, items, name }
+let _photoTimer = null;
+let _photoState = { items: [], i: 0, sec: 6 };
+const PHOTO_MAX = 40;
+
+async function loadDrivePhotos(folderId) {
+  const hit = _drivePhotoCache[folderId];
+  if (hit && Date.now() - hit.at < 5 * 60 * 1000) return hit;   // 5분은 다시 안 부른다
+  const { data, error } = await sb.functions.invoke('drive-list', { body: { path: [folderId] } });
+  if (error || !data || data.error) throw new Error((data && data.error) || (error && error.message) || 'drive-list');
+  const items = (data.files || [])
+    .filter(f => !f.isFolder && /^image\//.test(f.mimeType || ''))
+    .sort((a, b) => String(b.modifiedTime || '').localeCompare(String(a.modifiedTime || '')))
+    .slice(0, PHOTO_MAX)
+    .map(f => ({
+      id: f.id, name: f.name || '', view: f.viewUrl, thumb: f.thumb || '',
+      url: `https://drive.google.com/thumbnail?id=${encodeURIComponent(f.id)}&sz=w1600`,
+    }));
+  const crumb = data.breadcrumb || [];
+  const out = { at: Date.now(), items, name: crumb.length ? (crumb[crumb.length - 1].name || '') : '' };
+  _drivePhotoCache[folderId] = out;
+  return out;
+}
+
+function photoStop() { if (_photoTimer) { clearInterval(_photoTimer); _photoTimer = null; } }
+function photoStart() {
+  photoStop();
+  const box = document.getElementById('hw-photo');
+  if (!box || !_photoState.items.length) return;
+  photoShow(0);
+  const tick = () => {
+    if (!document.getElementById('hw-photo')) { photoStop(); return; }   // 홈을 떠났다
+    photoNext(1);
+  };
+  if (_photoState.items.length > 1) _photoTimer = setInterval(tick, _photoState.sec * 1000);
+  box.onmouseenter = () => photoStop();
+  box.onmouseleave = () => { if (!_photoTimer && _photoState.items.length > 1) _photoTimer = setInterval(tick, _photoState.sec * 1000); };
+}
+function photoNext(d) {
+  const n = _photoState.items.length; if (!n) return;
+  photoShow(((_photoState.i + d) % n + n) % n);
+}
+// 두 장을 겹쳐 두고 번갈아 바꿔 끼운다 (한 번에 두 장만 받아 온다)
+function photoShow(n) {
+  const st = _photoState, it = st.items[n]; if (!it) return;
+  const a = document.getElementById('hw-photo-a'), b = document.getElementById('hw-photo-b');
+  if (!a || !b) return;
+  st.i = n;
+  const cur = a.dataset.on === '1' ? a : b;
+  const nxt = cur === a ? b : a;
+  nxt.onload = () => { nxt.style.opacity = '1'; cur.style.opacity = '0'; nxt.dataset.on = '1'; cur.dataset.on = '0'; };
+  nxt.onerror = () => { if (it.thumb && nxt.getAttribute('src') !== it.thumb) nxt.src = it.thumb; };
+  nxt.src = it.url;
+  const cap = document.getElementById('hw-photo-cap');
+  if (cap) cap.textContent = `${n + 1} / ${st.items.length}`;
+  const lnk = document.getElementById('hw-photo-link');
+  if (lnk) lnk.href = it.view || '#';
+}
+function photoJump(d) { photoStop(); photoNext(d); }
+
+// 위젯 설정에서 쓸 폴더 고르기 — 자료실 루트 바로 아래 폴더들
+async function hwFillDriveFolders(key, cur) {
+  const sel = document.getElementById('hwcfg-' + key);
+  const msg = document.getElementById('hwcfg-' + key + '-msg');
+  if (!sel) return;
+  try {
+    const { data, error } = await sb.functions.invoke('drive-list', { body: { path: [] } });
+    if (error || !data || data.error) throw new Error((data && data.error) || (error && error.message) || '');
+    const folders = (data.files || []).filter(f => f.isFolder);
+    sel.innerHTML = `<option value="">${t('— 고르지 않음 —','— None —')}</option>`
+      + folders.map(f => `<option value="${escAttr(f.id)}" ${f.id === cur ? 'selected' : ''}>${escHtml(f.name || '')}</option>`).join('');
+    if (cur && !folders.some(f => f.id === cur)) {
+      sel.insertAdjacentHTML('beforeend', `<option value="${escAttr(cur)}" selected>${t('(지금 쓰는 폴더)','(current folder)')}</option>`);
+    }
+    if (msg) msg.textContent = folders.length
+      ? t('자료실 폴더 바로 아래 폴더만 보여요. 그 폴더에 사진을 넣으면 홈에 바로 뜹니다.','Only folders directly inside the Files folder. Drop photos there and they appear on Home.')
+      : t('자료실 폴더 아래에 하위 폴더가 없어요. 구글 드라이브에서 사진 폴더를 하나 만들어 주세요.','No subfolders yet — create a photo folder in Google Drive.');
+  } catch (e) {
+    sel.innerHTML = `<option value="${escAttr(cur || '')}">${t('불러오지 못했어요','Could not load')}</option>`;
+    if (msg) msg.textContent = t('자료실(구글 드라이브) 연결이 먼저 필요해요. 관리자 → 공동체 설정에서 드라이브 폴더를 등록하세요.','Connect Google Drive first — set the Drive folder under Admin → Community settings.');
+  }
+}
+
 const HOME_WIDGETS = {
+
+  photos: {
+    icon:'🖼️', ko:'사진', en:'Photos',
+    dko:'구글 드라이브 폴더의 사진을 슬라이드로 넘겨 보여줘요', den:'Slideshow from a Google Drive folder', w:2,
+    cfg: [
+      { key:'folder', type:'driveFolder', ko:'사진 폴더 (자료실 폴더 안)', en:'Photo folder (inside the Files folder)' },
+      { key:'sec',    type:'number',      ko:'몇 초마다 넘길까요',        en:'Seconds per photo', ph:'6' },
+      { key:'title',  type:'text',        ko:'제목 (비우면 폴더 이름)',   en:'Title (blank = folder name)' },
+    ],
+    render: async (ctx) => {
+      const cfg = ctx.cfg || {};
+      const folder = String(cfg.folder || '').trim();
+      const head = (extra) => hwHead('🖼️', t('사진','Photos'), extra);
+      if (!folder) {
+        return hwCard(head('') + hwEmpty(ctx.isAdmin
+          ? t('보여줄 사진 폴더를 아직 안 골랐어요.<br>[🧩 홈 꾸미기] 에서 ⚙️ 를 눌러 구글 드라이브 폴더를 고르세요.','No photo folder chosen yet.<br>Pick a Google Drive folder with ⚙️ in [🧩 Edit Home].')
+          : t('아직 사진 폴더가 연결되지 않았어요','No photo folder connected yet')));
+      }
+      let pack;
+      try { pack = await loadDrivePhotos(folder); }
+      catch (e) {
+        return hwCard(head('') + hwEmpty(t('사진을 불러오지 못했어요','Could not load photos')
+          + `<br><span style="font-size:11px;opacity:.8">${escHtml(String(e.message || e)).slice(0, 110)}</span>`));
+      }
+      if (!pack.items.length) {
+        return hwCard(head('') + hwEmpty(t('이 폴더에 사진이 없어요.<br>구글 드라이브에서 사진을 넣으면 바로 보여요.','No photos in this folder.<br>Drop some into Google Drive and they show up here.')));
+      }
+      _photoState = { items: pack.items, i: 0, sec: Math.max(2, Math.min(60, Number(cfg.sec) || 6)) };
+      const title = String(cfg.title || '').trim() || pack.name || t('사진','Photos');
+      const many = pack.items.length > 1;
+      const nav = (d, sym, side) => `<button onclick="photoJump(${d})" title="${d < 0 ? t('이전','Prev') : t('다음','Next')}"
+        style="position:absolute;${side}:8px;top:50%;transform:translateY(-50%);width:30px;height:30px;border:none;border-radius:50%;background:rgba(15,23,42,.42);color:#fff;font:700 14px var(--font);cursor:pointer;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)">${sym}</button>`;
+      return hwCard(`<div id="hw-photo" style="position:relative;flex:1;width:100%;min-width:0;min-height:200px;border-radius:18px;overflow:hidden;background:#0f172a">
+        <img id="hw-photo-a" data-on="1" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .55s var(--ease-out)"/>
+        <img id="hw-photo-b" data-on="0" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .55s var(--ease-out)"/>
+        <div style="position:absolute;left:0;right:0;top:0;height:62px;background:linear-gradient(to bottom,rgba(15,23,42,.55),transparent);pointer-events:none"></div>
+        <div style="position:absolute;left:14px;right:14px;top:11px;display:flex;align-items:center;gap:8px;pointer-events:none">
+          <span style="font-size:13.5px;font-weight:800;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.45);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">🖼️ ${escHtml(title)}</span>
+          <span id="hw-photo-cap" style="margin-left:auto;font-size:11px;font-weight:700;color:rgba(255,255,255,.9);background:rgba(15,23,42,.38);padding:2px 8px;border-radius:99px;white-space:nowrap">1 / ${pack.items.length}</span>
+        </div>
+        ${many ? nav(-1, '‹', 'left') + nav(1, '›', 'right') : ''}
+        <a id="hw-photo-link" href="#" target="_blank" rel="noopener"
+          style="position:absolute;right:10px;bottom:10px;font-size:11px;font-weight:700;color:#fff;background:rgba(15,23,42,.42);padding:4px 10px;border-radius:99px;text-decoration:none;backdrop-filter:blur(4px)">${t('드라이브에서 보기','Open in Drive')} ↗</a>
+      </div>`, { flush: true });
+    },
+    after: () => { try { photoStart(); } catch(_) {} },
+  },
 
   mccheyne: {
     icon:'📖', ko:'맥체인 성경읽기', en:"M'Cheyne Bible Reading",
@@ -4847,7 +4980,7 @@ const HOME_WIDGETS = {
 
 };
 
-const HOME_WIDGET_ORDER = ['notice','about','upcoming','quicklinks','approval','poll','schedule','newsletter',
+const HOME_WIDGET_ORDER = ['notice','about','photos','upcoming','quicklinks','approval','poll','schedule','newsletter',
                           'dday','mccheyne','dailyword','goals','prayer','wallet','birthday','imusa'];
 
 // 진행 중인 투표 카드 — 위젯에서 쓴다
@@ -5501,7 +5634,14 @@ function hwOpenCfg(i) {
     <div style="background:var(--surface);border-radius:20px;width:100%;max-width:400px;box-shadow:0 24px 60px rgba(29,58,95,.2);overflow:hidden">
       <div style="padding:20px 24px;border-bottom:1px solid var(--border);font-size:16px;font-weight:700">${s.icon} ${t(s.ko,s.en)}</div>
       <div style="padding:18px 24px">
-        ${(s.cfg||[]).map(f => `
+        ${(s.cfg||[]).map(f => f.type === 'driveFolder' ? `
+          <div style="margin-bottom:14px">
+            <div style="font-size:12px;color:var(--ink3);margin-bottom:5px">${t(f.ko,f.en)}</div>
+            <select id="hwcfg-${f.key}" class="adm-input" style="margin-bottom:0;cursor:pointer">
+              <option value="${escAttr(String((it.cfg && it.cfg[f.key]) || ''))}">${t('불러오는 중...','Loading...')}</option>
+            </select>
+            <div id="hwcfg-${f.key}-msg" style="font-size:11px;color:var(--ink3);margin-top:5px;line-height:1.6;word-break:keep-all"></div>
+          </div>` : `
           <div style="margin-bottom:14px">
             <div style="font-size:12px;color:var(--ink3);margin-bottom:5px">${t(f.ko,f.en)}</div>
             <input id="hwcfg-${f.key}" class="adm-input" style="margin-bottom:0" type="${f.type||'text'}"
@@ -5517,6 +5657,8 @@ function hwOpenCfg(i) {
     </div>`;
   m.addEventListener('click', e => { if (e.target === m) m.remove(); });
   document.body.appendChild(m);
+  // 드라이브 폴더 칸은 열린 뒤에 목록을 채운다
+  (s.cfg||[]).forEach(f => { if (f.type === 'driveFolder') hwFillDriveFolders(f.key, String((it.cfg && it.cfg[f.key]) || '')); });
 }
 
 function hwSaveCfg(i) {
