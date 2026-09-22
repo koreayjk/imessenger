@@ -1606,6 +1606,11 @@ const SUPABASE_URL = 'https://bbfvnmlrdtzmcwfadjqw.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJiZnZubWxyZHR6bWN3ZmFkanF3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1Njg1OTIsImV4cCI6MjA5ODE0NDU5Mn0.nJbRfTkcjVxsb_BO6sAP_0lOxQ--wTFXVN9tBH1IPNA';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+// 공동체가 쓰는 돈 단위. 한국 공동체는 '원', 미국 공동체는 '$'.
+// 금액 입력칸마다 ₩/$ 를 고르게 하지 않고 여기 하나로 통일한다.
+let COMM_CUR = '원';
+function cmoney(n) { return allowMoney(n, COMM_CUR); }
+
 // ── 모션 유틸 ──
 // 터치 기기에서는 탭할 때 가짜 hover 가 발생해 요소가 들썩인다. 마우스에서만 hover 모션을 준다.
 const HOVER_FINE = !!(window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches);
@@ -1778,10 +1783,15 @@ function t(ko, en) { return APP_LANG === 'en' ? (en != null ? en : ko) : ko; }
 async function loadCommunityLang() {
   const prev = APP_LANG;   // 상수들이 평가된 시점의 언어
   try {
-    const { data } = await sb.from('communities').select('language').eq('id', CID()).single();
+    const { data } = await sb.from('communities').select('language,currency').eq('id', CID()).single();
     if (data && data.language) APP_LANG = data.language;
+    if (data && data.currency) COMM_CUR = data.currency;
     localStorage.setItem('app_lang', APP_LANG);
-  } catch(_) {}
+    localStorage.setItem('comm_cur_' + CID(), COMM_CUR);
+  } catch(_) {
+    // currency 컬럼이 아직 없는 공동체 — 저장해 둔 값으로
+    try { COMM_CUR = localStorage.getItem('comm_cur_' + CID()) || COMM_CUR; } catch(__) {}
+  }
   applyI18n();
   // 첫 로드 때 DB 언어가 상수 평가 언어와 다르면(예: 새 기기) 1회만 새로고침해 전체 반영
   if (APP_LANG !== prev && !sessionStorage.getItem('lang_synced')) {
@@ -9885,6 +9895,23 @@ async function renderCommunitySettings() {
           <input type="hidden" id="cs-logo-url" value="${comm.logo_url||''}"/>
         </div>
 
+        <!-- 통화 -->
+        <div style="border-top:1px solid var(--border);margin:16px 0 14px;padding-top:14px">
+          <div style="font-size:12px;font-weight:600;color:var(--ink3);margin-bottom:6px">💱 통화</div>
+          <div style="display:inline-flex;gap:4px;background:var(--s2);border:1px solid var(--border);border-radius:11px;padding:4px">
+            ${[['원','₩ 원'],['$','$ 달러']].map(([v,l])=>`<button onclick="setCommCurrency('${v}')" style="height:34px;padding:0 18px;border:none;border-radius:8px;cursor:pointer;font:700 13px var(--font);background:${COMM_CUR===v?'#1d3a5f':'transparent'};color:${COMM_CUR===v?'#fff':'var(--ink2)'}">${l}</button>`).join('')}
+          </div>
+          <div style="font-size:11px;color:var(--ink3);line-height:1.65;margin-top:7px">
+            이 공동체가 쓰는 돈 단위입니다. 한국이면 원, 미국이면 달러로 두세요.<br>
+            정하고 나면 <b>용돈·예치금·학비</b> 의 금액칸에서 ₩/$ 고르는 버튼이 사라지고 전부 이 단위로 기록됩니다.<br>
+            <b>매점</b>은 페소(₱)도 쓸 수 있어 자체 설정을 따로 두지만, 새로 만들 때 이 값이 기본으로 잡힙니다.
+          </div>
+          <div style="font-size:11px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:9px;padding:9px 11px;line-height:1.7;margin-top:8px;word-break:keep-all">
+            ⚠️ 바꾸면 <b>이미 있는 금액을 지금 환율로 함께 변환</b>할지 물어봅니다. 단위만 바꾸고 숫자를 두면
+            50,000원이 $50,000 이 되니까요. <b>은행 입출금 내역은 건드리지 않습니다</b> (은행에서 받은 원본이라).
+          </div>
+        </div>
+
         <!-- 자료실 폴더 -->
         <div style="border-top:1px solid var(--border);margin:16px 0 14px;padding-top:14px">
           <div style="font-size:12px;font-weight:600;color:var(--ink3);margin-bottom:5px">📁 자료실 폴더 (구글 드라이브)</div>
@@ -10714,6 +10741,90 @@ async function saveCommSettings(commId) {
 }
 
 // ── 공동체 관리 (총관리자 전용) ──
+// ── 공동체 통화 바꾸기 ──
+// 단위만 바꾸고 숫자를 그대로 두면 50,000원이 $50,000 이 된다. 그래서
+// 지금 있는 기록을 현재 환율로 같이 변환할지 물어본다.
+// 은행 입출금(ledger)은 건드리지 않는다 — 은행에서 그대로 가져온 값이라
+// 바꾸면 원본과 어긋난다.
+const CUR_TABLES = [
+  { table:'allowance_entries', cols:['amount'],               ko:'용돈' },
+  { table:'deposit_entries',   cols:['amount'],               ko:'예치금' },
+  { table:'tuition_bills',     cols:['amount','paid_amount'], ko:'학비' },
+];
+async function curCountRows(target) {
+  let total = 0; const per = [];
+  for (const spec of CUR_TABLES) {
+    try {
+      const { data, error } = await sb.from(spec.table).select('id,currency').eq('community_id', CID());
+      if (error) throw error;
+      const n = (data || []).filter(r => (r.currency || '원') !== target).length;
+      if (n) per.push(`${spec.ko} ${n}`);
+      total += n;
+    } catch(_) {}   // 아직 설치 안 된 표는 건너뛴다
+  }
+  // 학생별 월 학비도 금액이다
+  const stu = (schoolStudents || []).filter(s => Number(s.tuition_monthly) > 0);
+  if (stu.length) { per.push(`${t('월 학비','monthly tuition')} ${stu.length}`); total += stu.length; }
+  return { total, per, stu };
+}
+async function setCommCurrency(target) {
+  if (!isCommunityAdmin()) return;
+  if (target === COMM_CUR) return;
+  const { total, per, stu } = await curCountRows(target);
+
+  const saveOnly = async () => {
+    const { error } = await sb.from('communities').update({ currency: target }).eq('id', CID());
+    if (error) {
+      if (/currency|column/.test(error.message || '')) { showUploadToast(t('db/공동체통화_DB설치.sql 을 먼저 실행하세요','Run db/공동체통화_DB설치.sql first')); return false; }
+      showUploadToast(t('저장 실패: ','Save failed: ') + error.message); return false;
+    }
+    COMM_CUR = target; finAddCur = target; tuiCur = target;
+    try { localStorage.setItem('comm_cur_' + CID(), target); localStorage.setItem('tui_currency_' + CID(), target); } catch(_) {}
+    return true;
+  };
+
+  if (!total) {
+    if (await saveOnly()) {
+      showUploadToast(target === '원' ? t('✅ 통화를 원(₩)으로 정했어요','✅ Currency set to Won (₩)') : t('✅ 통화를 달러($)로 정했어요','✅ Currency set to Dollar ($)'));
+      renderAdminCommunities();
+    }
+    return;
+  }
+
+  const rate = await fetchUsdKrw();
+  if (!rate) { showUploadToast(t('환율을 가져오지 못했어요. 잠시 후 다시 해주세요','Could not fetch the exchange rate — try again shortly')); return; }
+  const conv = (n) => n == null ? null : (target === '원' ? Math.round((Number(n) || 0) * rate) : Math.round((Number(n) || 0) / rate * 100) / 100);
+  const rateTxt = `1 $ ≈ ${Math.round(rate).toLocaleString('ko-KR')}원`;
+  const dir = target === '원' ? t('달러 → 원','USD → KRW') : t('원 → 달러','KRW → USD');
+  if (!confirm(t(
+      `이미 있는 금액 ${total}건을 지금 환율(${rateTxt})로 ${dir} 바꿀까요?\n${per.join(' · ')}\n\n※ 은행 입출금 내역은 건드리지 않습니다.\n※ 되돌리려면 통화를 다시 바꿔야 해요.`,
+      `Convert ${total} existing amounts ${dir} at the current rate (${rateTxt})?\n${per.join(' · ')}\n\n※ Bank cash-book entries are left untouched.\n※ To undo, switch the currency back.`))) return;
+
+  showUploadToast(t('환율로 바꾸는 중...','Converting…'));
+  let done = 0;
+  for (const spec of CUR_TABLES) {
+    try {
+      const { data, error } = await sb.from(spec.table).select('id,currency,' + spec.cols.join(',')).eq('community_id', CID());
+      if (error) throw error;
+      for (const row of (data || [])) {
+        if ((row.currency || '원') === target) continue;
+        const patch = { currency: target };
+        spec.cols.forEach(c => { patch[c] = conv(row[c]); });
+        await sb.from(spec.table).update(patch).eq('id', row.id);
+        done++;
+      }
+    } catch(_) {}
+  }
+  for (const s of stu) {
+    const nv = conv(s.tuition_monthly);
+    await sb.from('members').update({ tuition_monthly: nv }).eq('id', s.id);
+    s.tuition_monthly = nv; done++;
+  }
+  if (!(await saveOnly())) return;
+  showUploadToast(t(`✅ ${done}건을 ${target === '원' ? '원(₩)' : '달러($)'}으로 바꿨어요`, `✅ Converted ${done} amounts to ${target === '원' ? 'Won (₩)' : 'Dollar ($)'}`));
+  renderAdminCommunities();
+}
+
 async function renderAdminCommunities() {
   const _seq = _admSeq;
   _viewingComm = null;
@@ -15895,7 +16006,7 @@ function openStorePassSetup() {
         <input id="store-name-inp" value="${escAttr((storeData&&storeData.storeName)||'')}" placeholder="${t('예: IMUSA 매점','e.g. IMUSA Store')}" style="width:100%;height:42px;padding:0 13px;border:1.5px solid var(--border);border-radius:11px;background:var(--s2);font:14px var(--font);color:var(--ink);outline:none"/></div>
       <div style="margin-bottom:12px"><label style="font-size:12px;font-weight:700;color:var(--ink3);display:block;margin-bottom:6px">${t('통화 (금액 단위)','Currency (unit)')}</label>
         <div style="display:flex;gap:8px" id="store-cur-pick">
-          ${[{v:'원',l:t('원 (₩)','Won (₩)')},{v:'$',l:t('달러 ($)','Dollar ($)')},{v:'₱',l:t('페소 (₱)','Peso (₱)')}].map(c=>`<button type="button" data-v="${c.v}" onclick="pickStoreCur('${c.v}')" style="flex:1;height:40px;border-radius:10px;border:1.5px solid ${((storeData&&storeData.currency)||'원')===c.v?'var(--accent)':'var(--border)'};background:${((storeData&&storeData.currency)||'원')===c.v?'var(--asoft)':'var(--surface)'};color:${((storeData&&storeData.currency)||'원')===c.v?'var(--adeep)':'var(--ink2)'};font:700 12.5px var(--font);cursor:pointer">${c.l}</button>`).join('')}
+          ${[{v:'원',l:t('원 (₩)','Won (₩)')},{v:'$',l:t('달러 ($)','Dollar ($)')},{v:'₱',l:t('페소 (₱)','Peso (₱)')}].map(c=>`<button type="button" data-v="${c.v}" onclick="pickStoreCur('${c.v}')" style="flex:1;height:40px;border-radius:10px;border:1.5px solid ${((storeData&&storeData.currency)||COMM_CUR||'원')===c.v?'var(--accent)':'var(--border)'};background:${((storeData&&storeData.currency)||COMM_CUR||'원')===c.v?'var(--asoft)':'var(--surface)'};color:${((storeData&&storeData.currency)||COMM_CUR||'원')===c.v?'var(--adeep)':'var(--ink2)'};font:700 12.5px var(--font);cursor:pointer">${c.l}</button>`).join('')}
         </div></div>
       <div style="margin-bottom:16px"><label style="font-size:12px;font-weight:700;color:var(--ink3);display:block;margin-bottom:6px">${t('비밀번호 (4자 이상)','Password (4+ characters)')}</label>
         <input id="store-pass-inp" type="password" placeholder="••••••" style="width:100%;height:42px;padding:0 13px;border:1.5px solid var(--border);border-radius:11px;background:var(--s2);font:14px var(--font);color:var(--ink);outline:none"/></div>
@@ -15906,7 +16017,7 @@ function openStorePassSetup() {
       </div>
     </div>`;
   document.body.appendChild(wrap);
-  _storeCurPick = (storeData && storeData.currency) || '원';
+  _storeCurPick = (storeData && storeData.currency) || COMM_CUR || '원';
   setTimeout(()=>document.getElementById('store-pass-inp')?.focus(), 50);
 }
 
@@ -18453,6 +18564,111 @@ function finSummaryCards(inRange, scoped, isAllow) {
   </div>`;
 }
 
+// ── 전체 지급 / 전체 입금 ──
+// 매달 학생 한 명씩 눌러 같은 금액을 넣는 일을 한 번으로 줄인다.
+// 지금 화면에 보이는 학생들(그룹 필터가 걸려 있으면 그 그룹)만 대상이다.
+let finBulkOpen = false;
+function finBulkToggle() { finBulkOpen = !finBulkOpen; renderTuitionHub(); }
+function finBulkPanelHtml(students) {
+  const isAllow = finKind === 'allowance';
+  const inp = 'height:34px;padding:0 10px;border:1.5px solid var(--border);border-radius:9px;font:600 13px var(--font);color:var(--ink);background:var(--surface)';
+  return `<div style="background:var(--asoft);border:1.5px solid #cfe0f5;border-radius:13px;padding:14px;margin-bottom:14px">
+    <div style="font-size:13px;font-weight:800;color:var(--adeep);margin-bottom:3px">${isAllow?t('💸 전체 지급','💸 Grant to everyone'):t('💸 전체 입금','💸 Deposit for everyone')}</div>
+    <div style="font-size:11.5px;color:var(--ink3);margin-bottom:9px">${t(`지금 보이는 학생 ${students.length}명에게 같은 금액을 한 번에 넣습니다.`, `Adds the same amount to all ${students.length} students shown.`)}</div>
+    <div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center">
+      <input id="fin-bulk-date" type="date" value="${attTodayStr()}" style="${inp}"/>
+      <input id="fin-bulk-amount" type="number" min="0" step="${COMM_CUR==='$'?'0.01':'100'}" placeholder="${t('1인당 금액','Per student')}" style="${inp};width:130px"/>
+      <span style="font-size:12.5px;font-weight:700;color:var(--ink2)">${COMM_CUR==='$'?'$':'₩'}</span>
+      <input id="fin-bulk-memo" value="${isAllow?escAttr(t('월 용돈','Monthly allowance')):escAttr(t('정기 입금','Regular deposit'))}" placeholder="${t('내용','Note')}" style="${inp};flex:1;min-width:140px"/>
+      <button onclick="finBulkRun()" style="height:34px;padding:0 16px;border:none;border-radius:9px;background:#2a7a5a;color:#fff;cursor:pointer;font:700 12.5px var(--font)">${t('전체에게 넣기','Add to all')}</button>
+      <button onclick="finBulkToggle()" style="height:34px;padding:0 13px;border:1px solid var(--border);border-radius:9px;background:var(--surface);color:var(--ink2);cursor:pointer;font:700 12.5px var(--font)">${t('취소','Cancel')}</button>
+    </div>
+  </div>`;
+}
+async function finBulkRun() {
+  const students = tuiRowStudents();
+  if (!students.length) { showUploadToast(t('대상 학생이 없어요','No students to add to')); return; }
+  const date = document.getElementById('fin-bulk-date')?.value || attTodayStr();
+  const amount = parseFloat(document.getElementById('fin-bulk-amount')?.value) || 0;
+  const memo = (document.getElementById('fin-bulk-memo')?.value || '').trim();
+  if (!(amount > 0)) { showUploadToast(t('금액을 입력하세요','Enter an amount')); return; }
+  const isAllow = finKind === 'allowance';
+  const who = students.map(s => s.name).slice(0, 3).join(', ') + (students.length > 3 ? t(` 외 ${students.length-3}명`, ` and ${students.length-3} more`) : '');
+  if (!confirm(t(`${students.length}명에게 ${allowMoney(amount, COMM_CUR)} 씩 넣을까요?\n(${who})\n\n합계 ${allowMoney(amount*students.length, COMM_CUR)}`,
+                 `Add ${allowMoney(amount, COMM_CUR)} to ${students.length} students?\n(${who})\n\nTotal ${allowMoney(amount*students.length, COMM_CUR)}`))) return;
+  const rows = students.map(s => isAllow
+    ? { member_id: s.id, community_id: s.community_id || CID(), date, type: 'income', category: t('용돈','Allowance'), memo, amount, currency: COMM_CUR }
+    : { member_id: s.id, community_id: s.community_id || CID(), date, type: 'in', amount, currency: COMM_CUR, memo, created_by: ME.id });
+  const { error } = await sb.from(isAllow ? 'allowance_entries' : 'deposit_entries').insert(rows);
+  if (error) { showUploadToast(t('저장 실패: ','Save failed: ') + error.message); return; }
+  showUploadToast(t(`✅ ${students.length}명에게 넣었어요`, `✅ Added for ${students.length} students`));
+  finBulkOpen = false;
+  await renderTuitionHub();
+}
+
+// ── 삭제 요청 승인함 ──
+// 학생은 용돈 기록을 직접 지우지 못하고 '삭제 요청'만 한다.
+// 그 요청이 여태 생기부 화면에서만 보여서 선생님이 놓치기 쉬웠다. 여기에도 띄운다.
+let finReqOpen = false;
+function finReqToggle() { finReqOpen = !finReqOpen; renderTuitionHub(); }
+function finReqList(scoped) {
+  if (finKind !== 'allowance') return [];
+  return (scoped || []).filter(e => e.delete_status === 'requested');
+}
+function finReqBannerHtml(reqs) {
+  if (!reqs.length) return '';
+  const nameOf = (id) => { const s = schoolStudents.find(x => x.id === id); return s ? s.name : '?'; };
+  const rows = reqs.map(e => `<div style="display:flex;align-items:center;gap:9px;padding:8px 2px;border-top:1px solid #f0dfba">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12.5px;font-weight:700;color:var(--ink)">${escHtml(nameOf(e.member_id))} · ${escHtml(e.category || t('기타','Other'))}${e.memo?` <span style="font-weight:400;color:var(--ink3)">· ${escHtml(e.memo)}</span>`:''}</div>
+        <div style="font-size:10.5px;color:var(--ink3)">${escHtml(e.date || '')} · ${allowMoney(e.amount, e.currency || COMM_CUR)}</div>
+      </div>
+      <button onclick="approveAllowDelete('${e.id}','fin')" style="height:28px;padding:0 11px;border:none;border-radius:8px;background:#b91c1c;color:#fff;cursor:pointer;font:700 11.5px var(--font)">${t('삭제 승인','Approve')}</button>
+      <button onclick="rejectAllowDelete('${e.id}','fin')" style="height:28px;padding:0 11px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--ink2);cursor:pointer;font:700 11.5px var(--font)">${t('반려','Reject')}</button>
+    </div>`).join('');
+  return `<div style="background:#fffbeb;border:1.5px solid #fde68a;border-radius:13px;padding:12px 14px;margin-bottom:14px">
+    <div onclick="finReqToggle()" style="display:flex;align-items:center;gap:8px;cursor:pointer">
+      <span style="font-size:15px">🗑</span>
+      <div style="flex:1;font-size:13px;font-weight:800;color:#92400e">${t(`학생이 보낸 삭제 요청 ${reqs.length}건`, `${reqs.length} deletion request(s) from students`)}</div>
+      <span style="font-size:11.5px;color:#92400e;font-weight:700">${finReqOpen?t('접기','Hide'):t('보기','Show')} ${finReqOpen?'▲':'▼'}</span>
+    </div>
+    ${finReqOpen ? rows : ''}
+  </div>`;
+}
+
+// ── CSV 내보내기 ──
+// 회계 정리는 PDF 보다 표가 편하다. 엑셀에서 한글이 깨지지 않게 BOM 을 붙인다.
+function finCsvDownload() {
+  const isAllow = finKind === 'allowance';
+  const range = finRange();
+  const students = tuiRowStudents();
+  const ids = new Set(students.map(s => s.id));
+  const nameOf = (id) => { const s = schoolStudents.find(x => x.id === id); return s ? s.name : ''; };
+  const list = finAll.filter(e => ids.has(e.member_id) && finInRange(e, range))
+    .sort((a,b) => String(a.date||'').localeCompare(String(b.date||'')) || String(a.created_at||'').localeCompare(String(b.created_at||'')));
+  if (!list.length) { showUploadToast(t('이 기간에는 내보낼 기록이 없어요','No records to export for this period')); return; }
+  const q = (v) => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
+  const head = [t('날짜','Date'), t('학생','Student'), t('구분','Type'),
+                isAllow ? t('분류','Category') : t('내용','Details'),
+                t('메모','Note'), t('금액','Amount'), t('통화','Currency')];
+  const body = list.map(e => {
+    const plus = finIsPlus(e);
+    const kind = isAllow ? (plus ? t('수입','Income') : t('지출','Expense'))
+                         : (plus ? t('입금','Deposit') : t('출금','Withdrawal'));
+    return [e.date || '', nameOf(e.member_id), kind,
+            isAllow ? (e.category || '') : kind, e.memo || '',
+            (plus ? 1 : -1) * (Number(e.amount) || 0), e.currency || COMM_CUR].map(q).join(',');
+  });
+  const csv = [head.map(q).join(','), ...body].join('\r\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `${isAllow ? t('용돈','allowance') : t('예치금','deposit')}_${finPeriodLabel().replace(/\s/g,'')}.csv`;
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 0);
+  showUploadToast(t(`⬇ ${list.length}건 내려받았어요`, `⬇ Exported ${list.length} rows`));
+}
+
 // ── 학생별 사용내역서 (PDF) ──
 // 브라우저 인쇄창을 열어 'PDF로 저장'을 고르면 파일로 떨어진다.
 // 기간 앞의 기록은 '이월 잔액' 한 줄로 접어 넣는다. 그래야 기간만 떼어 봐도
@@ -18568,14 +18784,14 @@ function finInlineEditor() {
   const isAllow = finKind==='allowance';
   const inp = 'height:33px;padding:0 9px;border:1px solid var(--border);border-radius:8px;font:600 12.5px var(--font);color:var(--ink);background:var(--surface)';
   const tBtn = (t,label,color)=>`<button onclick="finSetType('${t}')" style="flex:1;height:33px;border:none;border-radius:8px;font:700 12px var(--font);cursor:pointer;background:${finAddType===t?color:'var(--surface)'};color:${finAddType===t?'#fff':'var(--ink2)'}">${label}</button>`;
-  const cBtn = (c,label)=>`<button onclick="finSetCur('${c}')" style="height:33px;padding:0 11px;border:1px solid ${finAddCur===c?'#1d3a5f':'var(--border)'};border-radius:8px;font:700 12px var(--font);cursor:pointer;background:${finAddCur===c?'#1d3a5f':'var(--surface)'};color:${finAddCur===c?'#fff':'var(--ink2)'}">${label}</button>`;
+  // 통화는 공동체 설정 하나로 정해진다 (관리자 → 공동체 설정 → 통화)
   const catSel = isAllow ? `<select id="fin-cat" style="${inp}">${(ALLOW_CATS[finAddType]||[]).map(c=>`<option value="${c}">${c}</option>`).join('')}</select>` : '';
   const form = `<div style="display:flex;gap:6px;margin-bottom:8px">${isAllow?tBtn('income',t('수입 ➕','Income ➕'),'#2a7a5a')+tBtn('expense',t('지출 ➖','Expense ➖'),'#c0392b'):tBtn('in',t('입금 ＋','Deposit ＋'),'#2a7a5a')+tBtn('out',t('출금 －','Withdraw －'),'#c0392b')}</div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
       <input id="fin-date" type="date" value="${attTodayStr()}" style="${inp}"/>
       ${catSel}
-      <div style="display:flex;gap:4px">${cBtn('원','₩')}${cBtn('$','$')}</div>
-      <input id="fin-amount" type="number" min="0" step="${finAddCur==='$'?'0.01':'100'}" placeholder="${t('금액','Amount')}" style="${inp};width:100px"/>
+      <span style="font-size:12.5px;font-weight:700;color:var(--ink2)">${COMM_CUR==='$'?'$':'₩'}</span>
+      <input id="fin-amount" type="number" min="0" step="${COMM_CUR==='$'?'0.01':'100'}" placeholder="${t('금액','Amount')}" style="${inp};width:100px"/>
       <input id="fin-memo" placeholder="${isAllow?t('내용 (예: 간식비)','Note (e.g. snacks)'):t('내용 (예: 부모님 입금)','Note (e.g. parent deposit)')}" style="${inp};flex:1;min-width:120px" onkeydown="if(event.key==='Enter')finAddEntry()"/>
       <button onclick="finAddEntry()" style="height:33px;padding:0 16px;border:none;background:#1d3a5f;color:#fff;border-radius:8px;cursor:pointer;font:700 12.5px var(--font)">${t('＋ 기록','＋ Add')}</button>
     </div>`;
@@ -18630,6 +18846,7 @@ async function finDelEntry(id) {
 async function renderFinBalances(kind) {
   finKind = kind;
   finInitPeriod();
+  finAddCur = COMM_CUR;   // 통화는 공동체 설정 하나로
   const main = document.getElementById('school-main');
   main.innerHTML = finTabBar() + `<div style="text-align:center;padding:30px;color:var(--ink3);font-size:13px">${t('불러오는 중...','Loading...')}</div>`;
   const table = kind==='allowance' ? 'allowance_entries' : 'deposit_entries';
@@ -18654,6 +18871,9 @@ async function renderFinBalances(kind) {
   const byStu = {};
   scoped.forEach(e => { (byStu[e.member_id] = byStu[e.member_id] || []).push(e); });
 
+  const reqs = finReqList(scoped);
+  let minusCount = 0;
+
   const rows = students.map(s => {
     const mine  = byStu[s.id] || [];
     const per   = finSumBy(mine.filter(e => finInRange(e, range)));
@@ -18661,7 +18881,10 @@ async function renderFinBalances(kind) {
     const open  = finExpandId === s.id;
     const spent = finMoneyOf(per, 'out');
     const hasSpent = Object.keys(per).some(c => (per[c].out || 0) > 0.004);
-    return `<div style="border:1px solid ${open?'#2a5298':'var(--border)'};border-radius:11px;margin-bottom:8px;background:var(--surface);overflow:hidden">
+    // 예치금은 매점 결제로 빠져나가 마이너스가 날 수 있다. 눈에 띄게 둔다.
+    const minus = Object.keys(all).some(c => (all[c].net || 0) < -0.004);
+    if (minus) minusCount++;
+    return `<div style="border:1px solid ${open?'#2a5298':(minus?'#f5c6c0':'var(--border)')};border-radius:11px;margin-bottom:8px;background:${minus?'#fffafa':'var(--surface)'};overflow:hidden">
       <div onclick="finToggleStudent('${s.id}')" style="display:flex;align-items:center;gap:12px;padding:11px 14px;cursor:pointer">
         <div style="width:34px;height:34px;border-radius:9px;background:${s.color||'#1d3a5f'};display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:700;flex-shrink:0">${s.initials||s.name?.[0]||'?'}</div>
         <div style="flex:1;min-width:0">
@@ -18669,7 +18892,7 @@ async function renderFinBalances(kind) {
           <div style="font-size:11px;color:var(--ink3)">${s.grade||''}${s360GroupName(s.group_id)?` · ${s360GroupName(s.group_id)}`:''}</div>
         </div>
         <div style="text-align:right;white-space:nowrap">
-          <div style="font-size:15px;font-weight:800;color:var(--adeep)">${finMoneyOf(all,'net')}</div>
+          <div style="font-size:15px;font-weight:800;color:${minus?'#b91c1c':'var(--adeep)'}">${minus?'⚠ ':''}${finMoneyOf(all,'net')}</div>
           <div style="font-size:10.5px;color:${hasSpent?'#b91c1c':'var(--ink3)'};margin-top:1px">${isAllow?t('사용','spent'):t('출금','withdrawn')} ${spent}</div>
         </div>
         <button onclick="finStatementPdf('${s.id}',event)" title="${t('이 기간 내역서 PDF','Statement PDF for this period')}"
@@ -18689,6 +18912,13 @@ async function renderFinBalances(kind) {
       </div>
       ${finPeriodBar()}
     </div>
+    <div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:12px">
+      <button onclick="finBulkToggle()" style="height:32px;padding:0 13px;border:none;border-radius:9px;background:${finBulkOpen?'#94a3b8':'#2a7a5a'};color:#fff;cursor:pointer;font:700 12.5px var(--font)">💸 ${isAllow?t('전체 지급','Grant all'):t('전체 입금','Deposit all')}</button>
+      <button onclick="finCsvDownload()" style="height:32px;padding:0 13px;border:1px solid var(--border);border-radius:9px;background:var(--surface);color:var(--ink2);cursor:pointer;font:700 12.5px var(--font)">⬇ ${t('CSV 내려받기','Export CSV')}</button>
+      ${minusCount ? `<span style="height:32px;padding:0 12px;border:1.5px solid #f5c6c0;border-radius:9px;background:#fdecea;color:#b91c1c;font:700 12.5px var(--font);display:inline-flex;align-items:center">⚠ ${t(`잔액 마이너스 ${minusCount}명`, `${minusCount} in the red`)}</span>` : ''}
+    </div>
+    ${finBulkOpen ? finBulkPanelHtml(students) : ''}
+    ${finReqBannerHtml(reqs)}
     ${finSummaryCards(inRange, scoped, isAllow)}
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">
       <span style="font-size:12px;color:var(--ink3);font-weight:600">${t(`학생 ${students.length}명`, `${students.length} students`)} · ${t(`${finPeriodLabel()} 기록 ${inRange.length}건`, `${inRange.length} entries in ${finPeriodLabel()}`)}</span>
@@ -18709,8 +18939,9 @@ async function loadTuition() {
   if (error) throw error;
   tuiBills = data || [];
   // 활성 통화: 기록이 있으면 데이터 기준(기기 간 일관), 없으면 로컬 저장값
-  tuiCur = tuiBills.length ? (tuiBills[0].currency || '원') : (localStorage.getItem('tui_currency_' + CID()) || '원');
-  if (tuiBills.length) localStorage.setItem('tui_currency_' + CID(), tuiCur);
+  // 통화는 공동체 설정을 따른다. 예전엔 기록에 적힌 통화를 봤는데,
+  // 그러면 용돈은 원인데 학비만 달러처럼 화면마다 어긋났다.
+  tuiCur = COMM_CUR;
 }
 
 // 현재 USD→KRW 환율 (프랑크푸르터 ECB, 무키)
@@ -18755,6 +18986,14 @@ async function tuiSetCurrency(target) {
   tuiCur = target;
   showUploadToast(target==='원'?t('✅ 원(₩)로 변환 완료','✅ Converted to Won (₩)'):t('✅ 달러($)로 변환 완료','✅ Converted to Dollar ($)'));
   await renderTuitionHub();
+}
+
+// 통화는 이제 공동체 설정 한 곳에서 정한다. 화면마다 따로 바꾸면
+// 용돈은 원, 학비는 달러처럼 어긋나기 때문이다.
+function tuiCurrencyHint() {
+  showUploadToast(isCommunityAdmin()
+    ? t('통화는 관리자 → 공동체 설정에서 바꿉니다','Change the currency in Admin → Community settings')
+    : t('통화는 관리자가 공동체 설정에서 정해요','An admin sets the currency in Community settings'));
 }
 
 // 학생별 월 학비 저장
@@ -19838,7 +20077,7 @@ function renderTuition() {
         </div>
         ${groupChips}
         <div style="display:inline-flex;gap:2px;background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:3px">
-          ${[['원',t('₩ 원','₩ Won')],['$',t('$ 달러','$ USD')]].map(([v,l])=>`<button onclick="tuiSetCurrency('${v}')" style="height:30px;padding:0 12px;border:none;border-radius:7px;cursor:pointer;font:700 12px var(--font);background:${tuiCur===v?'#1d3a5f':'transparent'};color:${tuiCur===v?'#fff':'var(--ink2)'}">${l}</button>`).join('')}
+          ${[['원',t('₩ 원','₩ Won')],['$',t('$ 달러','$ USD')]].map(([v,l])=>`<button onclick="tuiCurrencyHint()" title="${escAttr(t('통화는 관리자 → 공동체 설정에서 한 번에 정합니다','Currency is set once in Admin → Community settings'))}" style="height:30px;padding:0 12px;border:none;border-radius:7px;cursor:${COMM_CUR===v?'default':'pointer'};font:700 12px var(--font);background:${COMM_CUR===v?'#1d3a5f':'transparent'};color:${COMM_CUR===v?'#fff':'var(--ink3)'}">${l}</button>`).join('')}
         </div>
         <button onclick="printTuitionMatrix()" style="height:36px;padding:0 15px;border:none;background:linear-gradient(135deg,#1d3a5f,#2a5298);color:#fff;border-radius:9px;cursor:pointer;font:700 12.5px var(--font)">${t('📄 PDF (가로)','📄 PDF (landscape)')}</button>
       </div>
@@ -22233,18 +22472,20 @@ async function cancelDeleteAllow(id) {
 }
 
 // 교사/관리자: 학사 → 학생 페이지에서 삭제 요청 승인/거부
-async function approveAllowDelete(id) {
+async function approveAllowDelete(id, from) {
   if (!confirm(t('이 용돈 기록을 삭제(승인)할까요? 되돌릴 수 없어요.','Delete (approve) this allowance record? This cannot be undone.'))) return;
   const { error } = await sb.from('allowance_entries').delete().eq('id', id);
   if (error) { showUploadToast(t('승인 실패: ','Approval failed: ') + error.message); return; }
   showUploadToast(t('✅ 삭제 승인 완료','✅ Deletion approved'));
+  if (from === 'fin') return finRerenderKeepScroll();
   renderS360Detail();
 }
-async function rejectAllowDelete(id) {
+async function rejectAllowDelete(id, from) {
   const { error } = await sb.from('allowance_entries')
     .update({ delete_status: null, delete_requested_at: null }).eq('id', id);
   if (error) { showUploadToast(t('거부 실패: ','Rejection failed: ') + error.message); return; }
   showUploadToast(t('삭제 요청을 거부했어요','Delete request rejected'));
+  if (from === 'fin') return finRerenderKeepScroll();
   renderS360Detail();
 }
 
