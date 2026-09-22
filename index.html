@@ -177,6 +177,59 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
    폭마다 margin:0 auto 로 따로 가운데 정렬하면 탭을 옮길 때마다 내용이 좌우로 흔들린다. */
 .spage { margin-left: max(0px, calc((100% - 1200px) / 2)); margin-right: 0; }
 
+/* ── 사역자 교육 ── */
+.trprog { display:flex; flex-wrap:wrap; gap:7px; margin-bottom:12px; }
+.trprog-i { font:700 12px var(--font); border:1.5px solid var(--border); border-radius:9px; padding:4px 10px; background:var(--surface); color:var(--ink2); }
+.trprog-i.warn { border-color:#c0392b; color:#c0392b; background:#fdeeea; }
+.trprog-i.good { border-color:#2a7a5a; color:#2a7a5a; background:#e8f5ee; }
+.trgrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(216px,1fr)); gap:14px; }
+.trcard { background:var(--surface); border:1px solid var(--border); border-radius:14px; overflow:hidden; cursor:pointer;
+          box-shadow:0 8px 20px -18px rgba(15,23,42,.5); transition:transform .12s var(--ease-out); }
+.trcard:hover { transform:translateY(-2px); }
+.trthumb { position:relative; aspect-ratio:16/9; background:#0f172a; }
+.trthumb img { width:100%; height:100%; object-fit:cover; display:block; }
+.trthumb-x { display:flex; align-items:center; justify-content:center; height:100%; font-size:30px; }
+.trthumb.tr-book { background:linear-gradient(135deg,#243b5e,#3a2f5e); }
+.trthumb.tr-article { background:linear-gradient(135deg,#1e3a3a,#25405a); }
+.trdone-badge { position:absolute; top:8px; right:8px; background:#2a7a5a; color:#fff; font:800 10.5px var(--font); padding:2px 8px; border-radius:8px; }
+.trcat { color:#fff; font:800 10.5px var(--font); padding:2px 8px; border-radius:7px; white-space:nowrap; }
+.trreq { font:800 10.5px var(--font); color:#b9760a; background:#fff2dd; padding:2px 7px; border-radius:7px; white-space:nowrap; }
+.trdue { font:800 10.5px var(--font); padding:2px 7px; border-radius:7px; white-space:nowrap; color:var(--ink3); background:var(--s2); }
+.trdue.soon { color:#b9760a; background:#fff2dd; } .trdue.over { color:#b91c1c; background:#fdeeea; }
+.trcard-t { font:700 13px var(--font); line-height:1.4; color:var(--ink); margin-bottom:5px;
+            display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.trdet { max-width:860px; }
+.trvid { position:relative; padding-top:56.25%; border-radius:14px; overflow:hidden; background:#000; }
+.trvid iframe { position:absolute; inset:0; width:100%; height:100%; border:0; }
+.trbook { display:flex; gap:16px; align-items:center; background:linear-gradient(135deg,#f3f0fb,#eef3f7);
+          border:1px solid var(--border); border-radius:14px; padding:18px 20px; }
+.trlead { margin-top:14px; background:#fff8ec; border:1px solid #f0dfba; border-left:4px solid #d9a441; border-radius:12px; padding:11px 15px; }
+.trlead-h { font:800 11.5px var(--font); color:#9a6b12; margin-bottom:4px; }
+.trlead-t { font-size:13px; line-height:1.7; white-space:pre-wrap; color:var(--ink); }
+.trqbox { background:var(--asoft); border:1px solid #cfe0f5; border-radius:12px; padding:12px 15px; margin:14px 0 10px; }
+.trnote { padding:11px 2px; border-bottom:1px dashed var(--border); }
+.trqa { background:var(--s2); border-left:3px solid var(--border); border-radius:8px; padding:7px 11px; margin-bottom:6px; }
+.trqa-q { font:700 11.5px var(--font); color:var(--adeep); margin-bottom:3px; }
+.trqa-a { font-size:13px; line-height:1.65; color:var(--ink); white-space:pre-wrap; }
+.trst-table { border-collapse:collapse; font-size:13px; min-width:100%; }
+.trst-table th { padding:9px 10px; border-bottom:2px solid var(--border); font-size:11px; color:var(--ink3); text-align:center; vertical-align:bottom; }
+.trst-table th.trst-namehead { text-align:left; }
+.trst-col { min-width:96px; max-width:150px; }
+.trst-th { font:800 12px var(--font); color:var(--adeep); cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.trst-th:hover { text-decoration:underline; }
+.trst-table td { padding:9px 10px; border-bottom:1px solid var(--border); text-align:center; }
+.trst-name { text-align:left; font-weight:700; white-space:nowrap; color:var(--ink); }
+.trst-cell.ok { color:#2a7a5a; font-weight:800; }
+.trst-cell.no { color:#c9d0da; }
+.trst-cell.over { color:#b91c1c; font-weight:800; font-size:11px; background:#fdeeea; }
+.trst-sum { font-weight:800; } .trst-sum.warn { color:#b91c1c; } .trst-sum.good { color:#2a7a5a; }
+.trst-bar { display:inline-block; width:58px; height:6px; background:var(--s3,#eceff3); border-radius:6px; overflow:hidden; vertical-align:middle; margin-right:7px; }
+.trst-bar > i { display:block; height:100%; background:#1d3a5f; }
+.trdd.soon { color:#b9760a; } .trdd.over { color:#b91c1c; }
+@media (max-width: 760px) {
+  .trgrid { grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; }
+}
+
 .vh-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .vh-sub  { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 760px) {
@@ -1963,9 +2016,9 @@ function enterApp() {
   // 학사관리 버튼: 교사·간사·관리자만
   const sbSchool = document.getElementById('sb-school');
   if (sbSchool) sbSchool.style.display = canAccessSchool() ? 'flex' : 'none';
-  // 운영관리 버튼: 재정·차량·문서를 볼 수 있는 사람만 (행정담당·관리자)
+  // 운영관리 버튼: 행정담당·관리자는 전부, 교사·간사는 '사역자 교육' 탭만 보러 들어온다
   const sbOps = document.getElementById('sb-ops');
-  if (sbOps) sbOps.style.display = canSeeAdminModules() ? 'flex' : 'none';
+  if (sbOps) sbOps.style.display = canAccessSchool() ? 'flex' : 'none';
   // 매점 현황 버튼: 교사·간사·관리자만
   const sbStore = document.getElementById('sb-store');
   if (sbStore) sbStore.style.display = canAccessSchool() ? 'flex' : 'none';
@@ -2062,7 +2115,7 @@ function moreMenuItems() {
   if (!isTeacher()) items.push({ icon:'📋', label:t('생기부','Records'), act:"setMode('tcs')" });
   if (canAccessSchool()) {
     items.push({ icon:'🎓', label:t('학사','School'), act:"setMode('school')" });
-    if (canSeeAdminModules()) items.push({ icon:'🗂', label:t('운영','Ops'), act:"setMode('ops')" });
+    items.push({ icon:'🗂', label:t('운영','Ops'), act:"setMode('ops')" });
     items.push({ icon:'🏪', label:t('매점','Store'), act:"setMode('store')" });
     items.push({ icon:'📋', label:t('결재','Approval'), act:"setMode('approval')" });
   }
@@ -2348,7 +2401,7 @@ function setMode(m, opts) {
   if (m==='mock') { if(isTeacher()){ tcsSubMode='mock'; go(initTcsPage); } else setMode('home', opts); return; }
   if (m==='reading') { if(isTeacher()){ tcsSubMode='reading'; go(initTcsPage); } else go(initReadingPage); return; }
   if (m==='school' || m==='ops') {
-    const okSec = (m==='ops') ? canSeeAdminModules() : canAccessSchool();
+    const okSec = canAccessSchool();
     if (!okSec) { setMode('home', opts); return; }
     schoolSection = (m==='ops') ? 'ops' : 'school';
     if (boot) syncSchoolHeader(); else initSchoolPage();
@@ -14182,6 +14235,7 @@ async function deleteEvent() {
 const SCHOOL_GROUPS = {
   student: t('학생','Student'),
   class:   t('수업·출결','Class'),
+  grow:    t('교육','Growth'),
   money:   t('살림','Money'),
   doc:     t('문서','Documents'),
   admin:   t('행정','Admin'),
@@ -14195,6 +14249,7 @@ const SCHOOL_TABS = [
   { id:'timetable',  icon:'🗓', label:t('시간표','Timetable'),        group:'class',   section:'school' },
   { id:'attendance', icon:'✅', label:t('출석부','Attendance'),       group:'class',   section:'school' },
   { id:'leave',      icon:'📝', label:t('출결 신청','Leave'),         group:'class',   section:'school' },
+  { id:'training',   icon:'🎓', label:t('사역자 교육','Training'),    group:'grow',    section:'ops' },
   { id:'tuition',    icon:'💰', label:t('재정','Finance'),           group:'money',   section:'ops', admin:true },
   { id:'vehicle',    icon:'🚗', label:t('차량','Vehicles'),          group:'money',   section:'ops', admin:true },
   { id:'newsletter', icon:'✉️', label:t('가정통신문','Newsletter'),    group:'doc',     section:'ops', admin:true },
@@ -14257,6 +14312,8 @@ function attIsMissingTable(e) {
 }
 
 function schoolVisibleTabs() {
+  // 학사·운영 화면 자체가 학생에겐 닫혀 있다. 탭 목록에서도 한 번 더 막는다.
+  if (!canAccessSchool()) return [];
   return SCHOOL_TABS.filter(x => x.section === schoolSection && (!x.admin || canSeeAdminModules()));
 }
 function schoolSubnavHtml() {
@@ -14311,8 +14368,10 @@ function renderSchoolMain() {
   // 권한이 없거나 다른 화면의 탭이면 이 화면의 첫 탭으로
   let tab = SCHOOL_TABS.find(x => x.id === schoolSubMode);
   if (!tab || tab.section !== schoolSection || (tab.admin && !canSeeAdminModules())) {
-    schoolSubMode = sec.first;
-    tab = SCHOOL_TABS.find(x => x.id === schoolSubMode) || SCHOOL_TABS[0];
+    // sec.first 를 그냥 믿으면 권한 없는 탭(예: 교사가 재정)이 열릴 수 있다.
+    const vis = schoolVisibleTabs();
+    schoolSubMode = (vis.find(x => x.id === sec.first) || vis[0] || {}).id || sec.first;
+    tab = SCHOOL_TABS.find(x => x.id === schoolSubMode) || vis[0] || SCHOOL_TABS[0];
     const sn0 = document.getElementById('subnav-school');
     if (sn0) sn0.innerHTML = schoolSubnavHtml();
   }
@@ -14330,6 +14389,7 @@ function renderSchoolMain() {
   if (schoolSubMode === 'attendance') return renderAttendanceHub();
   if (schoolSubMode === 'leave')      return renderApprovalHub();
   if (schoolSubMode === 'timetable')  return renderTimetableHub();
+  if (schoolSubMode === 'training')   return renderTrainingHub();
   if (schoolSubMode === 'tuition')    return renderTuitionHub();
   if (schoolSubMode === 'vehicle')    return renderVehicleHub();
   if (schoolSubMode === 'newsletter') return renderNewsletterHub();
@@ -17451,6 +17511,591 @@ async function deleteVehCar(id){
   showUploadToast(t('지웠어요','Deleted'));
   vehSelId = null; vehCarDraft = null;
   await renderVehicleHub();
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  🎓 사역자 교육 (운영관리 → 사역자 교육)
+//   영상·도서·아티클로 배우고, 느낀점/북리뷰를 남기고, 완료를 체크한다.
+//   자료를 올린 사람이 질문을 붙이면 후기 칸에 질문별 답변란이 생긴다.
+// ════════════════════════════════════════════════════════════════════
+const TRAIN_CATS = [
+  { key:'bible',    icon:'📜', ko:'성경·신학',  en:'Bible',      color:'#2f6f6a' },
+  { key:'ministry', icon:'🙏', ko:'사역·목회',  en:'Ministry',   color:'#1d3a5f' },
+  { key:'teach',    icon:'🍎', ko:'교육·수업',  en:'Teaching',   color:'#6a48c0' },
+  { key:'counsel',  icon:'💞', ko:'상담·돌봄',  en:'Care',       color:'#c0397b' },
+  { key:'leader',   icon:'🧭', ko:'리더십',     en:'Leadership', color:'#b9760a' },
+  { key:'safety',   icon:'🛡', ko:'행정·안전',  en:'Admin',      color:'#5b6675' },
+  { key:'common',   icon:'✨', ko:'공통',       en:'Common',     color:'#40506b' },
+];
+const TRAIN_KINDS = [
+  { key:'video',   icon:'📺', ko:'영상',    en:'Video' },
+  { key:'book',    icon:'📖', ko:'도서',    en:'Book' },
+  { key:'article', icon:'🔗', ko:'아티클',  en:'Article' },
+];
+const TRAIN_EMO = ['👍','❤️','🙏','🔥'];
+
+let trainings    = [];
+let trainNotes   = [];      // 열어 본 자료의 후기
+let trainDoneAll = {};       // trainingId -> [{member_id,member_name,done_at}]
+let trainCatSel  = 'all';
+let trainSel     = null;     // 열어 본 자료 id
+let trainMode    = 'list';   // 'list' | 'status'
+let trainDraft   = null;     // 편집 중인 폼 값 (질문을 넣고 뺄 때 폼을 다시 그려야 해서 들고 있는다)
+let trainStars   = 0;        // 후기 폼의 별점
+
+function trainCatOf(key) { return TRAIN_CATS.find(c => c.key === key) || TRAIN_CATS[TRAIN_CATS.length - 1]; }
+function trainCatName(key) { const c = trainCatOf(key); return t(c.ko, c.en); }
+function trainKindOf(key) { return TRAIN_KINDS.find(k => k.key === key) || TRAIN_KINDS[0]; }
+function trainKindName(key) { const k = trainKindOf(key); return t(k.ko, k.en); }
+// 도서는 '완독', 나머지는 '완료'
+function trainDoneWord(x) { return (x && x.kind === 'book') ? t('완독','Finished') : t('완료','Done'); }
+function trainNoteWord(x) { return (x && x.kind === 'book') ? t('북리뷰','Book review') : t('느낀점','Takeaway'); }
+function trainQuestions(x) { return Array.isArray(x && x.questions) ? x.questions : []; }
+function trainDoneList(id) { return trainDoneAll[id] || []; }
+function trainMyDone(id) { return trainDoneList(id).some(d => d.member_id === (ME && ME.id)); }
+// 자료를 올린 사람 본인 + 행정담당·관리자가 고치고 지울 수 있다
+function trainIsAuthor(x) { return !!(x && ME && x.created_by && x.created_by === ME.id); }
+function trainCanEdit(x) { return canSeeAdminModules() || trainIsAuthor(x); }
+function trainCanAdd() { return canAccessSchool(); }
+function ytIdOf(u) {
+  const m = String(u || '').match(/(?:youtu\.be\/|[?&]v=|embed\/|shorts\/|live\/)([\w-]{11})/);
+  return m ? m[1] : '';
+}
+// 마감일 → D-day
+function trainDday(due) {
+  const d = ymdLocal(due); if (!d) return null;
+  const now = new Date(); now.setHours(0,0,0,0);
+  const diff = Math.round((d.getTime() - now.getTime()) / 86400000);
+  if (diff === 0) return { label:'D-Day', tone:'soon' };
+  if (diff > 0)   return { label:'D-'+diff, tone: diff <= 3 ? 'soon' : 'ok' };
+  return { label:'D+'+Math.abs(diff), tone:'over' };
+}
+function trainStarsHtml(n) { n = Math.max(0, Math.min(5, Number(n) || 0)); return '★'.repeat(n) + '☆'.repeat(5 - n); }
+
+// ── 불러오기 ──
+async function renderTrainingHub() {
+  const main = document.getElementById('school-main'); if (!main) return;
+  main.innerHTML = `<div style="text-align:center;padding:40px;color:var(--ink3);font-size:13px">${t('불러오는 중...','Loading...')}</div>`;
+  try {
+    const { data, error } = await sb.from('trainings').select('*')
+      .eq('community_id', CID()).order('created_at', { ascending:false });
+    if (error) throw error;
+    trainings = data || [];
+    const { data: dn, error: de } = await sb.from('training_done').select('*').eq('community_id', CID());
+    if (de) throw de;
+    trainDoneAll = {};
+    (dn || []).forEach(r => { (trainDoneAll[r.training_id] = trainDoneAll[r.training_id] || []).push(r); });
+  } catch(e) {
+    if (schoolTableMissing(e)) return schoolSetupNeeded(e, 'db/사역자교육_DB설치.sql');
+    main.innerHTML = `<div style="color:#b91c1c;padding:30px;text-align:center;font-size:13px">${t('불러오기 실패: ','Failed to load: ')}${escHtml(e.message || e)}</div>`;
+    return;
+  }
+  if (trainSel && !trainings.find(x => x.id === trainSel)) { trainSel = null; trainNotes = []; }
+  if (trainSel) return openTraining(trainSel);
+  renderTrainingMain();
+}
+
+function renderTrainingMain() {
+  const main = document.getElementById('school-main'); if (!main) return;
+  if (trainSel) {
+    const x = trainings.find(v => v.id === trainSel);
+    if (x) { main.innerHTML = `<div class="spage" style="max-width:1200px">${trainDetailHtml(x)}</div>`; return; }
+    trainSel = null;
+  }
+  if (trainMode === 'status') { main.innerHTML = `<div class="spage" style="max-width:1200px">${trainStatusHtml()}</div>`; return; }
+  main.innerHTML = `<div class="spage" style="max-width:1200px">${trainListHtml()}</div>`;
+}
+
+function setTrainMode(m) { trainMode = m; trainSel = null; trainDraft = null; renderTrainingMain(); }
+function setTrainCat(k) { trainCatSel = k; trainDraft = null; renderTrainingMain(); }
+
+// ── 목록 ──
+function trainHeadHtml(extra) {
+  const tabBtn = (m, label) => `<button onclick="setTrainMode('${m}')" style="height:32px;padding:0 14px;border:none;border-radius:8px;cursor:pointer;font:700 12.5px var(--font);background:${trainMode===m?'#1d3a5f':'transparent'};color:${trainMode===m?'#fff':'var(--ink2)'}">${label}</button>`;
+  return `<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+    <div>
+      <div style="font-size:18px;font-weight:800;color:var(--ink)">🎓 ${t('사역자 교육','Ministry Training')}</div>
+      <div style="font-size:12px;color:var(--ink3);margin-top:2px">${t('영상·도서로 함께 배우고 느낀점을 남겨요','Learn together with videos and books, and share what you took away')}</div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <div style="display:inline-flex;gap:3px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:3px">
+        ${tabBtn('list', t('자료 목록','Materials'))}${tabBtn('status', t('수강 현황','Progress'))}
+      </div>${extra || ''}
+    </div>
+  </div>`;
+}
+
+function trainListHtml() {
+  const mine = (x) => trainMyDone(x.id);
+  const prog = TRAIN_CATS.map(c => {
+    const list = trainings.filter(x => x.category === c.key);
+    return { c, done: list.filter(mine).length, total: list.length };
+  }).filter(p => p.total);
+  const reqAll = trainings.filter(x => x.required);
+  const reqDone = reqAll.filter(mine).length;
+  const progHtml = `<div class="trprog">
+    ${prog.map(p => `<span class="trprog-i" style="border-color:${p.c.color}"><b style="color:${p.c.color}">${t(p.c.ko,p.c.en)}</b> ${p.done}/${p.total}</span>`).join('')
+      || `<span style="font-size:12px;color:var(--ink3)">${t('아직 등록된 교육 자료가 없어요.','No training materials yet.')}</span>`}
+    ${reqAll.length ? `<span class="trprog-i ${reqDone < reqAll.length ? 'warn' : 'good'}">${t('필수','Required')} ${reqDone}/${reqAll.length} ${reqDone < reqAll.length ? '⚠' : '✅'}</span>` : ''}
+  </div>`;
+
+  const chip = (key, label, color) => {
+    const on = trainCatSel === key;
+    return `<button onclick="setTrainCat('${key}')" style="height:30px;padding:0 12px;border-radius:8px;cursor:pointer;font:700 12px var(--font);border:1.5px solid ${on?(color||'#1d3a5f'):'var(--border)'};background:${on?(color||'#1d3a5f'):'var(--surface)'};color:${on?'#fff':'var(--ink2)'}">${label}</button>`;
+  };
+  const chips = `<div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:14px">
+    ${chip('all', t('전체','All'))}
+    ${TRAIN_CATS.filter(c => trainings.some(x => x.category === c.key)).map(c => chip(c.key, `${c.icon} ${t(c.ko,c.en)}`, c.color)).join('')}
+  </div>`;
+
+  const addBtn = trainCanAdd() ? `<button onclick="trainNew()" style="height:32px;padding:0 14px;border:none;border-radius:9px;background:#1d3a5f;color:#fff;cursor:pointer;font:700 12.5px var(--font)">＋ ${t('자료 추가','Add')}</button>` : '';
+  const form = (trainDraft && !trainDraft.id) ? trainFormHtml() : '';
+  const list = trainCatSel === 'all' ? trainings : trainings.filter(x => x.category === trainCatSel);
+  const cards = list.length
+    ? `<div class="trgrid">${list.map(trainCardHtml).join('')}</div>`
+    : `<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px">${t('이 분야의 자료가 아직 없어요.','Nothing in this category yet.')}</div>`;
+  return trainHeadHtml(addBtn) + progHtml + chips + form + cards;
+}
+
+function trainCardHtml(x) {
+  const k = trainKindOf(x.kind), cat = trainCatOf(x.category);
+  const done = trainMyDone(x.id);
+  const cnt = trainDoneList(x.id).length;
+  const yt = x.kind === 'video' ? ytIdOf(x.url) : '';
+  const badge = done ? `<span class="trdone-badge">✓ ${trainDoneWord(x)}</span>` : '';
+  // 아이콘을 깔고 그 위에 이미지를 얹는다. 주소가 틀렸거나 썸네일이 없는 영상이면
+  // 이미지가 스스로 사라지고 아이콘이 드러난다. (예전엔 빈 검은 칸만 남았다)
+  const thumbSrc = x.cover_url || (yt ? `https://img.youtube.com/vi/${yt}/mqdefault.jpg` : '');
+  const thumb = `<div class="trthumb tr-${x.kind||'video'}"><div class="trthumb-x">${k.icon}</div>${
+    thumbSrc ? `<img src="${escAttr(thumbSrc)}" alt="" loading="lazy" onerror="this.remove()" style="position:absolute;inset:0;object-fit:${x.cover_url && x.kind==='book' ? 'contain' : 'cover'}">` : ''
+  }${badge}</div>`;
+  const dd = (x.required && x.due_date) ? trainDday(x.due_date) : null;
+  const qn = trainQuestions(x).length;
+  return `<div class="trcard" onclick="openTraining('${x.id}')">
+    ${thumb}
+    <div style="padding:10px 12px">
+      <div style="display:flex;gap:5px;align-items:center;margin-bottom:5px;flex-wrap:wrap">
+        <span class="trcat" style="background:${cat.color}">${t(cat.ko,cat.en)}</span>
+        ${x.required ? `<span class="trreq">${t('필수','Required')}</span>` : ''}
+        ${dd ? `<span class="trdue ${dd.tone}">~${String(x.due_date).slice(5)}</span>` : ''}
+        <span style="margin-left:auto;font-size:13px">${k.icon}</span>
+      </div>
+      <div class="trcard-t">${escHtml(x.title || '')}</div>
+      ${x.author ? `<div style="font-size:11.5px;color:var(--ink3);margin:-2px 0 5px">✍ ${escHtml(x.author)}</div>` : ''}
+      <div style="font-size:11.5px;color:var(--ink3)">👥 ${cnt}${t('명','')} ${trainDoneWord(x)}${qn ? ` · ❓ ${t(qn+'문항', qn+' Qs')}` : ''}</div>
+    </div>
+  </div>`;
+}
+
+// ── 추가 · 수정 폼 ──
+function trainNew() {
+  trainDraft = { id:null, kind:'video', category:'common', title:'', author:'', url:'', cover_url:'',
+                 description:'', lead_msg:'', required:false, due_date:'', questions:[] };
+  renderTrainingMain();
+}
+function trainEditOpen(id) {
+  const x = trainings.find(v => v.id === id); if (!x) return;
+  trainDraft = { id:x.id, kind:x.kind || 'video', category:x.category || 'common', title:x.title || '',
+                 author:x.author || '', url:x.url || '', cover_url:x.cover_url || '',
+                 description:x.description || '', lead_msg:x.lead_msg || '', required:!!x.required,
+                 due_date:x.due_date || '', questions: trainQuestions(x).map(q => ({ id:q.id, text:q.text })) };
+  renderTrainingMain();
+}
+function trainCancel() { trainDraft = null; renderTrainingMain(); }
+// 폼을 다시 그리기 전에 지금 입력값을 챙겨 둔다 (질문을 넣고 뺄 때 타이핑이 날아가지 않게)
+function trainReadForm() {
+  if (!trainDraft) return;
+  const v = (id) => { const el = document.getElementById(id); return el ? el.value : ''; };
+  const ck = (id) => { const el = document.getElementById(id); return el ? el.checked : false; };
+  if (document.getElementById('tf-title')) {
+    trainDraft.kind = v('tf-kind') || trainDraft.kind;
+    trainDraft.category = v('tf-cat') || trainDraft.category;
+    trainDraft.title = v('tf-title');
+    trainDraft.author = v('tf-author');
+    trainDraft.url = v('tf-url');
+    trainDraft.description = v('tf-desc');
+    trainDraft.lead_msg = v('tf-lead');
+    trainDraft.required = ck('tf-req');
+    trainDraft.due_date = v('tf-due');
+  }
+  trainDraft.questions.forEach((q, i) => { const el = document.getElementById('tf-q-' + i); if (el) q.text = el.value; });
+}
+function trainQAdd() {
+  trainReadForm(); if (!trainDraft) return;
+  trainDraft.questions.push({ id: 'q' + Date.now().toString(36) + Math.random().toString(36).slice(2,5), text:'' });
+  renderTrainingMain();
+}
+function trainQDel(i) {
+  trainReadForm(); if (!trainDraft) return;
+  trainDraft.questions.splice(i, 1);
+  renderTrainingMain();
+}
+async function trainCoverPick(input) {
+  const f = input.files && input.files[0]; if (!f) return;
+  trainReadForm();
+  showUploadToast(t('표지 올리는 중... ⏳','Uploading cover... ⏳'));
+  try {
+    const small = await shrinkImage(f, { maxDim: 900, minSize: 80 * 1024 });
+    const ext = (small.name || 'jpg').split('.').pop();
+    const path = `training/${CID()}/cover_${Date.now()}.${ext}`;
+    const { error } = await sb.storage.from('messenger').upload(path, small, { cacheControl:'31536000', upsert:true });
+    if (error) throw error;
+    const { data } = sb.storage.from('messenger').getPublicUrl(path);
+    trainDraft.cover_url = data.publicUrl;
+    showUploadToast(t('표지 올렸어요 ✅','Cover uploaded ✅'));
+  } catch(e) { showUploadToast(t('업로드 실패 😥','Upload failed 😥')); }
+  renderTrainingMain();
+}
+function trainCoverClear() { trainReadForm(); if (trainDraft) trainDraft.cover_url = ''; renderTrainingMain(); }
+
+function trainFormHtml() {
+  const d = trainDraft; if (!d) return '';
+  const inp = 'width:100%;height:38px;padding:0 11px;border:1.5px solid var(--border);border-radius:9px;font:13px var(--font);background:var(--surface);box-sizing:border-box';
+  const ta  = 'width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:9px;font:13px var(--font);background:var(--surface);box-sizing:border-box;resize:vertical;font-family:var(--font)';
+  const lab = 'font-size:11.5px;font-weight:700;color:var(--adeep);margin-bottom:4px';
+  const urlPh = d.kind === 'book' ? t('책 소개·구매 링크 (선택)','Book info / purchase link (optional)')
+              : d.kind === 'article' ? t('아티클 주소','Article URL')
+              : t('유튜브 주소 (youtu.be/... 또는 watch?v=...)','YouTube URL');
+  return `<div style="background:var(--s2);border:1.5px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px;display:flex;flex-direction:column;gap:10px">
+    <div style="font-size:14px;font-weight:800;color:var(--ink)">${d.id ? t('자료 수정','Edit material') : t('새 교육 자료','New material')}</div>
+
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+      <select id="tf-kind" onchange="trainReadForm();renderTrainingMain()" style="${inp};width:auto;min-width:120px">
+        ${TRAIN_KINDS.map(k => `<option value="${k.key}" ${d.kind===k.key?'selected':''}>${k.icon} ${t(k.ko,k.en)}</option>`).join('')}
+      </select>
+      <select id="tf-cat" style="${inp};width:auto;min-width:140px">
+        ${TRAIN_CATS.map(c => `<option value="${c.key}" ${d.category===c.key?'selected':''}>${c.icon} ${t(c.ko,c.en)}</option>`).join('')}
+      </select>
+      <label style="display:inline-flex;align-items:center;gap:6px;font:600 12.5px var(--font);color:var(--ink2);white-space:nowrap">
+        <input type="checkbox" id="tf-req" ${d.required?'checked':''}> ${t('필수 자료','Required')}
+      </label>
+      <label style="display:inline-flex;align-items:center;gap:6px;font:600 12.5px var(--font);color:var(--ink2);white-space:nowrap">
+        ${t('마감','Due')} <input type="date" id="tf-due" value="${escAttr(d.due_date || '')}" style="${inp};width:auto">
+      </label>
+    </div>
+
+    <div><div style="${lab}">${d.kind==='book'?t('책 제목','Book title'):t('제목','Title')}</div>
+      <input id="tf-title" value="${escAttr(d.title)}" placeholder="${d.kind==='book'?t('예: 순전한 기독교','e.g. Mere Christianity'):t('제목','Title')}" style="${inp}"></div>
+
+    ${d.kind === 'book' ? `<div><div style="${lab}">${t('저자','Author')}</div>
+      <input id="tf-author" value="${escAttr(d.author)}" placeholder="${t('예: C.S. 루이스','e.g. C.S. Lewis')}" style="${inp}"></div>`
+      : `<input type="hidden" id="tf-author" value="${escAttr(d.author)}">`}
+
+    <div><div style="${lab}">${t('링크','Link')}</div>
+      <input id="tf-url" value="${escAttr(d.url)}" placeholder="${urlPh}" style="${inp}"></div>
+
+    <div>
+      <div style="${lab}">${d.kind==='book'?t('책 표지 (선택)','Cover image (optional)'):t('대표 이미지 (선택)','Thumbnail (optional)')}</div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        ${d.cover_url ? `<img src="${escAttr(d.cover_url)}" style="width:54px;height:72px;object-fit:contain;background:var(--surface);border:1px solid var(--border);border-radius:8px">` : ''}
+        <label style="height:34px;padding:0 13px;border:1.5px dashed var(--border);border-radius:9px;background:var(--surface);cursor:pointer;display:inline-flex;align-items:center;font:700 12.5px var(--font);color:var(--ink2)">
+          🖼 ${t('이미지 고르기','Choose image')}<input type="file" accept="image/*" onchange="trainCoverPick(this)" style="display:none">
+        </label>
+        ${d.cover_url ? `<button onclick="trainCoverClear()" style="height:34px;padding:0 12px;border:1px solid var(--border);border-radius:9px;background:var(--surface);cursor:pointer;font:600 12px var(--font);color:var(--ink3)">${t('지우기','Remove')}</button>` : ''}
+      </div>
+      ${d.kind==='video' ? `<div style="font-size:11px;color:var(--ink3);margin-top:5px">${t('비우면 유튜브 썸네일을 그대로 씁니다.','Left empty, the YouTube thumbnail is used.')}</div>` : ''}
+    </div>
+
+    <div><div style="${lab}">${t('설명 · 추천 이유 (선택)','Description / why (optional)')}</div>
+      <textarea id="tf-desc" rows="2" style="${ta}">${escHtml(d.description)}</textarea></div>
+
+    <div><div style="${lab}">💬 ${t('담당자 한마디 (선택)','A word from the leader (optional)')}</div>
+      <textarea id="tf-lead" rows="2" placeholder="${t('왜 이걸 함께 보면 좋을까요?','Why should we go through this together?')}" style="${ta}">${escHtml(d.lead_msg)}</textarea></div>
+
+    <div style="border-top:1px dashed var(--border);padding-top:11px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:7px">
+        <div>
+          <div style="font-size:12.5px;font-weight:800;color:var(--ink)">❓ ${t('생각해 볼 질문','Questions to answer')}</div>
+          <div style="font-size:11px;color:var(--ink3);margin-top:2px">${t('질문을 넣으면 후기 칸에 질문별 답변란이 생겨요.','Add questions and each one gets its own answer box in the review form.')}</div>
+        </div>
+        <button onclick="trainQAdd()" style="height:30px;padding:0 12px;border:1.5px solid var(--border);border-radius:9px;background:var(--surface);cursor:pointer;font:700 12px var(--font);color:var(--adeep)">＋ ${t('질문 추가','Add question')}</button>
+      </div>
+      ${d.questions.length ? d.questions.map((q, i) => `<div style="display:flex;gap:7px;align-items:center;margin-bottom:6px">
+        <span style="font:800 12px var(--font);color:var(--ink3);width:20px;flex-shrink:0">${i+1}.</span>
+        <input id="tf-q-${i}" value="${escAttr(q.text)}" placeholder="${t('예: 이 책에서 내 사역에 바로 적용할 한 가지는?','e.g. One thing you will apply to your ministry?')}" style="${inp}">
+        <button onclick="trainQDel(${i})" title="${t('질문 삭제','Delete question')}" style="width:32px;height:32px;flex-shrink:0;border:1px solid var(--border);border-radius:8px;background:var(--surface);cursor:pointer;color:#b91c1c;font-size:14px">✕</button>
+      </div>`).join('') : `<div style="font-size:12px;color:var(--ink3);padding:4px 0">${t('질문 없이도 괜찮아요. 자유롭게 느낀점만 남기게 됩니다.','No questions is fine — people just leave a free-form takeaway.')}</div>`}
+    </div>
+
+    <div style="display:flex;gap:8px;margin-top:2px">
+      <button onclick="saveTraining()" style="height:36px;padding:0 18px;border:none;border-radius:9px;background:#1d3a5f;color:#fff;cursor:pointer;font:700 13px var(--font)">${d.id ? t('저장','Save') : t('추가','Add')}</button>
+      <button onclick="trainCancel()" style="height:36px;padding:0 15px;border:1px solid var(--border);border-radius:9px;background:var(--surface);color:var(--ink2);cursor:pointer;font:700 13px var(--font)">${t('취소','Cancel')}</button>
+    </div>
+  </div>`;
+}
+
+async function saveTraining() {
+  trainReadForm();
+  const d = trainDraft; if (!d) return;
+  const title = (d.title || '').trim();
+  if (!title) { showUploadToast(t('제목을 입력하세요','Enter a title')); return; }
+  if (d.kind !== 'book' && !(d.url || '').trim()) {
+    showUploadToast(d.kind === 'video' ? t('유튜브 주소를 입력하세요','Enter the YouTube URL') : t('아티클 주소를 입력하세요','Enter the article URL'));
+    return;
+  }
+  const questions = d.questions.map(q => ({ id:q.id, text:(q.text || '').trim() })).filter(q => q.text);
+  const patch = {
+    kind: d.kind, category: d.category, title,
+    author: (d.author || '').trim() || null,
+    url: (d.url || '').trim() || null,
+    cover_url: (d.cover_url || '').trim() || null,
+    description: (d.description || '').trim() || null,
+    lead_msg: (d.lead_msg || '').trim() || null,
+    required: !!d.required,
+    due_date: d.due_date || null,
+    questions,
+    updated_at: new Date().toISOString(),
+  };
+  let res;
+  if (d.id) res = await sb.from('trainings').update(patch).eq('id', d.id);
+  else res = await sb.from('trainings').insert(Object.assign({}, patch, {
+    community_id: CID(), created_by: ME.id, created_by_name: ME.name,
+  }));
+  if (res.error) { showUploadToast(t('저장 실패: ','Save failed: ') + res.error.message); return; }
+  trainDraft = null;
+  await renderTrainingHub();
+}
+
+async function deleteTraining(id) {
+  const x = trainings.find(v => v.id === id); if (!x) return;
+  if (!confirm(t('이 자료를 삭제할까요? 남겨진 후기와 완료 기록도 함께 지워집니다.','Delete this material? Its reviews and completion records go too.'))) return;
+  const { error } = await sb.from('trainings').delete().eq('id', id);
+  if (error) { showUploadToast(t('삭제 실패: ','Delete failed: ') + error.message); return; }
+  trainSel = null; trainDraft = null; trainNotes = [];
+  await renderTrainingHub();
+}
+
+// ── 상세 ──
+async function openTraining(id) {
+  trainSel = id; trainDraft = null; trainStars = 0;
+  const main = document.getElementById('school-main');
+  const x = trainings.find(v => v.id === id);
+  if (main && x) main.innerHTML = `<div class="spage" style="max-width:1200px">${trainDetailHtml(x, true)}</div>`;
+  const { data, error } = await sb.from('training_notes').select('*')
+    .eq('training_id', id).order('created_at', { ascending:false });
+  trainNotes = error ? [] : (data || []);
+  if (trainSel === id) renderTrainingMain();
+}
+function closeTraining() { trainSel = null; trainNotes = []; trainDraft = null; renderTrainingMain(); }
+
+function trainDetailHtml(x, loading) {
+  const k = trainKindOf(x.kind), cat = trainCatOf(x.category);
+  const yt = x.kind === 'video' ? ytIdOf(x.url) : '';
+  const done = trainMyDone(x.id);
+  const dl = trainDoneList(x.id);
+  const dd = (x.required && x.due_date) ? trainDday(x.due_date) : null;
+  const qs = trainQuestions(x);
+
+  const media = (x.kind === 'video' && yt)
+    ? `<div class="trvid"><iframe src="https://www.youtube-nocookie.com/embed/${yt}" title="video" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe></div>`
+    : `<div class="trbook">
+        <div style="position:relative;width:84px;height:112px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:40px">
+          ${k.icon}
+          ${x.cover_url ? `<img src="${escAttr(x.cover_url)}" alt="" onerror="this.remove()" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:var(--surface);border:1px solid var(--border);border-radius:9px">` : ''}
+        </div>
+        <div style="min-width:0">
+          <div style="font-size:15.5px;font-weight:800;color:var(--ink)">${escHtml(x.title || '')}</div>
+          ${x.author ? `<div style="font-size:12.5px;color:var(--ink3);margin-top:3px">✍ ${escHtml(x.author)}</div>` : ''}
+          ${x.url ? `<a href="${escAttr(x.url)}" target="_blank" rel="noopener" style="display:inline-block;margin-top:9px;height:32px;line-height:30px;padding:0 13px;border:1px solid var(--border);border-radius:9px;background:var(--surface);color:var(--adeep);font:700 12.5px var(--font);text-decoration:none">${x.kind==='book'?t('📗 책 정보 보기','📗 Book info'):t('🔗 링크 열기','🔗 Open link')}</a>` : ''}
+        </div>
+      </div>`;
+
+  const canEdit = trainCanEdit(x);
+  const editBar = canEdit ? `<span style="margin-left:auto;display:inline-flex;gap:7px">
+      <button onclick="trainEditOpen('${x.id}')" style="height:32px;padding:0 13px;border:1px solid var(--border);border-radius:9px;background:var(--surface);cursor:pointer;font:700 12.5px var(--font);color:var(--ink2)">${t('수정','Edit')}</button>
+      <button onclick="deleteTraining('${x.id}')" style="height:32px;padding:0 13px;border:1px solid var(--border);border-radius:9px;background:var(--surface);cursor:pointer;font:700 12.5px var(--font);color:#b91c1c">${t('삭제','Delete')}</button>
+    </span>` : '';
+
+  return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+      <button onclick="closeTraining()" style="height:34px;padding:0 13px;border:1px solid var(--border);border-radius:9px;background:var(--surface);color:var(--ink2);cursor:pointer;font:700 12.5px var(--font)">‹ ${t('목록','Back')}</button>
+    </div>
+    <div class="trdet">
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:6px">
+        <span class="trcat" style="background:${cat.color}">${t(cat.ko,cat.en)}</span>
+        <span style="font-size:13px">${k.icon} <span style="font-size:11.5px;color:var(--ink3);font-weight:600">${trainKindName(x.kind)}</span></span>
+        ${x.required ? `<span class="trreq">${t('필수','Required')}</span>` : ''}
+        ${dd ? `<span class="trdue ${dd.tone}">${t('마감','Due')} ${String(x.due_date).slice(5)} · ${dd.label}</span>` : ''}
+      </div>
+      <div style="font-size:19px;font-weight:800;color:var(--ink);line-height:1.35;margin-bottom:12px">${escHtml(x.title || '')}</div>
+      ${media}
+      ${x.lead_msg ? `<div class="trlead"><div class="trlead-h">💬 ${t('담당자 한마디','A word from the leader')}</div><div class="trlead-t">${escHtml(x.lead_msg)}</div></div>` : ''}
+      ${x.description ? `<div style="font-size:13.5px;line-height:1.75;color:var(--ink);white-space:pre-wrap;margin:14px 0">${escHtml(x.description)}</div>` : ''}
+
+      <div style="display:flex;align-items:center;gap:11px;flex-wrap:wrap;margin:14px 0;padding-bottom:14px;border-bottom:1px solid var(--border)">
+        <button onclick="toggleTrainDone('${x.id}')" style="height:36px;padding:0 16px;border:${done?'1px solid var(--border)':'none'};border-radius:9px;background:${done?'var(--surface)':'#2a7a5a'};color:${done?'var(--ink2)':'#fff'};cursor:pointer;font:700 13px var(--font)">${done ? `✓ ${trainDoneWord(x)}${t('함 (취소)',' (undo)')}` : `${trainDoneWord(x)} ${t('표시','mark')}`}</button>
+        <span style="font-size:12px;color:var(--ink3)">👥 ${dl.length}${t('명','')} ${trainDoneWord(x)}${dl.length ? ' · ' + dl.map(d => escHtml(d.member_name || '')).join(', ') : ''}</span>
+        ${editBar}
+      </div>
+
+      ${(trainDraft && trainDraft.id === x.id) ? trainFormHtml() : ''}
+      ${qs.length ? `<div class="trqbox">
+        <div style="font-size:12.5px;font-weight:800;color:var(--adeep);margin-bottom:7px">❓ ${t('생각해 볼 질문','Questions to answer')}</div>
+        ${qs.map((q, i) => `<div style="font-size:13px;color:var(--ink);line-height:1.6;margin-bottom:4px"><b>${i+1}.</b> ${escHtml(q.text)}</div>`).join('')}
+      </div>` : ''}
+
+      ${trainNoteFormHtml(x)}
+      <div style="font-size:12.5px;font-weight:800;color:var(--adeep);margin:18px 0 6px">${trainNoteWord(x)} <span style="color:var(--ink3);font-weight:600">${loading ? '' : trainNotes.length}</span></div>
+      ${loading ? `<div style="padding:20px;text-align:center;color:var(--ink3);font-size:12.5px">${t('불러오는 중...','Loading...')}</div>` : trainNoteListHtml(x)}
+    </div>`;
+}
+
+function trainNoteFormHtml(x) {
+  const qs = trainQuestions(x);
+  const ta = 'width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:9px;font:13px var(--font);background:var(--surface);box-sizing:border-box;resize:vertical;font-family:var(--font)';
+  const ph = x.kind === 'book' ? t('이 책에서 배운 점·느낀 점을 적어보세요','What did you learn from this book?')
+                               : t('이 자료에서 배운 점·느낀 점을 적어보세요','What did you take away from this?');
+  return `<div style="background:var(--s2);border:1.5px solid var(--border);border-radius:13px;padding:13px;margin-top:4px">
+    <div style="font-size:12.5px;font-weight:800;color:var(--ink);margin-bottom:8px">✍ ${t('내','My')} ${trainNoteWord(x)} ${t('남기기','')}</div>
+    ${qs.map((q, i) => `<div style="margin-bottom:9px">
+      <div style="font-size:12px;font-weight:700;color:var(--adeep);margin-bottom:4px">${i+1}. ${escHtml(q.text)}</div>
+      <textarea id="tn-a-${escAttr(q.id)}" rows="2" placeholder="${t('답변','Answer')}" style="${ta}"></textarea>
+    </div>`).join('')}
+    <div style="font-size:12px;font-weight:700;color:var(--adeep);margin-bottom:4px">${qs.length ? t('그밖에 느낀 점 (선택)','Anything else (optional)') : trainNoteWord(x)}</div>
+    <textarea id="tn-text" rows="3" placeholder="${ph}" style="${ta}"></textarea>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:9px;flex-wrap:wrap">
+      <div style="display:inline-flex;align-items:center;gap:7px">
+        <span style="font-size:11.5px;color:var(--ink3);font-weight:600">${t('별점','Rating')}</span>
+        <span id="tn-stars" style="font-size:20px;color:#e0a90a;cursor:pointer;letter-spacing:2px;user-select:none">
+          ${[1,2,3,4,5].map(i => `<span onclick="setTrainStars(${i})">☆</span>`).join('')}
+        </span>
+      </div>
+      <button onclick="saveTrainNote('${x.id}')" style="height:34px;padding:0 16px;border:none;border-radius:9px;background:#1d3a5f;color:#fff;cursor:pointer;font:700 12.5px var(--font)">${t('남기기','Post')}</button>
+    </div>
+  </div>`;
+}
+function setTrainStars(n) {
+  trainStars = (trainStars === n) ? 0 : n;
+  const box = document.getElementById('tn-stars'); if (!box) return;
+  box.querySelectorAll('span').forEach((s, i) => { s.textContent = (i + 1) <= trainStars ? '★' : '☆'; });
+}
+
+function trainNoteListHtml(x) {
+  if (!trainNotes.length) return `<div style="padding:22px;text-align:center;color:var(--ink3);font-size:12.5px">${t('아직 남겨진 글이 없어요. 첫 글을 남겨보세요!','Nothing here yet — be the first!')}</div>`;
+  const qs = trainQuestions(x);
+  const qText = (qid) => { const q = qs.find(v => v.id === qid); return q ? q.text : ''; };
+  return trainNotes.map(n => {
+    const ans = (n.answers && typeof n.answers === 'object') ? n.answers : {};
+    const qaKeys = Object.keys(ans).filter(kk => String(ans[kk] || '').trim());
+    const mine = n.member_id && ME && n.member_id === ME.id;
+    const canDel = mine || canSeeAdminModules();
+    return `<div class="trnote">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">
+        <b style="font-size:13px;color:var(--ink)">${escHtml(n.author_name || t('이름 없음','Unknown'))}</b>
+        ${n.rating ? `<span style="color:#e0a90a;font-size:12.5px">${trainStarsHtml(n.rating)}</span>` : ''}
+        <span style="font-size:11px;color:var(--ink3)">${String(n.created_at || '').slice(0,10)}</span>
+        ${canDel ? `<button onclick="deleteTrainNote('${n.id}','${x.id}')" style="margin-left:auto;border:none;background:transparent;cursor:pointer;color:var(--ink3);font-size:12px">${t('삭제','Delete')}</button>` : ''}
+      </div>
+      ${qaKeys.map(kk => `<div class="trqa"><div class="trqa-q">Q. ${escHtml(qText(kk) || t('질문','Question'))}</div><div class="trqa-a">${escHtml(ans[kk])}</div></div>`).join('')}
+      ${n.text ? `<div style="font-size:13px;line-height:1.7;color:var(--ink);white-space:pre-wrap;margin-top:${qaKeys.length?'7px':'0'}">${escHtml(n.text)}</div>` : ''}
+      <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+        ${TRAIN_EMO.map(e => {
+          const arr = (n.reactions && n.reactions[e]) || [];
+          const on = arr.includes(ME && ME.name);
+          return `<button onclick="toggleTrainReaction('${n.id}','${x.id}','${e}')" title="${escAttr(arr.join(', '))}" style="display:inline-flex;align-items:center;gap:4px;height:26px;padding:0 9px;border:1px solid ${on?'#1d3a5f':'var(--border)'};border-radius:16px;background:${on?'var(--asoft)':'var(--surface)'};cursor:pointer;font-size:13px;line-height:1">${e}${arr.length?`<span style="font:800 11px var(--font);color:var(--adeep)">${arr.length}</span>`:''}</button>`;
+        }).join('')}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function saveTrainNote(id) {
+  const x = trainings.find(v => v.id === id); if (!x) return;
+  const qs = trainQuestions(x);
+  const answers = {};
+  qs.forEach(q => {
+    const el = document.getElementById('tn-a-' + q.id);
+    const v = el ? (el.value || '').trim() : '';
+    if (v) answers[q.id] = v;
+  });
+  const ta = document.getElementById('tn-text');
+  const text = ta ? (ta.value || '').trim() : '';
+  if (!text && !Object.keys(answers).length) { showUploadToast(t('내용을 적어주세요','Write something first')); return; }
+  const { error } = await sb.from('training_notes').insert({
+    community_id: CID(), training_id: id, member_id: ME.id, author_name: ME.name,
+    text: text || null, rating: trainStars || null, answers, reactions: {},
+  });
+  if (error) { showUploadToast(t('저장 실패: ','Save failed: ') + error.message); return; }
+  trainStars = 0;
+  await openTraining(id);
+}
+
+async function deleteTrainNote(noteId, id) {
+  if (!confirm(t('이 글을 삭제할까요?','Delete this post?'))) return;
+  const { error } = await sb.from('training_notes').delete().eq('id', noteId);
+  if (error) { showUploadToast(t('삭제 실패: ','Delete failed: ') + error.message); return; }
+  await openTraining(id);
+}
+
+// 이모지 반응 — 저장 직전에 최신값을 다시 읽어 합친다 (동시에 누르면 서로 지워지니까)
+async function toggleTrainReaction(noteId, id, emo) {
+  const me = (ME && ME.name) || '';
+  const cur = await sb.from('training_notes').select('reactions').eq('id', noteId).maybeSingle();
+  const r = Object.assign({}, (!cur.error && cur.data && cur.data.reactions) || {});
+  let arr = Array.isArray(r[emo]) ? r[emo].slice() : [];
+  if (arr.includes(me)) arr = arr.filter(v => v !== me); else arr.push(me);
+  if (arr.length) r[emo] = arr; else delete r[emo];
+  const { error } = await sb.from('training_notes').update({ reactions: r }).eq('id', noteId);
+  if (error) { showUploadToast(t('반응 저장 실패','Could not save reaction')); return; }
+  const n = trainNotes.find(v => v.id === noteId);
+  if (n) n.reactions = r;
+  renderTrainingMain();
+}
+
+async function toggleTrainDone(id) {
+  const x = trainings.find(v => v.id === id); if (!x) return;
+  if (!ME || !ME.id) return;
+  const had = trainMyDone(id);
+  if (had) {
+    const { error } = await sb.from('training_done').delete().eq('training_id', id).eq('member_id', ME.id);
+    if (error) { showUploadToast(t('저장 실패: ','Save failed: ') + error.message); return; }
+    trainDoneAll[id] = trainDoneList(id).filter(d => d.member_id !== ME.id);
+  } else {
+    const row = { community_id: CID(), training_id: id, member_id: ME.id, member_name: ME.name, done_at: ymdStr(new Date()) };
+    const { error } = await sb.from('training_done').insert(row);
+    if (error) { showUploadToast(t('저장 실패: ','Save failed: ') + error.message); return; }
+    trainDoneAll[id] = trainDoneList(id).concat([row]);
+  }
+  renderTrainingMain();
+}
+
+// ── 수강 현황 ──
+function trainStatusHtml() {
+  const crew = (schoolTeachers || []).filter(m => m.status !== 'removed');
+  const req = trainings.filter(x => x.required);
+  const total = trainings.length;
+  const today = ymdStr(new Date());
+  const doneOf = (mid, id) => trainDoneList(id).some(d => d.member_id === mid);
+
+  if (!crew.length) {
+    return trainHeadHtml('') + `<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px">${t('사역자 명단이 비어 있어요.','No ministry staff on the roster yet.')}</div>`;
+  }
+  const head = req.map(x => {
+    const cnt = trainDoneList(x.id).length;
+    const dd = x.due_date ? trainDday(x.due_date) : null;
+    return `<th class="trst-col"><div class="trst-th" onclick="openTraining('${x.id}')" title="${escAttr(x.title||'')}">${escHtml(x.title||'')}</div>
+      <div style="font-weight:400;font-size:10.5px;margin-top:2px">${cnt}/${crew.length}${x.due_date ? ` · ~${String(x.due_date).slice(5)}${dd?` <span class="trdd ${dd.tone}">${dd.label}</span>`:''}` : ''}</div></th>`;
+  }).join('');
+  const rows = crew.map(m => {
+    const reqDone = req.filter(x => doneOf(m.id, x.id)).length;
+    const allDone = trainings.filter(x => doneOf(m.id, x.id)).length;
+    const cells = req.map(x => {
+      const ok = doneOf(m.id, x.id);
+      const over = !ok && x.due_date && String(x.due_date) < today;
+      return `<td class="trst-cell ${ok?'ok':over?'over':'no'}">${ok?'✓':over?t('지남','late'):'·'}</td>`;
+    }).join('');
+    const pct = total ? Math.round(allDone / total * 100) : 0;
+    return `<tr><td class="trst-name">${escHtml(m.name || '')}</td>${cells}
+      <td class="trst-sum ${reqDone < req.length ? 'warn':'good'}">${reqDone}/${req.length}</td>
+      <td class="trst-all"><span class="trst-bar"><i style="width:${pct}%"></i></span><span style="font:800 11.5px var(--font);color:var(--adeep)">${allDone}/${total}</span></td></tr>`;
+  }).join('');
+  return trainHeadHtml('') + `<div style="overflow-x:auto;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:4px 12px 8px">
+      <table class="trst-table"><thead><tr>
+        <th class="trst-namehead">${t('사역자','Staff')}</th>
+        ${head || `<th style="font-weight:400;color:var(--ink3)">${t('필수 자료가 없어요','No required materials')}</th>`}
+        <th>${t('필수','Required')}</th><th>${t('전체','All')}</th>
+      </tr></thead><tbody>${rows}</tbody></table>
+    </div>
+    <div style="font-size:11.5px;color:var(--ink3);margin-top:10px;line-height:1.7">✓ ${t('완료','done')} · <span style="color:#b91c1c;font-weight:700">${t('지남','late')}</span> = ${t('마감이 지났는데 아직 안 함','past due and not done')} · ${t('제목을 누르면 그 자료로 갑니다','tap a title to open that material')}</div>`;
 }
 
 // ════════════════════════════════════════════════════════════════════
