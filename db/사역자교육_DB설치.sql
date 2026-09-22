@@ -75,6 +75,11 @@ create policy training_notes_rw on public.training_notes for all to authenticate
 drop policy if exists training_done_rw on public.training_done;
 create policy training_done_rw on public.training_done for all to authenticated using (true) with check (true);
 
+-- 책 검색(구글 북스)에 쓸 API 키를 공동체 설정에 둔다.
+-- 앱 코드(index.html)는 공개 저장소에 있어서 거기에 키를 박으면 봇이 긁어가 할당량을 태운다.
+-- 여기 넣으면 git 에는 안 들어간다. (구글 클라우드 콘솔에서 HTTP 리퍼러 제한도 꼭 걸어두세요)
+alter table public.communities add column if not exists books_api_key text;
+
 notify pgrst, 'reload schema';
 
 -- =====================================================================

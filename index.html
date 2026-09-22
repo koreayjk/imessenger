@@ -226,6 +226,13 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
 .trst-bar { display:inline-block; width:58px; height:6px; background:var(--s3,#eceff3); border-radius:6px; overflow:hidden; vertical-align:middle; margin-right:7px; }
 .trst-bar > i { display:block; height:100%; background:#1d3a5f; }
 .trdd.soon { color:#b9760a; } .trdd.over { color:#b91c1c; }
+.trbs-list { display:flex; flex-direction:column; gap:5px; max-height:290px; overflow-y:auto; }
+.trbs-row { display:flex; align-items:center; gap:10px; width:100%; padding:7px 9px; border:1px solid var(--border);
+            border-radius:10px; background:var(--surface); cursor:pointer; font-family:var(--font); text-align:left; }
+.trbs-row:hover { background:var(--asoft); border-color:#1d3a5f; }
+.trbs-cov { position:relative; width:34px; height:46px; flex-shrink:0; border-radius:5px; overflow:hidden;
+            background:var(--s2); display:flex; align-items:center; justify-content:center; font-size:15px; }
+.trbs-cov img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
 @media (max-width: 760px) {
   .trgrid { grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; }
 }
@@ -9894,6 +9901,22 @@ async function renderCommunitySettings() {
           </div>
         </div>
 
+        <!-- 구글 북스 API 키 -->
+        <div style="border-top:1px solid var(--border);margin:16px 0 14px;padding-top:14px">
+          <div style="font-size:12px;font-weight:600;color:var(--ink3);margin-bottom:5px">📚 구글 북스 API 키 (사역자 교육 · 책 검색)</div>
+          <input id="cs-books-key" class="adm-input" value="${escAttr(comm.books_api_key||'')}" placeholder="AIza..." style="width:100%"/>
+          <div style="font-size:11px;color:var(--ink3);line-height:1.65;margin-top:6px">
+            <b>운영관리 → 🎓 사역자 교육</b> 에서 책을 등록할 때 제목·저자·표지를 자동으로 찾아옵니다.<br>
+            구글 클라우드 콘솔 → <b>Books API</b> 사용 설정 → API 키 발급. 무료이고 하루 1,000건입니다.<br>
+            비워두면 키 없이 시도하는데, 그건 전 세계가 같이 쓰는 할당량이라 자주 막힙니다.
+          </div>
+          <div style="font-size:11px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:9px;padding:9px 11px;line-height:1.7;margin-top:8px;word-break:keep-all">
+            🔐 이 키는 브라우저에서 쓰이므로 <b>구글 클라우드 콘솔에서 반드시 제한을 거세요</b> —
+            애플리케이션 제한을 <b>HTTP 리퍼러</b>로 두고 이 사이트 주소만 허용, API 제한은 <b>Books API</b>만.
+            제한을 안 걸면 남이 가져다 써서 할당량이 금방 없어집니다.
+          </div>
+        </div>
+
         <!-- 저장 버튼 -->
         <button onclick="saveCommSettings('${comm.id}')"
           style="width:100%;height:44px;border-radius:12px;border:none;background:linear-gradient(135deg,#1d3a5f,#2a5298);color:white;font:600 15px var(--font);cursor:pointer;box-shadow:0 4px 14px rgba(29,58,95,.3)">
@@ -10675,6 +10698,8 @@ async function saveCommSettings(commId) {
   }
   // 캘린더 연결은 [이 ID 로 연결] · [이걸로 연결] 버튼이 맡는다.
   // 여기서 같이 저장하면, 빈 칸으로 저장할 때 연결이 끊긴다.
+  const bkEl = document.getElementById('cs-books-key');
+  if (bkEl) updateData.books_api_key = bkEl.value.trim() || null;
   if (logoUrl) updateData.logo_url = logoUrl;
   const { error } = await sb.from('communities').update(updateData).eq('id', commId);
   if (error) { showUploadToast('저장 실패: ' + error.message); return; }
@@ -14250,7 +14275,7 @@ const SCHOOL_TABS = [
   { id:'attendance', icon:'✅', label:t('출석부','Attendance'),       group:'class',   section:'school' },
   { id:'leave',      icon:'📝', label:t('출결 신청','Leave'),         group:'class',   section:'school' },
   { id:'training',   icon:'🎓', label:t('사역자 교육','Training'),    group:'grow',    section:'ops' },
-  { id:'tuition',    icon:'💰', label:t('재정','Finance'),           group:'money',   section:'ops', admin:true },
+  { id:'tuition',    icon:'💰', label:t('재정','Finance'),           group:'money',   section:'ops' },
   { id:'vehicle',    icon:'🚗', label:t('차량','Vehicles'),          group:'money',   section:'ops', admin:true },
   { id:'newsletter', icon:'✉️', label:t('가정통신문','Newsletter'),    group:'doc',     section:'ops', admin:true },
   { id:'cert',       icon:'📄', label:t('증명서','Certificates'),     group:'doc',     section:'ops', admin:true },
@@ -17689,12 +17714,14 @@ function trainCardHtml(x) {
 
 // ── 추가 · 수정 폼 ──
 function trainNew() {
+  trainBookHits = null; trainBookMsg = ''; trainBookQ = '';
   trainDraft = { id:null, kind:'video', category:'common', title:'', author:'', url:'', cover_url:'',
                  description:'', lead_msg:'', required:false, due_date:'', questions:[] };
   renderTrainingMain();
 }
 function trainEditOpen(id) {
   const x = trainings.find(v => v.id === id); if (!x) return;
+  trainBookHits = null; trainBookMsg = ''; trainBookQ = '';
   trainDraft = { id:x.id, kind:x.kind || 'video', category:x.category || 'common', title:x.title || '',
                  author:x.author || '', url:x.url || '', cover_url:x.cover_url || '',
                  description:x.description || '', lead_msg:x.lead_msg || '', required:!!x.required,
@@ -17719,6 +17746,8 @@ function trainReadForm() {
     trainDraft.due_date = v('tf-due');
   }
   trainDraft.questions.forEach((q, i) => { const el = document.getElementById('tf-q-' + i); if (el) q.text = el.value; });
+  const bq = document.getElementById('tf-bq');
+  if (bq) trainBookQ = bq.value;
 }
 function trainQAdd() {
   trainReadForm(); if (!trainDraft) return;
@@ -17748,6 +17777,156 @@ async function trainCoverPick(input) {
 }
 function trainCoverClear() { trainReadForm(); if (trainDraft) trainDraft.cover_url = ''; renderTrainingMain(); }
 
+// ── 책 검색 (구글 북스 → 막히면 Open Library) ──
+// 키 없이도 구글 북스를 부를 수 있지만, 그때는 전 세계 익명 호출이 구글의
+// 공용 프로젝트 하나를 같이 써서 429(할당량 초과)가 수시로 난다. 그래서
+// 공동체 설정에 키를 넣으면 그걸 쓰고, 막히면 Open Library 로 넘어간다.
+// (Open Library 는 키가 필요 없지만 한국어 책이 거의 없다)
+let trainBookQ    = '';
+let trainBookHits = null;    // null = 아직 안 찾음, [] = 결과 없음
+let trainBookBusy = false;
+let trainBookMsg  = '';
+let _trainBooksKey;          // undefined = 아직 안 읽음
+
+async function trainBooksKey() {
+  if (_trainBooksKey !== undefined) return _trainBooksKey;
+  _trainBooksKey = '';
+  try {
+    const { data } = await sb.from('communities').select('books_api_key').eq('id', CID()).maybeSingle();
+    _trainBooksKey = (data && data.books_api_key) || '';
+  } catch(_) {}   // 컬럼이 아직 없으면 키 없이 간다
+  return _trainBooksKey;
+}
+
+// 구글이 주는 표지 주소 다듬기. zoom=1 은 128px 짜리라 카드에서 흐릿하다 → zoom=2 (300×450).
+// edge=curl 은 책장 접힌 효과인데 우리 칸에서는 지저분해 보여서 뗀다.
+function gbCoverUrl(u) {
+  if (!u) return '';
+  u = String(u).replace(/^http:/, 'https:').replace(/&edge=curl/g, '');
+  if (!/^https?:/i.test(u)) return u;   // data: 같은 주소는 건드리지 않는다
+  if (/[?&]zoom=\d+/.test(u)) return u.replace(/([?&])zoom=\d+/, '$1zoom=2');
+  // 물음표가 없는 주소에 &zoom= 를 붙이면 깨진다
+  return u + (u.indexOf('?') >= 0 ? '&' : '?') + 'zoom=2';
+}
+function bookIsbn(q) {
+  const d = String(q || '').replace(/[\s-]/g, '');
+  return /^(\d{9}[\dXx]|\d{13})$/.test(d) ? d : '';
+}
+
+async function gbookSearch(q) {
+  const isbn = bookIsbn(q);
+  const key = await trainBooksKey();
+  const url = 'https://www.googleapis.com/books/v1/volumes?q=' + encodeURIComponent(isbn ? 'isbn:' + isbn : q)
+            + '&maxResults=10&printType=books&orderBy=relevance'
+            + (key ? '&key=' + encodeURIComponent(key) : '');
+  const r = await fetch(url);
+  if (!r.ok) { const e = new Error('google ' + r.status); e.status = r.status; throw e; }
+  const j = await r.json();
+  return (j.items || []).map(it => {
+    const v = it.volumeInfo || {}, il = v.imageLinks || {};
+    return {
+      title:  [v.title, v.subtitle].filter(Boolean).join(' — '),
+      author: (v.authors || []).join(', '),
+      cover:  gbCoverUrl(il.thumbnail || il.smallThumbnail),
+      year:   String(v.publishedDate || '').slice(0, 4),
+      pub:    v.publisher || '',
+      link:   v.infoLink || v.canonicalVolumeLink || '',
+      src:    'Google',
+    };
+  }).filter(x => x.title);
+}
+
+async function olbookSearch(q) {
+  const isbn = bookIsbn(q);
+  const base = 'https://openlibrary.org/search.json?limit=10&fields=title,author_name,first_publish_year,cover_i,key,publisher&';
+  const r = await fetch(base + (isbn ? 'isbn=' + isbn : 'q=' + encodeURIComponent(q)));
+  if (!r.ok) { const e = new Error('openlibrary ' + r.status); e.status = r.status; throw e; }
+  const j = await r.json();
+  return (j.docs || []).map(d => ({
+    title:  d.title || '',
+    author: (d.author_name || []).join(', '),
+    cover:  d.cover_i ? 'https://covers.openlibrary.org/b/id/' + d.cover_i + '-L.jpg' : '',
+    year:   d.first_publish_year ? String(d.first_publish_year) : '',
+    pub:    (d.publisher || [])[0] || '',
+    link:   d.key ? 'https://openlibrary.org' + d.key : '',
+    src:    'Open Library',
+  })).filter(x => x.title);
+}
+
+async function trainBookSearch() {
+  trainReadForm();
+  const q = (trainBookQ || '').trim();
+  if (!q) { showUploadToast(t('책 제목·저자·ISBN 중 아무거나 넣어보세요','Enter a title, author or ISBN')); return; }
+  trainBookBusy = true; trainBookMsg = ''; trainBookHits = null;
+  renderTrainingMain();
+  try {
+    trainBookHits = await gbookSearch(q);
+    if (!trainBookHits.length) trainBookMsg = t('구글 북스에서 못 찾았어요. 제목을 줄여서 다시 해보세요.','Nothing on Google Books — try a shorter title.');
+  } catch(e) {
+    const quota = (e && (e.status === 429 || e.status === 403));
+    try {
+      trainBookHits = await olbookSearch(q);
+      trainBookMsg = (quota
+        ? t('구글 북스 할당량이 찼어요. Open Library 로 찾은 결과입니다 — 한국어 책은 거의 안 나옵니다. 공동체 설정에 구글 북스 API 키를 넣어주세요.',
+            'Google Books quota is exhausted; these are Open Library results (weak for Korean). Add a Google Books API key in community settings.')
+        : t('구글 북스에 연결하지 못해 Open Library 로 찾았어요.','Could not reach Google Books — searched Open Library instead.'))
+        + (trainBookHits.length ? '' : ' ' + t('여기서도 못 찾았어요.','Nothing here either.'));
+    } catch(e2) {
+      trainBookHits = [];
+      trainBookMsg = t('책 검색에 실패했어요: ','Book search failed: ') + (e.message || e)
+        + (quota ? ' — ' + t('공동체 설정에 구글 북스 API 키를 넣으면 해결됩니다.','add a Google Books API key in community settings.') : '');
+    }
+  }
+  trainBookBusy = false;
+  renderTrainingMain();
+}
+
+function trainBookClose() { trainBookHits = null; trainBookMsg = ''; renderTrainingMain(); }
+
+// 고른 책을 폼에 채운다. 설명 칸은 손대지 않는다 —
+// 거긴 출판사 홍보문구가 아니라 담당자가 쓰는 추천 이유 자리다.
+function trainBookPick(i) {
+  const v = trainBookHits && trainBookHits[i];
+  if (!v || !trainDraft) return;
+  trainReadForm();
+  trainDraft.kind = 'book';
+  trainDraft.title = v.title;
+  if (v.author) trainDraft.author = v.author;
+  if (v.cover)  trainDraft.cover_url = v.cover;
+  if (v.link && !(trainDraft.url || '').trim()) trainDraft.url = v.link;
+  trainBookHits = null; trainBookMsg = ''; trainBookQ = '';
+  renderTrainingMain();
+}
+
+function trainBookSearchHtml() {
+  const inp = 'flex:1;min-width:0;height:36px;padding:0 11px;border:1.5px solid var(--border);border-radius:9px;font:13px var(--font);background:var(--surface);box-sizing:border-box';
+  const rows = (trainBookHits || []).map((v, i) => `<button onclick="trainBookPick(${i})" class="trbs-row">
+      <div class="trbs-cov">📖${v.cover ? `<img src="${escAttr(v.cover)}" alt="" loading="lazy" onerror="this.remove()">` : ''}</div>
+      <div style="min-width:0;flex:1;text-align:left">
+        <div style="font:700 12.5px var(--font);color:var(--ink);line-height:1.4">${escHtml(v.title)}</div>
+        <div style="font-size:11.5px;color:var(--ink3);margin-top:2px">${escHtml([v.author, v.pub, v.year].filter(Boolean).join(' · '))}</div>
+      </div>
+      <span style="flex-shrink:0;font:700 11.5px var(--font);color:var(--adeep)">${t('이 책으로','Use this')} ›</span>
+    </button>`).join('');
+  return `<div style="background:var(--surface);border:1.5px solid var(--border);border-radius:11px;padding:11px;margin-bottom:2px">
+    <div style="font-size:11.5px;font-weight:700;color:var(--adeep);margin-bottom:5px">🔎 ${t('책 검색 — 제목·저자·ISBN','Find a book — title, author or ISBN')}</div>
+    <div style="display:flex;gap:7px">
+      <input id="tf-bq" value="${escAttr(trainBookQ)}" placeholder="${t('예: 순전한 기독교 / C.S. 루이스 / 9788936543210','e.g. Mere Christianity / C.S. Lewis / 9780060652920')}"
+        onkeydown="if(event.key==='Enter'){event.preventDefault();trainBookSearch();}" style="${inp}">
+      <button onclick="trainBookSearch()" ${trainBookBusy ? 'disabled' : ''} style="flex-shrink:0;height:36px;padding:0 15px;border:none;border-radius:9px;background:${trainBookBusy?'#94a3b8':'#1d3a5f'};color:#fff;cursor:${trainBookBusy?'default':'pointer'};font:700 12.5px var(--font)">${trainBookBusy ? t('찾는 중…','Searching…') : t('검색','Search')}</button>
+    </div>
+    <div style="font-size:11px;color:var(--ink3);margin-top:5px">${t('고르면 제목·저자·표지·책 정보 링크가 자동으로 채워져요. 설명은 직접 쓰시면 돼요.','Picking one fills in the title, author, cover and info link. The description stays yours to write.')}</div>
+    ${trainBookMsg ? `<div style="font-size:11.5px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:9px;padding:8px 10px;line-height:1.65;margin-top:8px">${escHtml(trainBookMsg)}</div>` : ''}
+    ${trainBookHits && trainBookHits.length ? `<div style="margin-top:9px;border-top:1px dashed var(--border);padding-top:8px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
+        <span style="font-size:11px;color:var(--ink3)">${t(trainBookHits.length + '권 찾았어요 · ' + trainBookHits[0].src, trainBookHits.length + ' found · ' + trainBookHits[0].src)}</span>
+        <button onclick="trainBookClose()" style="border:none;background:transparent;cursor:pointer;color:var(--ink3);font:600 11.5px var(--font)">${t('닫기','Close')}</button>
+      </div>
+      <div class="trbs-list">${rows}</div>
+    </div>` : ''}
+  </div>`;
+}
+
 function trainFormHtml() {
   const d = trainDraft; if (!d) return '';
   const inp = 'width:100%;height:38px;padding:0 11px;border:1.5px solid var(--border);border-radius:9px;font:13px var(--font);background:var(--surface);box-sizing:border-box';
@@ -17773,6 +17952,8 @@ function trainFormHtml() {
         ${t('마감','Due')} <input type="date" id="tf-due" value="${escAttr(d.due_date || '')}" style="${inp};width:auto">
       </label>
     </div>
+
+    ${d.kind === 'book' ? trainBookSearchHtml() : ''}
 
     <div><div style="${lab}">${d.kind==='book'?t('책 제목','Book title'):t('제목','Title')}</div>
       <input id="tf-title" value="${escAttr(d.title)}" placeholder="${d.kind==='book'?t('예: 순전한 기독교','e.g. Mere Christianity'):t('제목','Title')}" style="${inp}"></div>
@@ -18104,11 +18285,35 @@ function trainStatusHtml() {
 let tuiBills = [];
 let tuiYear = new Date().getFullYear();
 let tuiGroups = new Set();   // 선택된 그룹 id들 (+ 'none'=미지정). 비어있으면 전체
-let finTab = 'tuition';      // 재정 허브 하위탭: 'tuition' | 'allowance' | 'deposit'
-function setFinTab(t) { finTab = t; renderTuitionHub(); }
+// 재정 하위탭. 학비·입출금은 공동체 살림이라 행정담당·관리자만,
+// 용돈·예치금은 학생을 직접 보는 교사·간사도 기록해야 해서 열어 둔다.
+const FIN_TABS = [
+  { key:'tuition',   icon:'💰', ko:'학비',   en:'Tuition',   admin:true },
+  { key:'allowance', icon:'🐷', ko:'용돈',   en:'Allowance' },
+  { key:'deposit',   icon:'🏦', ko:'예치금', en:'Deposit' },
+  { key:'ledger',    icon:'📒', ko:'입출금', en:'Cash Book', admin:true },
+];
+let finTab = 'tuition';      // 재정 허브 하위탭: 'tuition' | 'allowance' | 'deposit' | 'ledger'
+function finVisibleTabs() {
+  if (!canAccessSchool()) return [];
+  return FIN_TABS.filter(x => !x.admin || canSeeAdminModules());
+}
+// 지금 열린 하위탭이 이 사람이 볼 수 있는 것인지 확인하고, 아니면 첫 탭으로 옮긴다
+function finClampTab() {
+  const vis = finVisibleTabs();
+  if (!vis.length) return '';
+  if (!vis.some(x => x.key === finTab)) finTab = vis[0].key;
+  return finTab;
+}
+function setFinTab(t) {
+  if (!finVisibleTabs().some(x => x.key === t)) return;
+  finTab = t; renderTuitionHub();
+}
 function finTabBar() {
-  const t = (id,icon,label) => `<button onclick="setFinTab('${id}')" style="height:36px;padding:0 16px;border:none;border-radius:9px;font:700 13px var(--font);cursor:pointer;background:${finTab===id?'#1d3a5f':'transparent'};color:${finTab===id?'#fff':'var(--ink2)'}">${icon} ${label}</button>`;
-  return `<div style="display:inline-flex;gap:3px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:4px;margin-bottom:16px;flex-wrap:wrap">${t('tuition','💰',window.t('학비','Tuition'))}${t('allowance','🐷',window.t('용돈','Allowance'))}${t('deposit','🏦',window.t('예치금','Deposit'))}${t('ledger','📒',window.t('입출금','Cash Book'))}</div>`;
+  const vis = finVisibleTabs();
+  if (vis.length < 2) return '';   // 볼 게 하나뿐이면 탭 줄이 의미가 없다
+  const btn = (x) => `<button onclick="setFinTab('${x.key}')" style="height:36px;padding:0 16px;border:none;border-radius:9px;font:700 13px var(--font);cursor:pointer;background:${finTab===x.key?'#1d3a5f':'transparent'};color:${finTab===x.key?'#fff':'var(--ink2)'}">${x.icon} ${window.t(x.ko, x.en)}</button>`;
+  return `<div style="display:inline-flex;gap:3px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:4px;margin-bottom:16px;flex-wrap:wrap">${vis.map(btn).join('')}</div>`;
 }
 function finGroupChips() {
   const chip = (id,label) => { const on = id==='all'?tuiGroups.size===0:tuiGroups.has(id); const oc = id==='all'?'tuiClearGroups()':`tuiToggleGroup('${id}')`;
@@ -18342,6 +18547,7 @@ function tuiStartMonth(s) {
 
 async function renderTuitionHub() {
   const main = document.getElementById('school-main');
+  if (!finClampTab()) { main.innerHTML = `<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px">${t('권한이 없어요','No access')}</div>`; return; }
   if (finTab === 'allowance') return renderFinBalances('allowance');
   if (finTab === 'deposit')   return renderFinBalances('deposit');
   if (finTab === 'ledger')    return renderLedgerHub();
