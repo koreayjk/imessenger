@@ -9903,17 +9903,17 @@ async function renderCommunitySettings() {
 
         <!-- 구글 북스 API 키 -->
         <div style="border-top:1px solid var(--border);margin:16px 0 14px;padding-top:14px">
-          <div style="font-size:12px;font-weight:600;color:var(--ink3);margin-bottom:5px">📚 구글 북스 API 키 (사역자 교육 · 책 검색)</div>
-          <input id="cs-books-key" class="adm-input" value="${escAttr(comm.books_api_key||'')}" placeholder="AIza..." style="width:100%"/>
-          <div style="font-size:11px;color:var(--ink3);line-height:1.65;margin-top:6px">
-            <b>운영관리 → 🎓 사역자 교육</b> 에서 책을 등록할 때 제목·저자·표지를 자동으로 찾아옵니다.<br>
-            구글 클라우드 콘솔 → <b>Books API</b> 사용 설정 → API 키 발급. 무료이고 하루 1,000건입니다.<br>
-            비워두면 키 없이 시도하는데, 그건 전 세계가 같이 쓰는 할당량이라 자주 막힙니다.
+          <div style="font-size:12px;font-weight:600;color:var(--ink3);margin-bottom:5px">📚 구글 북스 API 키 — 예비용 (보통은 비워 둡니다)</div>
+          <input id="cs-books-key" class="adm-input" value="${escAttr(comm.books_api_key||'')}" placeholder="비워 두세요 (books-search 함수가 처리합니다)" style="width:100%"/>
+          <div style="font-size:11px;color:#1d4ed8;background:#eff6ff;border:1px solid #bfdbfe;border-radius:9px;padding:9px 11px;line-height:1.7;margin-top:6px;word-break:keep-all">
+            ℹ️ 책 검색은 <b>books-search Edge Function</b> 이 처리합니다. 키는
+            <b>Supabase → Edge Functions → Secrets</b> 의 <b>GOOGLE_BOOKS_API_KEY</b> 에 넣으세요.
+            그러면 키가 서버에만 있고 브라우저로 내려가지 않습니다. <b>이 칸은 비워 두세요.</b>
           </div>
           <div style="font-size:11px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:9px;padding:9px 11px;line-height:1.7;margin-top:8px;word-break:keep-all">
-            🔐 이 키는 브라우저에서 쓰이므로 <b>구글 클라우드 콘솔에서 반드시 제한을 거세요</b> —
-            애플리케이션 제한을 <b>HTTP 리퍼러</b>로 두고 이 사이트 주소만 허용, API 제한은 <b>Books API</b>만.
-            제한을 안 걸면 남이 가져다 써서 할당량이 금방 없어집니다.
+            ⚠️ 여기에 넣으면 <b>키가 브라우저까지 내려가</b> 로그인한 사람이 개발자도구로 볼 수 있습니다.
+            함수를 못 쓰는 사정이 있을 때만 쓰고, 그때는 구글 클라우드 콘솔에서
+            애플리케이션 제한을 <b>HTTP 리퍼러</b>로 두고 이 사이트 주소만 허용하세요.
           </div>
         </div>
 
@@ -17777,10 +17777,11 @@ async function trainCoverPick(input) {
 }
 function trainCoverClear() { trainReadForm(); if (trainDraft) trainDraft.cover_url = ''; renderTrainingMain(); }
 
-// ── 책 검색 (구글 북스 → 막히면 Open Library) ──
-// 키 없이도 구글 북스를 부를 수 있지만, 그때는 전 세계 익명 호출이 구글의
-// 공용 프로젝트 하나를 같이 써서 429(할당량 초과)가 수시로 난다. 그래서
-// 공동체 설정에 키를 넣으면 그걸 쓰고, 막히면 Open Library 로 넘어간다.
+// ── 책 검색 ──
+// 찾는 순서: books-search Edge Function → (함수가 없으면) 브라우저에서 직접
+//            구글 북스 → 그것도 막히면 Open Library.
+// 함수를 먼저 쓰는 이유는 API 키를 브라우저로 내려보내지 않기 위해서다.
+// 함수가 아직 배포되지 않은 동안에도 검색이 죽지 않게 뒤 두 단계를 남겨 뒀다.
 // (Open Library 는 키가 필요 없지만 한국어 책이 거의 없다)
 let trainBookQ    = '';
 let trainBookHits = null;    // null = 아직 안 찾음, [] = 결과 없음
@@ -17813,17 +17814,11 @@ function bookIsbn(q) {
   return /^(\d{9}[\dXx]|\d{13})$/.test(d) ? d : '';
 }
 
-async function gbookSearch(q) {
-  const isbn = bookIsbn(q);
-  const key = await trainBooksKey();
-  const url = 'https://www.googleapis.com/books/v1/volumes?q=' + encodeURIComponent(isbn ? 'isbn:' + isbn : q)
-            + '&maxResults=10&printType=books&orderBy=relevance'
-            + (key ? '&key=' + encodeURIComponent(key) : '');
-  const r = await fetch(url);
-  if (!r.ok) { const e = new Error('google ' + r.status); e.status = r.status; throw e; }
-  const j = await r.json();
-  return (j.items || []).map(it => {
-    const v = it.volumeInfo || {}, il = v.imageLinks || {};
+// 구글이 준 items 를 화면용으로 다듬는다. Edge Function 도 같은 items 를 넘기므로
+// 다듬는 코드는 여기 한 곳만 있으면 된다.
+function gbNormalize(items) {
+  return (items || []).map(it => {
+    const v = (it && it.volumeInfo) || {}, il = v.imageLinks || {};
     return {
       title:  [v.title, v.subtitle].filter(Boolean).join(' — '),
       author: (v.authors || []).join(', '),
@@ -17834,6 +17829,27 @@ async function gbookSearch(q) {
       src:    'Google',
     };
   }).filter(x => x.title);
+}
+
+// ① Edge Function — 키가 서버에만 있는 길
+async function fnBookSearch(q) {
+  const { data, error } = await sb.functions.invoke('books-search', { body: { q, max: 10 } });
+  if (error) { const e = new Error(error.message || 'books-search'); e.fn = true; throw e; }
+  if (data && data.error) { const e = new Error(data.error); e.fromFn = true; throw e; }
+  return gbNormalize(data && data.items);
+}
+
+// ② 브라우저에서 직접 — 함수가 아직 배포되지 않았을 때의 대비
+async function gbookSearch(q) {
+  const isbn = bookIsbn(q);
+  const key = await trainBooksKey();
+  const url = 'https://www.googleapis.com/books/v1/volumes?q=' + encodeURIComponent(isbn ? 'isbn:' + isbn : q)
+            + '&maxResults=10&printType=books&orderBy=relevance'
+            + (key ? '&key=' + encodeURIComponent(key) : '');
+  const r = await fetch(url);
+  if (!r.ok) { const e = new Error('google ' + r.status); e.status = r.status; throw e; }
+  const j = await r.json();
+  return gbNormalize(j.items);
 }
 
 async function olbookSearch(q) {
@@ -17859,22 +17875,40 @@ async function trainBookSearch() {
   if (!q) { showUploadToast(t('책 제목·저자·ISBN 중 아무거나 넣어보세요','Enter a title, author or ISBN')); return; }
   trainBookBusy = true; trainBookMsg = ''; trainBookHits = null;
   renderTrainingMain();
+  const notFound = t('못 찾았어요. 제목을 줄이거나 저자로 다시 해보세요.','Nothing found — try a shorter title or the author.');
+  let firstErr = null;
   try {
-    trainBookHits = await gbookSearch(q);
-    if (!trainBookHits.length) trainBookMsg = t('구글 북스에서 못 찾았어요. 제목을 줄여서 다시 해보세요.','Nothing on Google Books — try a shorter title.');
-  } catch(e) {
-    const quota = (e && (e.status === 429 || e.status === 403));
-    try {
-      trainBookHits = await olbookSearch(q);
-      trainBookMsg = (quota
-        ? t('구글 북스 할당량이 찼어요. Open Library 로 찾은 결과입니다 — 한국어 책은 거의 안 나옵니다. 공동체 설정에 구글 북스 API 키를 넣어주세요.',
-            'Google Books quota is exhausted; these are Open Library results (weak for Korean). Add a Google Books API key in community settings.')
-        : t('구글 북스에 연결하지 못해 Open Library 로 찾았어요.','Could not reach Google Books — searched Open Library instead.'))
-        + (trainBookHits.length ? '' : ' ' + t('여기서도 못 찾았어요.','Nothing here either.'));
-    } catch(e2) {
+    // ① Edge Function
+    trainBookHits = await fnBookSearch(q);
+    if (!trainBookHits.length) trainBookMsg = notFound;
+  } catch(e1) {
+    firstErr = e1;
+    // 함수가 스스로 "구글이 거부했다"고 알려준 경우는 그 이유를 그대로 보여준다.
+    // 함수를 못 불러서(미배포·네트워크) 실패한 것과 구분해야 한다.
+    if (e1 && e1.fromFn) {
       trainBookHits = [];
-      trainBookMsg = t('책 검색에 실패했어요: ','Book search failed: ') + (e.message || e)
-        + (quota ? ' — ' + t('공동체 설정에 구글 북스 API 키를 넣으면 해결됩니다.','add a Google Books API key in community settings.') : '');
+      trainBookMsg = e1.message;
+    } else {
+      try {
+        // ② 브라우저에서 직접
+        trainBookHits = await gbookSearch(q);
+        trainBookMsg = trainBookHits.length ? '' : notFound;
+      } catch(e2) {
+        const quota = (e2 && (e2.status === 429 || e2.status === 403));
+        try {
+          // ③ Open Library
+          trainBookHits = await olbookSearch(q);
+          trainBookMsg = (quota
+            ? t('구글 북스 할당량이 찼어요. Open Library 로 찾은 결과입니다 — 한국어 책은 거의 안 나옵니다. Supabase → Edge Functions → Secrets 에 GOOGLE_BOOKS_API_KEY 를 넣고 books-search 함수를 배포해 주세요.',
+                'Google Books quota is exhausted; these are Open Library results (weak for Korean). Add GOOGLE_BOOKS_API_KEY and deploy the books-search function.')
+            : t('구글 북스에 연결하지 못해 Open Library 로 찾았어요.','Could not reach Google Books — searched Open Library instead.'))
+            + (trainBookHits.length ? '' : ' ' + t('여기서도 못 찾았어요.','Nothing here either.'));
+        } catch(e3) {
+          trainBookHits = [];
+          trainBookMsg = t('책 검색에 실패했어요: ','Book search failed: ') + (e2.message || e2)
+            + (quota ? ' — ' + t('GOOGLE_BOOKS_API_KEY 를 넣고 books-search 함수를 배포하면 해결됩니다.','add GOOGLE_BOOKS_API_KEY and deploy the books-search function.') : '');
+        }
+      }
     }
   }
   trainBookBusy = false;
