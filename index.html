@@ -18358,6 +18358,182 @@ function finOpenStudent(id) { s360Id = id; setSchoolSubMode('student'); }
 
 // ── 재정 허브: 용돈/예치금 학생별 인라인 기록 ──
 let finKind = 'allowance';   // 현재 잔액 탭 종류
+// ── 기간 필터 (이번 달 / 올해 / 전체) ──
+// 잔액은 기간과 무관하게 '지금까지 전부'로 센다. 이번 달만 잘라서 더하면
+// 지난달에서 넘어온 돈이 사라져 남은 금액이 틀리게 나온다.
+let finPeriod = 'month';    // 'month' | 'year' | 'all'
+let finYM = '';             // 'YYYY-MM'
+let finY  = 0;
+let finAll = [];            // 이 공동체의 전체 내역 (날짜·메모까지)
+
+function finInitPeriod() {
+  if (!finYM) { const d = new Date(); finYM = ymdStr(d).slice(0, 7); finY = d.getFullYear(); }
+}
+function finRange() {
+  finInitPeriod();
+  if (finPeriod === 'month') return { from: finYM + '-01', to: finYM + '-31' };
+  if (finPeriod === 'year')  return { from: finY + '-01-01', to: finY + '-12-31' };
+  return { from: '', to: '' };
+}
+function finPeriodLabel() {
+  finInitPeriod();
+  if (finPeriod === 'month') {
+    const [y, m] = finYM.split('-');
+    return t(`${y}년 ${Number(m)}월`, `${TUI_MON_EN[Number(m)]} ${y}`);
+  }
+  if (finPeriod === 'year') return t(`${finY}년`, String(finY));
+  return t('전체 기간', 'All time');
+}
+function finInRange(e, r) {
+  const d = String(e.date || '');
+  return (!r.from || d >= r.from) && (!r.to || d <= r.to);
+}
+function finSetPeriod(p) { finPeriod = p; renderTuitionHub(); }
+function finShiftPeriod(step) {
+  finInitPeriod();
+  if (finPeriod === 'month') {
+    const [y, m] = finYM.split('-').map(Number);
+    const d = new Date(y, m - 1 + step, 1);
+    finYM = ymdStr(d).slice(0, 7); finY = d.getFullYear();
+  } else if (finPeriod === 'year') {
+    finY += step; finYM = finY + '-' + finYM.split('-')[1];
+  } else return;
+  renderTuitionHub();
+}
+// 용돈은 수입/지출, 예치금은 입금/출금 — 부호가 같은 자리를 쓴다
+function finIsPlus(e) { return finKind === 'allowance' ? e.type === 'income' : e.type === 'in'; }
+
+// 통화별로 들어온 돈·나간 돈·차액을 센다. 원화와 달러를 한 숫자로 합치면 거짓말이 된다.
+function finSumBy(list) {
+  const by = {};
+  (list || []).forEach(e => {
+    const c = e.currency || '원';
+    const v = Number(e.amount) || 0;
+    if (!by[c]) by[c] = { in: 0, out: 0, net: 0 };
+    if (finIsPlus(e)) { by[c].in += v; by[c].net += v; }
+    else { by[c].out += v; by[c].net -= v; }
+  });
+  return by;
+}
+function finMoneyOf(by, pick) {
+  const ks = Object.keys(by).filter(c => Math.abs(by[c][pick] || 0) > 0.004);
+  if (!ks.length) return allowMoney(0, Object.keys(by)[0] || '원');
+  return ks.map(c => allowMoney(by[c][pick], c)).join(' · ');
+}
+
+function finPeriodBar() {
+  const btn = (p, label) => `<button onclick="finSetPeriod('${p}')" style="height:30px;padding:0 13px;border:none;border-radius:8px;cursor:pointer;font:700 12px var(--font);background:${finPeriod===p?'#1d3a5f':'transparent'};color:${finPeriod===p?'#fff':'var(--ink2)'}">${label}</button>`;
+  const nav = finPeriod === 'all' ? '' : `<div style="display:inline-flex;align-items:center;gap:3px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:3px 4px">
+      <button onclick="finShiftPeriod(-1)" style="width:28px;height:28px;border:none;background:transparent;cursor:pointer;font-size:14px;color:var(--ink2)">◀</button>
+      <span style="font:800 13px var(--font);color:var(--ink);min-width:88px;text-align:center">${finPeriodLabel()}</span>
+      <button onclick="finShiftPeriod(1)" style="width:28px;height:28px;border:none;background:transparent;cursor:pointer;font-size:14px;color:var(--ink2)">▶</button>
+    </div>`;
+  return `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+    <div style="display:inline-flex;gap:3px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:3px">
+      ${btn('month', t('이번 달','Month'))}${btn('year', t('올해','Year'))}${btn('all', t('전체','All'))}
+    </div>${nav}</div>`;
+}
+
+function finSummaryCards(inRange, scoped, isAllow) {
+  const per = finSumBy(inRange);
+  const all = finSumBy(scoped);   // 화면에 보이는 학생들만. finAll 을 쓰면 목록 밖 기록까지 섞인다
+  const card = (icon, label, value, sub, color, bg, bd) => `<div style="flex:1 1 190px;min-width:0;background:${bg};border:1px solid ${bd};border-radius:13px;padding:12px 15px">
+      <div style="font-size:11.5px;color:var(--ink3);font-weight:600">${icon} ${label}</div>
+      <div style="font-size:19px;font-weight:800;color:${color};margin-top:3px;word-break:break-all">${value}</div>
+      <div style="font-size:10.5px;color:var(--ink3);margin-top:2px">${sub}</div>
+    </div>`;
+  const plusCnt = inRange.filter(finIsPlus).length, minusCnt = inRange.length - plusCnt;
+  return `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+    ${card('📥', isAllow ? t('기간 수입','Income') : t('기간 입금','Deposited'), finMoneyOf(per,'in'),
+           t(`${plusCnt}건 · ${finPeriodLabel()}`, `${plusCnt} entries · ${finPeriodLabel()}`), '#2a7a5a', '#e8f5ee', '#bfe3cf')}
+    ${card('📤', isAllow ? t('기간 사용','Spent') : t('기간 출금','Withdrawn'), finMoneyOf(per,'out'),
+           t(`${minusCnt}건 · ${finPeriodLabel()}`, `${minusCnt} entries · ${finPeriodLabel()}`), '#b91c1c', '#fdecea', '#f5c6c0')}
+    ${card('💰', t('전체 남은 금액','Balance left'), finMoneyOf(all,'net'),
+           t('기간과 상관없이 지금 남은 돈','Current balance, all time'), 'var(--adeep)', 'var(--asoft)', '#cfe0f5')}
+  </div>`;
+}
+
+// ── 학생별 사용내역서 (PDF) ──
+// 브라우저 인쇄창을 열어 'PDF로 저장'을 고르면 파일로 떨어진다.
+// 기간 앞의 기록은 '이월 잔액' 한 줄로 접어 넣는다. 그래야 기간만 떼어 봐도
+// 남은 돈이 맞는다.
+function finStatementPdf(studentId, ev) {
+  if (ev && ev.stopPropagation) ev.stopPropagation();
+  const s = schoolStudents.find(x => x.id === studentId);
+  if (!s) return;
+  const isAllow = finKind === 'allowance';
+  const r = finRange();
+  const mine = finAll.filter(e => e.member_id === studentId);
+  if (!mine.length) { showUploadToast(t('이 학생은 아직 기록이 없어요','No records for this student yet')); return; }
+
+  const curs = [...new Set(mine.map(e => e.currency || '원'))];
+  const sortAsc = (a, b) => String(a.date || '').localeCompare(String(b.date || ''))
+                         || String(a.created_at || '').localeCompare(String(b.created_at || ''));
+
+  const blocks = curs.map(cur => {
+    const list = mine.filter(e => (e.currency || '원') === cur).sort(sortAsc);
+    const before = list.filter(e => r.from && String(e.date || '') < r.from);
+    const rows   = list.filter(e => finInRange(e, r));
+    let bal = before.reduce((a, e) => a + (finIsPlus(e) ? 1 : -1) * (Number(e.amount) || 0), 0);
+    let sumIn = 0, sumOut = 0;
+
+    const body = rows.map(e => {
+      const v = Number(e.amount) || 0, plus = finIsPlus(e);
+      if (plus) sumIn += v; else sumOut += v;
+      bal += plus ? v : -v;
+      const kindLabel = isAllow
+        ? (plus ? t('수입','Income') : t('지출','Expense'))
+        : (plus ? t('입금','Deposit') : t('출금','Withdrawal'));
+      const what = isAllow ? (e.category || t('기타','Other')) : kindLabel;
+      return `<tr>
+        <td style="text-align:center;white-space:nowrap">${escHtml(e.date || '')}</td>
+        <td style="text-align:center;white-space:nowrap">${escHtml(kindLabel)}</td>
+        <td>${escHtml(what)}${e.memo ? ` · ${escHtml(e.memo)}` : ''}</td>
+        <td style="text-align:right;white-space:nowrap">${plus ? allowMoney(v, cur) : ''}</td>
+        <td style="text-align:right;white-space:nowrap">${plus ? '' : allowMoney(v, cur)}</td>
+        <td style="text-align:right;white-space:nowrap;font-weight:700">${allowMoney(bal, cur)}</td>
+      </tr>`;
+    }).join('');
+
+    const opening = before.reduce((a, e) => a + (finIsPlus(e) ? 1 : -1) * (Number(e.amount) || 0), 0);
+    const head = `<tr>
+        <th style="width:23mm">${t('날짜','Date')}</th><th style="width:18mm">${t('구분','Type')}</th>
+        <th>${t('내용','Details')}</th>
+        <th style="width:26mm">${isAllow ? t('수입','Income') : t('입금','Deposit')}</th>
+        <th style="width:26mm">${isAllow ? t('지출','Expense') : t('출금','Withdrawal')}</th>
+        <th style="width:28mm">${t('잔액','Balance')}</th>
+      </tr>`;
+    const openingRow = r.from ? `<tr>
+        <td colspan="5" style="text-align:right;background:#f4f7fb;font-weight:700">${t('이월 잔액 (기간 시작 전)','Balance carried forward')}</td>
+        <td style="text-align:right;font-weight:700;background:#f4f7fb">${allowMoney(opening, cur)}</td>
+      </tr>` : '';
+    const totalRow = `<tr>
+        <td colspan="3" style="text-align:right;background:#f4f7fb;font-weight:700">${t('기간 합계','Period total')}</td>
+        <td style="text-align:right;font-weight:700;background:#f4f7fb">${allowMoney(sumIn, cur)}</td>
+        <td style="text-align:right;font-weight:700;background:#f4f7fb">${allowMoney(sumOut, cur)}</td>
+        <td style="text-align:right;font-weight:800;background:#eaf1fb;color:#1d3a5f">${allowMoney(bal, cur)}</td>
+      </tr>`;
+    const empty = `<tr><td colspan="6" style="text-align:center;color:#5b6577;padding:10px">${t('이 기간에는 기록이 없습니다.','No records in this period.')}</td></tr>`;
+
+    return `${curs.length > 1 ? `<div style="font-weight:700;color:#1d3a5f;margin:5mm 0 2mm">${cur === '$' ? t('달러 ($)','US Dollar ($)') : t('원화 (₩)','Korean Won (₩)')}</div>` : ''}
+      <table><thead>${head}</thead><tbody>${openingRow}${rows.length ? body : empty}${totalRow}</tbody></table>`;
+  }).join('');
+
+  // 비교용 끝날짜는 '-31' 로 넉넉히 잡지만, 사람에게 보여줄 땐 그 달의 실제 마지막 날로.
+  // (9월 31일 같은 날짜가 찍히면 문서를 믿기 어려워진다)
+  const lastOfMonth = (ym) => { const [y, m] = ym.split('-').map(Number); return ymdStr(new Date(y, m, 0)); };
+  const periodText = finPeriod === 'month' ? `${finYM}-01 ~ ${lastOfMonth(finYM)}`
+                   : finPeriod === 'year'  ? `${finY}-01-01 ~ ${finY}-12-31`
+                   : t('전체 기간','All time');
+  openPrintDoc({
+    title: `${s.name} — ${isAllow ? t('용돈 사용내역서','Allowance statement') : t('예치금 거래내역서','Deposit statement')}`,
+    docTitle: isAllow ? t('용돈 사용내역서','Allowance Statement') : t('예치금 거래내역서','Deposit Statement'),
+    subtitle: `${escHtml(s.name)}${s.grade ? ' · ' + escHtml(s.grade) : ''} &nbsp;|&nbsp; ${escHtml(finPeriodLabel())} (${escHtml(periodText)})`,
+    body: blocks,
+    footerNote: `${s.name} · ${isAllow ? t('용돈','Allowance') : t('예치금','Deposit')} · ${finPeriodLabel()}`,
+  });
+}
+
 let finExpandId = null;      // 인라인 편집기가 펼쳐진 학생 id
 let finEntries = [];         // 펼친 학생의 내역 캐시
 let finAddType = 'expense';  // 폼 타입 (용돈: income/expense, 예치금: in/out)
@@ -18453,37 +18629,69 @@ async function finDelEntry(id) {
 
 async function renderFinBalances(kind) {
   finKind = kind;
+  finInitPeriod();
   const main = document.getElementById('school-main');
   main.innerHTML = finTabBar() + `<div style="text-align:center;padding:30px;color:var(--ink3);font-size:13px">${t('불러오는 중...','Loading...')}</div>`;
   const table = kind==='allowance' ? 'allowance_entries' : 'deposit_entries';
-  let data = [];
-  try { const r = await sb.from(table).select('member_id,type,amount,currency').eq('community_id', CID()); if (r.error) throw r.error; data = r.data||[]; }
+  try {
+    const r = await sb.from(table).select('*').eq('community_id', CID());
+    if (r.error) throw r.error;
+    finAll = r.data || [];
+  }
   catch(e) {
     if (schoolTableMissing(e)) { main.innerHTML = finTabBar() + `<div style="max-width:560px;margin:30px auto;text-align:center"><div style="font-size:40px">${kind==='deposit'?'🏦':'🐷'}</div><div style="font-size:15px;font-weight:700;margin:10px 0 6px">${t('DB 설정이 필요해요','Database setup required')}</div><div style="font-size:13px;color:var(--ink3)">${t('Supabase에서 ','Run ')}<b>${kind==='deposit'?'db/예치금_DB설치.sql':'db/용돈기입장_DB설치.sql'}</b>${t(' 을 실행하세요.',' in Supabase.')}</div></div>`; return; }
     main.innerHTML = finTabBar() + `<div style="color:#b91c1c;padding:20px;text-align:center;font-size:13px">${t('불러오기 실패: ','Failed to load: ')}${e.message||e}</div>`; return;
   }
-  const balMap = {};
-  data.forEach(e => { const cur=e.currency||'원'; const sign = kind==='allowance' ? (e.type==='income'?1:-1) : (e.type==='in'?1:-1); if(!balMap[e.member_id]) balMap[e.member_id]={}; balMap[e.member_id][cur]=(balMap[e.member_id][cur]||0)+sign*(Number(e.amount)||0); });
+
+  const isAllow = kind === 'allowance';
+  const range = finRange();
   const students = tuiRowStudents();
+  const ids = new Set(students.map(s => s.id));
+  // 목록에 없는 사람(졸업·이동)의 기록까지 합계에 들어가면 화면과 숫자가 어긋난다
+  const scoped   = finAll.filter(e => ids.has(e.member_id));
+  const inRange  = scoped.filter(e => finInRange(e, range));
+
+  const byStu = {};
+  scoped.forEach(e => { (byStu[e.member_id] = byStu[e.member_id] || []).push(e); });
+
   const rows = students.map(s => {
-    const b = balMap[s.id]||{};
-    const parts = Object.keys(b).length ? Object.entries(b).map(([c,v])=>allowMoney(v,c)).join(' · ') : allowMoney(0,'원');
-    const open = finExpandId===s.id;
+    const mine  = byStu[s.id] || [];
+    const per   = finSumBy(mine.filter(e => finInRange(e, range)));
+    const all   = finSumBy(mine);
+    const open  = finExpandId === s.id;
+    const spent = finMoneyOf(per, 'out');
+    const hasSpent = Object.keys(per).some(c => (per[c].out || 0) > 0.004);
     return `<div style="border:1px solid ${open?'#2a5298':'var(--border)'};border-radius:11px;margin-bottom:8px;background:var(--surface);overflow:hidden">
       <div onclick="finToggleStudent('${s.id}')" style="display:flex;align-items:center;gap:12px;padding:11px 14px;cursor:pointer">
         <div style="width:34px;height:34px;border-radius:9px;background:${s.color||'#1d3a5f'};display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:700;flex-shrink:0">${s.initials||s.name?.[0]||'?'}</div>
-        <div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:700;color:var(--ink)">${escHtml(s.name)}</div><div style="font-size:11px;color:var(--ink3)">${s.grade||''}${s360GroupName(s.group_id)?` · ${s360GroupName(s.group_id)}`:''}</div></div>
-        <div style="font-size:15px;font-weight:800;color:var(--adeep);white-space:nowrap">${parts}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:14px;font-weight:700;color:var(--ink)">${escHtml(s.name)}</div>
+          <div style="font-size:11px;color:var(--ink3)">${s.grade||''}${s360GroupName(s.group_id)?` · ${s360GroupName(s.group_id)}`:''}</div>
+        </div>
+        <div style="text-align:right;white-space:nowrap">
+          <div style="font-size:15px;font-weight:800;color:var(--adeep)">${finMoneyOf(all,'net')}</div>
+          <div style="font-size:10.5px;color:${hasSpent?'#b91c1c':'var(--ink3)'};margin-top:1px">${isAllow?t('사용','spent'):t('출금','withdrawn')} ${spent}</div>
+        </div>
+        <button onclick="finStatementPdf('${s.id}',event)" title="${t('이 기간 내역서 PDF','Statement PDF for this period')}"
+          style="flex-shrink:0;width:32px;height:32px;border:1px solid var(--border);border-radius:9px;background:var(--surface);cursor:pointer;font-size:14px">📄</button>
         <span style="color:${open?'#2a5298':'var(--ink3)'};font-size:16px;transition:transform .15s var(--ease-out);transform:rotate(${open?'90':'0'}deg)">›</span>
       </div>
       ${open ? `<div id="fin-inline" style="padding:0 14px 4px">${finInlineEditor()}</div>` : ''}
     </div>`;
   }).join('');
+
   main.innerHTML = `<div class="spage" style="max-width:1200px">
     ${finTabBar()}
-    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
-      <div style="font-size:16px;font-weight:800;color:var(--ink)">${kind==='deposit'?t('🏦 예치금 잔액','🏦 Deposit balance'):t('🐷 용돈 잔액','🐷 Allowance balance')}</div>
-      <span style="font-size:11.5px;color:var(--ink3)">${kind==='deposit'?t('학생을 누르면 바로 입금·출금을 기록해요','Tap a student to record a deposit or withdrawal'):t('학생을 누르면 바로 수입·지출을 기록해요','Tap a student to record income or an expense')}</span>
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+      <div>
+        <div style="font-size:16px;font-weight:800;color:var(--ink)">${isAllow?t('🐷 용돈','🐷 Allowance'):t('🏦 예치금','🏦 Deposit')}</div>
+        <div style="font-size:11.5px;color:var(--ink3);margin-top:2px">${isAllow?t('학생을 누르면 바로 수입·지출을 기록해요 · 📄 를 누르면 그 기간 내역서를 PDF로 받습니다','Tap a student to record income or an expense · 📄 downloads a statement for the period'):t('학생을 누르면 바로 입금·출금을 기록해요 · 📄 를 누르면 그 기간 내역서를 PDF로 받습니다','Tap a student to record a deposit or withdrawal · 📄 downloads a statement for the period')}</div>
+      </div>
+      ${finPeriodBar()}
+    </div>
+    ${finSummaryCards(inRange, scoped, isAllow)}
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+      <span style="font-size:12px;color:var(--ink3);font-weight:600">${t(`학생 ${students.length}명`, `${students.length} students`)} · ${t(`${finPeriodLabel()} 기록 ${inRange.length}건`, `${inRange.length} entries in ${finPeriodLabel()}`)}</span>
       <div style="flex:1"></div>${finGroupChips()}
     </div>
     ${students.length ? rows : `<div style="padding:30px;text-align:center;color:var(--ink3);font-size:13px">${t('학생이 없어요','No students')}</div>`}
@@ -21658,8 +21866,12 @@ function renderDeposit(list) {
 function allowWon(n) { return (Number(n)||0).toLocaleString('ko-KR') + '원'; }
 function allowMoney(n, cur) {
   n = Number(n) || 0;
-  return cur === '$' ? '$' + n.toLocaleString('en-US', { maximumFractionDigits: 2 })
-                     : n.toLocaleString('ko-KR') + '원';
+  // 마이너스는 통화기호 앞에 붙인다. 전에는 '$-4.5' 처럼 나왔다.
+  // 달러는 센트를 늘 두 자리로 — 돈은 $4.5 보다 $4.50 이 맞다.
+  const neg = n < 0 ? '-' : '', a = Math.abs(n);
+  return cur === '$'
+    ? neg + '$' + a.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    : neg + a.toLocaleString('ko-KR') + '원';
 }
 function allowCurrencies() {
   const set = [...new Set(allowEntries.map(e => e.currency || '원'))];
