@@ -1742,6 +1742,9 @@ async function doSignUp() {
 
     const colors = ['#1d3a5f','#2a5298','#6F8A5C','#5A7C8B','#7B6BA0','#2a7ab8','#B05865','#4C7363'];
     const color = colors[Math.floor(Math.random()*colors.length)];
+    // 넣고 나서 다시 읽지 않는다. 읽기 권한(RLS)은 '로그인한 사람'에게만 열려 있는데,
+    // 이메일 확인을 켜 두면 가입 시점엔 아직 로그인 전이라 방금 넣은 행도 못 읽는다.
+    // 그러면 가입은 됐는데 화면엔 실패라고 뜬다. 넣는 것만 확인하면 충분하다.
     const { error: mErr } = await sb.from('members').insert({
       id: uid, name: nick, initials: nick[0], color,
       role: role === 'teacher' ? '교사' : role === 'staff' ? '간사' : '학생',
@@ -1749,7 +1752,7 @@ async function doSignUp() {
       email, birth_date: birth,
       status: 'pending',
       community_id: communityId,
-    }).select().single();
+    });
 
     if (mErr) throw mErr;
 
