@@ -9804,6 +9804,109 @@ async function switchToCommunity(communityId) {
   setTimeout(() => location.reload(), 500);
 }
 
+// ── 새 멤버 기본 채팅방 ──────────────────────────────────────────
+// 승인만 하고 채팅방에 안 넣으면, 그 사람은 로그인은 되는데 화면이 텅 빈다.
+// 본인 눈엔 '계정이 사라진' 것처럼 보인다. 실제로 그렇게 12명이 방치됐다.
+// 그래서 ① 공동체마다 기본 방을 정해 두고 ② 승인하는 순간 자동으로 넣고
+// ③ 정해 둔 방이 없으면 조용히 넘어가지 않고 관리자에게 알린다.
+let _wcChannels = [];   // 설정 화면에서 고르는 중인 채널 목록
+
+async function welcomeChannelsOf(communityId) {
+  const cid = communityId || CID();
+  let ids = [];
+  try {
+    const { data } = await sb.from('communities').select('welcome_channel_ids').eq('id', cid).maybeSingle();
+    ids = (data && data.welcome_channel_ids) || [];
+  } catch(_) {}   // 컬럼이 아직 없으면 아래 고정 채널로 넘어간다
+  if (ids.length) {
+    const { data } = await sb.from('channels').select('id,name').eq('community_id', cid).in('id', ids);
+    if (data && data.length) return data;
+  }
+  // 예전 방식 — 고정(📌) 채널
+  const { data: pin } = await sb.from('channels').select('id,name')
+    .eq('community_id', cid).eq('pinned', true).neq('kind', 'dm');
+  return pin || [];
+}
+
+// 한 사람을 기본 채팅방에 넣는다. 넣은 방 수를 돌려준다.
+async function joinWelcomeChannels(memberId, communityId, opts) {
+  const quiet = !!(opts && opts.quiet);
+  const chs = await welcomeChannelsOf(communityId);
+  if (!chs.length) {
+    if (!quiet) showUploadToast(t('⚠️ 기본 채팅방이 없어 이 멤버는 어느 방에도 안 들어갔어요 — 공동체 설정에서 정해주세요',
+                                  '⚠️ No default chat rooms — this member joined none. Set them in community settings'));
+    return 0;
+  }
+  const rows = chs.map(ch => ({ channel_id: ch.id, member_id: memberId }));
+  const { error } = await sb.from('channel_members')
+    .upsert(rows, { onConflict: 'channel_id,member_id', ignoreDuplicates: true });
+  if (error) {
+    if (!quiet) showUploadToast(t('채팅방 넣기 실패: ','Could not add to chat rooms: ') + error.message);
+    return 0;
+  }
+  return chs.length;
+}
+
+// 이미 승인됐는데 방이 하나도 없는 사람들을 한 번에 넣는다.
+async function backfillWelcomeChannels(communityId) {
+  const cid = communityId || CID();
+  const chs = await welcomeChannelsOf(cid);
+  if (!chs.length) { showUploadToast(t('먼저 기본 채팅방을 골라 주세요','Pick the default chat rooms first')); return; }
+
+  const { data: mems, error: me } = await sb.from('members').select('id,name')
+    .eq('community_id', cid).eq('status', 'approved');
+  if (me) { showUploadToast(t('멤버를 불러오지 못했어요: ','Could not load members: ') + me.message); return; }
+  const ids = (mems || []).map(m => m.id);
+  if (!ids.length) { showUploadToast(t('승인된 멤버가 없어요','No approved members')); return; }
+
+  // 이 공동체 채널에 이미 들어가 있는 사람
+  const { data: chAll } = await sb.from('channels').select('id').eq('community_id', cid);
+  const chIds = (chAll || []).map(c => c.id);
+  const joined = new Set();
+  if (chIds.length) {
+    const { data: cm } = await sb.from('channel_members').select('member_id').in('channel_id', chIds);
+    (cm || []).forEach(r => joined.add(r.member_id));
+  }
+  const missing = (mems || []).filter(m => !joined.has(m.id));
+  if (!missing.length) { showUploadToast(t('✅ 방이 없는 멤버가 없어요','✅ Everyone is already in a room')); return; }
+
+  const who = missing.slice(0, 5).map(m => m.name).join(', ') + (missing.length > 5 ? t(` 외 ${missing.length-5}명`, ` and ${missing.length-5} more`) : '');
+  if (!confirm(t(`채팅방이 하나도 없는 ${missing.length}명을 기본 채팅방 ${chs.length}곳에 넣을까요?\n\n${who}\n\n방: ${chs.map(c=>c.name).join(', ')}`,
+                 `Add ${missing.length} member(s) with no rooms to ${chs.length} default room(s)?\n\n${who}\n\nRooms: ${chs.map(c=>c.name).join(', ')}`))) return;
+
+  const rows = [];
+  missing.forEach(m => chs.forEach(ch => rows.push({ channel_id: ch.id, member_id: m.id })));
+  const { error } = await sb.from('channel_members')
+    .upsert(rows, { onConflict: 'channel_id,member_id', ignoreDuplicates: true });
+  if (error) { showUploadToast(t('실패: ','Failed: ') + error.message); return; }
+  showUploadToast(t(`✅ ${missing.length}명을 넣었어요`, `✅ Added ${missing.length} member(s)`));
+  renderCommunitySettings();
+}
+
+// 설정 화면의 채널 고르기 칸
+async function wcFillPicker(communityId, selected) {
+  const box = document.getElementById('cs-wc-list');
+  if (!box) return;
+  const { data, error } = await sb.from('channels').select('id,name,pinned')
+    .eq('community_id', communityId).neq('kind', 'dm').order('pinned', { ascending:false }).order('name');
+  if (error) { box.innerHTML = `<div style="font-size:11.5px;color:#b91c1c">${escHtml(error.message)}</div>`; return; }
+  _wcChannels = data || [];
+  if (!_wcChannels.length) { box.innerHTML = `<div style="font-size:11.5px;color:var(--ink3)">채팅방이 아직 없어요.</div>`; return; }
+  const sel = new Set(selected || []);
+  box.innerHTML = _wcChannels.map(ch => `<label style="display:inline-flex;align-items:center;gap:6px;padding:6px 11px;border:1.5px solid ${sel.has(ch.id)?'#1d3a5f':'var(--border)'};border-radius:9px;background:${sel.has(ch.id)?'var(--asoft)':'var(--surface)'};cursor:pointer;font:600 12.5px var(--font);color:var(--ink2);margin:0 6px 6px 0">
+      <input type="checkbox" class="cs-wc" value="${ch.id}" ${sel.has(ch.id)?'checked':''} onchange="wcMark(this)">
+      ${ch.pinned?'📌 ':''}${escHtml(ch.name)}
+    </label>`).join('');
+}
+function wcMark(el) {
+  const l = el.closest('label'); if (!l) return;
+  l.style.borderColor = el.checked ? '#1d3a5f' : 'var(--border)';
+  l.style.background  = el.checked ? 'var(--asoft)' : 'var(--surface)';
+}
+function wcPicked() {
+  return [...document.querySelectorAll('.cs-wc:checked')].map(x => x.value);
+}
+
 async function renderCommunitySettings() {
   const _seq = _admSeq;
   const area = document.getElementById('admin-content');
@@ -9896,6 +9999,24 @@ async function renderCommunitySettings() {
           </div>
           <input type="file" id="cs-logo-input" accept="image/*" style="display:none" onchange="uploadCommLogo(this,'${comm.id}')"/>
           <input type="hidden" id="cs-logo-url" value="${comm.logo_url||''}"/>
+        </div>
+
+        <!-- 새 멤버 기본 채팅방 -->
+        <div style="border-top:1px solid var(--border);margin:16px 0 14px;padding-top:14px">
+          <div style="font-size:12px;font-weight:600;color:var(--ink3);margin-bottom:6px">💬 새 멤버 기본 채팅방</div>
+          <div id="cs-wc-list" style="margin-bottom:6px"><span style="font-size:11.5px;color:var(--ink3)">불러오는 중...</span></div>
+          <div style="font-size:11px;color:var(--ink3);line-height:1.65">
+            가입을 <b>승인하는 순간</b> 여기서 고른 방에 자동으로 들어갑니다.<br>
+            아무것도 안 고르면 📌 고정된 방을 씁니다. 고정된 방도 없으면 <b>아무 방에도 안 들어갑니다.</b>
+          </div>
+          <div style="font-size:11px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:9px;padding:9px 11px;line-height:1.7;margin-top:8px;word-break:keep-all">
+            ⚠️ 방이 하나도 없는 사람은 로그인해도 <b>채팅이 텅 비어 보입니다.</b>
+            본인은 "계정이 사라졌다"고 느낍니다. 아래 버튼으로 이미 그런 상태인 사람들을 한 번에 넣을 수 있어요.
+          </div>
+          <button onclick="backfillWelcomeChannels('${comm.id}')"
+            style="margin-top:9px;height:36px;padding:0 14px;border:1.5px solid var(--border);border-radius:9px;background:var(--surface);color:var(--adeep);font:700 12.5px var(--font);cursor:pointer">
+            🔁 채팅방 없는 멤버 한 번에 넣기
+          </button>
         </div>
 
         <!-- 통화 -->
@@ -10069,6 +10190,7 @@ async function renderCommunitySettings() {
   renderSealsAdmin();
   loadGcalInfo();
   renderGcalAcl();
+  wcFillPicker(comm.id, comm.welcome_channel_ids || []);
 }
 
 // ── 기록부 기관 프리셋 CRUD ──
@@ -10728,6 +10850,8 @@ async function saveCommSettings(commId) {
   }
   // 캘린더 연결은 [이 ID 로 연결] · [이걸로 연결] 버튼이 맡는다.
   // 여기서 같이 저장하면, 빈 칸으로 저장할 때 연결이 끊긴다.
+  const wcBox = document.getElementById('cs-wc-list');
+  if (wcBox && !wcBox.querySelector('span')) updateData.welcome_channel_ids = wcPicked();
   const bkEl = document.getElementById('cs-books-key');
   if (bkEl) updateData.books_api_key = bkEl.value.trim() || null;
   if (logoUrl) updateData.logo_url = logoUrl;
@@ -11038,7 +11162,10 @@ async function viewCommunityMembers(communityId, communityName) {
 async function approveInCommunity(id, cid, cname) {
   const { error } = await sb.from('members').update({ status: 'approved' }).eq('id', id);
   if (error) { showUploadToast('승인 실패 😥'); return; }
-  showUploadToast('✅ 승인했어요');
+  // 이 경로에는 자동 참여가 아예 빠져 있었다. 그래서 총관리자가 승인한 사람은
+  // 로그인해도 채팅이 텅 비어 있었다.
+  const n = await joinWelcomeChannels(id, cid);
+  showUploadToast(n ? `✅ 승인했어요 · 채팅방 ${n}곳에 넣었어요` : '✅ 승인했어요');
   viewCommunityMembers(cid, cname);
 }
 async function rejectInCommunity(id, cid, cname) {
@@ -11633,13 +11760,11 @@ function copyBulkCredentials() {
 
 async function approveMember(id) {
   await sb.from('members').update({ status: 'approved' }).eq('id', id);
-  // 해당 공동체 고정 채널에만 자동 추가
-  const { data: commChannels } = await sb.from('channels').select('*')
-    .eq('community_id', CID()).eq('pinned', true);
-  if (commChannels?.length) {
-    const inserts = commChannels.map(ch => ({ channel_id: ch.id, member_id: id }));
-    await sb.from('channel_members').upsert(inserts, { onConflict: 'channel_id,member_id', ignoreDuplicates: true });
-  }
+  // 그 멤버가 속한 공동체의 기본 채팅방에 넣는다.
+  // 예전엔 CID()(승인하는 사람의 공동체)를 봐서, 총관리자가 남의 공동체 사람을
+  // 승인하면 엉뚱한 공동체 방에 넣었다.
+  const mcid = (members && members[id] && members[id].community_id) || CID();
+  await joinWelcomeChannels(id, mcid);
   renderAdminMembers();
   // 공동체 멤버 목록 새로고침
   const { data: mems } = await sb.from('members').select('*').eq('community_id', CID());
