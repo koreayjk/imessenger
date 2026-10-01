@@ -145,8 +145,10 @@ async function resolveRoot(req: Request, wantedCommunityId: string) {
     .select("community_id, community_role").eq("id", user.id).single();
   if (!me) { const e: any = new Error("공동체 정보를 찾을 수 없습니다"); e.status = 403; throw e; }
 
-  // 클라이언트가 보낸 공동체 ID 는 총관리자일 때만 인정
-  const communityId = (me.community_role === "super_admin" && wantedCommunityId)
+  // 클라이언트가 보낸 공동체 ID 는 공동체를 넘나들 수 있는 사람만 인정
+  // (총관리자 · 부총관리자. 부총관리자는 읽기만 하지만 '보는 곳'이 따라와야 한다)
+  const canCross = me.community_role === "super_admin" || me.community_role === "vice_admin";
+  const communityId = (canCross && wantedCommunityId)
     ? wantedCommunityId : me.community_id;
 
   const { data: comm } = await admin.from("communities")

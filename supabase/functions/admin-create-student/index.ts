@@ -32,7 +32,9 @@ Deno.serve(async (req) => {
     if (uErr || !user) return json({ error: "로그인이 필요합니다" }, 401);
 
     const { data: me } = await admin.from("members").select("community_role, community_id").eq("id", user.id).single();
-    if (!me || !["super_admin", "community_admin", "admin_officer"].includes(me.community_role)) {
+    // 부총관리자도 '자기 소속 공동체'에서는 관리자다.
+    // 아래에서 학생은 언제나 me.community_id 로 만들기 때문에 남의 공동체에는 손대지 못한다.
+    if (!me || !["super_admin", "community_admin", "admin_officer", "vice_admin"].includes(me.community_role)) {
       return json({ error: "학생 등록 권한이 없습니다 (관리자 전용)" }, 403);
     }
 

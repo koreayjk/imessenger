@@ -54,7 +54,8 @@ async function requireAdmin(req: Request, community_id: string) {
   const me = await getCaller(req);
   if (!me) return { ok: false, msg: "로그인이 필요합니다" };
   const isSuper = me.community_role === "super_admin";
-  const isAdmin = ["community_admin", "admin_officer"].includes(me.community_role) && me.community_id === community_id;
+  // 부총관리자는 자기 소속 공동체에서만 관리자 (남의 매점 비밀번호는 못 바꾼다)
+  const isAdmin = ["community_admin", "admin_officer", "vice_admin"].includes(me.community_role) && me.community_id === community_id;
   if (!isSuper && !isAdmin) return { ok: false, msg: "매점 비밀번호는 공동체 관리자만 설정할 수 있어요" };
   return { ok: true };
 }
@@ -63,7 +64,9 @@ async function requireAdmin(req: Request, community_id: string) {
 async function requireMember(req: Request, community_id: string) {
   const me = await getCaller(req);
   if (!me) return { ok: false, msg: "로그인이 필요합니다" };
-  if (me.community_role === "super_admin" || me.community_id === community_id) return { ok: true, role: me.community_role };
+  // 부총관리자는 모든 공동체의 매점 현황을 볼 수 있다 (보기 전용)
+  if (me.community_role === "super_admin" || me.community_role === "vice_admin"
+      || me.community_id === community_id) return { ok: true, role: me.community_role };
   return { ok: false, msg: "권한이 없습니다" };
 }
 
