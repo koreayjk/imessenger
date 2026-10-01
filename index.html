@@ -1072,7 +1072,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
         <div style="width:36px;height:36px;border-radius:11px;background:var(--s3);display:flex;align-items:center;justify-content:center;font-size:18px">📅</div>
         <div style="flex:1">
           <div style="font-size:15px;font-weight:700" id="cal-month-title">2026년 5월</div>
-          <div style="font-size:12px;color:var(--ink3);margin-top:1px">IMUSA 공동체 일정</div>
+          <div style="font-size:12px;color:var(--ink3);margin-top:1px" id="cal-comm-name">공동체 일정</div>
         </div>
         <button id="gcal-sync-btn" onclick="syncGoogleCalendar()" title="구글 캘린더와 주고받기"
           style="height:34px;padding:0 13px;border-radius:10px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);font:600 12.5px var(--font);cursor:pointer;margin-right:7px">🔄 구글 캘린더</button>
@@ -1606,6 +1606,38 @@ const SUPABASE_URL = 'https://bbfvnmlrdtzmcwfadjqw.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJiZnZubWxyZHR6bWN3ZmFkanF3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1Njg1OTIsImV4cCI6MjA5ODE0NDU5Mn0.nJbRfTkcjVxsb_BO6sAP_0lOxQ--wTFXVN9tBH1IPNA';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+// 공동체 이름 — 화면 여기저기에 'IMUSA' 가 박혀 있어 다른 공동체에서도 그렇게 보였다.
+let COMM_NAME = '';
+
+// DB 시각(UTC)을 보는 사람의 시간대로 바꿔 보여준다.
+// 예전엔 ISO 문자열을 그냥 잘라 썼는데, 그러면 UTC 가 그대로 찍힌다.
+// 한국에서 오후 1시 4분에 한 일이 04:04 로 보이고,
+// 새벽(KST 00~09시)에 한 일은 날짜까지 하루 전으로 보인다.
+// ※ date 컬럼(due_date, service_date 처럼 시간대가 없는 날짜)에는 쓰면 안 된다.
+//    그건 UTC 자정으로 해석돼 오히려 하루가 밀린다.
+function _tsDate(ts) {
+  if (!ts) return null;
+  const d = new Date(ts);
+  return isNaN(d.getTime()) ? null : d;
+}
+function fmtTs(ts) {        // 2026-10-01 13:04
+  const d = _tsDate(ts);
+  if (!d) return String(ts || '').slice(0, 16).replace('T', ' ');
+  const z = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())} ${z(d.getHours())}:${z(d.getMinutes())}`;
+}
+function fmtTsDay(ts) {     // 2026-10-01
+  const d = _tsDate(ts);
+  if (!d) return String(ts || '').slice(0, 10);
+  return ymdStr(d);
+}
+
+// 공동체 이름이 박혀 있던 자리를 실제 이름으로 바꾼다
+function applyCommName() {
+  const el = document.getElementById('cal-comm-name');
+  if (el) el.textContent = COMM_NAME ? t(`${COMM_NAME} 공동체 일정`, `${COMM_NAME} calendar`) : t('공동체 일정','Community calendar');
+}
+
 // 공동체가 쓰는 돈 단위. 한국 공동체는 '원', 미국 공동체는 '$'.
 // 금액 입력칸마다 ₩/$ 를 고르게 하지 않고 여기 하나로 통일한다.
 let COMM_CUR = '원';
@@ -1786,9 +1818,10 @@ function t(ko, en) { return APP_LANG === 'en' ? (en != null ? en : ko) : ko; }
 async function loadCommunityLang() {
   const prev = APP_LANG;   // 상수들이 평가된 시점의 언어
   try {
-    const { data } = await sb.from('communities').select('language,currency').eq('id', CID()).single();
+    const { data } = await sb.from('communities').select('language,currency,name').eq('id', CID()).single();
     if (data && data.language) APP_LANG = data.language;
     if (data && data.currency) COMM_CUR = data.currency;
+    if (data && data.name) { COMM_NAME = data.name; applyCommName(); }
     localStorage.setItem('app_lang', APP_LANG);
     localStorage.setItem('comm_cur_' + CID(), COMM_CUR);
   } catch(_) {
@@ -4688,7 +4721,7 @@ const HOME_WIDGETS = {
             <div style="display:flex;align-items:center;gap:7px;margin-bottom:3px;flex-wrap:wrap">
               ${n.pinned ? `<span style="font-size:10.5px;background:var(--asoft);color:var(--adeep);padding:1px 7px;border-radius:6px;font-weight:700">📌</span>` : ''}
               <span style="font-size:13.5px;font-weight:700;color:var(--ink)">${escHtml(n.title||'')}</span>
-              <span style="font-size:11px;color:var(--ink3)">${String(n.created_at||'').slice(0,10)}${n.created_by_name ? ' · ' + escHtml(n.created_by_name) : ''}</span>
+              <span style="font-size:11px;color:var(--ink3)">${fmtTsDay(n.created_at)}${n.created_by_name ? ' · ' + escHtml(n.created_by_name) : ''}</span>
             </div>
             ${n.body ? `<div style="font-size:12.5px;color:var(--ink2);line-height:1.65;white-space:pre-wrap;max-height:80px;overflow:auto">${escHtml(n.body)}</div>` : ''}`)).join('')}
         </div>` : hwEmpty(t('등록된 공지가 없어요','No notices yet'))));
@@ -4965,7 +4998,7 @@ const HOME_WIDGETS = {
             <div style="width:4px;align-self:stretch;min-height:26px;border-radius:3px;background:var(--gold, #B89146);flex-shrink:0"></div>
             <div style="min-width:0;flex:1">
               <div style="font-size:13px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(d.title||'')}</div>
-              <div style="font-size:11px;color:var(--ink3);margin-top:1px">${escHtml(d.submitter_name||'')}${d.template_name ? ' · ' + escHtml(d.template_name) : ''}${d.created_at ? ' · ' + String(d.created_at).slice(0,10) : ''}</div>
+              <div style="font-size:11px;color:var(--ink3);margin-top:1px">${escHtml(d.submitter_name||'')}${d.template_name ? ' · ' + escHtml(d.template_name) : ''}${d.created_at ? ' · ' + fmtTsDay(d.created_at) : ''}</div>
             </div>
           </div>`).join('')}
         </div>` : hwEmpty(t('결재할 문서가 없어요 👍','Nothing waiting on you 👍'))));
@@ -15464,7 +15497,7 @@ function apprMyRole(d) {
 // 내가 결재한 날
 function apprMyActedAt(d) {
   const mine = (d.line || []).find(a => String(a.approver_id) === String(ME.id));
-  return (mine && mine.acted_at) ? String(mine.acted_at).slice(0,10) : '';
+  return (mine && mine.acted_at) ? fmtTsDay(mine.acted_at) : '';
 }
 
 async function setApprArchiveAll(v) { apprArchiveAll = v; _apprCache = { kind:null, docs:[] }; await renderApprList('archive'); }
@@ -15542,7 +15575,7 @@ async function renderApprList(kind, useCache){
       <span style="font-size:20px">${d.form_data&&d.form_data._itemsMeta?'💰':'📄'}</span>
       <div style="flex:1;min-width:0">
         <div style="font-size:14px;font-weight:700;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(d.title)}</div>
-        <div style="font-size:11.5px;color:var(--ink3)">${escHtml(d.template_name||'')} · ${t('상신','By')} ${escHtml(d.submitter_name||'')} · ${(d.created_at||'').slice(0,10)}</div>
+        <div style="font-size:11.5px;color:var(--ink3)">${escHtml(d.template_name||'')} · ${t('상신','By')} ${escHtml(d.submitter_name||'')} · ${fmtTsDay(d.created_at)}</div>
         ${kind==='archive' ? `<div style="font-size:11px;color:var(--adeep);font-weight:600;margin-top:2px">${apprMyRole(d)}${apprMyActedAt(d)?` · ${apprMyActedAt(d)}`:''}</div>` : ''}
       </div>
       <div style="text-align:right;flex-shrink:0">
@@ -15569,11 +15602,11 @@ async function openApprDoc(id){
     <div style="width:22px;height:22px;border-radius:50%;background:${a.status==='approved'?'#15803d':a.status==='rejected'?'#c0392b':a.status==='pending'?'#b45309':'#cbd5e1'};color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">${i+1}</div>
     <div style="flex:1"><div style="font-size:13.5px;font-weight:600">${escHtml(a.approver_name)}</div>${a.comment?`<div style="font-size:11.5px;color:var(--ink3)">"${escHtml(a.comment)}"</div>`:''}</div>
     ${a.sign_url?`<img src="${imAttr(a.sign_url)}" onerror="this.remove()" style="height:30px;max-width:96px;object-fit:contain;flex-shrink:0" alt="${t('서명','signature')}"/>`:''}
-    <div style="text-align:right">${apprStepBadge(a.status)}${a.acted_at?`<div style="font-size:10.5px;color:var(--ink3)">${a.acted_at.slice(0,16).replace('T',' ')}</div>`:''}</div>
+    <div style="text-align:right">${apprStepBadge(a.status)}${a.acted_at?`<div style="font-size:10.5px;color:var(--ink3)">${fmtTs(a.acted_at)}</div>`:''}</div>
   </div>`).join('');
   const shareHtml = (d.shares||[]).length ? (d.shares.map(s=>`<span style="font-size:11.5px;color:#1d3a5f;background:var(--asoft);padding:2px 9px;border-radius:99px">${escHtml(s.member_name)}</span>`).join(' ')) : `<span style="font-size:12px;color:var(--ink3)">${t('없음','None')}</span>`;
   const attachHtml = (d.attachments||[]).length ? d.attachments.map(f=>`<a href="${f.url}" target="_blank" style="display:inline-flex;align-items:center;gap:5px;font-size:12.5px;color:var(--accent);text-decoration:none;margin-right:10px">📎 ${escHtml(f.name)}</a>`).join('') : `<span style="font-size:12px;color:var(--ink3)">${t('없음','None')}</span>`;
-  const histHtml = (d.history||[]).map(h=>`<div style="font-size:11.5px;color:var(--ink3);padding:2px 0">${(h.ts||'').slice(0,16).replace('T',' ')} · <b style="color:var(--ink2)">${escHtml(h.actor_name)}</b> ${escHtml(h.action)}${h.comment?` — ${escHtml(h.comment)}`:''}</div>`).join('');
+  const histHtml = (d.history||[]).map(h=>`<div style="font-size:11.5px;color:var(--ink3);padding:2px 0">${fmtTs(h.ts)} · <b style="color:var(--ink2)">${escHtml(h.actor_name)}</b> ${escHtml(h.action)}${h.comment?` — ${escHtml(h.comment)}`:''}</div>`).join('');
 
   main.innerHTML = `<div class="spage" style="max-width:820px">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
@@ -15585,7 +15618,7 @@ async function openApprDoc(id){
     </div>
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:22px;margin-bottom:16px">
       <div style="font-size:19px;font-weight:800;color:var(--ink)">${escHtml(d.title)}</div>
-      <div style="font-size:12px;color:var(--ink3);margin:4px 0 16px">${escHtml(d.template_name||'')} · ${t('상신','By')} ${escHtml(d.submitter_name||'')} · ${(d.created_at||'').slice(0,16).replace('T',' ')}</div>
+      <div style="font-size:12px;color:var(--ink3);margin:4px 0 16px">${escHtml(d.template_name||'')} · ${t('상신','By')} ${escHtml(d.submitter_name||'')} · ${fmtTs(d.created_at)}</div>
       ${apprFormReadHtml(d.form_data||{})}
       <div style="margin-top:16px"><div style="font-size:11px;color:var(--ink3);font-weight:700;margin-bottom:5px">${t('첨부','Attachments')}</div>${attachHtml}</div>
     </div>
@@ -15740,7 +15773,7 @@ function printApprDoc(id){
         a.sign_url ? `<img src="${imAttr(a.sign_url)}" onerror="this.remove()"/>`
                    : (a.status==='approved'||a.status==='rejected' ? stWord[a.status] : '')
       }</td>`).join('')}</tr>
-      <tr>${line.map(a=>`<td class="adt">${a.acted_at?String(a.acted_at).slice(0,10).replace(/-/g,'.').slice(2):''}</td>`).join('')}</tr>
+      <tr>${line.map(a=>`<td class="adt">${a.acted_at?fmtTsDay(a.acted_at).replace(/-/g,'.').slice(2):''}</td>`).join('')}</tr>
     </table>` : '';
 
     // ── 머리글: 기관 + 결재란 ──
@@ -15755,11 +15788,11 @@ function printApprDoc(id){
     // ── 제목 + 문서 정보 ── (완결 안 된 문서는 제목 옆에 상태 도장을 찍는다)
     const wmWord = { pending:t('진행 중','IN PROGRESS'), rejected:t('반 려','REJECTED'), canceled:t('회 수','WITHDRAWN') }[d.status] || '';
     const wm = wmWord ? `<div class="awmrow"><span class="awm">${escHtml(wmWord)}</span></div>` : '';
-    const docNo = `${String(d.created_at||'').slice(0,10).replace(/-/g,'')}-${String(d.id||'').replace(/-/g,'').slice(0,4).toUpperCase()}`;
+    const docNo = `${fmtTsDay(d.created_at).replace(/-/g,'')}-${String(d.id||'').replace(/-/g,'').slice(0,4).toUpperCase()}`;
     const titleHtml = `${wm}<div class="atitle"><h1>${escHtml(d.title||'')}</h1></div>
       <table class="ameta"><tr>
         <th>${t('문서번호','Doc. No.')}</th><td>${escHtml(docNo)}</td>
-        <th>${t('상신일','Date')}</th><td>${String(d.created_at||'').slice(0,10).replace(/-/g,'. ')}</td>
+        <th>${t('상신일','Date')}</th><td>${fmtTsDay(d.created_at).replace(/-/g,'. ')}</td>
         <th>${t('상신자','Submitted by')}</th><td>${escHtml(d.submitter_name||'')}</td>
       </tr></table>`;
 
@@ -16309,7 +16342,7 @@ async function renderApprovalHub() {
           <button onclick="rejectLeave('${r.id}')" style="height:32px;padding:0 15px;border:1px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:9px;cursor:pointer;font:600 12px var(--font)">${t('반려','Reject')}</button>
           <button onclick="approveLeave('${r.id}')" style="height:32px;padding:0 16px;border:none;background:#2a7a5a;color:#fff;border-radius:9px;cursor:pointer;font:700 12px var(--font)">✅ ${t('승인 → 출석부 반영','Approve → apply to attendance')}</button>
         </div>`
-      : `<div style="font-size:11px;color:var(--ink3)">${r.status==='approved'?t('✅ 승인','✅ Approved'):t('↩︎ 반려','↩︎ Rejected')} · ${escHtml(r.decider_name||'')} ${r.decided_at?('· '+String(r.decided_at).slice(0,10)):''}${r.decision_note?` · ${escHtml(r.decision_note)}`:''}</div>`}
+      : `<div style="font-size:11px;color:var(--ink3)">${r.status==='approved'?t('✅ 승인','✅ Approved'):t('↩︎ 반려','↩︎ Rejected')} · ${escHtml(r.decider_name||'')} ${r.decided_at?('· '+fmtTsDay(r.decided_at)):''}${r.decision_note?` · ${escHtml(r.decision_note)}`:''}</div>`}
     </div>`;
   };
 
@@ -18436,7 +18469,7 @@ function trainNoteListHtml(x) {
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">
         <b style="font-size:13px;color:var(--ink)">${escHtml(n.author_name || t('이름 없음','Unknown'))}</b>
         ${n.rating ? `<span style="color:#e0a90a;font-size:12.5px">${trainStarsHtml(n.rating)}</span>` : ''}
-        <span style="font-size:11px;color:var(--ink3)">${String(n.created_at || '').slice(0,10)}</span>
+        <span style="font-size:11px;color:var(--ink3)">${fmtTsDay(n.created_at)}</span>
         ${canDel ? `<button onclick="deleteTrainNote('${n.id}','${x.id}')" style="margin-left:auto;border:none;background:transparent;cursor:pointer;color:var(--ink3);font-size:12px">${t('삭제','Delete')}</button>` : ''}
       </div>
       ${qaKeys.map(kk => `<div class="trqa"><div class="trqa-q">Q. ${escHtml(qText(kk) || t('질문','Question'))}</div><div class="trqa-a">${escHtml(ans[kk])}</div></div>`).join('')}
@@ -22311,14 +22344,14 @@ function renderImprove() {
     }).join('')}</div>` : '';
     const commentItems = cs.map(c => `
       <div style="display:flex;gap:8px;padding:7px 0;border-top:1px solid var(--border)">
-        <div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:700;color:${c.is_admin?'#DE911D':'var(--ink2)'}">${escHtml(c.author_name||'')}${c.is_admin?' 🛠':''} <span style="font-weight:400;color:var(--ink3);font-size:10.5px">${(c.created_at||'').slice(0,10)}</span></div><div style="font-size:12.5px;color:var(--ink);line-height:1.6;white-space:pre-wrap">${escHtml(c.content||'')}</div></div>
+        <div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:700;color:${c.is_admin?'#DE911D':'var(--ink2)'}">${escHtml(c.author_name||'')}${c.is_admin?' 🛠':''} <span style="font-weight:400;color:var(--ink3);font-size:10.5px">${fmtTsDay(c.created_at)}</span></div><div style="font-size:12.5px;color:var(--ink);line-height:1.6;white-space:pre-wrap">${escHtml(c.content||'')}</div></div>
         ${(c.author_id===ME.id||admin)?`<button onclick="deleteImproveComment('${c.id}','${it.id}')" style="border:none;background:transparent;cursor:pointer;color:var(--ink3);font-size:12px;flex-shrink:0">✕</button>`:''}
       </div>`).join('');
     return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:15px 17px;margin-bottom:12px">
       <div style="display:flex;align-items:flex-start;gap:10px">
         <div style="flex:1;min-width:0">
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">${improveStatusBadge(it.status||'pending')}<span style="font-size:15px;font-weight:800;color:var(--ink)">${escHtml(it.title||'')}</span></div>
-          <div style="font-size:11px;color:var(--ink3)">${escHtml(it.author_name||'')}${it.community_name?` · ${escHtml(it.community_name)}`:''} · ${(it.created_at||'').slice(0,10)}</div>
+          <div style="font-size:11px;color:var(--ink3)">${escHtml(it.author_name||'')}${it.community_name?` · ${escHtml(it.community_name)}`:''} · ${fmtTsDay(it.created_at)}</div>
         </div>
         ${(mine||admin)?`<button onclick="deleteImprovement('${it.id}')" title="${t('삭제','Delete')}" style="border:none;background:transparent;cursor:pointer;color:#c0392b;font-size:13px;flex-shrink:0">✕</button>`:''}
       </div>
