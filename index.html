@@ -18984,12 +18984,155 @@ function finCsvDownload() {
 // 브라우저 인쇄창을 열어 'PDF로 저장'을 고르면 파일로 떨어진다.
 // 기간 앞의 기록은 '이월 잔액' 한 줄로 접어 넣는다. 그래야 기간만 떼어 봐도
 // 남은 돈이 맞는다.
-function finStatementPdf(studentId, ev) {
+// ── 개인 내역서 — 기간을 골라서 뽑는다 ──────────────────────────
+// 화면 필터(이번 달)를 그대로 쓰면, 달이 막 바뀐 날엔 빈 종이가 나온다.
+// 10월 2일에 '10월 내역서'를 뽑으면 당연히 비어 있는데,
+// 뽑는 사람 눈에는 '기록이 사라진' 것처럼 보인다. 실제로 그렇게 보고됐다.
+// 그래서 ① 뽑기 전에 기간을 직접 고르게 하고
+//        ② 고른 기간에 기록이 없으면 그 학생의 기록 전체로 넓혀서 열어 주고
+//        ③ 몇 건이 잡히는지 미리 보여 준다.
+
+// finRange() 의 끝날짜는 비교용이라 '-31' 로 넉넉히 잡혀 있다.
+// 날짜 입력칸에 넣으려면 그 달의 진짜 마지막 날이어야 한다.
+function finMonthEnd(ym) {
+  const [y, m] = String(ym).split('-').map(Number);
+  return ymdStr(new Date(y, m, 0));
+}
+function finFixEnd(d) {
+  const t2 = String(d || '');
+  return /-31$/.test(t2) ? finMonthEnd(t2.slice(0, 7)) : t2;
+}
+
+function finStatementPicker(studentId, ev) {
   if (ev && ev.stopPropagation) ev.stopPropagation();
   const s = schoolStudents.find(x => x.id === studentId);
   if (!s) return;
   const isAllow = finKind === 'allowance';
+  const mine = finAll.filter(e => e.member_id === studentId);
+  if (!mine.length) { showUploadToast(t('이 학생은 아직 기록이 없어요','No records for this student yet')); return; }
+
+  const dates = mine.map(e => String(e.date || '')).filter(Boolean).sort();
+  const today = ymdStr(new Date());
   const r = finRange();
+  let from = r.from || dates[0] || '';
+  let to   = finFixEnd(r.to) || today;
+  // 지금 화면 필터로는 한 건도 안 잡히면 기록 전체로 넓힌다
+  const widened = !mine.some(e => finInRange(e, { from, to }));
+  if (widened) { from = dates[0] || ''; to = today; }
+
+  const ov = document.createElement('div');
+  ov.id = 'fin-stmt-overlay';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:18px';
+  const inp = 'flex:1;min-width:0;height:38px;padding:0 10px;border:1.5px solid var(--border);border-radius:9px;font:600 13px var(--font);background:var(--s2);color:var(--ink);outline:none';
+  const chip = (k, label) => `<button onclick="finStmtQuick('${k}')" style="height:30px;padding:0 11px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:99px;cursor:pointer;font:700 12px var(--font);white-space:nowrap">${label}</button>`;
+  ov.innerHTML = `
+    <div style="background:var(--surface);border-radius:18px;width:100%;max-width:400px;box-shadow:0 24px 60px rgba(29,58,95,.22);overflow:hidden">
+      <div style="padding:17px 20px;border-bottom:1px solid var(--border)">
+        <div style="font-size:15px;font-weight:800;color:var(--ink)">🧾 ${escHtml(s.name)} — ${isAllow ? t('용돈 사용내역서','Allowance statement') : t('예치금 거래내역서','Deposit statement')}</div>
+        <div style="font-size:11.5px;color:var(--ink3);margin-top:3px">${t('뽑을 기간을 정해주세요','Choose the period to print')}</div>
+      </div>
+      <div style="padding:16px 20px">
+        <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:11px">
+          ${chip('month', t('이번 달','This month'))}${chip('last', t('지난 달','Last month'))}
+          ${chip('q3', t('최근 3개월','Last 3 months'))}${chip('year', t('올해','This year'))}
+          ${chip('all', t('전체','All'))}
+        </div>
+        <div style="display:flex;align-items:center;gap:7px">
+          <input type="date" id="fsp-from" value="${from}" onchange="finStmtPreview()" style="${inp}"/>
+          <span style="color:var(--ink3);font-weight:700">~</span>
+          <input type="date" id="fsp-to" value="${to}" onchange="finStmtPreview()" style="${inp}"/>
+        </div>
+        <div id="fsp-sum" style="margin-top:12px"></div>
+      </div>
+      <div style="padding:12px 20px 16px;display:flex;gap:8px">
+        <button onclick="document.getElementById('fin-stmt-overlay').remove()"
+          style="flex:1;height:40px;border-radius:10px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);font:700 13px var(--font);cursor:pointer">${t('취소','Cancel')}</button>
+        <button onclick="finStmtGo()"
+          style="flex:1.4;height:40px;border-radius:10px;border:none;background:#1d3a5f;color:#fff;font:700 13px var(--font);cursor:pointer">${t('📄 PDF 만들기','📄 Make PDF')}</button>
+      </div>
+    </div>`;
+  ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
+  document.body.appendChild(ov);
+  ov.dataset.sid = studentId;
+  ov.dataset.widened = widened ? '1' : '';
+  finStmtPreview();
+}
+
+function finStmtQuick(k) {
+  const d = new Date(), y = d.getFullYear(), m = d.getMonth();
+  const ov = document.getElementById('fin-stmt-overlay');
+  const mine = ov ? finAll.filter(e => e.member_id === ov.dataset.sid) : [];
+  const dates = mine.map(e => String(e.date || '')).filter(Boolean).sort();
+  let from, to;
+  if (k === 'month')      { from = ymdStr(new Date(y, m, 1));     to = ymdStr(new Date(y, m + 1, 0)); }
+  else if (k === 'last')  { from = ymdStr(new Date(y, m - 1, 1)); to = ymdStr(new Date(y, m, 0)); }
+  else if (k === 'q3')    { from = ymdStr(new Date(y, m - 2, 1)); to = ymdStr(new Date(y, m + 1, 0)); }
+  else if (k === 'year')  { from = `${y}-01-01`;                  to = `${y}-12-31`; }
+  else                    { from = dates[0] || `${y}-01-01`;      to = ymdStr(d); }
+  document.getElementById('fsp-from').value = from;
+  document.getElementById('fsp-to').value   = to;
+  finStmtPreview();
+}
+
+// 뽑기 전에 '이 기간에 몇 건이 잡히는지' 보여 준다. 빈 종이를 미리 막는다.
+function finStmtPreview() {
+  const ov = document.getElementById('fin-stmt-overlay');
+  const box = document.getElementById('fsp-sum');
+  if (!ov || !box) return;
+  const from = document.getElementById('fsp-from').value || '';
+  const to   = document.getElementById('fsp-to').value || '';
+  const isAllow = finKind === 'allowance';
+  const mine = finAll.filter(e => e.member_id === ov.dataset.sid);
+  const rows = mine.filter(e => finInRange(e, { from, to }));
+  const today = ymdStr(new Date());
+
+  if (from && to && from > to) {
+    box.innerHTML = `<div style="font-size:12px;font-weight:700;color:#b91c1c">${t('시작일이 종료일보다 뒤예요','Start date is after end date')}</div>`;
+    return;
+  }
+  const curs = [...new Set(mine.map(e => e.currency || '원'))];
+  const lines = curs.map(cur => {
+    const all = mine.filter(e => (e.currency || '원') === cur);
+    const inR = rows.filter(e => (e.currency || '원') === cur);
+    const sum = l => l.reduce((a, e) => a + (finIsPlus(e) ? 1 : -1) * (Number(e.amount) || 0), 0);
+    const plus  = inR.filter(finIsPlus).reduce((a, e) => a + (Number(e.amount) || 0), 0);
+    const minus = inR.filter(e => !finIsPlus(e)).reduce((a, e) => a + (Number(e.amount) || 0), 0);
+    const left  = sum(all.filter(e => String(e.date || '') <= today));
+    return `<div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;color:var(--ink2);padding:3px 0">
+        <span>${curs.length > 1 ? (cur === '$' ? '$ · ' : '₩ · ') : ''}${t(`${isAllow?'수입':'입금'} ${allowMoney(plus,cur)} · ${isAllow?'지출':'출금'} ${allowMoney(minus,cur)}`,
+                                                                          `in ${allowMoney(plus,cur)} · out ${allowMoney(minus,cur)}`)}</span>
+        <b style="color:var(--ink)">${t('남은 금액','Left')} ${allowMoney(left, cur)}</b>
+      </div>`;
+  }).join('');
+
+  const warn = !rows.length
+    ? `<div style="font-size:11.5px;font-weight:700;color:#b45309;background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:7px 9px;margin-top:7px">
+         ${t('이 기간에는 기록이 없어요. 위 버튼으로 기간을 넓혀 보세요','No records in this period — widen it with the buttons above')}</div>`
+    : (ov.dataset.widened
+      ? `<div style="font-size:11.5px;color:var(--ink3);margin-top:7px">${t('이번 달에 기록이 없어서 전체 기간으로 열었어요','This month was empty, so the full range is shown')}</div>`
+      : '');
+
+  box.innerHTML = `<div style="background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:9px 11px">
+      <div style="font-size:12px;font-weight:800;color:var(--ink);margin-bottom:3px">${t(`이 기간 ${rows.length}건`, `${rows.length} entries`)}</div>
+      ${lines}</div>${warn}`;
+}
+
+function finStmtGo() {
+  const ov = document.getElementById('fin-stmt-overlay');
+  if (!ov) return;
+  const from = document.getElementById('fsp-from').value || '';
+  const to   = document.getElementById('fsp-to').value || '';
+  if (from && to && from > to) { showUploadToast(t('시작일이 종료일보다 뒤예요','Start date is after end date')); return; }
+  const sid = ov.dataset.sid;
+  ov.remove();
+  finStatementPdf(sid, from, to);
+}
+
+function finStatementPdf(studentId, from, to) {
+  const s = schoolStudents.find(x => x.id === studentId);
+  if (!s) return;
+  const isAllow = finKind === 'allowance';
+  const r = { from: from || '', to: to || '' };
   const mine = finAll.filter(e => e.member_id === studentId);
   if (!mine.length) { showUploadToast(t('이 학생은 아직 기록이 없어요','No records for this student yet')); return; }
 
@@ -19042,22 +19185,36 @@ function finStatementPdf(studentId, ev) {
       </tr>`;
     const empty = `<tr><td colspan="6" style="text-align:center;color:#5b6577;padding:10px">${t('이 기간에는 기록이 없습니다.','No records in this period.')}</td></tr>`;
 
+    // 표만 있으면 '그래서 얼마 남았나'를 눈으로 더해야 한다. 위에 먼저 박아 둔다.
+    const today = ymdStr(new Date());
+    const leftNow = list.filter(e => String(e.date || '') <= today)
+                        .reduce((a, e) => a + (finIsPlus(e) ? 1 : -1) * (Number(e.amount) || 0), 0);
+    const card = (label, val, strong) => `<div style="flex:1;border:1px solid #d7dfea;border-radius:2mm;padding:2.2mm 3mm;${strong ? 'background:#eaf1fb;border-color:#b9cdea' : ''}">
+        <div style="font-size:8.5pt;color:#5b6577;margin-bottom:.8mm">${label}</div>
+        <div style="font-size:11.5pt;font-weight:${strong ? 800 : 700};color:#1d3a5f">${val}</div></div>`;
+    const summary = `<div style="display:flex;gap:2.5mm;margin:0 0 3mm">
+        ${card(t('이월 잔액','Carried forward'), allowMoney(opening, cur))}
+        ${card(isAllow ? t('기간 수입','Income') : t('기간 입금','Deposits'), allowMoney(sumIn, cur))}
+        ${card(isAllow ? t('기간 지출','Expense') : t('기간 출금','Withdrawals'), allowMoney(sumOut, cur))}
+        ${card(t('기간 말 남은 금액','Balance at period end'), allowMoney(bal, cur), true)}
+      </div>${(r.to && r.to < today && leftNow !== bal) ? `<div style="font-size:9pt;color:#5b6577;margin:-1.5mm 0 3mm">
+        ${t(`오늘(${today}) 기준 남은 금액: `, `Balance today (${today}): `)}<b style="color:#1d3a5f">${allowMoney(leftNow, cur)}</b></div>` : ''}`;
+
     return `${curs.length > 1 ? `<div style="font-weight:700;color:#1d3a5f;margin:5mm 0 2mm">${cur === '$' ? t('달러 ($)','US Dollar ($)') : t('원화 (₩)','Korean Won (₩)')}</div>` : ''}
-      <table><thead>${head}</thead><tbody>${openingRow}${rows.length ? body : empty}${totalRow}</tbody></table>`;
+      ${summary}<table><thead>${head}</thead><tbody>${openingRow}${rows.length ? body : empty}${totalRow}</tbody></table>`;
   }).join('');
 
   // 비교용 끝날짜는 '-31' 로 넉넉히 잡지만, 사람에게 보여줄 땐 그 달의 실제 마지막 날로.
   // (9월 31일 같은 날짜가 찍히면 문서를 믿기 어려워진다)
-  const lastOfMonth = (ym) => { const [y, m] = ym.split('-').map(Number); return ymdStr(new Date(y, m, 0)); };
-  const periodText = finPeriod === 'month' ? `${finYM}-01 ~ ${lastOfMonth(finYM)}`
-                   : finPeriod === 'year'  ? `${finY}-01-01 ~ ${finY}-12-31`
-                   : t('전체 기간','All time');
+  const periodText = (r.from || r.to)
+    ? `${r.from || t('처음','start')} ~ ${r.to || t('오늘','today')}`
+    : t('전체 기간','All time');
   openPrintDoc({
     title: `${s.name} — ${isAllow ? t('용돈 사용내역서','Allowance statement') : t('예치금 거래내역서','Deposit statement')}`,
     docTitle: isAllow ? t('용돈 사용내역서','Allowance Statement') : t('예치금 거래내역서','Deposit Statement'),
-    subtitle: `${escHtml(s.name)}${s.grade ? ' · ' + escHtml(s.grade) : ''} &nbsp;|&nbsp; ${escHtml(finPeriodLabel())} (${escHtml(periodText)})`,
+    subtitle: `${escHtml(s.name)}${s.grade ? ' · ' + escHtml(s.grade) : ''} &nbsp;|&nbsp; ${escHtml(periodText)}`,
     body: blocks,
-    footerNote: `${s.name} · ${isAllow ? t('용돈','Allowance') : t('예치금','Deposit')} · ${finPeriodLabel()}`,
+    footerNote: `${s.name} · ${isAllow ? t('용돈','Allowance') : t('예치금','Deposit')} · ${periodText}`,
   });
 }
 
@@ -19206,7 +19363,7 @@ async function renderFinBalances(kind) {
           <div style="font-size:15px;font-weight:800;color:${minus?'#b91c1c':'var(--adeep)'}">${minus?'⚠ ':''}${finMoneyOf(all,'net')}</div>
           <div style="font-size:10.5px;color:${hasSpent?'#b91c1c':'var(--ink3)'};margin-top:1px">${isAllow?t('사용','spent'):t('출금','withdrawn')} ${spent}</div>
         </div>
-        <button onclick="finStatementPdf('${s.id}',event)" title="${t('이 기간 내역서 PDF','Statement PDF for this period')}"
+        <button onclick="finStatementPicker('${s.id}',event)" title="${t('기간을 골라 내역서 PDF','Pick a period and print a statement')}"
           style="flex-shrink:0;width:32px;height:32px;border:1px solid var(--border);border-radius:9px;background:var(--surface);cursor:pointer;font-size:14px">📄</button>
         <span style="color:${open?'#2a5298':'var(--ink3)'};font-size:16px;transition:transform .15s var(--ease-out);transform:rotate(${open?'90':'0'}deg)">›</span>
       </div>
