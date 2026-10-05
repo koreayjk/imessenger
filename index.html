@@ -1025,7 +1025,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
           <div id="todo-list" style="padding:0 20px 14px"></div>
         </div>
         <!-- 제출 현황 패널 (플래너 등 매일 올려야 하는 것) -->
-        <div id="checkin-panel" style="display:none;border-bottom:1px solid var(--border);background:var(--s2);flex-shrink:0;max-height:360px;overflow-y:auto">
+        <div id="checkin-panel" style="display:none;border-bottom:1px solid var(--border);background:var(--s2);flex-shrink:0;max-height:min(60vh,520px);overflow-y:auto">
           <div style="padding:14px 20px 8px;font-size:14px;font-weight:700" id="checkin-title">📋 제출 현황</div>
           <div id="checkin-body"></div>
         </div>
@@ -12303,6 +12303,7 @@ let ciMarks    = {};    // 'member_id|day' → 'ok' | 'excused'   선생님이 �
 let ciMissing  = false; // DB 설치 전인가
 let ciSetupOpen= false;
 let ciLoading  = false;
+let ciQueued   = false; // 받는 중에 또 부르면 끝나고 한 번 더
 
 const CI_DOW_KO = ['일','월','화','수','목','금','토'];
 const CI_DOW_EN = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
@@ -12314,6 +12315,7 @@ function ciCfg() {
     label:   c.checkin_label || t('플래너','Planner'),
     days:    String(c.checkin_days || '0,1,2,3,4,5,6').split(',').map(Number).filter(n => n >= 0 && n <= 6),
     require: c.checkin_require || 'image',
+    keyword: c.checkin_keyword || 'Daily Report',
     start:   c.checkin_start || '',
     // 선생님처럼 '받는 사람'까지 줄에 넣으면 0/14 로 뜨고 미제출 명단에도 섞인다.
     // 이름을 눌러 빼 둘 수 있게 한다.
@@ -12372,17 +12374,33 @@ function ciShift(step) {        // ◀ ▶ — 한 번에 한 화면씩
   loadCheckin();
 }
 
-// 이 메시지를 '제출'로 볼 것인가
-function ciCountsAsSubmit(m, require) {
-  if (require === 'any') return true;
+// 한 방에서 잡담도 하고 제출도 한다. 그래서 '무엇이 제출인가'를 정해야 한다.
+// 공백과 대소문자는 무시한다 — "📝 Daily Report - 10/5" 도 "dailyreport" 로 본다.
+function ciNorm(s) { return String(s || '').toLowerCase().replace(/\s+/g, ''); }
+function ciHasKeyword(m, keyword) {
+  const k = ciNorm(keyword);
+  if (!k) return false;
+  if (m.kind !== 'text') return false;          // 사진 메시지에는 글이 따로 없다
+  const first = String(m.text || '').split('\n').map(x => x.trim()).filter(Boolean)[0] || '';
+  return ciNorm(first).includes(k);
+}
+function ciIsPhoto(m) {
   if (m.kind !== 'file') return false;
-  if (require === 'file') return true;
   try {
     const f = JSON.parse(m.text);
     if (f.type === 'file') return !!f.isImage;
     if (f.type === 'files' && Array.isArray(f.items)) return f.items.some(x => x.isImage);
   } catch (_) {}
   return false;
+}
+function ciCountsAsSubmit(m, require, keyword) {
+  switch (require) {
+    case 'any':     return true;
+    case 'file':    return m.kind === 'file';
+    case 'keyword': return ciHasKeyword(m, keyword);
+    case 'photo_or_keyword': return ciIsPhoto(m) || ciHasKeyword(m, keyword);
+    default:        return ciIsPhoto(m);          // 'image'
+  }
 }
 
 function ciTableMissing(err) {
@@ -12424,14 +12442,17 @@ function ciOnOpenChannel() {
 }
 
 async function loadCheckin() {
-  if (!currentChannel || ciLoading) return;
+  if (!currentChannel) return;
+  // 받는 중에 또 부르면(◀▶ 연타, 설정 저장 직후 등) 그냥 버리면 안 된다.
+  // 버리면 화면이 '불러오는 중...' 에서 멈춘 채로 남는다. 끝나고 한 번 더 돈다.
+  if (ciLoading) { ciQueued = true; return; }
   const box = document.getElementById('checkin-body');
   if (box && !box.innerHTML) box.innerHTML = `<div style="padding:18px;text-align:center;color:var(--ink3);font-size:13px">${t('불러오는 중...','Loading...')}</div>`;
   ciLoading = true;
   try {
     const cfg = ciCfg();
     const days = ciDayList();
-    ciHits = {}; ciMarks = {};
+    ciHits = {}; ciMarks = {}; ciRaw = [];
 
     if (days.length) {
       const [fy, fm, fd] = days[0].split('-').map(Number);
@@ -12439,16 +12460,12 @@ async function loadCheckin() {
       const fromIso = new Date(fy, fm - 1, fd, 0, 0, 0).toISOString();
       const toIso   = new Date(ty, tm - 1, td, 23, 59, 59, 999).toISOString();
 
-      let q = sb.from('messages').select('sender_id,created_at,kind,text')
+      // kind 로 미리 거르지 않는다 — 설정 화면에서 '이렇게 바꾸면 몇 건 잡히나'를
+      // 바로 보여주려면 글·사진을 다 들고 있어야 한다.
+      const { data: msgs } = await sb.from('messages').select('sender_id,created_at,kind,text')
         .eq('channel_id', currentChannel.id).gte('created_at', fromIso).lte('created_at', toIso);
-      if (cfg.require !== 'any') q = q.eq('kind', 'file');
-      const { data: msgs } = await q;
-      (msgs || []).forEach(m => {
-        if (!ciCountsAsSubmit(m, cfg.require)) return;
-        const day = fmtTsDay(m.created_at);
-        if (!ciHits[m.sender_id]) ciHits[m.sender_id] = new Set();
-        ciHits[m.sender_id].add(day);
-      });
+      ciRaw = msgs || [];
+      ciRecount();
 
       const { data: marks, error: mErr } = await sb.from('checkin_marks')
         .select('member_id,day,state').eq('channel_id', currentChannel.id)
@@ -12463,9 +12480,24 @@ async function loadCheckin() {
       .filter(id => members[id] && members[id].community_role !== 'store_bot');
   } finally { ciLoading = false; }
   renderCheckin();
+  if (ciQueued) { ciQueued = false; await loadCheckin(); }
 }
 
 let ciRowIds = [];
+let ciRaw = [];       // 이 구간의 메시지 원본 (설정을 바꿔도 다시 안 받아도 되게)
+
+// 지금 설정으로 다시 센다
+function ciRecount(require, keyword) {
+  const cfg = ciCfg();
+  const req = require || cfg.require, kw = keyword !== undefined ? keyword : cfg.keyword;
+  ciHits = {};
+  ciRaw.forEach(m => {
+    if (!ciCountsAsSubmit(m, req, kw)) return;
+    const day = fmtTsDay(m.created_at);
+    if (!ciHits[m.sender_id]) ciHits[m.sender_id] = new Set();
+    ciHits[m.sender_id].add(day);
+  });
+}
 
 // 한 칸의 상태 — 'hit'(올림) | 'ok'(선생님 인정) | 'excused'(면제) | 'miss' | 'future'
 function ciCell(mid, day) {
@@ -12659,7 +12691,7 @@ async function ciNudge() {
 }
 
 // ── 설정 ──
-function ciOpenSetup() { ciSetupOpen = true; renderCheckin(); }
+function ciOpenSetup() { ciSetupOpen = true; renderCheckin(); try { ciPreview(); } catch (_) {} }
 function ciCloseSetup() { ciSetupOpen = false; renderCheckin(); }
 
 function ciSetupHtml(cfg) {
@@ -12674,11 +12706,22 @@ function ciSetupHtml(cfg) {
     <input id="ci-label" value="${escAttr(cfg.label)}" placeholder="${t('플래너','Planner')}" style="${inp};width:100%;box-sizing:border-box;margin-bottom:11px"/>
 
     <div style="font:700 11.5px var(--font);color:var(--ink3);margin-bottom:4px">${t('무엇을 올려야 제출로 볼까요','What counts as a submission')}</div>
-    <select id="ci-require" style="${inp};width:100%;box-sizing:border-box;margin-bottom:11px">
-      ${opt('image', '📷 사진을 올리면', '📷 A photo')}
-      ${opt('file',  '📎 사진이나 파일을 올리면', '📎 A photo or file')}
-      ${opt('any',   '💬 아무 메시지나 쓰면', '💬 Any message')}
+    <select id="ci-require" onchange="ciPreview()" style="${inp};width:100%;box-sizing:border-box;margin-bottom:9px">
+      ${opt('image',            '📷 사진을 올리면', '📷 A photo')}
+      ${opt('file',             '📎 사진이나 파일을 올리면', '📎 A photo or file')}
+      ${opt('keyword',          '🔖 첫 줄에 정해둔 말이 있으면', '🔖 First line contains a keyword')}
+      ${opt('photo_or_keyword', '📷🔖 사진이거나, 첫 줄에 정해둔 말이 있으면', '📷🔖 A photo, or first line contains a keyword')}
+      ${opt('any',              '💬 아무 메시지나 쓰면', '💬 Any message')}
     </select>
+
+    <div id="ci-kw-wrap" style="margin-bottom:11px;display:${/keyword/.test(cfg.require) ? 'block' : 'none'}">
+      <div style="font:700 11.5px var(--font);color:var(--ink3);margin-bottom:4px">${t('첫 줄에 들어가야 하는 말','Keyword in the first line')}</div>
+      <input id="ci-keyword" value="${escAttr(cfg.keyword)}" oninput="ciPreview()" placeholder="Daily Report" style="${inp};width:100%;box-sizing:border-box"/>
+      <div style="font-size:10.5px;color:var(--ink3);margin-top:4px;line-height:1.6">
+        ${t('띄어쓰기와 대소문자는 안 따져요. “📝 Daily Report — 10/5” 도 인정됩니다.','Spacing and case are ignored.')}</div>
+    </div>
+
+    <div id="ci-preview" style="margin-bottom:12px"></div>
 
     <div style="font:700 11.5px var(--font);color:var(--ink3);margin-bottom:5px">${t('세는 요일','Days that count')}</div>
     <div style="margin-bottom:11px">${dow}</div>
@@ -12694,15 +12737,53 @@ function ciSetupHtml(cfg) {
   </div>`;
 }
 
+// 설정을 바꾸면 '지난 기록으로 쳐 보면 이렇게 됩니다'를 바로 보여 준다.
+// 이걸 안 보여주면 저장하고 표를 본 뒤에야 잘못 고른 걸 안다.
+function ciPreview() {
+  const sel = document.getElementById('ci-require');
+  const box = document.getElementById('ci-preview');
+  if (!sel || !box) return;
+  const req = sel.value;
+  const kwEl = document.getElementById('ci-keyword');
+  const kw = kwEl ? kwEl.value : '';
+  const wrap = document.getElementById('ci-kw-wrap');
+  if (wrap) wrap.style.display = /keyword/.test(req) ? 'block' : 'none';
+
+  if (/keyword/.test(req) && !ciNorm(kw)) {
+    box.innerHTML = `<div style="font-size:11.5px;font-weight:700;color:#b45309">${t('첫 줄에 들어갈 말을 적어주세요','Enter a keyword')}</div>`;
+    return;
+  }
+  const hit = ciRaw.filter(m => ciCountsAsSubmit(m, req, kw));
+  const people = new Set(hit.map(m => m.sender_id)).size;
+  const days = ciDayList();
+  const sample = hit.filter(m => m.kind === 'text').slice(-1)[0];
+  box.innerHTML = `<div style="background:var(--s3);border:1px solid var(--border);border-radius:9px;padding:8px 10px">
+    <div style="font-size:11.5px;color:var(--ink2);line-height:1.7">
+      ${t(`이 설정이면 최근 ${days.length}일에 <b>${hit.length}건</b> · <b>${people}명</b>이 잡혀요`,
+          `Over the last ${days.length} days: <b>${hit.length}</b> posts from <b>${people}</b> people`)}
+      ${hit.length === 0 ? `<br><span style="color:#b91c1c;font-weight:700">${t('하나도 안 잡혀요 — 기준을 다시 보세요','Nothing matches — check the rule')}</span>` : ''}
+    </div>
+    ${sample ? `<div style="font-size:10.5px;color:var(--ink3);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+      ${t('예:','e.g.')} ${escHtml(String(sample.text || '').split('\n')[0].slice(0, 60))}</div>` : ''}
+  </div>`;
+}
+
 async function ciSaveSetup(on) {
   if (!canManageAnnounce() || !currentChannel) return;
   const days = [...document.querySelectorAll('.ci-dow')].filter(x => x.checked).map(x => x.value);
   if (on && !days.length) { showUploadToast(t('세는 요일을 하나는 골라주세요','Pick at least one day')); return; }
+  const req = document.getElementById('ci-require').value || 'image';
+  const kwEl = document.getElementById('ci-keyword');
+  const kw = (kwEl ? kwEl.value : '').trim();
+  if (on && /keyword/.test(req) && !ciNorm(kw)) {
+    showUploadToast(t('첫 줄에 들어갈 말을 적어주세요','Enter a keyword')); return;
+  }
   const patch = {
     checkin_on: !!on,
     checkin_label: (document.getElementById('ci-label').value || '').trim() || t('플래너','Planner'),
     checkin_days: days.join(',') || '0,1,2,3,4,5,6',
-    checkin_require: document.getElementById('ci-require').value || 'image',
+    checkin_require: req,
+    checkin_keyword: kw || null,
     checkin_start: document.getElementById('ci-start').value || null,
   };
   const { error } = await sb.from('channels').update(patch).eq('id', currentChannel.id);
@@ -12719,7 +12800,7 @@ async function ciSaveSetup(on) {
   document.getElementById('checkin-panel').style.display = 'block';
   document.getElementById('checkin-btn').style.background = 'var(--asoft)';
   showUploadToast(on ? t('켰어요 ✅','Turned on ✅') : t('껐어요','Turned off'));
-  if (on) loadCheckin(); else renderCheckin();
+  if (on) await loadCheckin(); else renderCheckin();
 }
 
 function toggleTodoPanel() {

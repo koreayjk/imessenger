@@ -22,12 +22,14 @@ alter table public.channels
   add column if not exists checkin_days    text not null default '0,1,2,3,4,5,6',
   add column if not exists checkin_require text not null default 'image',
   add column if not exists checkin_start   date,
-  add column if not exists checkin_exempt  text not null default '';
+  add column if not exists checkin_exempt  text not null default '',
+  add column if not exists checkin_keyword text;
 
 comment on column public.channels.checkin_on      is '이 방에서 매일 제출을 확인할지';
 comment on column public.channels.checkin_label   is '무엇을 내는지 (예: 플래너)';
 comment on column public.channels.checkin_days    is '세는 요일. 0=일 … 6=토';
-comment on column public.channels.checkin_require is 'image=사진 | file=사진·파일 | any=아무 메시지';
+comment on column public.channels.checkin_require is 'image=사진 | file=사진·파일 | keyword=첫 줄 키워드 | photo_or_keyword=사진이거나 키워드 | any=아무 메시지';
+comment on column public.channels.checkin_keyword is '첫 줄에 들어가야 하는 말 (예: Daily Report). 띄어쓰기·대소문자 무시';
 comment on column public.channels.checkin_start   is '이 날부터 센다. 비어 있으면 처음부터';
 comment on column public.channels.checkin_exempt  is '안 내도 되는 사람 (선생님 등). member id 를 쉼표로';
 
@@ -109,7 +111,10 @@ select polname as "정책", case when polpermissive then '허용' else '제한' 
 --  쓰는 법
 --   채팅방을 열고 머리글의 📋 제출 → "제출 현황 켜기"
 --     · 무엇을 내는지 이름 (플래너 / 숙제 / QT …)
---     · 사진만 셀지, 파일도 셀지, 아무 메시지나 셀지
+--     · 무엇을 제출로 볼지
+--       한 방에서 잡담도 하고 제출도 한다면 '🔖 첫 줄에 정해둔 말이 있으면'
+--       을 고르고 Daily Report 처럼 적어 두세요. 띄어쓰기·대소문자는 안 따집니다.
+--       설정 화면이 '이 설정이면 최근 N일에 몇 건 잡히는지'를 바로 보여줍니다.
 --     · 세는 요일 (주말을 빼면 표에서 아예 빠집니다)
 --     · 언제부터 셀지
 --
@@ -125,5 +130,5 @@ select polname as "정책", case when polpermissive then '허용' else '제한' 
 --       alter table public.channels drop column if exists checkin_on,
 --         drop column if exists checkin_label, drop column if exists checkin_days,
 --         drop column if exists checkin_require, drop column if exists checkin_start,
---         drop column if exists checkin_exempt;
+--         drop column if exists checkin_exempt, drop column if exists checkin_keyword;
 -- =====================================================================
