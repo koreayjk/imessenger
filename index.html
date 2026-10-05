@@ -602,7 +602,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
 
 @media (max-width: 900px) {
   #mobile-chat-back { display: flex !important; }
-  #todo-btn span { display: none; }
+  #todo-btn span, #checkin-btn span { display: none; }
   /* 학사 학생 목록/상세: 모바일에선 한 컬럼(마스터-디테일) */
   #s360-split { flex-direction: column !important; gap: 12px !important; }
   #s360-split > #s360-list { width: 100% !important; position: static !important; }
@@ -631,6 +631,8 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
   /* flex 자식이 긴 텍스트로 부모를 밀어내지 않도록(말줄임/줄바꿈 허용) */
   .adm-card, .msg-body, .ch-row, .chat-header-info { min-width: 0; }
   .chat-header-name, .chat-header-desc, .ch-name, .ch-preview { overflow: hidden; text-overflow: ellipsis; }
+  /* 채팅방 머리글은 한 줄로 — 줄바꿈되면 이름이 세로로 쪼개져 읽을 수 없다 */
+  .chat-header-name, .chat-header-desc { white-space: nowrap; }
   /* 긴 단어/URL이 칸을 넘지 않도록 */
   .bubble, .adm-card, .ch-preview { overflow-wrap: anywhere; word-break: break-word; }
 }
@@ -980,6 +982,11 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
             <div class="chat-header-name" id="ch-name">채널명</div>
             <div class="chat-header-desc" id="ch-desc">설명</div>
           </div>
+          <div class="header-action" onclick="toggleCheckinPanel()" title="제출 현황" id="checkin-btn"
+            style="display:none;align-items:center;gap:4px;padding:0 10px;width:auto;border-radius:10px">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ink3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/><path d="M8.5 14.5l1.8 1.8 3.7-3.8"/></svg>
+            <span style="font-size:12.5px;font-weight:600;color:var(--ink3)">제출</span>
+          </div>
           <div class="header-action" onclick="toggleTodoPanel()" title="To-Do List" id="todo-btn"
             style="display:flex;align-items:center;gap:4px;padding:0 10px;width:auto;border-radius:10px">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ink3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
@@ -1016,6 +1023,11 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
           </div>
           <!-- To-Do 목록 -->
           <div id="todo-list" style="padding:0 20px 14px"></div>
+        </div>
+        <!-- 제출 현황 패널 (플래너 등 매일 올려야 하는 것) -->
+        <div id="checkin-panel" style="display:none;border-bottom:1px solid var(--border);background:var(--s2);flex-shrink:0;max-height:360px;overflow-y:auto">
+          <div style="padding:14px 20px 8px;font-size:14px;font-weight:700" id="checkin-title">📋 제출 현황</div>
+          <div id="checkin-body"></div>
         </div>
         <!-- 공지글(고정) 배너 -->
         <div id="announce-bar" style="display:none"></div>
@@ -2966,6 +2978,7 @@ async function openChannel(id) {
     if (chRow) { Object.assign(currentChannel, chRow); const ci = channels.find(c=>c.id===id); if (ci) Object.assign(ci, chRow); }
   } catch(e) {}
   renderAnnouncement();
+  ciOnOpenChannel();        // 제출 현황 버튼 — 켜져 있는 방에서만 보인다
 
   // 멤버 패널 업데이트 (DM이면 해당 멤버만)
   renderMembers();
@@ -12273,6 +12286,441 @@ async function saveGoals(id, monthStr) {
 let todos = [];
 let todoSub = null;
 let todoTableMissing = false;
+
+// ══════════════════════════════════════════════════════════════════
+//  📋 제출 현황 — 채팅방에 매일 올려야 하는 것(플래너 등)을 한눈에
+//
+//  올리는 방식은 그대로 둔다. 지금처럼 채팅방에 사진을 올리면 된다.
+//  "제출" 버튼을 따로 만들어 그걸 눌러야 인정되게 하면, 며칠은 지키다가
+//  결국 아무도 안 누른다. 그래서 이미 쌓이고 있는 메시지를 읽어서
+//  누가 그날 올렸는지를 센다. 예외(늦게 낸 사람·아픈 사람)는
+//  선생님이 칸을 눌러 손으로 고칠 수 있다.
+// ══════════════════════════════════════════════════════════════════
+let ciSpan     = 14;    // 한 번에 보는 날 수
+let ciEnd      = '';    // 보고 있는 구간의 마지막 날 (YYYY-MM-DD)
+let ciHits     = {};    // member_id → Set('YYYY-MM-DD')   메시지에서 자동으로 센 것
+let ciMarks    = {};    // 'member_id|day' → 'ok' | 'excused'   선생님이 손으로 고친 것
+let ciMissing  = false; // DB 설치 전인가
+let ciSetupOpen= false;
+let ciLoading  = false;
+
+const CI_DOW_KO = ['일','월','화','수','목','금','토'];
+const CI_DOW_EN = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+function ciCfg() {
+  const c = currentChannel || {};
+  return {
+    on:      !!c.checkin_on,
+    label:   c.checkin_label || t('플래너','Planner'),
+    days:    String(c.checkin_days || '0,1,2,3,4,5,6').split(',').map(Number).filter(n => n >= 0 && n <= 6),
+    require: c.checkin_require || 'image',
+    start:   c.checkin_start || '',
+    // 선생님처럼 '받는 사람'까지 줄에 넣으면 0/14 로 뜨고 미제출 명단에도 섞인다.
+    // 이름을 눌러 빼 둘 수 있게 한다.
+    exempt:  String(c.checkin_exempt || '').split(',').filter(Boolean),
+  };
+}
+
+// 이름을 누르면 '안 내도 되는 사람'으로 빼거나 되돌린다
+async function ciToggleExempt(memberId) {
+  if (!canManageAnnounce() || !currentChannel) return;
+  const cfg = ciCfg();
+  const next = cfg.exempt.includes(memberId)
+    ? cfg.exempt.filter(x => x !== memberId)
+    : cfg.exempt.concat(memberId);
+  const patch = { checkin_exempt: next.join(',') };
+  Object.assign(currentChannel, patch);
+  const ci = channels.find(c => c.id === currentChannel.id); if (ci) Object.assign(ci, patch);
+  renderCheckin();
+  const { error } = await sb.from('channels').update(patch).eq('id', currentChannel.id);
+  if (error) showUploadToast(ciTableMissing(error)
+    ? t('DB 설치가 먼저 필요해요 — db/제출현황_DB설치.sql', 'Run db/제출현황_DB설치.sql first')
+    : t('저장 실패: ','Save failed: ') + error.message);
+  else showUploadToast(next.includes(memberId)
+    ? t(`${(members[memberId]||{}).name||''} 는 세지 않아요`, 'Not counted anymore')
+    : t(`${(members[memberId]||{}).name||''} 를 다시 세요`, 'Counted again'));
+}
+function ciShiftYmd(ymd, delta) {
+  const [y, m, d] = String(ymd).split('-').map(Number);
+  return ymdStr(new Date(y, m - 1, d + delta));
+}
+function ciDow(ymd) {
+  const [y, m, d] = String(ymd).split('-').map(Number);
+  return new Date(y, m - 1, d).getDay();
+}
+// 보여 줄 날짜들 — 쉬는 요일은 건너뛰고 '세는 날'만 ciSpan 개 모은다.
+// 주말을 빈 칸으로 끼워 두면 표만 넓어지고 읽기 어려워진다.
+function ciDayList() {
+  const cfg = ciCfg();
+  const today = ymdStr(new Date());
+  if (!ciEnd) ciEnd = today;
+  const out = [];
+  let d = ciEnd, guard = 0;
+  while (out.length < ciSpan && guard++ < 400) {
+    if (cfg.days.includes(ciDow(d)) && (!cfg.start || d >= cfg.start)) out.push(d);
+    if (cfg.start && d <= cfg.start) break;
+    d = ciShiftYmd(d, -1);
+  }
+  return out.reverse();
+}
+function ciShift(step) {        // ◀ ▶ — 한 번에 한 화면씩
+  const list = ciDayList();
+  if (!list.length) return;
+  const today = ymdStr(new Date());
+  ciEnd = step < 0 ? ciShiftYmd(list[0], -1) : ciShiftYmd(list[list.length - 1], ciSpan);
+  if (ciEnd > today) ciEnd = today;
+  loadCheckin();
+}
+
+// 이 메시지를 '제출'로 볼 것인가
+function ciCountsAsSubmit(m, require) {
+  if (require === 'any') return true;
+  if (m.kind !== 'file') return false;
+  if (require === 'file') return true;
+  try {
+    const f = JSON.parse(m.text);
+    if (f.type === 'file') return !!f.isImage;
+    if (f.type === 'files' && Array.isArray(f.items)) return f.items.some(x => x.isImage);
+  } catch (_) {}
+  return false;
+}
+
+function ciTableMissing(err) {
+  const s = (err && (err.message || err.code || '')) + '';
+  return /checkin_marks|checkin_on|does not exist|schema cache|could not find|42P01|42703/i.test(s);
+}
+
+function toggleCheckinPanel() {
+  const panel = document.getElementById('checkin-panel');
+  const btn = document.getElementById('checkin-btn');
+  if (!panel || !btn) return;
+  const isOpen = panel.style.display !== 'none';
+  panel.style.display = isOpen ? 'none' : 'block';
+  btn.style.background = isOpen ? '' : 'var(--asoft)';
+  const sp = btn.querySelector('span'); if (sp) sp.style.color = isOpen ? 'var(--ink3)' : 'var(--adeep)';
+  if (!isOpen) { ciEnd = ''; ciSetupOpen = false; loadCheckin(); }
+}
+
+// 채널을 열 때마다 버튼을 보일지 말지 정한다
+function ciOnOpenChannel() {
+  const btn = document.getElementById('checkin-btn');
+  if (!btn) return;
+  const cfg = ciCfg();
+  const panel = document.getElementById('checkin-panel');
+  if (panel) panel.style.display = 'none';
+  // 패널 통째로 비우면 안 된다 — 제목과 본문 칸이 그 안에 들어 있다
+  const bodyEl = document.getElementById('checkin-body');
+  if (bodyEl) bodyEl.innerHTML = '';
+  const titleEl = document.getElementById('checkin-title');
+  if (titleEl) titleEl.textContent = cfg.on
+    ? t(`📋 ${cfg.label} 제출 현황`, `📋 ${cfg.label} check-in`)
+    : t('📋 제출 현황', '📋 Check-in');
+  btn.style.background = '';
+  const sp = btn.querySelector('span');
+  if (sp) { sp.style.color = 'var(--ink3)'; sp.textContent = cfg.on ? cfg.label : t('제출','Check'); }
+  const dm = currentChannel && currentChannel.kind === 'dm';
+  // 켜져 있으면 모두에게, 꺼져 있으면 켤 수 있는 사람(간사 이상)에게만 보인다
+  btn.style.display = (!dm && (cfg.on || canManageAnnounce())) ? 'flex' : 'none';
+}
+
+async function loadCheckin() {
+  if (!currentChannel || ciLoading) return;
+  const box = document.getElementById('checkin-body');
+  if (box && !box.innerHTML) box.innerHTML = `<div style="padding:18px;text-align:center;color:var(--ink3);font-size:13px">${t('불러오는 중...','Loading...')}</div>`;
+  ciLoading = true;
+  try {
+    const cfg = ciCfg();
+    const days = ciDayList();
+    ciHits = {}; ciMarks = {};
+
+    if (days.length) {
+      const [fy, fm, fd] = days[0].split('-').map(Number);
+      const [ty, tm, td] = days[days.length - 1].split('-').map(Number);
+      const fromIso = new Date(fy, fm - 1, fd, 0, 0, 0).toISOString();
+      const toIso   = new Date(ty, tm - 1, td, 23, 59, 59, 999).toISOString();
+
+      let q = sb.from('messages').select('sender_id,created_at,kind,text')
+        .eq('channel_id', currentChannel.id).gte('created_at', fromIso).lte('created_at', toIso);
+      if (cfg.require !== 'any') q = q.eq('kind', 'file');
+      const { data: msgs } = await q;
+      (msgs || []).forEach(m => {
+        if (!ciCountsAsSubmit(m, cfg.require)) return;
+        const day = fmtTsDay(m.created_at);
+        if (!ciHits[m.sender_id]) ciHits[m.sender_id] = new Set();
+        ciHits[m.sender_id].add(day);
+      });
+
+      const { data: marks, error: mErr } = await sb.from('checkin_marks')
+        .select('member_id,day,state').eq('channel_id', currentChannel.id)
+        .gte('day', days[0]).lte('day', days[days.length - 1]);
+      if (mErr) { if (ciTableMissing(mErr)) ciMissing = true; }
+      else { ciMissing = false; (marks || []).forEach(k => { ciMarks[k.member_id + '|' + k.day] = k.state; }); }
+    }
+
+    const { data: chMems } = await sb.from('channel_members')
+      .select('member_id').eq('channel_id', currentChannel.id);
+    ciRowIds = (chMems || []).map(x => x.member_id)
+      .filter(id => members[id] && members[id].community_role !== 'store_bot');
+  } finally { ciLoading = false; }
+  renderCheckin();
+}
+
+let ciRowIds = [];
+
+// 한 칸의 상태 — 'hit'(올림) | 'ok'(선생님 인정) | 'excused'(면제) | 'miss' | 'future'
+function ciCell(mid, day) {
+  const today = ymdStr(new Date());
+  const mk = ciMarks[mid + '|' + day];
+  if (mk === 'excused') return 'excused';
+  if (mk === 'ok') return 'ok';
+  if (ciHits[mid] && ciHits[mid].has(day)) return 'hit';
+  if (day > today) return 'future';
+  return 'miss';
+}
+const CI_SKIN = {
+  hit:     { ch: '✅', bg: '#e8f5ee', fg: '#2a7a5a', bd: '#bfe3cf' },
+  ok:      { ch: '✅', bg: '#eaf1fb', fg: '#1d3a5f', bd: '#b9cdea' },
+  excused: { ch: '🏖', bg: '#f3f4f6', fg: '#6b7280', bd: '#e5e7eb' },
+  miss:    { ch: '·',  bg: 'transparent', fg: '#c7ccd4', bd: 'var(--border)' },
+  future:  { ch: '',   bg: 'transparent', fg: '#c7ccd4', bd: 'var(--border)' },
+};
+// 가장 최근 '센 날'부터 거꾸로 며칠 연속으로 냈나
+function ciStreak(mid, days) {
+  const today = ymdStr(new Date());
+  let n = 0;
+  for (let i = days.length - 1; i >= 0; i--) {
+    const d = days[i];
+    if (d > today) continue;
+    const st = ciCell(mid, d);
+    if (st === 'hit' || st === 'ok') n++;
+    else if (st === 'excused') continue;   // 면제는 연속을 끊지 않는다
+    else break;
+  }
+  return n;
+}
+
+function renderCheckin() {
+  const box = document.getElementById('checkin-body');
+  if (!box) return;
+  const cfg = ciCfg();
+  const canEdit = canManageAnnounce();
+
+  if (ciSetupOpen) { box.innerHTML = ciSetupHtml(cfg); return; }
+  if (!cfg.on) {
+    box.innerHTML = `<div style="padding:16px 20px 18px">
+      <div style="font-size:13px;color:var(--ink2);line-height:1.8">
+        ${t('이 채팅방에 <b>매일 올려야 하는 것</b>이 있다면 켜 보세요.','Turn this on if people must post something <b>every day</b> in this room.')}<br>
+        ${t('지금처럼 사진을 올리기만 하면, 누가 올렸고 누가 안 올렸는지 표로 보여줍니다.','They keep posting photos as they do now — this shows who posted and who did not.')}
+      </div>
+      ${canEdit ? `<button onclick="ciOpenSetup()" style="margin-top:12px;height:36px;padding:0 15px;border:none;border-radius:10px;background:#1d3a5f;color:#fff;font:700 13px var(--font);cursor:pointer">${t('📋 제출 현황 켜기','📋 Turn on check-in')}</button>`
+                : `<div style="margin-top:10px;font-size:12px;color:var(--ink3)">${t('관리자나 선생님이 켤 수 있어요','A teacher or admin can turn this on')}</div>`}
+    </div>`;
+    return;
+  }
+
+  const days = ciDayList();
+  const today = ymdStr(new Date());
+  const counting = ciRowIds.filter(id => !cfg.exempt.includes(id));   // 실제로 세는 사람
+  let rows = counting.slice();
+  // 학생은 본인 줄만 본다 — 반 전체의 미제출이 서로에게 보이지 않게
+  const meOnly = isStudentMember(ME);
+  if (meOnly) rows = ciRowIds.filter(id => id === ME.id);
+  rows.sort((a, b) => String(members[a] && members[a].name || '').localeCompare(String(members[b] && members[b].name || ''), 'ko'));
+
+  if (!rows.length) {
+    box.innerHTML = `<div style="padding:18px;text-align:center;color:var(--ink3);font-size:13px">${t('이 채팅방에 멤버가 없어요','No members in this room')}</div>`;
+    return;
+  }
+
+  // ── 오늘 현황 ──
+  const lastDay = days.filter(d => d <= today).pop() || '';
+  const doneToday = lastDay ? counting.filter(id => ['hit','ok','excused'].includes(ciCell(id, lastDay))) : [];
+  const missToday = lastDay ? counting.filter(id => ciCell(id, lastDay) === 'miss') : [];
+  const missNames = missToday.map(id => (members[id] || {}).name || '').filter(Boolean);
+
+  const head = days.map(d => {
+    const dow = ciDow(d), isToday = d === today;
+    return `<th style="padding:4px 0;width:30px;min-width:30px;font:700 10px var(--font);
+      color:${isToday ? 'var(--adeep)' : (dow === 0 ? '#c0392b' : 'var(--ink3)')};text-align:center;
+      ${isToday ? 'background:var(--asoft);border-radius:7px 7px 0 0' : ''}">
+      <div>${APP_LANG === 'en' ? CI_DOW_EN[dow] : CI_DOW_KO[dow]}</div>
+      <div style="font-weight:800;font-size:11px;color:${isToday ? 'var(--adeep)' : 'var(--ink2)'}">${Number(d.slice(8))}</div></th>`;
+  }).join('');
+
+  const body = rows.map(id => {
+    const m = members[id] || { name: '?' };
+    const cells = days.map(d => {
+      const st = ciCell(id, d);
+      const s = CI_SKIN[st];
+      const clickable = canEdit && d <= today;
+      return `<td style="padding:1px;text-align:center">
+        <div ${clickable ? `onclick="ciCycle('${id}','${d}')" title="${t('눌러서 인정 / 면제 / 자동','Click: accept / excuse / auto')}"` : ''}
+          style="height:26px;line-height:26px;border-radius:7px;font-size:13px;
+          background:${s.bg};color:${s.fg};border:1px solid ${s.bd};${clickable ? 'cursor:pointer' : ''}">${s.ch}</div></td>`;
+    }).join('');
+    const counted = days.filter(d => d <= today && ciCell(id, d) !== 'excused');
+    const got = counted.filter(d => ['hit','ok'].includes(ciCell(id, d))).length;
+    const streak = ciStreak(id, days);
+    const rate = counted.length ? Math.round(got / counted.length * 100) : 0;
+    return `<tr>
+      <td style="position:sticky;left:0;z-index:2;background:var(--s2);padding:2px 9px 2px 0;white-space:nowrap">
+        <span ${(canEdit && !meOnly) ? `onclick="ciToggleExempt('${id}')" title="${t('이 사람은 안 세기','Stop counting this person')}" style="cursor:pointer;` : 'style="'}font:700 12.5px var(--font);color:var(--ink)">${escHtml(m.name)}</span>
+        <span style="font:800 11.5px var(--font);margin-left:5px;color:${rate >= 80 ? '#2a7a5a' : rate >= 50 ? '#b45309' : '#b91c1c'}">${got}/${counted.length}</span>
+        ${streak >= 3 ? `<span style="font-size:10.5px;color:#b45309;font-weight:800;margin-left:4px">🔥${streak}</span>` : ''}
+      </td>
+      ${cells}</tr>`;
+  }).join('');
+
+  const nudge = (canEdit && missNames.length)
+    ? `<button onclick="ciNudge()" style="height:30px;padding:0 11px;border:1.5px solid #fcd34d;background:#fef3c7;color:#92400e;border-radius:9px;font:700 11.5px var(--font);cursor:pointer;white-space:nowrap">${t(`💬 미제출 ${missNames.length}명 알리기`, `💬 Notify ${missNames.length} missing`)}</button>`
+    : '';
+
+  box.innerHTML = `
+    <div style="padding:0 20px 6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <div style="display:flex;align-items:center;gap:2px">
+        <button onclick="ciShift(-1)" style="width:26px;height:26px;border:none;background:transparent;cursor:pointer;color:var(--ink2);font-size:13px">◀</button>
+        <span style="font:800 12px var(--font);color:var(--ink2);min-width:116px;text-align:center">${days[0] || ''} ~ ${days[days.length-1] || ''}</span>
+        <button onclick="ciShift(1)" style="width:26px;height:26px;border:none;background:transparent;cursor:pointer;color:var(--ink2);font-size:13px">▶</button>
+      </div>
+      ${!meOnly && lastDay ? `<span style="font:700 12px var(--font);color:var(--ink2)">
+        ${t(`${lastDay.slice(5)} 제출`, `${lastDay.slice(5)}`)}
+        <b style="color:#2a7a5a">${doneToday.length}</b><span style="color:var(--ink3)">/${counting.length}</span></span>` : ''}
+      ${nudge}
+      <div style="flex:1"></div>
+      ${canEdit ? `<button onclick="ciOpenSetup()" title="${t('설정','Settings')}" style="width:28px;height:28px;border:none;background:transparent;cursor:pointer;font-size:14px">⚙️</button>` : ''}
+    </div>
+    ${(!meOnly && missNames.length) ? `<div style="padding:0 20px 8px;font-size:11.5px;color:#b45309;line-height:1.6">
+      ${t('아직 안 올림','Not yet')}: ${escHtml(missNames.join(', '))}</div>` : ''}
+    ${ciMissing ? `<div style="margin:0 20px 10px;padding:9px 11px;background:#FFF8E7;border:1px solid #F0D080;border-radius:10px;font-size:11.5px;color:#8B6914;line-height:1.7">
+      ${t('손으로 고친 기록(인정·면제)은 DB 설치 후에 저장됩니다.','Manual marks need the DB setup.')}
+      <b>Supabase → SQL Editor</b> → <code style="background:#fff;padding:1px 5px;border-radius:4px">db/제출현황_DB설치.sql</code></div>` : ''}
+    <div style="padding:0 20px 12px;overflow-x:auto;-webkit-overflow-scrolling:touch">
+      <table style="border-collapse:separate;border-spacing:1px 2px">
+        <thead><tr><th style="position:sticky;left:0;z-index:3;background:var(--s2)"></th>${head}</tr></thead>
+        <tbody>${body}</tbody>
+      </table>
+    </div>
+    ${(!meOnly && cfg.exempt.length) ? `<div style="padding:0 20px 10px;font-size:11px;color:var(--ink3)">
+      ${t('안 세는 사람','Not counted')}: ${cfg.exempt.map(id => {
+        const nm = escHtml((members[id] || {}).name || '?');
+        return canEdit ? `<span onclick="ciToggleExempt('${id}')" style="cursor:pointer;text-decoration:underline">${nm}</span>` : nm;
+      }).join(', ')}</div>` : ''}
+    <div style="padding:0 20px 14px;font-size:10.5px;color:var(--ink3);line-height:1.7">
+      ✅ ${t('올림','posted')} &nbsp; 🏖 ${t('면제','excused')} &nbsp; · ${t('안 올림','missing')}
+      ${canEdit && !meOnly ? ` &nbsp;|&nbsp; ${t('이름을 누르면 그 사람은 안 셉니다','Click a name to stop counting them')}` : ''}
+      ${canEdit ? ` &nbsp;|&nbsp; ${t('칸을 누르면 인정 → 면제 → 자동 순서로 바뀝니다','Click a cell: accept → excuse → auto')}` : ''}
+    </div>`;
+}
+
+// 칸 하나 고치기 — 자동 → ✅인정 → 🏖면제 → 자동
+async function ciCycle(memberId, day) {
+  if (!canManageAnnounce()) return;
+  const key = memberId + '|' + day;
+  const cur = ciMarks[key] || '';
+  const next = cur === '' ? 'ok' : cur === 'ok' ? 'excused' : '';
+  if (next) ciMarks[key] = next; else delete ciMarks[key];
+  renderCheckin();                                  // 눌렀으면 바로 바뀌어 보이게
+  try {
+    if (next) {
+      const { error } = await sb.from('checkin_marks')
+        .upsert({ channel_id: currentChannel.id, member_id: memberId, day, state: next, marked_by: ME.id },
+                { onConflict: 'channel_id,member_id,day' });
+      if (error) throw error;
+    } else {
+      const { error } = await sb.from('checkin_marks').delete()
+        .eq('channel_id', currentChannel.id).eq('member_id', memberId).eq('day', day);
+      if (error) throw error;
+    }
+    ciMissing = false;
+  } catch (e) {
+    if (ciTableMissing(e)) { ciMissing = true; renderCheckin(); }
+    else showUploadToast(t('저장 실패: ','Save failed: ') + (e.message || ''));
+  }
+}
+
+// 안 올린 사람에게 채팅방에서 한 번 알린다
+async function ciNudge() {
+  if (!canManageAnnounce() || !currentChannel) return;
+  const cfg = ciCfg();
+  const days = ciDayList();
+  const today = ymdStr(new Date());
+  const lastDay = days.filter(d => d <= today).pop();
+  if (!lastDay) return;
+  const miss = ciRowIds.filter(id => !cfg.exempt.includes(id) && ciCell(id, lastDay) === 'miss')
+                       .map(id => (members[id] || {}).name).filter(Boolean);
+  if (!miss.length) { showUploadToast(t('모두 올렸어요 🎉','Everyone posted 🎉')); return; }
+  const text = t(`📋 ${lastDay.slice(5)} ${cfg.label} 아직 안 올린 사람: ${miss.join(', ')}`,
+                 `📋 ${cfg.label} not yet posted (${lastDay.slice(5)}): ${miss.join(', ')}`);
+  const { data: ins } = await sb.from('messages').insert({
+    channel_id: currentChannel.id, sender_id: ME.id, sender_name: ME.name, text, kind: 'text',
+  }).select().single();
+  if (ins) { try { appendMessage({ ...ins, reactions: [] }, {}); } catch (_) {} }
+  showUploadToast(t('채팅방에 알렸어요','Posted to the room'));
+}
+
+// ── 설정 ──
+function ciOpenSetup() { ciSetupOpen = true; renderCheckin(); }
+function ciCloseSetup() { ciSetupOpen = false; renderCheckin(); }
+
+function ciSetupHtml(cfg) {
+  const inp = 'height:36px;padding:0 11px;border:1.5px solid var(--border);border-radius:9px;font:600 13px var(--font);background:var(--surface);color:var(--ink);outline:none';
+  const dow = [0,1,2,3,4,5,6].map(n => `<label style="display:inline-flex;align-items:center;gap:4px;margin-right:9px;font:700 12px var(--font);color:${n===0?'#c0392b':'var(--ink2)'};cursor:pointer">
+      <input type="checkbox" class="ci-dow" value="${n}" ${cfg.days.includes(n) ? 'checked' : ''}/>${APP_LANG === 'en' ? CI_DOW_EN[n] : CI_DOW_KO[n]}</label>`).join('');
+  const opt = (v, ko, en) => `<option value="${v}" ${cfg.require === v ? 'selected' : ''}>${t(ko, en)}</option>`;
+  return `<div style="padding:4px 20px 16px;max-width:460px">
+    <div style="font:800 13px var(--font);color:var(--ink);margin-bottom:10px">⚙️ ${t('제출 현황 설정','Check-in settings')}</div>
+
+    <div style="font:700 11.5px var(--font);color:var(--ink3);margin-bottom:4px">${t('무엇을 내나요','What is it')}</div>
+    <input id="ci-label" value="${escAttr(cfg.label)}" placeholder="${t('플래너','Planner')}" style="${inp};width:100%;box-sizing:border-box;margin-bottom:11px"/>
+
+    <div style="font:700 11.5px var(--font);color:var(--ink3);margin-bottom:4px">${t('무엇을 올려야 제출로 볼까요','What counts as a submission')}</div>
+    <select id="ci-require" style="${inp};width:100%;box-sizing:border-box;margin-bottom:11px">
+      ${opt('image', '📷 사진을 올리면', '📷 A photo')}
+      ${opt('file',  '📎 사진이나 파일을 올리면', '📎 A photo or file')}
+      ${opt('any',   '💬 아무 메시지나 쓰면', '💬 Any message')}
+    </select>
+
+    <div style="font:700 11.5px var(--font);color:var(--ink3);margin-bottom:5px">${t('세는 요일','Days that count')}</div>
+    <div style="margin-bottom:11px">${dow}</div>
+
+    <div style="font:700 11.5px var(--font);color:var(--ink3);margin-bottom:4px">${t('언제부터 (비워두면 처음부터)','Start date (blank = from the beginning)')}</div>
+    <input id="ci-start" type="date" value="${cfg.start || ''}" style="${inp};margin-bottom:14px"/>
+
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button onclick="ciSaveSetup(true)" style="height:38px;padding:0 16px;border:none;border-radius:10px;background:#1d3a5f;color:#fff;font:700 13px var(--font);cursor:pointer">${t('저장하고 켜기','Save and turn on')}</button>
+      <button onclick="ciCloseSetup()" style="height:38px;padding:0 14px;border:1.5px solid var(--border);border-radius:10px;background:var(--surface);color:var(--ink2);font:700 13px var(--font);cursor:pointer">${t('취소','Cancel')}</button>
+      ${cfg.on ? `<div style="flex:1"></div><button onclick="ciSaveSetup(false)" style="height:38px;padding:0 14px;border:1.5px solid #f5c6c0;border-radius:10px;background:#fdecea;color:#b91c1c;font:700 13px var(--font);cursor:pointer">${t('끄기','Turn off')}</button>` : ''}
+    </div>
+  </div>`;
+}
+
+async function ciSaveSetup(on) {
+  if (!canManageAnnounce() || !currentChannel) return;
+  const days = [...document.querySelectorAll('.ci-dow')].filter(x => x.checked).map(x => x.value);
+  if (on && !days.length) { showUploadToast(t('세는 요일을 하나는 골라주세요','Pick at least one day')); return; }
+  const patch = {
+    checkin_on: !!on,
+    checkin_label: (document.getElementById('ci-label').value || '').trim() || t('플래너','Planner'),
+    checkin_days: days.join(',') || '0,1,2,3,4,5,6',
+    checkin_require: document.getElementById('ci-require').value || 'image',
+    checkin_start: document.getElementById('ci-start').value || null,
+  };
+  const { error } = await sb.from('channels').update(patch).eq('id', currentChannel.id);
+  if (error) {
+    if (ciTableMissing(error)) {
+      showUploadToast(t('DB 설치가 먼저 필요해요 — db/제출현황_DB설치.sql','Run db/제출현황_DB설치.sql first'));
+    } else showUploadToast(t('저장 실패: ','Save failed: ') + error.message);
+    return;
+  }
+  Object.assign(currentChannel, patch);
+  const ci = channels.find(c => c.id === currentChannel.id); if (ci) Object.assign(ci, patch);
+  ciSetupOpen = false;
+  ciOnOpenChannel();
+  document.getElementById('checkin-panel').style.display = 'block';
+  document.getElementById('checkin-btn').style.background = 'var(--asoft)';
+  showUploadToast(on ? t('켰어요 ✅','Turned on ✅') : t('껐어요','Turned off'));
+  if (on) loadCheckin(); else renderCheckin();
+}
 
 function toggleTodoPanel() {
   const panel = document.getElementById('todo-panel');
