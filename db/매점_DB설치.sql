@@ -85,7 +85,7 @@ language sql stable security definer set search_path = public as $$
     where me.id = auth.uid()
       and (
         me.community_role = 'super_admin'
-        or (me.community_id = cid and me.community_role in ('community_admin','admin_officer','teacher','staff'))
+        or (me.community_id = cid and me.community_role in ('vice_admin','community_admin','admin_officer','teacher','staff'))
       )
   );
 $$;

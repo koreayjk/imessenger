@@ -57,7 +57,7 @@ using (
   member_id = auth.uid()
   or exists (select 1 from public.members s where s.id = student_timetables.member_id and s.homeroom_teacher_id = auth.uid())
   or exists (select 1 from public.student_homerooms h where h.student_id = student_timetables.member_id and h.teacher_id = auth.uid())
-  or exists (select 1 from public.members me where me.id = auth.uid() and me.community_role in ('super_admin','community_admin','admin_officer'))
+  or exists (select 1 from public.members me where me.id = auth.uid() and me.community_role in ('super_admin','vice_admin','community_admin','admin_officer'))
 );
 -- 추가/수정/삭제: 본인만
 create policy stt_insert on public.student_timetables for insert to authenticated with check (member_id = auth.uid());
@@ -72,7 +72,7 @@ using (
   member_id = auth.uid()
   or exists (select 1 from public.members s where s.id = allowance_entries.member_id and s.homeroom_teacher_id = auth.uid())
   or exists (select 1 from public.student_homerooms h where h.student_id = allowance_entries.member_id and h.teacher_id = auth.uid())
-  or exists (select 1 from public.members me where me.id = auth.uid() and me.community_role in ('super_admin','community_admin','admin_officer'))
+  or exists (select 1 from public.members me where me.id = auth.uid() and me.community_role in ('super_admin','vice_admin','community_admin','admin_officer'))
 );
 drop policy if exists allowance_update on public.allowance_entries;
 create policy allowance_update on public.allowance_entries for update to authenticated
@@ -80,7 +80,7 @@ using (
   member_id = auth.uid()
   or exists (select 1 from public.members s where s.id = allowance_entries.member_id and s.homeroom_teacher_id = auth.uid())
   or exists (select 1 from public.student_homerooms h where h.student_id = allowance_entries.member_id and h.teacher_id = auth.uid())
-  or exists (select 1 from public.members me where me.id = auth.uid() and me.community_role in ('super_admin','community_admin','admin_officer'))
+  or exists (select 1 from public.members me where me.id = auth.uid() and me.community_role in ('super_admin','vice_admin','community_admin','admin_officer'))
 );
 drop policy if exists allowance_insert on public.allowance_entries;
 create policy allowance_insert on public.allowance_entries for insert to authenticated
@@ -88,14 +88,14 @@ with check (
   member_id = auth.uid()
   or exists (select 1 from public.members s where s.id = allowance_entries.member_id and s.homeroom_teacher_id = auth.uid())
   or exists (select 1 from public.student_homerooms h where h.student_id = allowance_entries.member_id and h.teacher_id = auth.uid())
-  or exists (select 1 from public.members me where me.id = auth.uid() and me.community_role in ('super_admin','community_admin','admin_officer'))
+  or exists (select 1 from public.members me where me.id = auth.uid() and me.community_role in ('super_admin','vice_admin','community_admin','admin_officer'))
 );
 drop policy if exists allowance_delete on public.allowance_entries;
 create policy allowance_delete on public.allowance_entries for delete to authenticated
 using (
   exists (select 1 from public.members s where s.id = allowance_entries.member_id and s.homeroom_teacher_id = auth.uid())
   or exists (select 1 from public.student_homerooms h where h.student_id = allowance_entries.member_id and h.teacher_id = auth.uid())
-  or exists (select 1 from public.members me where me.id = auth.uid() and me.community_role in ('super_admin','community_admin','admin_officer'))
+  or exists (select 1 from public.members me where me.id = auth.uid() and me.community_role in ('super_admin','vice_admin','community_admin','admin_officer'))
 );
 
 -- 학생 기록(독후감/활동후기)
@@ -105,7 +105,7 @@ using (
   member_id = auth.uid()
   or exists (select 1 from public.members s where s.id = student_writings.member_id and s.homeroom_teacher_id = auth.uid())
   or exists (select 1 from public.student_homerooms h where h.student_id = student_writings.member_id and h.teacher_id = auth.uid())
-  or exists (select 1 from public.members me where me.id = auth.uid() and me.community_role in ('super_admin','community_admin','admin_officer'))
+  or exists (select 1 from public.members me where me.id = auth.uid() and me.community_role in ('super_admin','vice_admin','community_admin','admin_officer'))
 );
 
 NOTIFY pgrst, 'reload schema';

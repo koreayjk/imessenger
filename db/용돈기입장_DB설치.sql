@@ -43,27 +43,27 @@ create policy allowance_select on public.allowance_entries for select to authent
 using (
   member_id = auth.uid()
   or exists (select 1 from public.members s where s.id = allowance_entries.member_id and s.homeroom_teacher_id = auth.uid())
-  or exists (select 1 from public.members me where me.id = auth.uid() and me.community_role in ('super_admin','community_admin','admin_officer'))
+  or exists (select 1 from public.members me where me.id = auth.uid() and me.community_role in ('super_admin','vice_admin','community_admin','admin_officer'))
 );
 
 create policy allowance_insert on public.allowance_entries for insert to authenticated
 with check (
   member_id = auth.uid()
   or exists (select 1 from public.members s where s.id = allowance_entries.member_id and s.homeroom_teacher_id = auth.uid())
-  or exists (select 1 from public.members me where me.id = auth.uid() and me.community_role in ('super_admin','community_admin','admin_officer'))
+  or exists (select 1 from public.members me where me.id = auth.uid() and me.community_role in ('super_admin','vice_admin','community_admin','admin_officer'))
 );
 
 create policy allowance_update on public.allowance_entries for update to authenticated
 using (
   member_id = auth.uid()
   or exists (select 1 from public.members s where s.id = allowance_entries.member_id and s.homeroom_teacher_id = auth.uid())
-  or exists (select 1 from public.members me where me.id = auth.uid() and me.community_role in ('super_admin','community_admin','admin_officer'))
+  or exists (select 1 from public.members me where me.id = auth.uid() and me.community_role in ('super_admin','vice_admin','community_admin','admin_officer'))
 );
 
 create policy allowance_delete on public.allowance_entries for delete to authenticated
 using (
   exists (select 1 from public.members s where s.id = allowance_entries.member_id and s.homeroom_teacher_id = auth.uid())
-  or exists (select 1 from public.members me where me.id = auth.uid() and me.community_role in ('super_admin','community_admin','admin_officer'))
+  or exists (select 1 from public.members me where me.id = auth.uid() and me.community_role in ('super_admin','vice_admin','community_admin','admin_officer'))
 );
 
 NOTIFY pgrst, 'reload schema';

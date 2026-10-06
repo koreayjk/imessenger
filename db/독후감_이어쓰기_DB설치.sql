@@ -29,7 +29,7 @@ using (
   member_id = auth.uid()
   or exists (select 1 from public.members s where s.id = book_report_notes.member_id and s.homeroom_teacher_id = auth.uid())
   or exists (select 1 from public.student_homerooms h where h.student_id = book_report_notes.member_id and h.teacher_id = auth.uid())
-  or exists (select 1 from public.members me where me.id = auth.uid() and me.community_role in ('super_admin','community_admin','admin_officer'))
+  or exists (select 1 from public.members me where me.id = auth.uid() and me.community_role in ('super_admin','vice_admin','community_admin','admin_officer'))
 );
 -- 추가/수정/삭제: 본인만
 create policy booknotes_insert on public.book_report_notes for insert to authenticated with check (member_id = auth.uid());

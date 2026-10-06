@@ -11,7 +11,7 @@ language sql stable security definer set search_path = public as $$
     where me.id = auth.uid()
       and (
         me.community_role = 'super_admin'
-        or (me.community_id = cid and me.community_role in ('community_admin','admin_officer','teacher','staff'))
+        or (me.community_id = cid and me.community_role in ('vice_admin','community_admin','admin_officer','teacher','staff'))
       )
   );
 $$;
@@ -82,7 +82,7 @@ using (
   auth.uid() = any(participant_ids)
   or exists (select 1 from public.members me where me.id = auth.uid()
              and (me.community_role='super_admin'
-                  or (me.community_id = approval_docs.community_id and me.community_role in ('community_admin','admin_officer'))))
+                  or (me.community_id = approval_docs.community_id and me.community_role in ('vice_admin','community_admin','admin_officer'))))
 );
 -- 상신: 본인이 상신자 + 교직원
 create policy appr_doc_insert on public.approval_docs for insert to authenticated
@@ -96,7 +96,7 @@ using (
   submitter_id = auth.uid()
   or exists (select 1 from public.members me where me.id = auth.uid()
              and (me.community_role='super_admin'
-                  or (me.community_id = approval_docs.community_id and me.community_role in ('community_admin','admin_officer'))))
+                  or (me.community_id = approval_docs.community_id and me.community_role in ('vice_admin','community_admin','admin_officer'))))
 );
 
 NOTIFY pgrst, 'reload schema';

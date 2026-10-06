@@ -38,7 +38,7 @@ create policy writings_select on public.student_writings for select to authentic
 using (
   member_id = auth.uid()
   or exists (select 1 from public.members s where s.id = student_writings.member_id and s.homeroom_teacher_id = auth.uid())
-  or exists (select 1 from public.members me where me.id = auth.uid() and me.community_role in ('super_admin','community_admin','admin_officer'))
+  or exists (select 1 from public.members me where me.id = auth.uid() and me.community_role in ('super_admin','vice_admin','community_admin','admin_officer'))
 );
 create policy writings_insert on public.student_writings for insert to authenticated with check (member_id = auth.uid());
 create policy writings_update on public.student_writings for update to authenticated using (member_id = auth.uid());
@@ -57,8 +57,8 @@ drop policy if exists review_cat_read  on public.review_categories;
 drop policy if exists review_cat_write on public.review_categories;
 create policy review_cat_read on public.review_categories for select to authenticated using (true);
 create policy review_cat_write on public.review_categories for all to authenticated
-using      (exists (select 1 from public.members me where me.id = auth.uid() and me.community_role in ('super_admin','community_admin','admin_officer','teacher','staff')))
-with check (exists (select 1 from public.members me where me.id = auth.uid() and me.community_role in ('super_admin','community_admin','admin_officer','teacher','staff')));
+using      (exists (select 1 from public.members me where me.id = auth.uid() and me.community_role in ('super_admin','vice_admin','community_admin','admin_officer','teacher','staff')))
+with check (exists (select 1 from public.members me where me.id = auth.uid() and me.community_role in ('super_admin','vice_admin','community_admin','admin_officer','teacher','staff')));
 
 -- 기본 분류 시딩 (모든 공동체에, 이름 중복은 건너뜀)
 insert into public.review_categories (community_id, name, sort)

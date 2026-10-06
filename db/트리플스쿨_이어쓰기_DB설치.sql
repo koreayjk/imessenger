@@ -26,7 +26,7 @@ create policy readingnotes_select on public.reading_notes for select to authenti
 using (
   member_id = auth.uid()
   or exists (select 1 from public.members me where me.id = auth.uid()
-             and me.community_role in ('super_admin','community_admin','admin_officer','teacher','staff'))
+             and me.community_role in ('super_admin','vice_admin','community_admin','admin_officer','teacher','staff'))
 );
 -- 작성/수정/삭제: 본인만
 create policy readingnotes_insert on public.reading_notes for insert to authenticated

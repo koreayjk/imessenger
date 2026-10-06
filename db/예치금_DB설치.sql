@@ -29,26 +29,26 @@ using (
   member_id = auth.uid()
   or exists (select 1 from public.members s where s.id = deposit_entries.member_id and s.homeroom_teacher_id = auth.uid())
   or exists (select 1 from public.student_homerooms h where h.student_id = deposit_entries.member_id and h.teacher_id = auth.uid())
-  or exists (select 1 from public.members me where me.id = auth.uid() and me.community_role in ('super_admin','community_admin','admin_officer','teacher','staff'))
+  or exists (select 1 from public.members me where me.id = auth.uid() and me.community_role in ('super_admin','vice_admin','community_admin','admin_officer','teacher','staff'))
 );
 -- 기록/수정/삭제: 담당교사·관리자·교직원만 (학생 본인은 조회만)
 create policy deposit_insert on public.deposit_entries for insert to authenticated
 with check (
   exists (select 1 from public.members s where s.id = deposit_entries.member_id and s.homeroom_teacher_id = auth.uid())
   or exists (select 1 from public.student_homerooms h where h.student_id = deposit_entries.member_id and h.teacher_id = auth.uid())
-  or exists (select 1 from public.members me where me.id = auth.uid() and me.community_role in ('super_admin','community_admin','admin_officer','teacher','staff'))
+  or exists (select 1 from public.members me where me.id = auth.uid() and me.community_role in ('super_admin','vice_admin','community_admin','admin_officer','teacher','staff'))
 );
 create policy deposit_update on public.deposit_entries for update to authenticated
 using (
   exists (select 1 from public.members s where s.id = deposit_entries.member_id and s.homeroom_teacher_id = auth.uid())
   or exists (select 1 from public.student_homerooms h where h.student_id = deposit_entries.member_id and h.teacher_id = auth.uid())
-  or exists (select 1 from public.members me where me.id = auth.uid() and me.community_role in ('super_admin','community_admin','admin_officer','teacher','staff'))
+  or exists (select 1 from public.members me where me.id = auth.uid() and me.community_role in ('super_admin','vice_admin','community_admin','admin_officer','teacher','staff'))
 );
 create policy deposit_delete on public.deposit_entries for delete to authenticated
 using (
   exists (select 1 from public.members s where s.id = deposit_entries.member_id and s.homeroom_teacher_id = auth.uid())
   or exists (select 1 from public.student_homerooms h where h.student_id = deposit_entries.member_id and h.teacher_id = auth.uid())
-  or exists (select 1 from public.members me where me.id = auth.uid() and me.community_role in ('super_admin','community_admin','admin_officer','teacher','staff'))
+  or exists (select 1 from public.members me where me.id = auth.uid() and me.community_role in ('super_admin','vice_admin','community_admin','admin_officer','teacher','staff'))
 );
 
 NOTIFY pgrst, 'reload schema';

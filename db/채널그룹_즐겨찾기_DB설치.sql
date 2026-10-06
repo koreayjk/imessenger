@@ -31,7 +31,7 @@ drop policy if exists chgroups_select on public.channel_groups;
 drop policy if exists chgroups_write  on public.channel_groups;
 create policy chgroups_select on public.channel_groups for select to authenticated using (true);
 create policy chgroups_write on public.channel_groups for all to authenticated
-  using (exists (select 1 from public.members me where me.id = auth.uid() and me.community_role in ('super_admin','community_admin')))
-  with check (exists (select 1 from public.members me where me.id = auth.uid() and me.community_role in ('super_admin','community_admin')));
+  using (exists (select 1 from public.members me where me.id = auth.uid() and me.community_role in ('super_admin','vice_admin','community_admin')))
+  with check (exists (select 1 from public.members me where me.id = auth.uid() and me.community_role in ('super_admin','vice_admin','community_admin')));
 
 NOTIFY pgrst, 'reload schema';

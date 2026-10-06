@@ -34,7 +34,7 @@ using (
              where h.student_id = allowance_entries.member_id and h.teacher_id = auth.uid())
   or exists (select 1 from public.members me
              where me.id = auth.uid()
-               and me.community_role in ('super_admin','community_admin','admin_officer','teacher','staff'))
+               and me.community_role in ('super_admin','vice_admin','community_admin','admin_officer','teacher','staff'))
 );
 
 -- 추가
@@ -47,7 +47,7 @@ with check (
              where h.student_id = allowance_entries.member_id and h.teacher_id = auth.uid())
   or exists (select 1 from public.members me
              where me.id = auth.uid()
-               and me.community_role in ('super_admin','community_admin','admin_officer','teacher','staff'))
+               and me.community_role in ('super_admin','vice_admin','community_admin','admin_officer','teacher','staff'))
 );
 
 -- 수정
@@ -60,7 +60,7 @@ using (
              where h.student_id = allowance_entries.member_id and h.teacher_id = auth.uid())
   or exists (select 1 from public.members me
              where me.id = auth.uid()
-               and me.community_role in ('super_admin','community_admin','admin_officer','teacher','staff'))
+               and me.community_role in ('super_admin','vice_admin','community_admin','admin_officer','teacher','staff'))
 );
 
 -- 삭제 — 학생 본인은 빠진다 (학생은 '삭제 요청'만 하고 선생님이 승인)
@@ -72,7 +72,7 @@ using (
              where h.student_id = allowance_entries.member_id and h.teacher_id = auth.uid())
   or exists (select 1 from public.members me
              where me.id = auth.uid()
-               and me.community_role in ('super_admin','community_admin','admin_officer','teacher','staff'))
+               and me.community_role in ('super_admin','vice_admin','community_admin','admin_officer','teacher','staff'))
 );
 
 notify pgrst, 'reload schema';

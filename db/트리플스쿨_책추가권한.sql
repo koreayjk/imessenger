@@ -11,8 +11,8 @@ returns boolean language sql security definer stable set search_path = public as
     select 1 from public.members me
     where me.id = auth.uid()
       and (
-        me.community_role in ('super_admin','community_admin','admin_officer','teacher','staff')
-        or me.role in ('총관리자','관리자','행정담당자','교사','간사')
+        me.community_role in ('super_admin','vice_admin','community_admin','admin_officer','teacher','staff')
+        or me.role in ('총관리자','부총관리자','관리자','행정담당자','교사','간사')
       )
   ) or coalesce(auth.jwt() ->> 'email','') = 'koreayjk@gmail.com';
 $$;
