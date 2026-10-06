@@ -5082,6 +5082,72 @@ const HOME_WIDGETS = {
     }
   },
 
+  todo: {
+    icon:'✅', ko:'할 일', en:'To-Do',
+    dko:'채팅방에 적어 둔 할 일 중 내가 맡은 것과 기한이 가까운 것을 모아 보여줘요',
+    den:'Tasks assigned to you and those due soon, gathered from chat rooms', w:2,
+    cfg: [
+      { key:'scope', type:'select', ko:'무엇을 볼까요', en:'Show',
+        options:[{v:'mine', ko:'내가 맡은 것만', en:'Assigned to me'},
+                 {v:'all',  ko:'공동체 전체',    en:'Whole community'}] },
+      { key:'max', type:'number', ko:'최대 몇 개 (기본 6)', en:'Max items (default 6)', ph:'6' },
+    ],
+    render: async (ctx) => {
+      const cfg = ctx.cfg || {};
+      const mineOnly = (cfg.scope || 'mine') !== 'all';
+      const max = Math.max(1, Math.min(20, Number(cfg.max) || 6));
+      const head = hwHead('✅', t('할 일','To-Do'),
+        `<span style="font-size:11px;color:var(--ink3);font-weight:600">${mineOnly ? t('내 몫','Mine') : t('전체','All')}</span>`);
+
+      let rows = null;
+      try {
+        let q = sb.from('todos').select('id,title,assigned_to,assigned_name,due_date,completed,channel_id')
+          .eq('community_id', CID()).eq('completed', false);
+        if (mineOnly) q = q.eq('assigned_to', ME.id);
+        const { data, error } = await q.order('due_date', { ascending: true, nullsFirst: false }).limit(max + 1);
+        if (error) throw error;
+        rows = data || [];
+      } catch (e) {
+        // 할일 DB 를 아직 안 깔았으면 조용히 안내만
+        return hwCard(head + hwEmpty(todoTableIsMissing(e)
+          ? t('할 일 기능을 쓰려면 관리자가 <code>db/할일_DB설치.sql</code> 을 한 번 실행해야 해요',
+              'An admin needs to run <code>db/할일_DB설치.sql</code> once')
+          : t('할 일을 불러오지 못했어요','Could not load tasks')));
+      }
+
+      if (!rows.length) {
+        return hwCard(head + hwEmpty(mineOnly
+          ? t('맡은 할 일이 없어요 🎉','Nothing assigned to you 🎉')
+          : t('남은 할 일이 없어요 🎉','No open tasks 🎉')));
+      }
+
+      const today = ymdStr(new Date());
+      const more = rows.length > max;
+      const list = rows.slice(0, max).map(r => {
+        const due = r.due_date || '';
+        // 기한이 지난 것 · 오늘인 것은 눈에 띄게. 숫자만 적어 두면 아무도 안 본다.
+        const late = due && due < today, now = due === today;
+        const chip = !due ? ''
+          : `<span style="flex-shrink:0;font:800 10.5px var(--font);padding:2px 7px;border-radius:99px;
+               background:${late ? '#fdecea' : now ? '#fff7e6' : 'var(--s3)'};
+               color:${late ? '#b91c1c' : now ? '#b45309' : 'var(--ink3)'}">
+               ${late ? t('지남','Late') : now ? t('오늘','Today') : escHtml(due.slice(5))}</span>`;
+        const who = (!mineOnly && r.assigned_name)
+          ? `<span style="font-size:11px;color:var(--ink3);flex-shrink:0">${escHtml(r.assigned_name)}</span>` : '';
+        const ch = channels.find(c => c.id === r.channel_id);
+        const go = ch ? `onclick="setMode('chat');openChannel('${r.channel_id}')" style="cursor:pointer;"` : 'style="';
+        return `<div ${go}display:flex;align-items:center;gap:9px;padding:9px 11px;border-radius:10px;background:var(--bg)">
+          <span style="flex-shrink:0;color:${late ? '#b91c1c' : 'var(--ink3)'};font-size:13px">▢</span>
+          <span style="flex:1;min-width:0;font-size:13px;font-weight:600;color:var(--ink);word-break:keep-all">${escHtml(r.title || '')}</span>
+          ${who}${chip}
+        </div>`;
+      }).join('');
+
+      return hwCard(head + `<div style="display:flex;flex-direction:column;gap:7px">${list}</div>`
+        + (more ? `<div style="margin-top:8px;font-size:11px;color:var(--ink3);text-align:right">${t('채팅방에서 더 보기','More in chat rooms')}</div>` : ''));
+    }
+  },
+
   goals: {
     icon:'🎯', ko:'이달의 목표', en:'Monthly Goals',
     dko:'관리자가 정한 이번 달 목표를 보여줘요', den:"This month's goals set by an admin", w:2,
@@ -5975,6 +6041,12 @@ function hwOpenCfg(i) {
               <option value="${escAttr(String((it.cfg && it.cfg[f.key]) || ''))}">${t('불러오는 중...','Loading...')}</option>
             </select>
             <div id="hwcfg-${f.key}-msg" style="font-size:11px;color:var(--ink3);margin-top:5px;line-height:1.6;word-break:keep-all"></div>
+          </div>` : f.type === 'select' ? `
+          <div style="margin-bottom:14px">
+            <div style="font-size:12px;color:var(--ink3);margin-bottom:5px">${t(f.ko,f.en)}</div>
+            <select id="hwcfg-${f.key}" class="adm-input" style="margin-bottom:0;cursor:pointer">
+              ${(f.options||[]).map(o => `<option value="${escAttr(o.v)}" ${String((it.cfg && it.cfg[f.key]) || (f.options[0]||{}).v) === o.v ? 'selected' : ''}>${escHtml(t(o.ko, o.en))}</option>`).join('')}
+            </select>
           </div>` : `
           <div style="margin-bottom:14px">
             <div style="font-size:12px;color:var(--ink3);margin-bottom:5px">${t(f.ko,f.en)}</div>
@@ -6337,8 +6409,12 @@ async function renderProfilePage() {
         ${inp('phone', t('전화번호','Phone'), ME.phone, 'tel', '010-0000-0000')}
         ${inp('address', t('주소','Address'), ME.address, 'text', t('예: 서울시 강남구...','e.g. Seoul, Gangnam-gu...'))}
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px">
-          <div>${inp('guardian_name', t('보호자 성명','Guardian Name'), ME.guardian_name, 'text')}</div>
-          <div>${inp('guardian_phone', t('보호자 연락처','Guardian Phone'), ME.guardian_phone, 'tel', '010-0000-0000')}</div>
+          <div>${inp('father_name', t('아버지 성명','Father'), ME.father_name, 'text')}</div>
+          <div>${inp('father_phone', t('아버지 연락처','Father — Phone'), ME.father_phone, 'tel', '010-0000-0000')}</div>
+          <div>${inp('mother_name', t('어머니 성명','Mother'), ME.mother_name, 'text')}</div>
+          <div>${inp('mother_phone', t('어머니 연락처','Mother — Phone'), ME.mother_phone, 'tel', '010-0000-0000')}</div>
+          <div>${inp('guardian_name', t('그 밖의 보호자','Other Guardian'), ME.guardian_name, 'text')}</div>
+          <div>${inp('guardian_phone', t('그 밖의 보호자 연락처','Other Guardian — Phone'), ME.guardian_phone, 'tel', '010-0000-0000')}</div>
         </div>
       </div>
 
@@ -6493,6 +6569,10 @@ async function saveProfile() {
     address:          get('address'),
     guardian_name:    get('guardian_name'),
     guardian_phone:   get('guardian_phone'),
+    father_name:      get('father_name'),
+    father_phone:     get('father_phone'),
+    mother_name:      get('mother_name'),
+    mother_phone:     get('mother_phone'),
     church:           get('church'),
     career_goal:      get('career_goal'),
   };
@@ -6557,6 +6637,10 @@ async function syncProfileToTcs() {
     native_lang: ME.native_lang || '',
     guardian: ME.guardian_name || '',
     contact:  ME.guardian_phone || '',
+    father_name:  ME.father_name  || '',
+    father_phone: ME.father_phone || '',
+    mother_name:  ME.mother_name  || '',
+    mother_phone: ME.mother_phone || '',
     address:  ME.address || '',
   };
 
@@ -6581,8 +6665,9 @@ async function syncProfileToTcs() {
 
   for (const u of upserts) {
     // 기존 기록 가져와서 머지 (기존 데이터 덮어쓰지 않도록)
-    const { data: existing } = await sb.from('tcs_records')
-      .select('data').eq('student_id', ME.id).eq('section', u.section).single();
+    const { data: existing, error: readErr } = await sb.from('tcs_records')
+      .select('data').eq('student_id', ME.id).eq('section', u.section).maybeSingle();
+    if (readErr) continue;               // 못 읽었으면 쓰지 않는다 (덮어쓰면 사진·기록이 날아간다)
     const merged = { ...(existing?.data || {}), ...u.data };
 
     await sb.from('tcs_records').upsert({
@@ -6946,6 +7031,10 @@ async function selectTcsStudent(student) {
       native_lang: studentProfile.native_lang || '',
       guardian: studentProfile.guardian_name || '',
       contact:  studentProfile.guardian_phone || '',
+      father_name:  studentProfile.father_name  || '',
+      father_phone: studentProfile.father_phone || '',
+      mother_name:  studentProfile.mother_name  || '',
+      mother_phone: studentProfile.mother_phone || '',
       address:  studentProfile.address || '',
     };
     if (studentProfile.family_name) personalMerge.name_en = `${studentProfile.name} ${studentProfile.family_name}`;
@@ -7135,8 +7224,13 @@ function getTcsSectionFields(sectionId) {
       {key:'gender', label:t('성별','Gender'), type:'select', options:['남','여']},
       {key:'nationality', label:t('국적','Nationality'), type:'text', placeholder:t('대한민국','Republic of Korea')},
       {key:'native_lang', label:t('모국어','Native Language'), type:'text', placeholder:t('한국어','Korean')},
-      {key:'guardian', label:t('보호자 성명','Guardian Name'), type:'text'},
-      {key:'contact', label:t('연락처','Contact'), type:'text'},
+      {key:'father_name',  label:t('아버지 성명','Father'), type:'text'},
+      {key:'father_phone', label:t('아버지 연락처','Father — Phone'), type:'text', placeholder:'010-0000-0000'},
+      {key:'mother_name',  label:t('어머니 성명','Mother'), type:'text'},
+      {key:'mother_phone', label:t('어머니 연락처','Mother — Phone'), type:'text', placeholder:'010-0000-0000'},
+      // 조부모·위탁 등 부모가 아닌 보호자. 예전에 '보호자' 한 칸에 적어 둔 것도 여기 그대로 남는다.
+      {key:'guardian', label:t('그 밖의 보호자','Other Guardian'), type:'text'},
+      {key:'contact', label:t('그 밖의 보호자 연락처','Other Guardian — Phone'), type:'text', placeholder:'010-0000-0000'},
       {key:'address', label:t('주소','Address'), type:'text'},
     ],
     school: [
@@ -9288,7 +9382,7 @@ function renderTcsField(field, value) {
       <label style="${labelStyle}">${field.label}</label>
       <div style="display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap">
         <div id="tcs-photo-box" style="width:105px;height:140px;border:1.5px solid var(--border);border-radius:9px;background:var(--s2);display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0">
-          ${val ? `<img src="${imAttr(val)}" onerror="this.parentNode.innerHTML='<span style=&quot;font-size:11.5px;color:var(--ink3)&quot;>${t('사진 없음','No photo')}</span>'" style="width:100%;height:100%;object-fit:cover"/>`
+          ${val ? `<img src="${imAttr(val)}" onerror="this.parentNode.innerHTML='<span style=&quot;font-size:11px;color:#b45309;text-align:center;line-height:1.6;padding:6px&quot;>${t('사진을 불러오지<br>못했어요','Could not load<br>the photo')}</span>'" style="width:100%;height:100%;object-fit:cover"/>`
                 : `<span style="font-size:11.5px;color:var(--ink3);text-align:center;line-height:1.6">${t('3 × 4 cm','3 × 4 cm')}<br/>${t('증명사진','ID photo')}</span>`}
         </div>
         <div style="display:flex;flex-direction:column;gap:7px">
@@ -9363,7 +9457,14 @@ async function tcsPickPhoto(input) {
     const hidden = document.getElementById('tcs-photo');
     if (hidden) hidden.value = data.publicUrl;
     const ok = await saveTcsSection('personal', { stay: true });   // 바로 저장 — 안 그러면 올린 줄 알고 나가 버린다
-    if (ok) showUploadToast(t('✅ 증명사진이 저장됐어요','✅ ID photo saved'));
+    if (!ok) return;
+    // 저장했다고 말하기 전에 DB 에서 되읽어 본다. 규칙(RLS)에 막히면 오류 없이
+    // 0건만 바뀌므로, 확인하지 않으면 '저장됐다'고 해놓고 다음에 들어가면 없다.
+    const { data: back } = await sb.from('tcs_records').select('data')
+      .eq('student_id', tcsCurrentStudent.id).eq('section', 'personal').maybeSingle();
+    if (back && back.data && back.data.photo) showUploadToast(t('✅ 증명사진이 저장됐어요','✅ ID photo saved'));
+    else showUploadToast(t('⚠️ 올리긴 했는데 저장이 안 됐어요 — 관리자에게 알려주세요',
+                           '⚠️ Uploaded but not saved — please tell an admin'));
   } catch (e) {
     showUploadToast(t('사진 올리기 실패: ','Photo upload failed: ') + (e.message || e));
   }
@@ -9416,6 +9517,8 @@ async function saveTcsSection(sectionId, opts) {
 const TCS_PERSONAL_MIRROR = {
   birth:'birth_date', gender:'gender', nationality:'nationality', native_lang:'native_lang',
   guardian:'guardian_name', contact:'guardian_phone', address:'address',
+  father_name:'father_name', father_phone:'father_phone',
+  mother_name:'mother_name', mother_phone:'mother_phone',
 };
 async function tcsMirrorPersonal(data) {
   if (!tcsCurrentStudent || !tcsCurrentStudent.id) return;
@@ -9642,14 +9745,25 @@ function buildTcsPreviewHtml(lang) {
   // ── 각 섹션 ──
   const parts = [];
 
+  // 부·모·그 밖의 보호자 — 적은 것만 찍는다. 빈 줄이 늘어서면 서류가 지저분해진다.
+  const guardianRows = (pp) => {
+    const pair = (label, name, phone) => {
+      const nm = String(pp[name] || '').trim(), ph = String(pp[phone] || '').trim();
+      if (!nm && !ph) return '';
+      return row(label, escHtml(nm) + (ph ? ` <span style="color:#5b6577">(${escHtml(ph)})</span>` : ''));
+    };
+    // 빈 줄은 안 찍는다 — 이 서식의 다른 칸들과 같은 규칙이다
+    return pair('아버지', 'father_name', 'father_phone')
+         + pair('어머니', 'mother_name', 'mother_phone')
+         + pair('보호자', 'guardian', 'contact');
+  };
   if (tcsInc('personal')) parts.push(sec('인적사항') + table(
     row('성명 (한글)', escHtml(personal.name_ko || s.name || '')) +
     row('성명 (영문)', escHtml(personal.name_en || '')) +
     row('생년월일', escHtml(personal.birth || '')) +
     row('성별', escHtml(personal.gender || '')) +
     row('국적', escHtml(personal.nationality || '')) +
-    row('보호자', escHtml(personal.guardian || '')) +
-    row('연락처', escHtml(personal.contact || '')) +
+    guardianRows(personal) +
     row('주소', escHtml(personal.address || ''))));
 
   if (tcsInc('school')) parts.push(sec('학적사항') + table(
@@ -10447,7 +10561,7 @@ async function uploadOrgLogo(input) {
   const ext = small.name.split('.').pop();
   const path = `orgs/${CID()}/${Date.now()}.${ext}`;
   const { error } = await sb.storage.from('messenger').upload(path, small, { cacheControl: '31536000', upsert: true });
-  if (error) { showUploadToast('업로드 실패 😥'); return; }
+  if (error) { showUploadToast('업로드 실패: ' + (error.message || error)); return; }
   const { data: urlData } = sb.storage.from('messenger').getPublicUrl(path);
   const url = urlData.publicUrl + '?t=' + Date.now();
   document.getElementById('org-logo-url').value = url;
@@ -10957,7 +11071,7 @@ async function uploadSealImage(input) {
     const path = `seals/${CID()}/${Date.now()}.png`;
     const { error } = await sb.storage.from('messenger')
       .upload(path, blob, { contentType: 'image/png', cacheControl: '3600', upsert: true });
-    if (error) { showUploadToast('업로드 실패 😥'); return; }
+    if (error) { showUploadToast('업로드 실패: ' + (error.message || error)); return; }
     const { data: u } = sb.storage.from('messenger').getPublicUrl(path);
     const publicUrl = u.publicUrl;
 
@@ -11046,7 +11160,7 @@ async function uploadCommLogo(input, commId) {
   // 전에는 logo.png 로 덮어썼다. 같은 주소라 캐시를 길게 잡으면 옛 로고가 남는다.
   const path = `community/${commId}/logo_${Date.now()}.${ext}`;
   const { error } = await sb.storage.from('messenger').upload(path, small, { cacheControl: '31536000', upsert: true });
-  if (error) { showUploadToast('업로드 실패 😥'); return; }
+  if (error) { showUploadToast('업로드 실패: ' + (error.message || error)); return; }
   const { data: urlData } = sb.storage.from('messenger').getPublicUrl(path);
   const url = urlData.publicUrl + '?t=' + Date.now();
   document.getElementById('cs-logo-url').value = url;
@@ -11087,8 +11201,20 @@ async function saveCommSettings(commId) {
   const bkEl = document.getElementById('cs-books-key');
   if (bkEl) updateData.books_api_key = bkEl.value.trim() || null;
   if (logoUrl) updateData.logo_url = logoUrl;
-  const { error } = await sb.from('communities').update(updateData).eq('id', commId);
-  if (error) { showUploadToast('저장 실패: ' + error.message); return; }
+  // 저장했는데 '0건'이면 오류 없이 조용히 넘어간다 — 규칙(RLS)에 막힐 때가 그렇다.
+  // 그래서 바뀐 행을 돌려받아 확인한다.
+  const { data: saved, error } = await sb.from('communities').update(updateData).eq('id', commId).select('id');
+  if (error) {
+    const m = error.message || '';
+    showUploadToast(/column .* does not exist|schema cache/i.test(m)
+      ? '저장 실패 — DB 설치가 덜 됐어요: ' + m
+      : '저장 실패: ' + m);
+    return;
+  }
+  if (!saved || !saved.length) {
+    showUploadToast('저장 권한이 없어요 — 이 공동체의 관리자만 바꿀 수 있습니다');
+    return;
+  }
   showUploadToast('✅ 공동체 설정이 저장됐어요!');
   loadGcalInfo();   // 캘린더를 바꿨을 수 있으니 연결 표시를 다시 읽는다
   // ME의 공동체 정보도 업데이트
