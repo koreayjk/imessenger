@@ -4529,8 +4529,12 @@ function renderPrayerContent() {
       <p>${p.body||''}</p>
       <div class="pray-btn">
         <div style="font-size:12.5px;color:var(--ink2)"><b style="color:var(--ink);font-weight:600" id="cnt-${p.id}">${p.prayer_count||0}명</b> 함께 기도 중</div>
-        <div class="pray-action${prayerJoined[p.id]?' joined':''}" onclick="togglePrayer('${p.id}',${p.prayer_count||0})" id="pbtn-${p.id}">
-          ${prayerJoined[p.id]?'✓ 함께 기도 중':'🙏 함께 기도'}
+        <div style="display:flex;align-items:center;gap:8px">
+          ${(p.member_id === ME.id || isCommunityAdmin()) ? `<button onclick="deletePrayer('${p.id}')" title="${t('지우기','Delete')}"
+            style="border:none;background:transparent;cursor:pointer;color:var(--ink3);font-size:13px;padding:4px 6px">🗑</button>` : ''}
+          <div class="pray-action${prayerJoined[p.id]?' joined':''}" onclick="togglePrayer('${p.id}',${p.prayer_count||0})" id="pbtn-${p.id}">
+            ${prayerJoined[p.id]?'✓ 함께 기도 중':'🙏 함께 기도'}
+          </div>
         </div>
       </div>
     </div>`).join('');
@@ -4550,9 +4554,11 @@ async function togglePrayer(id, currentCount) {
   if (p) p.prayer_count = newCount;
 }
 
-function showPrayerForm() {
+async function showPrayerForm() {
   const area = document.getElementById('prayer-list');
   if (!area) return;
+  // 범위 칩에 쓸 그룹 이름 (아직 안 읽었으면 지금)
+  if (!tcsGroups.length) { try { await loadStudentGroups(); } catch (_) {} }
   const form = document.createElement('div');
   form.className = 'prayer-card fade';
   form.style.marginBottom = '14px';
@@ -4560,7 +4566,8 @@ function showPrayerForm() {
     <div style="font-size:14px;font-weight:600;margin-bottom:12px">기도제목 올리기</div>
     <input id="ptitle" placeholder="제목" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font:14px var(--font);outline:none;margin-bottom:8px"/>
     <textarea id="pbody" placeholder="기도 내용을 나눠주세요..." rows="3" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font:14px var(--font);outline:none;resize:none;margin-bottom:8px"></textarea>
-    <div style="display:flex;gap:8px;margin-bottom:10px">${['전체','청년부','미디어팀','주일학교'].map(s=>`<div onclick="selectScope(this,'${s}')" data-scope="${s}" style="height:28px;padding:0 12px;border-radius:999px;font-size:12px;display:flex;align-items:center;background:var(--s3);color:var(--ink2);cursor:pointer">${s}</div>`).join('')}</div>
+    <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">${['전체'].concat((tcsGroups||[]).map(g=>g.name)).map(s=>`<div onclick="selectScope(this,'${escJs(s)}')" data-scope="${escAttr(s)}" style="height:28px;padding:0 12px;border-radius:999px;font-size:12px;display:flex;align-items:center;background:var(--s3);color:var(--ink2);cursor:pointer">${escHtml(s)}</div>`).join('')}
+      ${isCommunityAdmin() ? `<div onclick="setMode('admin');setTimeout(()=>{switchAdminTab('members');setAdmGroupBy('group');},150)" title="${t('그룹 만들기·고치기','Manage groups')}" style="height:28px;padding:0 11px;border-radius:999px;font-size:12px;display:flex;align-items:center;background:var(--surface);border:1.5px dashed var(--border);color:var(--ink3);cursor:pointer">${t('＋ 그룹','＋ Group')}</div>` : ''}</div>
     <div style="display:flex;gap:8px">
       <div onclick="this.closest('.prayer-card').remove()" style="flex:1;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;background:var(--s3);font-size:13.5px;color:var(--ink2);cursor:pointer">취소</div>
       <div onclick="submitPrayer(this)" style="flex:2;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;background:var(--sage);color:white;font-size:13.5px;font-weight:600;cursor:pointer">올리기</div>
@@ -4578,6 +4585,26 @@ function showPrayerForm() {
 function selectScope(el, scope) {
   el.closest('div').querySelectorAll('[data-scope]').forEach(x => { x.style.background='var(--s3)'; x.style.color='var(--ink2)'; delete x.dataset.selected; });
   el.style.background = 'var(--sage)'; el.style.color = 'white'; el.dataset.selected = '1';
+}
+
+// 올린 사람과 관리자만. 규칙(RLS)에 막히면 오류 없이 0건으로 끝나므로
+// 지워진 행을 돌려받아 확인한다.
+async function deletePrayer(id) {
+  const p = prayers.find(x => x.id === id);
+  if (!p) return;
+  if (!(p.member_id === ME.id || isCommunityAdmin())) { showUploadToast(t('지울 권한이 없어요','No permission')); return; }
+  if (!confirm(t('이 기도제목을 지울까요?','Delete this prayer request?'))) return;
+  const { data, error } = await sb.from('prayers').delete().eq('id', id).select('id');
+  if (error) { showUploadToast(t('지우기 실패: ','Delete failed: ') + error.message); return; }
+  if (!data || !data.length) {
+    showUploadToast(t('지울 권한이 없어요 — 관리자가 db/기도제목_지우기_DB설치.sql 을 실행해야 해요',
+                      'No permission — an admin needs to run db/기도제목_지우기_DB설치.sql'));
+    return;
+  }
+  prayers = prayers.filter(x => x.id !== id);
+  showUploadToast(t('지웠어요','Deleted'));
+  renderPrayerContent();
+  try { renderPrayerPanel(); } catch (_) {}
 }
 
 async function submitPrayer(btn) {
@@ -12079,6 +12106,122 @@ async function storageUsage(maxDepth = 2) {
 }
 
 // ── 멤버 관리 ──
+// ── 멤버 목록 묶어 보기 ──────────────────────────────────────────
+// 스무 명이 넘으면 한 줄로 쭉 늘어선 목록에서는 누가 누군지 안 잡힌다.
+// 역할별(관리자·간사·학생…) 또는 소속 그룹별(주일학교·청년…)로 묶는다.
+let admGroupBy = (() => { try { return localStorage.getItem('adm_group_by') || 'role'; } catch (_) { return 'role'; } })();
+function setAdmGroupBy(v) {
+  admGroupBy = v;
+  try { localStorage.setItem('adm_group_by', v); } catch (_) {}
+  renderAdminMembers();
+}
+const ADM_ROLE_ORDER = ['super_admin','vice_admin','community_admin','admin_officer','teacher','staff','student','member'];
+
+// 그룹은 공동체가 직접 만든다. '주일학교·청년부' 는 예시였을 뿐,
+// 공동체마다 '교사그룹' 처럼 필요한 묶음이 다르다.
+function admGroupBarHtml() {
+  if (admGroupBy !== 'group') return '';
+  const chip = g => `<span style="display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 6px 0 11px;border:1.5px solid var(--border);border-radius:99px;background:var(--surface);font:700 12px var(--font);color:var(--ink2)">
+      ${escHtml(g.name)}
+      <button onclick="admRenameGroup('${g.id}')" title="${t('이름 바꾸기','Rename')}" style="border:none;background:transparent;cursor:pointer;font-size:11px;padding:0 2px;color:var(--ink3)">✏️</button>
+      <button onclick="admDeleteGroup('${g.id}')" title="${t('지우기','Delete')}" style="border:none;background:transparent;cursor:pointer;font-size:11px;padding:0 4px 0 0;color:#c0392b">✕</button>
+    </span>`;
+  return `<div style="padding:10px 20px;background:var(--s2);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+    <span style="font-size:11.5px;font-weight:700;color:var(--ink3)">${t('그룹','Groups')}</span>
+    ${(tcsGroups||[]).map(chip).join('')}
+    <input id="adm-new-group" placeholder="${t('새 그룹 이름 (예: 교사그룹)','New group (e.g. Teachers)')}" onkeydown="if(event.key==='Enter')admAddGroup()"
+      style="height:28px;padding:0 10px;border:1.5px dashed var(--accent);border-radius:99px;font:600 12px var(--font);background:var(--surface);color:var(--ink);outline:none;min-width:150px"/>
+    <button onclick="admAddGroup()" style="height:28px;padding:0 11px;border:none;border-radius:99px;background:#1d3a5f;color:#fff;font:700 12px var(--font);cursor:pointer">${t('＋ 추가','＋ Add')}</button>
+  </div>`;
+}
+
+async function admAddGroup() {
+  const el = document.getElementById('adm-new-group');
+  const name = (el?.value || '').trim();
+  if (!name) { showUploadToast(t('그룹 이름을 적어주세요','Enter a group name')); return; }
+  const { error } = await sb.from('student_groups').insert({ community_id: CID(), name });
+  if (error) { showUploadToast(t('추가 실패: ','Add failed: ') + error.message); return; }
+  await loadStudentGroups();
+  showUploadToast(t(`✅ '${name}' 그룹을 만들었어요`, `✅ Group '${name}' created`));
+  renderAdminMembers();
+}
+async function admRenameGroup(id) {
+  const g = (tcsGroups || []).find(x => x.id === id);
+  const v = prompt(t('그룹 이름','Group name'), g ? g.name : '');
+  if (v === null) return;
+  const name = v.trim(); if (!name) return;
+  const { error } = await sb.from('student_groups').update({ name }).eq('id', id);
+  if (error) { showUploadToast(t('바꾸기 실패: ','Rename failed: ') + error.message); return; }
+  await loadStudentGroups();
+  renderAdminMembers();
+}
+async function admDeleteGroup(id) {
+  const g = (tcsGroups || []).find(x => x.id === id);
+  if (!confirm(t(`'${g ? g.name : ''}' 그룹을 지울까요? 속한 사람은 '그룹 없음'이 됩니다.`,
+                 `Delete '${g ? g.name : ''}'? Its members become ungrouped.`))) return;
+  await sb.from('members').update({ group_id: null }).eq('group_id', id);
+  const { error } = await sb.from('student_groups').delete().eq('id', id);
+  if (error) { showUploadToast(t('지우기 실패: ','Delete failed: ') + error.message); return; }
+  await loadStudentGroups();
+  renderAdminMembers();
+}
+// 학생만이 아니라 교사·간사도 그룹에 넣을 수 있어야 '교사그룹'이 된다
+async function admSetMemberGroup(memberId, groupId) {
+  const { data, error } = await sb.from('members').update({ group_id: groupId || null }).eq('id', memberId).select('id');
+  if (error) { showUploadToast(t('변경 실패: ','Change failed: ') + error.message); return; }
+  if (!data || !data.length) { showUploadToast(t('바꿀 권한이 없어요','No permission')); return; }
+  showUploadToast(t('✅ 그룹이 바뀌었어요','✅ Group changed'));
+  renderAdminMembers();
+}
+
+function admGroupToggleHtml() {
+  const btn = (v, label) => `<button onclick="setAdmGroupBy('${v}')" style="height:30px;padding:0 12px;border-radius:99px;cursor:pointer;white-space:nowrap;
+    font:700 12px var(--font);border:1.5px solid ${admGroupBy===v?'#1d3a5f':'var(--border)'};
+    background:${admGroupBy===v?'#1d3a5f':'var(--surface)'};color:${admGroupBy===v?'#fff':'var(--ink2)'}">${label}</button>`;
+  return `<div style="display:flex;gap:6px;flex-wrap:wrap">
+    ${btn('role',  t('역할별','By role'))}
+    ${btn('group', t('그룹별','By group'))}
+    ${btn('none',  t('전체','All'))}
+  </div>`;
+}
+
+// 묶음별로 나눈다 — [{key, label, color, members[]}, …]
+function admBuckets(list, roleLabel, roleColor) {
+  if (!(list || []).length) return [];
+  if (admGroupBy === 'none') return [{ key:'all', label:'', color:'', members:list }];
+
+  if (admGroupBy === 'group') {
+    const by = {};
+    (list || []).forEach(m => { const k = m.group_id || '_none'; (by[k] = by[k] || []).push(m); });
+    const out = (tcsGroups || []).filter(g => by[g.id])
+      .map(g => ({ key:g.id, label:g.name, color:'#1d4ed8', members:by[g.id] }));
+    // 그룹을 하나도 안 만든 공동체에서 '그룹 없음' 머리글만 덩그러니 띄우지 않는다
+    if (!out.length) return [{ key:'all', label:'', color:'', members:list }];
+    if (by._none) out.push({ key:'_none', label:t('그룹 없음','No group'), color:'#6b7280', members:by._none });
+    return out;
+  }
+
+  const by = {};
+  (list || []).forEach(m => { const k = m.community_role || 'member'; (by[k] = by[k] || []).push(m); });
+  const known = ADM_ROLE_ORDER.filter(k => by[k]).map(k => ({ key:k, label:roleLabel[k] || k, color:roleColor[k] || '#6b7280', members:by[k] }));
+  const rest = Object.keys(by).filter(k => !ADM_ROLE_ORDER.includes(k))
+    .map(k => ({ key:k, label:k, color:'#6b7280', members:by[k] }));
+  return known.concat(rest);
+}
+
+function admGroupedHtml(list, row, roleLabel, roleColor) {
+  const buckets = admBuckets(list, roleLabel, roleColor);
+  if (buckets.length === 1 && !buckets[0].label) return list.map(m => row(m, false)).join('');
+  return buckets.map(b => `
+    <div style="position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:8px;padding:9px 20px;
+         background:var(--s2);border-bottom:1px solid var(--border);border-top:1px solid var(--border)">
+      <span style="width:7px;height:7px;border-radius:50%;background:${b.color};flex-shrink:0"></span>
+      <span style="font:800 12.5px var(--font);color:var(--ink)">${escHtml(b.label)}</span>
+      <span style="font-size:11.5px;color:var(--ink3)">${t(b.members.length + '명', b.members.length + '')}</span>
+    </div>
+    ${b.members.map(m => row(m, false)).join('')}`).join('');
+}
+
 async function renderAdminMembers() {
   const _seq = _admSeq;
   const area = document.getElementById('admin-content');
@@ -12096,6 +12239,8 @@ async function renderAdminMembers() {
 
   const { data } = await query;
   const list = data || [];
+  // 그룹별로 묶을 때 이름이 필요하다 (아직 안 읽었으면 지금 읽는다)
+  if (!tcsGroups.length) { try { await loadStudentGroups(); } catch (_) {} }
 
   // 총관리자: 승인된 멤버 중에서는 교사/관리자만, pending/rejected는 전부 표시
   const pending  = list.filter(m => m.status === 'pending');
@@ -12145,6 +12290,11 @@ async function renderAdminMembers() {
             ${isSuperAdmin()?`<option value="vice_admin" ${m.community_role==='vice_admin'?'selected':''}>${t('부총관리자','Deputy Admin')}</option>`:''}
             ${isSuperAdmin()?`<option value="super_admin" ${m.community_role==='super_admin'?'selected':''}>${t('총관리자','Super Admin')}</option>`:''}
           </select>`}
+          ${admGroupBy === 'group' ? `<select onchange="admSetMemberGroup('${m.id}',this.value)" title="${t('소속 그룹','Group')}"
+            style="height:30px;padding:0 10px;border-radius:9px;border:1.5px solid var(--border);font:12px var(--font);background:white;cursor:pointer;outline:none">
+            <option value="">${t('그룹 없음','No group')}</option>
+            ${(tcsGroups||[]).map(g => `<option value="${g.id}" ${m.group_id===g.id?'selected':''}>${escHtml(g.name)}</option>`).join('')}
+          </select>` : ''}
           ${(isSuperAdmin() && m.community_role !== 'super_admin') ? `<button class="adm-btn ghost" title="${t('다른 공동체로 옮기기','Move to another community')}" onclick="showMoveCommunityModal('${m.id}')">🏛️</button>` : ''}
           ${m.community_role !== 'super_admin' ? `<button class="adm-btn danger" onclick="deleteMember('${m.id}','${m.name}')">${t('탈퇴','Remove')}</button>` : `<span style="font-size:11px;color:var(--ink3)">${t('총관리자','Super Admin')}</span>`}
         `}
@@ -12179,10 +12329,13 @@ async function renderAdminMembers() {
     </div>` : ''}
 
     <div class="adm-card" style="padding:0;overflow:hidden;margin-bottom:16px">
-      <div style="padding:12px 20px;font-size:12px;font-weight:600;color:var(--ink3);border-bottom:1px solid var(--bs)">
-        ${t('멤버 '+approved.length+'명', approved.length+' members')}
+      <div style="padding:12px 20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;border-bottom:1px solid var(--bs)">
+        <span style="font-size:12px;font-weight:600;color:var(--ink3)">${t('멤버 '+approved.length+'명', approved.length+' members')}</span>
+        <div style="flex:1"></div>
+        ${admGroupToggleHtml()}
       </div>
-      ${approved.length ? approved.map(m => memberRow(m, false)).join('') : `<div style="padding:24px;text-align:center;color:var(--ink3);font-size:13px">${t('등록된 멤버가 없어요','No members registered')}</div>`}
+      ${admGroupBarHtml()}
+      ${approved.length ? admGroupedHtml(approved, memberRow, roleLabel, roleColor) : `<div style="padding:24px;text-align:center;color:var(--ink3);font-size:13px">${t('등록된 멤버가 없어요','No members registered')}</div>`}
     </div>
 
     ${rejected.length ? `
