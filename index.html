@@ -23437,6 +23437,7 @@ function renderImprove() {
   const list = improveItems.filter(i => improveFilter==='all' || (i.status||'pending')===improveFilter);
   const cards = list.map(it => {
     const mine = it.author_id === ME.id;
+    if (improveEditId === it.id) return improveEditCardHtml(it);
     const cs = improveComments[it.id] || [];
     const stBtns = admin ? `<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:10px">${IMPROVE_ORDER.map(k => {
       const on = (it.status||'pending')===k; const s = IMPROVE_STATUS[k];
@@ -23451,8 +23452,9 @@ function renderImprove() {
       <div style="display:flex;align-items:flex-start;gap:10px">
         <div style="flex:1;min-width:0">
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">${improveStatusBadge(it.status||'pending')}<span style="font-size:15px;font-weight:800;color:var(--ink)">${escHtml(it.title||'')}</span></div>
-          <div style="font-size:11px;color:var(--ink3)">${escHtml(it.author_name||'')}${it.community_name?` · ${escHtml(it.community_name)}`:''} · ${fmtTsDay(it.created_at)}</div>
+          <div style="font-size:11px;color:var(--ink3)">${escHtml(it.author_name||'')}${it.community_name?` · ${escHtml(it.community_name)}`:''} · ${fmtTsDay(it.created_at)}${it.updated_at?` · <span title="${escAttr(fmtTs(it.updated_at))}">${t('수정됨','edited')}</span>`:''}</div>
         </div>
+        ${(mine||admin)?`<button onclick="startImproveEdit('${it.id}')" title="${t('고치기','Edit')}" style="border:none;background:transparent;cursor:pointer;color:var(--ink3);font-size:13px;flex-shrink:0">✏️</button>`:''}
         ${(mine||admin)?`<button onclick="deleteImprovement('${it.id}')" title="${t('삭제','Delete')}" style="border:none;background:transparent;cursor:pointer;color:#c0392b;font-size:13px;flex-shrink:0">✕</button>`:''}
       </div>
       ${it.content?`<div style="font-size:13.5px;color:var(--ink);line-height:1.7;white-space:pre-wrap;margin-top:8px">${escReport(it.content)}</div>`:''}
@@ -23473,6 +23475,52 @@ function renderImprove() {
   </div>`;
 }
 function setImproveFilter(k) { improveFilter = k; renderImprove(); }
+
+// ── 본인이 올린 글 고치기 ────────────────────────────────────────
+// 지우고 다시 올리면 달려 있던 댓글과 처리 상태가 같이 사라진다.
+// 그래서 지우지 않고 제목·내용만 고칠 수 있게 한다.
+// 처리 상태는 관리자 몫이라 여기서 건드리지 않는다 (서버에서도 막혀 있다).
+let improveEditId = null;
+
+function startImproveEdit(id) { improveEditId = id; renderImprove(); }
+function cancelImproveEdit() { improveEditId = null; renderImprove(); }
+
+function improveEditCardHtml(it) {
+  const inp = 'width:100%;padding:11px 13px;border:1.5px solid var(--accent);border-radius:11px;font:14px var(--font);color:var(--ink);background:var(--surface);outline:none;box-sizing:border-box';
+  return `<div style="background:var(--surface);border:1.5px solid var(--accent);border-radius:14px;padding:15px 17px;margin-bottom:12px">
+    <div style="font-size:12px;font-weight:800;color:var(--adeep);margin-bottom:9px">✏️ ${t('고치는 중','Editing')}</div>
+    <input id="impe-title-${it.id}" value="${escAttr(it.title||'')}" placeholder="${t('제목','Title')}" style="${inp};margin-bottom:8px"/>
+    <textarea id="impe-content-${it.id}" rows="4" placeholder="${t('내용','Details')}" style="${inp};resize:vertical;line-height:1.6;margin-bottom:10px">${escHtml(it.content||'')}</textarea>
+    <div style="display:flex;gap:7px;justify-content:flex-end">
+      <button onclick="cancelImproveEdit()" style="height:36px;padding:0 14px;border:1.5px solid var(--border);border-radius:10px;background:var(--surface);color:var(--ink2);font:700 12.5px var(--font);cursor:pointer">${t('취소','Cancel')}</button>
+      <button onclick="saveImproveEdit('${it.id}')" style="height:36px;padding:0 16px;border:none;border-radius:10px;background:#1d3a5f;color:#fff;font:700 12.5px var(--font);cursor:pointer">${t('저장','Save')}</button>
+    </div>
+  </div>`;
+}
+
+async function saveImproveEdit(id) {
+  const title = (document.getElementById('impe-title-' + id)?.value || '').trim();
+  const content = (document.getElementById('impe-content-' + id)?.value || '').trim();
+  if (!title) { showUploadToast(t('제목을 입력하세요','Please enter a title')); return; }
+  const patch = { title, content, updated_at: new Date().toISOString() };
+  // 규칙(RLS)에 막히면 오류 없이 0건으로 끝난다 — 바뀐 행을 돌려받아 확인한다
+  let { data, error } = await sb.from('improvements').update(patch).eq('id', id).select('id');
+  if (error && /updated_at|column|schema cache/i.test(error.message || '')) {
+    delete patch.updated_at;        // db/개선창_본인글수정_DB설치.sql 전이면 그 칸이 없다
+    ({ data, error } = await sb.from('improvements').update(patch).eq('id', id).select('id'));
+  }
+  if (error) { showUploadToast(t('저장 실패: ','Save failed: ') + error.message); return; }
+  if (!data || !data.length) {
+    showUploadToast(t('고칠 권한이 없어요 — 관리자가 db/개선창_본인글수정_DB설치.sql 을 실행해야 해요',
+                      'No permission — an admin needs to run db/개선창_본인글수정_DB설치.sql'));
+    return;
+  }
+  const it = improveItems.find(x => x.id === id);
+  if (it) Object.assign(it, patch);
+  improveEditId = null;
+  showUploadToast(t('✅ 고쳤어요','✅ Saved'));
+  renderImprove();
+}
 async function postImprovement() {
   const title = (document.getElementById('imp-title')?.value || '').trim();
   const content = (document.getElementById('imp-content')?.value || '').trim();
