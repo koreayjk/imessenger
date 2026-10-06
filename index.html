@@ -401,13 +401,19 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
 #auth-screen {
   position: fixed; inset: 0; z-index: 100;
   background: linear-gradient(135deg, #e8eef6 0%, #dce6f2 50%, #eef1f7 100%);
-  display: flex; align-items: center; justify-content: center;
+  /* body 가 overflow:hidden 이라 여기서 스크롤을 열어 줘야 한다.
+     안 그러면 화면보다 긴 폼의 아랫부분(가입하기 버튼)이 잘려서 아예 못 누른다.
+     align-items:center 와 함께 쓰면 이번엔 위가 잘리므로, 가운데 맞춤은
+     자식의 margin:auto 로 한다. (넘칠 땐 자동으로 가운데 맞춤이 풀린다) */
+  display: flex; align-items: flex-start; justify-content: center;
+  overflow-y: auto; -webkit-overflow-scrolling: touch;
 }
 .auth-wrap {
   display: flex; gap: 0;
   background: white; border-radius: 28px;
   box-shadow: 0 32px 80px rgba(29,58,95,.18), 0 4px 16px rgba(29,58,95,.08);
   overflow: hidden; width: 820px; min-height: 520px;
+  margin: auto;
 }
 .auth-left {
   width: 320px; flex-shrink: 0;
@@ -433,7 +439,9 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
 .auth-form h2 { font-size: 22px; font-weight: 700; letter-spacing: -.02em; margin-bottom: 4px; }
 .auth-form .sub { font-size: 13.5px; color: var(--ink3); margin-bottom: 8px; line-height: 1.5; }
 .field-row { display: flex; gap: 10px; }
-.field-row .auth-input { flex: 1; }
+.field-row > div { flex: 1; min-width: 0; }
+.field-row .auth-input { flex: 1; width: 100%; box-sizing: border-box; }
+.auth-label { font-size: 12px; color: var(--ink3); margin-bottom: 6px; font-weight: 500; }
 .auth-input {
   width: 100%; padding: 12px 15px; border-radius: 12px;
   border: 1.5px solid var(--border); background: #f4f7fb;
@@ -589,7 +597,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
     min-height: auto;
   }
   .auth-left .features { display: none; }
-  .auth-right { padding: 28px 24px 40px; }
+  .auth-right { padding: 28px 24px calc(40px + env(safe-area-inset-bottom)); }
   .auth-form h2 { font-size: 20px; }
   .field-row { flex-direction: column; }
 
@@ -796,8 +804,14 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
         <input class="auth-input" id="su-email" type="email" placeholder="이메일 주소" data-ko-ph="이메일 주소" data-en-ph="Email address"/>
         <input class="auth-input" id="su-pw" type="password" placeholder="비밀번호 (6자 이상)" data-ko-ph="비밀번호 (6자 이상)" data-en-ph="Password (6+ characters)"/>
         <div class="field-row">
-          <input class="auth-input" id="su-nick" placeholder="이름 (실명)" data-ko-ph="이름 (실명)" data-en-ph="Full name"/>
-          <input class="auth-input" id="su-birth" type="date" placeholder="생년월일" data-ko-ph="생년월일" data-en-ph="Date of birth" style="color:var(--ink2)"/>
+          <div>
+            <div class="auth-label" data-ko="이름 (실명)" data-en="Full name">이름 (실명)</div>
+            <input class="auth-input" id="su-nick" placeholder="예) 홍길동" data-ko-ph="예) 홍길동" data-en-ph="e.g. Jane Doe"/>
+          </div>
+          <div>
+            <div class="auth-label" data-ko="생년월일 (태어난 날)" data-en="Date of birth">생년월일 (태어난 날)</div>
+            <input class="auth-input" id="su-birth" type="date" data-ko-ph="생년월일" data-en-ph="Date of birth" style="color:var(--ink2)"/>
+          </div>
         </div>
         <!-- 공동체 선택 -->
         <div style="margin-bottom:8px">
@@ -1756,8 +1770,34 @@ window.doLogout = doLogout;
 window.loadCommunitiesForSignup = loadCommunitiesForSignup;
 window.enterCommunity = enterCommunity;
 
+// 달력에서 고를 수 있는 범위를 아래 검사와 똑같이 맞춰 둔다.
+// (달력은 1900년까지 열어 두고 검사에선 막으면, 고른 뒤에야 퇴짜를 맞는다)
+function suBirthLimit() {
+  const el = document.getElementById('su-birth');
+  if (!el) return;
+  const now = new Date();
+  el.max = ymdStr(now);
+  el.min = ymdStr(new Date(now.getFullYear() - 120, now.getMonth(), now.getDate()));
+}
+
+// 생년월일이 말이 되는지. 폰이 '오늘'을 채워 둔 걸 그대로 보내는 일이 잦다.
+// 빈 칸만 막으면 그건 못 거른다 — 오늘 날짜는 빈 칸이 아니기 때문이다.
+function suBirthProblem(birth) {
+  const today = ymdStr(new Date());
+  if (!birth) return t('생년월일을 골라주세요','Please pick your date of birth');
+  if (birth > today) return t('생년월일이 미래로 되어 있어요','Date of birth is in the future');
+  const [y, m, d] = birth.split('-').map(Number);
+  const [ty, tm, td] = today.split('-').map(Number);
+  let age = ty - y; if (tm < m || (tm === m && td < d)) age--;
+  if (age < 3) return t('생년월일을 다시 확인해주세요 — 태어난 날을 골라야 해요',
+                        'Please check your date of birth — pick the day you were born');
+  if (age > 120) return t('생년월일을 다시 확인해주세요','Please check your date of birth');
+  return '';
+}
+
 // ── 공동체 목록 로드 (회원가입 폼용) ──
 async function loadCommunitiesForSignup() {
+  suBirthLimit();
   const { data } = await sb.from('communities').select('id, name, description, color').order('name');
   const sel = document.getElementById('su-community');
   if (!sel) return;
@@ -1779,8 +1819,15 @@ async function doSignUp() {
   const msg   = document.getElementById('su-msg');
   const btn   = document.getElementById('su-btn');
 
-  if (!email || !pw || !nick || !birth) { msg.className='auth-msg error'; msg.textContent='모든 항목을 입력해주세요'; return; }
-  if (!communityId) { msg.className='auth-msg error'; msg.textContent='소속 공동체를 선택해주세요'; return; }
+  if (!email || !pw || !nick) { msg.className='auth-msg error'; msg.textContent=t('모든 항목을 입력해주세요','Please fill in every field'); return; }
+  const birthBad = suBirthProblem(birth);
+  if (birthBad) {
+    msg.className='auth-msg error'; msg.textContent = birthBad;
+    const be = document.getElementById('su-birth');
+    if (be) { try { be.focus(); be.scrollIntoView({ block:'center', behavior:'smooth' }); } catch(_) {} }
+    return;
+  }
+  if (!communityId) { msg.className='auth-msg error'; msg.textContent=t('소속 공동체를 선택해주세요','Please select your community'); return; }
   if (pw.length < 6) { msg.className='auth-msg error'; msg.textContent='비밀번호는 6자 이상이어야 해요'; return; }
 
   btn.textContent='가입 중...'; btn.disabled=true;
