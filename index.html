@@ -3310,7 +3310,7 @@ function msgHtml(m, prev, readMap={}) {
       ${(canManageAnnounce() && m.kind !== 'file' && m.kind !== 'poll') ? `<div onclick="setAnnouncement('${m.id}')" title="${t('공지로 등록','Pin as notice')}"
         style="width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:13px"
         onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background=''">📢</div>` : ''}
-      ${m.kind !== 'poll' ? `<div onclick="startReply('${m.id}','${escAttr(m.text)}','${escAttr(sender.name)}')" title="답장"
+      ${m.kind !== 'poll' ? `<div onclick="startReply('${m.id}','${escJs(String(m.text||'').slice(0,100))}','${escJs(sender.name)}')" title="답장"
         style="width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px"
         onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background=''">↩️</div>` : ''}
       ${isMine ? `<div onclick="askDeleteMsg('${m.id}')" title="삭제"
@@ -3404,8 +3404,24 @@ function msgHtml(m, prev, readMap={}) {
   </div>`;
 }
 
+// HTML 속성 값에 넣을 때. 자르지 않는다.
+//  예전엔 이 함수가 100자에서 잘랐다. 답장 미리보기 한 곳에 맞춰 만든 건데
+//  어느새 앱 전체의 속성 escape 로 쓰이면서, 증명사진·책 표지·첨부 링크 같은
+//  긴 주소가 전부 100자에서 끊겨 저장됐다. 실제로 학생 13명의 증명사진이
+//  그렇게 깨져 있었다. (주소는 보통 110자가 넘는다)
 function escAttr(s) {
-  return String(s||'').replace(/'/g,"\\'").replace(/\n/g,' ').slice(0,100);
+  return String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// onclick="f('...')" 처럼 속성 안의 '자바스크립트 문자열'에 넣을 때.
+//  여기서는 &#39; 로 바꾸면 안 된다 — 브라우저가 속성을 풀 때 다시 ' 가 되어
+//  문자열이 깨진다. 역슬래시로 막아야 한다.
+function escJs(s) {
+  return String(s == null ? '' : s)
+    .replace(/\\/g,'\\\\').replace(/'/g,"\\'")
+    .replace(/\r?\n/g,' ').replace(/</g,'&lt;').replace(/"/g,'&quot;');
 }
 
 
@@ -10746,7 +10762,7 @@ async function renderGcalAcl() {
       <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--bs)">
         <div style="flex:1;min-width:0;font-size:12.5px;color:var(--ink);overflow-wrap:anywhere">${escHtml(p.email)}</div>
         <div style="flex:none;font-size:11px;color:var(--ink3);white-space:nowrap">${roleKo(p.role)}</div>
-        ${p.role === 'owner' ? '' : `<button onclick="gcalUnshare('${escAttr(p.id)}','${escAttr(p.email)}')"
+        ${p.role === 'owner' ? '' : `<button onclick="gcalUnshare('${escJs(p.id)}','${escJs(p.email)}')"
           style="width:26px;height:26px;border-radius:6px;border:1.5px solid var(--border);background:white;color:#ef4444;font-size:13px;cursor:pointer">×</button>`}
       </div>`).join('')
       : '<div style="font-size:12px;color:var(--ink3);padding:4px 0">아직 없어요.</div>'}
@@ -10755,7 +10771,7 @@ async function renderGcalAcl() {
       <div style="margin-top:10px">
         <div style="font-size:11.5px;color:var(--ink3);margin-bottom:6px">이 공동체의 관리자 — 눌러서 권한 주기</div>
         <div style="display:flex;flex-wrap:wrap;gap:6px">
-          ${suggest.map(m => `<button onclick="gcalShare('${escAttr(m.email)}')" title="${escAttr(m.email)}"
+          ${suggest.map(m => `<button onclick="gcalShare('${escJs(m.email)}')" title="${escJs(m.email)}"
             style="max-width:100%;height:30px;padding:0 11px;border-radius:8px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);font:600 12px var(--font);cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
             + ${escHtml(m.name || m.email)}</button>`).join('')}
         </div>
@@ -11377,10 +11393,10 @@ async function renderAdminCommunities() {
               </div>
             </div>
             <div style="display:flex;gap:8px;flex-shrink:0">
-              <button onclick="editCommunity('${c.id}','${escAttr(c.name)}','${escAttr(c.description||'')}','${c.color||'#1d3a5f'}')"
+              <button onclick="editCommunity('${c.id}','${escJs(c.name)}','${escJs(c.description||'')}','${c.color||'#1d3a5f'}')"
                 style="height:32px;padding:0 12px;border-radius:8px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:500 12px var(--font);cursor:pointer">수정</button>
               ${c.id !== '00000000-0000-0000-0000-000000000001' ? `
-              <button onclick="deleteCommunity('${c.id}','${escAttr(c.name)}')"
+              <button onclick="deleteCommunity('${c.id}','${escJs(c.name)}')"
                 style="height:32px;padding:0 12px;border-radius:8px;border:1.5px solid #fca5a5;background:#fef2f2;color:#dc2626;font:500 12px var(--font);cursor:pointer">삭제</button>
               ` : '<span style="font-size:11px;color:var(--ink3);padding:0 4px">기본</span>'}
             </div>
@@ -11389,7 +11405,7 @@ async function renderAdminCommunities() {
           <!-- 해당 공동체 멤버 수 -->
           <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border);display:flex;gap:16px">
             <span style="font-size:12px;color:var(--ink3)">🆔 ${c.id.slice(0,8)}...</span>
-            <button onclick="viewCommunityMembers('${c.id}','${escAttr(c.name)}')"
+            <button onclick="viewCommunityMembers('${c.id}','${escJs(c.name)}')"
               style="font-size:12px;color:${pendingByComm[c.id] ? '#dc2626' : 'var(--accent)'};background:none;border:none;cursor:pointer;font-weight:700;padding:0">멤버 보기${pendingByComm[c.id] ? ` · 승인대기 ${pendingByComm[c.id]}명` : ''} →</button>
           </div>
         </div>
@@ -11506,8 +11522,8 @@ async function viewCommunityMembers(communityId, communityName) {
             ${stBadge}
             <span style="font-size:11px;font-weight:600;padding:3px 9px;border-radius:99px;background:${roleColor[m.community_role]||'#6b7280'}22;color:${roleColor[m.community_role]||'#6b7280'}">${roleLabel[m.community_role]||m.community_role||'멤버'}</span>
             ${st === 'pending' ? `
-              <button onclick="approveInCommunity('${m.id}','${communityId}','${escAttr(communityName)}')" style="height:28px;padding:0 11px;border-radius:7px;border:none;background:#15803d;color:white;font:600 12px var(--font);cursor:pointer">✅ 승인</button>
-              <button onclick="rejectInCommunity('${m.id}','${communityId}','${escAttr(communityName)}')" style="height:28px;padding:0 11px;border-radius:7px;border:1.5px solid #fca5a5;background:white;color:#dc2626;font:600 12px var(--font);cursor:pointer">거절</button>` : ''}
+              <button onclick="approveInCommunity('${m.id}','${communityId}','${escJs(communityName)}')" style="height:28px;padding:0 11px;border-radius:7px;border:none;background:#15803d;color:white;font:600 12px var(--font);cursor:pointer">✅ 승인</button>
+              <button onclick="rejectInCommunity('${m.id}','${communityId}','${escJs(communityName)}')" style="height:28px;padding:0 11px;border-radius:7px;border:1.5px solid #fca5a5;background:white;color:#dc2626;font:600 12px var(--font);cursor:pointer">거절</button>` : ''}
             ${m.community_role !== 'super_admin' ? `<button onclick="showMoveCommunityModal('${m.id}')" title="다른 공동체로 옮기기" style="height:28px;padding:0 10px;border-radius:7px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:600 12px var(--font);cursor:pointer">🏛️ 이동</button>` : ''}
             <select onchange="changeMemberCommunityRole('${m.id}',this.value)" style="height:28px;padding:0 8px;border-radius:7px;border:1.5px solid var(--border);font:500 12px var(--font);color:var(--ink);background:white;cursor:pointer">
               <option value="student" ${m.community_role==='student'?'selected':''}>학생</option>
@@ -14030,7 +14046,7 @@ function imNoteEditorHtml() {
   <div style="margin-top:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,184px),1fr));gap:10px">
     <div style="background:var(--surface);border:1.5px solid var(--border);border-radius:12px;padding:13px">
       <div style="font-size:11.5px;font-weight:800;color:var(--ink3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">${t('이 노트가 가리키는 노트','Links out')} (${links.length})</div>
-      ${links.length ? links.map(l => { const f = imFindByTitle(l); return `<div onclick="imOpenByTitle('${escAttr(l)}')" style="font-size:12.5px;padding:5px 0;cursor:pointer;color:${f?'#1d4ed8':'var(--ink3)'};font-weight:600">→ ${escHtml(l)}${f?'':' <span style="font-weight:400">('+t('없음','missing')+')</span>'}</div>`; }).join('')
+      ${links.length ? links.map(l => { const f = imFindByTitle(l); return `<div onclick="imOpenByTitle('${escJs(l)}')" style="font-size:12.5px;padding:5px 0;cursor:pointer;color:${f?'#1d4ed8':'var(--ink3)'};font-weight:600">→ ${escHtml(l)}${f?'':' <span style="font-weight:400">('+t('없음','missing')+')</span>'}</div>`; }).join('')
         : `<div style="font-size:12px;color:var(--ink3)">${t('본문에 [[노트 제목]] 을 쓰면 여기 나와요','Write [[Note title]] in the body')}</div>`}
     </div>
     <div style="background:var(--surface);border:1.5px solid var(--border);border-radius:12px;padding:13px">
@@ -14332,7 +14348,7 @@ function imAttachHtml(n) {
     ${list.length ? list.map((a, i) => {
       const isImg = String(a.type||'').startsWith('image/');
       return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0">
-        ${isImg ? `<img src="${imAttr(a.url)}" onclick="openImageModal('${escAttr(a.url)}')" style="width:38px;height:38px;object-fit:cover;border-radius:7px;cursor:pointer;flex-shrink:0"/>` : '<span style="font-size:20px;flex-shrink:0">📄</span>'}
+        ${isImg ? `<img src="${imAttr(a.url)}" onclick="openImageModal('${escJs(a.url)}')" style="width:38px;height:38px;object-fit:cover;border-radius:7px;cursor:pointer;flex-shrink:0"/>` : '<span style="font-size:20px;flex-shrink:0">📄</span>'}
         <a href="${imAttr(a.url)}" target="_blank" rel="noopener noreferrer" style="flex:1;min-width:0;font-size:12.5px;color:#1d4ed8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(a.name||'file')}</a>
         ${mine && isImg ? `<button onclick="imOcrAttachment(${i})" title="${imAttr(t('사진 속 글자 뽑기','Extract text from image'))}" style="height:26px;padding:0 8px;border:1.5px solid var(--border);background:var(--surface);border-radius:7px;cursor:pointer;font:600 11px var(--font);color:var(--ink2)">🔍 ${t('글자','OCR')}</button>` : ''}
         ${mine ? `<button onclick="imAttachRemove(${i})" style="width:26px;height:26px;border:none;background:transparent;cursor:pointer;color:var(--ink3);font-size:13px">✕</button>` : ''}
@@ -16870,7 +16886,7 @@ function renderApprTemplates(){
     <span style="font-size:18px">${t.kind==='file'?'📄':'📝'}</span>
     <div style="flex:1"><div style="font-size:13.5px;font-weight:700">${escHtml(t.name)}</div><div style="font-size:11.5px;color:var(--ink3)">${escHtml(t.description||t.category||'')} · ${escHtml(t.created_name||'')}</div></div>
     ${t.file_url?`<a href="${t.file_url}" target="_blank" style="font-size:12px;color:var(--accent);text-decoration:none">${window.t('파일','File')}</a>`:''}
-    <button onclick="deleteApprTemplate('${t.id}','${escAttr(t.name)}')" style="border:none;background:transparent;color:#c0392b;cursor:pointer;font-size:13px">${window.t('삭제','Delete')}</button>
+    <button onclick="deleteApprTemplate('${t.id}','${escJs(t.name)}')" style="border:none;background:transparent;color:#c0392b;cursor:pointer;font-size:13px">${window.t('삭제','Delete')}</button>
   </div>`).join('') : `<div style="font-size:12.5px;color:var(--ink3);padding:8px 0">${t('등록한 양식이 없어요.','No registered forms.')}</div>`;
   main.innerHTML = `<div class="spage" style="max-width:1000px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
@@ -20541,7 +20557,7 @@ function ledgerFilterBar() {
   if (ledgerFilterOpen && cats.length) {
     const chips = cats.map(c => {
       const sel = allSel || ledgerCatFilter.has(c);
-      return `<button onclick="ledgerToggleCat('${escAttr(c)}')" style="height:30px;padding:0 11px;border-radius:999px;cursor:pointer;font:600 11.5px var(--font);white-space:nowrap;
+      return `<button onclick="ledgerToggleCat('${escJs(c)}')" style="height:30px;padding:0 11px;border-radius:999px;cursor:pointer;font:600 11.5px var(--font);white-space:nowrap;
         border:1.5px solid ${sel?'var(--accent)':'var(--border)'};
         background:${sel?'rgba(42,82,152,.12)':'white'};
         color:${sel?'var(--adeep)':'var(--ink3)'}">
