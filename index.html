@@ -893,6 +893,10 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>
       <span>일정</span>
     </div>
+    <div class="sb-btn" id="sb-prayer" onclick="setMode('prayer')" title="기도제목">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-4.4-7-9.6A4.4 4.4 0 0112 8.6a4.4 4.4 0 017 2.8c0 5.2-7 9.6-7 9.6z"/><path d="M12 8.6V4"/></svg>
+      <span>기도</span>
+    </div>
     <div class="sb-btn" id="sb-tcs" onclick="setMode('tcs')" title="생기부" style="display:none">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
       <span>생기부</span>
@@ -1089,7 +1093,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
         </div>
         <button onclick="showPrayerForm()" style="margin-left:auto;height:34px;padding:0 16px;border-radius:10px;border:none;background:var(--sage);color:white;font:600 13px var(--font);cursor:pointer">+ 기도제목 올리기</button>
       </div>
-      <div id="content-area" id="prayer-list"></div>
+      <div id="prayer-list" style="flex:1;overflow-y:auto;padding:clamp(16px,2vw,32px) clamp(16px,3vw,40px)"></div>
     </div>
 
     <!-- 홈 뷰 -->
@@ -2343,6 +2347,7 @@ function moreMenuItems() {
     { icon:'🏠', label:t('홈','Home'), act:"mobileTab('home')" },
     { icon:'💬', label:t('채팅','Chat'), act:"mobileTab('chat')" },
     { icon:'📅', label:t('일정','Calendar'), act:"mobileTab('calendar')" },
+    { icon:'🙏', label:t('기도제목','Prayer'), act:"setMode('prayer')" },
   ];
   if (!isTeacher()) items.push({ icon:'📋', label:t('생기부','Records'), act:"setMode('tcs')" });
   if (canAccessSchool()) {
@@ -4492,7 +4497,7 @@ function renderPrayerPanel() {
 
 function renderPrayerContent() {
   const colors = ['#2a5298','#6F8A5C','#5A7C8B','#7B6BA0','#2a7ab8'];
-  const area = document.getElementById('content-area');
+  const area = document.getElementById('prayer-list');
   if (!area) return;
   if (!prayers.length) {
     area.innerHTML = `<div style="text-align:center;color:var(--ink3);padding:60px 0"><div style="font-size:40px;margin-bottom:12px">🙏</div><div style="font-size:15px;font-weight:600;color:var(--ink)">기도제목이 없어요</div><div style="font-size:13px;margin-top:6px">첫 번째 기도제목을 올려보세요</div></div>`;
@@ -4530,7 +4535,8 @@ async function togglePrayer(id, currentCount) {
 }
 
 function showPrayerForm() {
-  const area = document.getElementById('content-area');
+  const area = document.getElementById('prayer-list');
+  if (!area) return;
   const form = document.createElement('div');
   form.className = 'prayer-card fade';
   form.style.marginBottom = '14px';
