@@ -10340,10 +10340,12 @@ async function welcomeChannelsOf(communityId) {
     const { data } = await sb.from('channels').select('id,name').eq('community_id', cid).in('id', ids);
     if (data && data.length) return data;
   }
-  // 예전 방식 — 고정(📌) 채널
-  const { data: pin } = await sb.from('channels').select('id,name')
-    .eq('community_id', cid).eq('pinned', true).neq('kind', 'dm');
-  return pin || [];
+  // 안 골라 뒀으면 공지방 하나. 예전엔 고정(📌) 채널을 전부 넣었는데,
+  // 고정이 여러 개인 공동체에서는 새 멤버가 대여섯 방에 한꺼번에 들어갔다.
+  const { data: all } = await sb.from('channels').select('id,name,pinned')
+    .eq('community_id', cid).neq('kind', 'dm');
+  const a = wcAnnounceOf(all || []);
+  return a ? [{ id: a.id, name: a.name }] : [];
 }
 
 // 한 사람을 기본 채팅방에 넣는다. 넣은 방 수를 돌려준다.
@@ -10402,6 +10404,50 @@ async function backfillWelcomeChannels(communityId) {
 }
 
 // 설정 화면의 채널 고르기 칸
+// 공지방 찾기 — 이름이 '전체공지'일 수도 'Announcement'일 수도 있다.
+// 못 찾으면 📌 고정된 방 중 첫 번째.
+function wcAnnounceOf(list) {
+  const L = list || [];
+  return L.find(c => /전체\s*공지|^공지|공지\s*사항|announce/i.test(String(c.name || '')))
+      || L.find(c => c.pinned) || null;
+}
+
+// 채팅방이 스무 개 넘는 공동체도 있다. 전부 늘어놓으면 설정 화면이
+// 그것만으로 꽉 찬다. 평소엔 한 줄로 접어 두고, 바꿀 때만 펼친다.
+function wcRenderSummary(selected) {
+  const box = document.getElementById('cs-wc-summary');
+  if (!box) return;
+  const sel = new Set(selected || []);
+  const picked = _wcChannels.filter(c => sel.has(c.id));
+  const fallback = wcAnnounceOf(_wcChannels);
+  const names = picked.length ? picked.map(c => c.name)
+              : (fallback ? [fallback.name] : []);
+  const auto = !picked.length;
+  box.innerHTML = `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+    <span style="font-size:12.5px;color:var(--ink)">${names.length
+      ? `📢 <b>${escHtml(names.join(', '))}</b>${auto ? ` <span style="font-size:11px;color:var(--ink3)">${t('(공지방 자동)','(announcement, automatic)')}</span>` : ''}`
+      : `<span style="color:#b45309;font-weight:700">${t('⚠️ 들어갈 방이 없어요','⚠️ No room to join')}</span>`}</span>
+    <button onclick="wcToggleEdit(true)" style="height:28px;padding:0 10px;border:1.5px solid var(--border);border-radius:8px;background:var(--surface);color:var(--ink2);font:700 11.5px var(--font);cursor:pointer">${t('바꾸기','Change')}</button>
+  </div>`;
+}
+
+function wcToggleEdit(on) {
+  const list = document.getElementById('cs-wc-list');
+  const sum = document.getElementById('cs-wc-summary');
+  if (!list || !sum) return;
+  list.style.display = on ? 'block' : 'none';
+  sum.style.display  = on ? 'none' : 'block';
+  if (!on) wcRenderSummary(wcPicked());
+}
+
+// 공지방 하나만 남긴다
+function wcOnlyAnnounce() {
+  const a = wcAnnounceOf(_wcChannels);
+  document.querySelectorAll('.cs-wc').forEach(x => { x.checked = !!a && x.value === a.id; wcMark(x); });
+  showUploadToast(a ? t(`📢 ${a.name} 만 남겼어요 — 아래 '설정 저장하기'를 눌러주세요`, `Only ${a.name} — press Save below`)
+                    : t('공지방을 찾지 못했어요','Could not find an announcement room'));
+}
+
 async function wcFillPicker(communityId, selected) {
   const box = document.getElementById('cs-wc-list');
   if (!box) return;
@@ -10409,12 +10455,22 @@ async function wcFillPicker(communityId, selected) {
     .eq('community_id', communityId).neq('kind', 'dm').order('pinned', { ascending:false }).order('name');
   if (error) { box.innerHTML = `<div style="font-size:11.5px;color:#b91c1c">${escHtml(error.message)}</div>`; return; }
   _wcChannels = data || [];
-  if (!_wcChannels.length) { box.innerHTML = `<div style="font-size:11.5px;color:var(--ink3)">채팅방이 아직 없어요.</div>`; return; }
+  if (!_wcChannels.length) {
+    box.innerHTML = `<div style="font-size:11.5px;color:var(--ink3)">채팅방이 아직 없어요.</div>`;
+    const sm = document.getElementById('cs-wc-summary');
+    if (sm) sm.innerHTML = `<span style="font-size:11.5px;color:var(--ink3)">채팅방이 아직 없어요.</span>`;
+    return;
+  }
   const sel = new Set(selected || []);
   box.innerHTML = _wcChannels.map(ch => `<label style="display:inline-flex;align-items:center;gap:6px;padding:6px 11px;border:1.5px solid ${sel.has(ch.id)?'#1d3a5f':'var(--border)'};border-radius:9px;background:${sel.has(ch.id)?'var(--asoft)':'var(--surface)'};cursor:pointer;font:600 12.5px var(--font);color:var(--ink2);margin:0 6px 6px 0">
       <input type="checkbox" class="cs-wc" value="${ch.id}" ${sel.has(ch.id)?'checked':''} onchange="wcMark(this)">
       ${ch.pinned?'📌 ':''}${escHtml(ch.name)}
-    </label>`).join('');
+    </label>`).join('')
+    + `<div style="margin-top:8px;display:flex;gap:7px;flex-wrap:wrap">
+        <button onclick="wcOnlyAnnounce()" style="height:30px;padding:0 12px;border:1.5px solid var(--accent);border-radius:9px;background:var(--surface);color:var(--accent);font:700 12px var(--font);cursor:pointer">${t('📢 공지방만','📢 Announcement only')}</button>
+        <button onclick="wcToggleEdit(false)" style="height:30px;padding:0 12px;border:1.5px solid var(--border);border-radius:9px;background:var(--surface);color:var(--ink2);font:700 12px var(--font);cursor:pointer">${t('접기','Collapse')}</button>
+      </div>`;
+  wcRenderSummary(selected);
 }
 function wcMark(el) {
   const l = el.closest('label'); if (!l) return;
@@ -10452,13 +10508,6 @@ async function renderCommunitySettings() {
           <div id="comm-preview-name" style="font-size:20px;font-weight:700;color:white">${comm.name}</div>
           <div id="comm-preview-desc" style="font-size:13px;color:rgba(255,255,255,.7);margin-top:3px">${comm.description||'설명 없음'}</div>
         </div>
-      </div>
-
-      <!-- 저장 용량 -->
-      <div class="adm-card" style="margin-bottom:16px">
-        <div style="font-size:14px;font-weight:700;margin-bottom:4px">💾 저장 용량</div>
-        <div style="font-size:12px;color:var(--ink3);margin-bottom:14px">이 공동체가 어디에 얼마나 쓰고 있는지 · Where this community's storage goes</div>
-        <div id="cs-usage"><div style="font-size:12px;color:var(--ink3)">불러오는 중...</div></div>
       </div>
 
       <!-- 언어 / Language -->
@@ -10529,36 +10578,18 @@ async function renderCommunitySettings() {
         <!-- 새 멤버 기본 채팅방 -->
         <div style="border-top:1px solid var(--border);margin:16px 0 14px;padding-top:14px">
           <div style="font-size:12px;font-weight:600;color:var(--ink3);margin-bottom:6px">💬 새 멤버 기본 채팅방</div>
-          <div id="cs-wc-list" style="margin-bottom:6px"><span style="font-size:11.5px;color:var(--ink3)">불러오는 중...</span></div>
+          <div id="cs-wc-summary" style="margin-bottom:6px"><span style="font-size:11.5px;color:var(--ink3)">불러오는 중...</span></div>
+          <div id="cs-wc-list" style="display:none;margin-bottom:6px"></div>
           <div style="font-size:11px;color:var(--ink3);line-height:1.65">
-            가입을 <b>승인하는 순간</b> 여기서 고른 방에 자동으로 들어갑니다.<br>
-            아무것도 안 고르면 📌 고정된 방을 씁니다. 고정된 방도 없으면 <b>아무 방에도 안 들어갑니다.</b>
+            가입을 <b>승인하는 순간</b> 여기서 고른 방에 자동으로 들어갑니다.
           </div>
-          <div style="font-size:11px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:9px;padding:9px 11px;line-height:1.7;margin-top:8px;word-break:keep-all">
-            ⚠️ 방이 하나도 없는 사람은 로그인해도 <b>채팅이 텅 비어 보입니다.</b>
-            본인은 "계정이 사라졌다"고 느낍니다. 아래 버튼으로 이미 그런 상태인 사람들을 한 번에 넣을 수 있어요.
+          <div style="font-size:11px;color:var(--ink3);line-height:1.65;margin-top:4px;word-break:keep-all">
+            방이 하나도 없는 사람은 로그인해도 채팅이 텅 비어 보입니다. 아래 버튼으로 한 번에 넣을 수 있어요.
           </div>
           <button onclick="backfillWelcomeChannels('${comm.id}')"
             style="margin-top:9px;height:36px;padding:0 14px;border:1.5px solid var(--border);border-radius:9px;background:var(--surface);color:var(--adeep);font:700 12.5px var(--font);cursor:pointer">
             🔁 채팅방 없는 멤버 한 번에 넣기
           </button>
-        </div>
-
-        <!-- 통화 -->
-        <div style="border-top:1px solid var(--border);margin:16px 0 14px;padding-top:14px">
-          <div style="font-size:12px;font-weight:600;color:var(--ink3);margin-bottom:6px">💱 통화</div>
-          <div style="display:inline-flex;gap:4px;background:var(--s2);border:1px solid var(--border);border-radius:11px;padding:4px">
-            ${[['원','₩ 원'],['$','$ 달러']].map(([v,l])=>`<button onclick="setCommCurrency('${v}')" style="height:34px;padding:0 18px;border:none;border-radius:8px;cursor:pointer;font:700 13px var(--font);background:${COMM_CUR===v?'#1d3a5f':'transparent'};color:${COMM_CUR===v?'#fff':'var(--ink2)'}">${l}</button>`).join('')}
-          </div>
-          <div style="font-size:11px;color:var(--ink3);line-height:1.65;margin-top:7px">
-            이 공동체가 쓰는 돈 단위입니다. 한국이면 원, 미국이면 달러로 두세요.<br>
-            정하고 나면 <b>용돈·예치금·학비</b> 의 금액칸에서 ₩/$ 고르는 버튼이 사라지고 전부 이 단위로 기록됩니다.<br>
-            <b>매점</b>은 페소(₱)도 쓸 수 있어 자체 설정을 따로 두지만, 새로 만들 때 이 값이 기본으로 잡힙니다.
-          </div>
-          <div style="font-size:11px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:9px;padding:9px 11px;line-height:1.7;margin-top:8px;word-break:keep-all">
-            ⚠️ 바꾸면 <b>이미 있는 금액을 지금 환율로 함께 변환</b>할지 물어봅니다. 단위만 바꾸고 숫자를 두면
-            50,000원이 $50,000 이 되니까요. <b>은행 입출금 내역은 건드리지 않습니다</b> (은행에서 받은 원본이라).
-          </div>
         </div>
 
         <!-- 자료실 폴더 -->
@@ -10602,6 +10633,30 @@ async function renderCommunitySettings() {
       </div><!-- /left -->
 
       <div style="flex:1 1 340px;min-width:0">
+      <!-- 저장 용량 -->
+      <div class="adm-card" style="margin-bottom:16px">
+        <div style="font-size:14px;font-weight:700;margin-bottom:4px">💾 저장 용량</div>
+        <div style="font-size:12px;color:var(--ink3);margin-bottom:14px">이 공동체가 어디에 얼마나 쓰고 있는지 · Where this community's storage goes</div>
+        <div id="cs-usage"><div style="font-size:12px;color:var(--ink3)">불러오는 중...</div></div>
+      </div>
+
+      <!-- 통화 -->
+      <div style="border-top:1px solid var(--border);margin:16px 0 14px;padding-top:14px">
+        <div style="font-size:12px;font-weight:600;color:var(--ink3);margin-bottom:6px">💱 통화</div>
+        <div style="display:inline-flex;gap:4px;background:var(--s2);border:1px solid var(--border);border-radius:11px;padding:4px">
+          ${[['원','₩ 원'],['$','$ 달러']].map(([v,l])=>`<button onclick="setCommCurrency('${v}')" style="height:34px;padding:0 18px;border:none;border-radius:8px;cursor:pointer;font:700 13px var(--font);background:${COMM_CUR===v?'#1d3a5f':'transparent'};color:${COMM_CUR===v?'#fff':'var(--ink2)'}">${l}</button>`).join('')}
+        </div>
+        <div style="font-size:11px;color:var(--ink3);line-height:1.65;margin-top:7px">
+          이 공동체가 쓰는 돈 단위입니다. 한국이면 원, 미국이면 달러로 두세요.<br>
+          정하고 나면 <b>용돈·예치금·학비</b> 의 금액칸에서 ₩/$ 고르는 버튼이 사라지고 전부 이 단위로 기록됩니다.<br>
+          <b>매점</b>은 페소(₱)도 쓸 수 있어 자체 설정을 따로 두지만, 새로 만들 때 이 값이 기본으로 잡힙니다.
+        </div>
+        <div style="font-size:11px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:9px;padding:9px 11px;line-height:1.7;margin-top:8px;word-break:keep-all">
+          ⚠️ 바꾸면 <b>이미 있는 금액을 지금 환율로 함께 변환</b>할지 물어봅니다. 단위만 바꾸고 숫자를 두면
+          50,000원이 $50,000 이 되니까요. <b>은행 입출금 내역은 건드리지 않습니다</b> (은행에서 받은 원본이라).
+        </div>
+      </div>
+
       <!-- 기록부 기관 프리셋 -->
       <div style="font-size:14px;font-weight:700;color:var(--adeep);margin:18px 0 8px">🏷️ 기록부 기관 (이름·로고)</div>
       <div style="font-size:12px;color:var(--ink3);margin-bottom:10px">학생 종합기록부 맨 위에 찍을 기관을 2~3개 등록해 두면, 기록부를 만들 때 골라 쓸 수 있어요.</div>
