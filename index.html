@@ -10671,7 +10671,7 @@ async function renderCommunitySettings() {
       <div style="border-top:1px solid var(--border);margin:16px 0 14px;padding-top:14px">
         <div style="font-size:12px;font-weight:600;color:var(--ink3);margin-bottom:6px">💱 통화</div>
         <div style="display:inline-flex;gap:4px;background:var(--s2);border:1px solid var(--border);border-radius:11px;padding:4px">
-          ${[['원','₩ 원'],['$','$ 달러']].map(([v,l])=>`<button onclick="setCommCurrency('${v}')" style="height:34px;padding:0 18px;border:none;border-radius:8px;cursor:pointer;font:700 13px var(--font);background:${COMM_CUR===v?'#1d3a5f':'transparent'};color:${COMM_CUR===v?'#fff':'var(--ink2)'}">${l}</button>`).join('')}
+          ${Object.keys(CURRENCIES).map(v=>`<button onclick="setCommCurrency('${v}')" style="height:34px;padding:0 15px;border:none;border-radius:8px;cursor:pointer;font:700 13px var(--font);white-space:nowrap;background:${COMM_CUR===v?'#1d3a5f':'transparent'};color:${COMM_CUR===v?'#fff':'var(--ink2)'}">${curOf(v).sign} ${t(curOf(v).ko.split(' ')[0], curOf(v).en.split(' ')[0])}</button>`).join('')}
         </div>
         <div style="font-size:11px;color:var(--ink3);line-height:1.65;margin-top:7px">
           이 공동체가 쓰는 돈 단위입니다. 한국이면 원, 미국이면 달러로 두세요.<br>
@@ -11532,17 +11532,18 @@ async function setCommCurrency(target) {
 
   if (!total) {
     if (await saveOnly()) {
-      showUploadToast(target === '원' ? t('✅ 통화를 원(₩)으로 정했어요','✅ Currency set to Won (₩)') : t('✅ 통화를 달러($)로 정했어요','✅ Currency set to Dollar ($)'));
+      showUploadToast(t(`✅ 통화를 ${curName(target)} 로 정했어요`, `✅ Currency set to ${curName(target)}`));
       renderAdminCommunities();
     }
     return;
   }
 
-  const rate = await fetchUsdKrw();
+  const rate = await curRate(COMM_CUR, target);
   if (!rate) { showUploadToast(t('환율을 가져오지 못했어요. 잠시 후 다시 해주세요','Could not fetch the exchange rate — try again shortly')); return; }
-  const conv = (n) => n == null ? null : (target === '원' ? Math.round((Number(n) || 0) * rate) : Math.round((Number(n) || 0) / rate * 100) / 100);
-  const rateTxt = `1 $ ≈ ${Math.round(rate).toLocaleString('ko-KR')}원`;
-  const dir = target === '원' ? t('달러 → 원','USD → KRW') : t('원 → 달러','KRW → USD');
+  const p10 = Math.pow(10, curOf(target).dec);
+  const conv = (n) => n == null ? null : Math.round((Number(n) || 0) * rate * p10) / p10;
+  const rateTxt = `1${curSign(COMM_CUR)} ≈ ${allowMoney(rate, target)}`;
+  const dir = `${curName(COMM_CUR)} → ${curName(target)}`;
   if (!confirm(t(
       `이미 있는 금액 ${total}건을 지금 환율(${rateTxt})로 ${dir} 바꿀까요?\n${per.join(' · ')}\n\n※ 은행 입출금 내역은 건드리지 않습니다.\n※ 되돌리려면 통화를 다시 바꿔야 해요.`,
       `Convert ${total} existing amounts ${dir} at the current rate (${rateTxt})?\n${per.join(' · ')}\n\n※ Bank cash-book entries are left untouched.\n※ To undo, switch the currency back.`))) return;
@@ -20046,8 +20047,8 @@ function finBulkPanelHtml(students) {
     <div style="font-size:11.5px;color:var(--ink3);margin-bottom:9px">${t(`지금 보이는 학생 ${students.length}명에게 같은 금액을 한 번에 넣습니다.`, `Adds the same amount to all ${students.length} students shown.`)}</div>
     <div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center">
       <input id="fin-bulk-date" type="date" value="${attTodayStr()}" style="${inp}"/>
-      <input id="fin-bulk-amount" type="number" min="0" step="${COMM_CUR==='$'?'0.01':'100'}" placeholder="${t('1인당 금액','Per student')}" style="${inp};width:130px"/>
-      <span style="font-size:12.5px;font-weight:700;color:var(--ink2)">${COMM_CUR==='$'?'$':'₩'}</span>
+      <input id="fin-bulk-amount" type="number" min="0" step="${curStep(COMM_CUR)}" placeholder="${t('1인당 금액','Per student')}" style="${inp};width:130px"/>
+      <span style="font-size:12.5px;font-weight:700;color:var(--ink2)">${curSign(COMM_CUR)}</span>
       <input id="fin-bulk-memo" value="${isAllow?escAttr(t('월 용돈','Monthly allowance')):escAttr(t('정기 입금','Regular deposit'))}" placeholder="${t('내용','Note')}" style="${inp};flex:1;min-width:140px"/>
       <button onclick="finBulkRun()" style="height:34px;padding:0 16px;border:none;border-radius:9px;background:#2a7a5a;color:#fff;cursor:pointer;font:700 12.5px var(--font)">${t('전체에게 넣기','Add to all')}</button>
       <button onclick="finBulkToggle()" style="height:34px;padding:0 13px;border:1px solid var(--border);border-radius:9px;background:var(--surface);color:var(--ink2);cursor:pointer;font:700 12.5px var(--font)">${t('취소','Cancel')}</button>
@@ -20257,7 +20258,7 @@ function finStmtPreview() {
     const minus = inR.filter(e => !finIsPlus(e)).reduce((a, e) => a + (Number(e.amount) || 0), 0);
     const left  = sum(all.filter(e => String(e.date || '') <= today));
     return `<div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;color:var(--ink2);padding:3px 0">
-        <span>${curs.length > 1 ? (cur === '$' ? '$ · ' : '₩ · ') : ''}${t(`${isAllow?'수입':'입금'} ${allowMoney(plus,cur)} · ${isAllow?'지출':'출금'} ${allowMoney(minus,cur)}`,
+        <span>${curs.length > 1 ? curSign(cur) + ' · ' : ''}${t(`${isAllow?'수입':'입금'} ${allowMoney(plus,cur)} · ${isAllow?'지출':'출금'} ${allowMoney(minus,cur)}`,
                                                                           `in ${allowMoney(plus,cur)} · out ${allowMoney(minus,cur)}`)}</span>
         <b style="color:var(--ink)">${t('남은 금액','Left')} ${allowMoney(left, cur)}</b>
       </div>`;
@@ -20358,7 +20359,7 @@ function finStatementPdf(studentId, from, to) {
       </div>${(r.to && r.to < today && leftNow !== bal) ? `<div style="font-size:9pt;color:#5b6577;margin:-1.5mm 0 3mm">
         ${t(`오늘(${today}) 기준 남은 금액: `, `Balance today (${today}): `)}<b style="color:#1d3a5f">${allowMoney(leftNow, cur)}</b></div>` : ''}`;
 
-    return `${curs.length > 1 ? `<div style="font-weight:700;color:#1d3a5f;margin:5mm 0 2mm">${cur === '$' ? t('달러 ($)','US Dollar ($)') : t('원화 (₩)','Korean Won (₩)')}</div>` : ''}
+    return `${curs.length > 1 ? `<div style="font-weight:700;color:#1d3a5f;margin:5mm 0 2mm">${curName(cur)}</div>` : ''}
       ${summary}<table><thead>${head}</thead><tbody>${openingRow}${rows.length ? body : empty}${totalRow}</tbody></table>`;
   }).join('');
 
@@ -20416,8 +20417,8 @@ function finInlineEditor() {
     <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
       <input id="fin-date" type="date" value="${attTodayStr()}" style="${inp}"/>
       ${catSel}
-      <span style="font-size:12.5px;font-weight:700;color:var(--ink2)">${COMM_CUR==='$'?'$':'₩'}</span>
-      <input id="fin-amount" type="number" min="0" step="${COMM_CUR==='$'?'0.01':'100'}" placeholder="${t('금액','Amount')}" style="${inp};width:100px"/>
+      <span style="font-size:12.5px;font-weight:700;color:var(--ink2)">${curSign(COMM_CUR)}</span>
+      <input id="fin-amount" type="number" min="0" step="${curStep(COMM_CUR)}" placeholder="${t('금액','Amount')}" style="${inp};width:100px"/>
       <input id="fin-memo" placeholder="${isAllow?t('내용 (예: 간식비)','Note (e.g. snacks)'):t('내용 (예: 부모님 입금)','Note (e.g. parent deposit)')}" style="${inp};flex:1;min-width:120px" onkeydown="if(event.key==='Enter')finAddEntry()"/>
       <button onclick="finAddEntry()" style="height:33px;padding:0 16px;border:none;background:#1d3a5f;color:#fff;border-radius:8px;cursor:pointer;font:700 12.5px var(--font)">${t('＋ 기록','＋ Add')}</button>
     </div>`;
@@ -20556,8 +20557,8 @@ async function renderFinBalances(kind) {
 let tuiCur = '원';   // 활성 통화 '원' | '$'
 const TUI_MONTHS = [1,2,3,4,5,6,7,8,9,10,11,12];
 const TUI_MON_EN = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-function tuiNum(n) { return (Number(n)||0).toLocaleString('en-US', { maximumFractionDigits: tuiCur==='$'?2:0 }); }
-function tuiWon(n) { return tuiCur==='$' ? '$'+tuiNum(n) : tuiNum(n)+'원'; }
+function tuiNum(n) { const c = curOf(tuiCur); return (Number(n)||0).toLocaleString(c.locale, { maximumFractionDigits: c.dec }); }
+function tuiWon(n) { return allowMoney(n, tuiCur); }
 
 async function loadTuition() {
   const { data, error } = await sb.from('tuition_bills').select('*')
@@ -20571,13 +20572,32 @@ async function loadTuition() {
 }
 
 // 현재 USD→KRW 환율 (프랑크푸르터 ECB, 무키)
-async function fetchUsdKrw() {
+// 달러를 기준으로 한 번 받아 두고, 통화끼리는 나눠서 환산한다.
+// 통화가 둘일 땐 USD→KRW 하나면 됐지만 셋부터는 그렇게 안 된다.
+let _fxCache = null;
+async function fetchFx() {
+  if (_fxCache && Date.now() - _fxCache.at < 3600000) return _fxCache.r;   // 한 시간
+  const want = [...new Set(Object.values(CURRENCIES).map(c => c.code))].filter(c => c !== 'USD');
   try {
-    const r = await fetch('https://api.frankfurter.app/latest?from=USD&to=KRW');
+    const r = await fetch('https://api.frankfurter.app/latest?from=USD&to=' + want.join(','));
     const d = await r.json();
-    return (d && d.rates && d.rates.KRW) ? d.rates.KRW : null;
-  } catch(_) { return null; }
+    if (!d || !d.rates) return null;
+    const out = { USD: 1 };
+    for (const c of want) { if (!d.rates[c]) return null; out[c] = d.rates[c]; }
+    _fxCache = { at: Date.now(), r: out };
+    return out;
+  } catch (_) { return null; }
 }
+// 1 from = ? to
+async function curRate(from, to) {
+  const fx = await fetchFx();
+  if (!fx) return null;
+  const f = curOf(from).code, t2 = curOf(to).code;
+  if (!fx[f] || !fx[t2]) return null;
+  return fx[t2] / fx[f];
+}
+// 예전 이름 — 학비 화면이 아직 쓴다
+async function fetchUsdKrw() { return curRate('$', '원'); }
 
 // 통화 전환 — 기존 금액을 현 환율로 자동 변환
 async function tuiSetCurrency(target) {
@@ -20598,7 +20618,7 @@ async function tuiSetCurrency(target) {
   if (!rate) { showUploadToast(t('환율을 가져오지 못했어요. 잠시 후 다시 시도해주세요','Could not fetch the exchange rate. Please try again shortly')); return; }
   const conv = (n) => n==null ? null : (target==='원' ? Math.round((Number(n)||0)*rate) : Math.round((Number(n)||0)/rate*100)/100);
   const rateTxt = `1 $ ≈ ${Math.round(rate).toLocaleString('ko-KR')}원`;
-  if (!confirm(t(`현재 환율(${rateTxt})로 학비 금액을 ${tuiCur==='$'?'달러→원':'원→달러'}으로 변환할까요?\n대상: ${cnt}건 (기록 + 학생별 월 학비)\n※ 되돌리려면 통화를 다시 바꿔야 해요.`, `Convert tuition amounts ${tuiCur==='$'?'from USD to KRW':'from KRW to USD'} at the current rate (${rateTxt})?\nItems: ${cnt} (records + per-student monthly tuition)\n※ To undo, switch the currency back.`))) return;
+  if (!confirm(t(`현재 환율(${rateTxt})로 학비 금액을 ${curName(tuiCur)} → ${curName(target)} 으로 변환할까요?\n대상: ${cnt}건 (기록 + 학생별 월 학비)\n※ 되돌리려면 통화를 다시 바꿔야 해요.`, `Convert tuition amounts ${curName(tuiCur)} → ${curName(target)} at the current rate (${rateTxt})?\nItems: ${cnt} (records + per-student monthly tuition)\n※ To undo, switch the currency back.`))) return;
   showUploadToast(t('환율 변환 중...','Converting…'));
   for (const b of (allBills||[])) {
     await sb.from('tuition_bills').update({ currency: target, amount: conv(b.amount), paid_amount: conv(b.paid_amount), updated_at: new Date().toISOString() }).eq('id', b.id);
@@ -21653,14 +21673,14 @@ function renderTuition() {
   const rows = students.map(s => {
     const rowTotal = TUI_MONTHS.reduce((a,mo)=>{ const b=payMap[s.id]&&payMap[s.id][mo]; return a+(b&&b.paid?(Number(b.paid_amount??b.amount)||0):0); },0);
     const paidN = TUI_MONTHS.filter(mo=>{ const b=payMap[s.id]&&payMap[s.id][mo]; return b&&b.paid; }).length;
-    const unit = tuiCur==='$'?'$':'₩';
+    const unit = curSign(tuiCur);
     const startSelVal = (() => { const ym=s.tuition_start_ym; if(!ym) return ''; const p=String(ym).split('-').map(Number); return (p[0]===tuiYear)?p[1]:''; })();
     return `<tr>
       <td style="position:sticky;left:0;z-index:1;background:var(--surface);padding:6px 8px;white-space:nowrap;border:1px solid var(--border)">
         <div style="font-size:12.5px;font-weight:700;color:var(--ink)">${escHtml(s.name)} <span style="font-size:10px;color:var(--ink3);font-weight:500">${paidN}/12</span></div>
         <div style="display:flex;align-items:center;gap:3px;margin-top:3px">
           <span style="font-size:10px;color:var(--ink3)">${unit}</span>
-          <input type="number" min="0" step="${tuiCur==='$'?'1':'1000'}" value="${s.tuition_monthly!=null?s.tuition_monthly:''}" placeholder="${t('월 학비','Monthly')}" onchange="saveTuiStudentAmount('${s.id}',this.value)" onclick="event.stopPropagation()" style="width:74px;height:22px;border:1px solid var(--border);border-radius:6px;padding:0 6px;font:600 11px var(--font);text-align:right;background:var(--s2)"/>
+          <input type="number" min="0" step="${curStep(tuiCur, true)}" value="${s.tuition_monthly!=null?s.tuition_monthly:''}" placeholder="${t('월 학비','Monthly')}" onchange="saveTuiStudentAmount('${s.id}',this.value)" onclick="event.stopPropagation()" style="width:74px;height:22px;border:1px solid var(--border);border-radius:6px;padding:0 6px;font:600 11px var(--font);text-align:right;background:var(--s2)"/>
           <select onchange="saveTuiStudentStart('${s.id}',this.value)" onclick="event.stopPropagation()" title="${t('납부 시작월','Start month')}" style="height:22px;border:1px solid var(--border);border-radius:6px;padding:0 2px;font:600 10px var(--font);background:var(--s2);color:var(--ink2);cursor:pointer">
             <option value="" ${startSelVal===''?'selected':''}>${t('전부터','All yr')}</option>
             ${TUI_MONTHS.map(mo=>`<option value="${mo}" ${startSelVal===mo?'selected':''}>${t(mo+'월~',TUI_MON_EN[mo]+'~')}</option>`).join('')}
@@ -21703,7 +21723,7 @@ function renderTuition() {
         </div>
         ${groupChips}
         <div style="display:inline-flex;gap:2px;background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:3px">
-          ${[['원',t('₩ 원','₩ Won')],['$',t('$ 달러','$ USD')]].map(([v,l])=>`<button onclick="tuiCurrencyHint()" title="${escAttr(t('통화는 관리자 → 공동체 설정에서 한 번에 정합니다','Currency is set once in Admin → Community settings'))}" style="height:30px;padding:0 12px;border:none;border-radius:7px;cursor:${COMM_CUR===v?'default':'pointer'};font:700 12px var(--font);background:${COMM_CUR===v?'#1d3a5f':'transparent'};color:${COMM_CUR===v?'#fff':'var(--ink3)'}">${l}</button>`).join('')}
+          ${Object.keys(CURRENCIES).map(v=>[v, curSign(v)+' '+t(curOf(v).ko.split(' ')[0], curOf(v).en.split(' ')[0])]).map(([v,l])=>`<button onclick="tuiCurrencyHint()" title="${escAttr(t('통화는 관리자 → 공동체 설정에서 한 번에 정합니다','Currency is set once in Admin → Community settings'))}" style="height:30px;padding:0 12px;border:none;border-radius:7px;cursor:${COMM_CUR===v?'default':'pointer'};font:700 12px var(--font);background:${COMM_CUR===v?'#1d3a5f':'transparent'};color:${COMM_CUR===v?'#fff':'var(--ink3)'}">${l}</button>`).join('')}
         </div>
         <button onclick="printTuitionMatrix()" style="height:36px;padding:0 15px;border:none;background:linear-gradient(135deg,#1d3a5f,#2a5298);color:#fff;border-radius:9px;cursor:pointer;font:700 12.5px var(--font)">${t('📄 PDF (가로)','📄 PDF (landscape)')}</button>
       </div>
@@ -21758,13 +21778,13 @@ function openTuiCell(sid, mo) {
   wrap.innerHTML = `<div style="background:var(--surface);border-radius:18px;padding:22px;width:100%;max-width:380px" onclick="event.stopPropagation()">
     <div style="font-size:17px;font-weight:800;color:var(--ink)">${escHtml(s.name)} · ${tuiYear}${t('년','')} ${t(mo+'월',TUI_MON_EN[mo])} ${t('학비','Tuition')}</div>
     <div style="font-size:12px;color:var(--ink3);margin:3px 0 16px">${existing&&existing.paid?t('✅ 이미 납부됨 — 수정하거나 미납으로 되돌릴 수 있어요','✅ Already paid — you can edit it or revert to unpaid'):t('납부 내역을 기록해요','Record a payment')}</div>
-    <div style="margin-bottom:11px"><label style="font-size:12px;font-weight:700;color:var(--ink3);display:block;margin-bottom:5px">${t('납부 금액','Payment amount')} (${tuiCur==='$'?t('$ 달러','$ USD'):t('원','₩')})</label><input id="tui-c-amount" type="number" min="0" step="${tuiCur==='$'?'1':'1000'}" value="${amount||''}" placeholder="0" style="${inp};text-align:right"/></div>
+    <div style="margin-bottom:11px"><label style="font-size:12px;font-weight:700;color:var(--ink3);display:block;margin-bottom:5px">${t('납부 금액','Payment amount')} (${curName(tuiCur)})</label><input id="tui-c-amount" type="number" min="0" step="${curStep(tuiCur, true)}" value="${amount||''}" placeholder="0" style="${inp};text-align:right"/></div>
     <div style="display:flex;gap:10px;margin-bottom:11px">
       <div style="flex:1"><label style="font-size:12px;font-weight:700;color:var(--ink3);display:block;margin-bottom:5px">${t('납부일','Payment date')}</label><input id="tui-c-date" type="date" value="${date}" style="${inp}"/></div>
       <div style="flex:1"><label style="font-size:12px;font-weight:700;color:var(--ink3);display:block;margin-bottom:5px">${t('방법','Method')}</label><select id="tui-c-method" style="${inp}">${['계좌','현금','카드','기타'].map(x=>`<option ${method===x?'selected':''}>${x}</option>`).join('')}</select></div>
     </div>
     <div id="tui-c-err" style="display:none;color:#b91c1c;font-size:12.5px;font-weight:600;margin-bottom:8px"></div>
-    <button onclick="saveTuiExempt('${sid}',${mo},'${existing?existing.id:''}')" style="width:100%;height:40px;margin-bottom:8px;border:1.5px solid var(--border);background:var(--s2);color:var(--ink2);border-radius:11px;font:700 13px var(--font);cursor:pointer">0${tuiCur==='$'?'':t('원','')} · ${t('부재·면제 처리 (미납에서 제외)','Away · exempt (excluded from unpaid)')}</button>
+    <button onclick="saveTuiExempt('${sid}',${mo},'${existing?existing.id:''}')" style="width:100%;height:40px;margin-bottom:8px;border:1.5px solid var(--border);background:var(--s2);color:var(--ink2);border-radius:11px;font:700 13px var(--font);cursor:pointer">${allowMoney(0, tuiCur)} · ${t('부재·면제 처리 (미납에서 제외)','Away · exempt (excluded from unpaid)')}</button>
     <div style="display:flex;gap:8px;margin-top:2px">
       ${existing&&existing.paid?`<button onclick="unmarkTuiCell('${existing.id}')" style="height:44px;padding:0 14px;border:1.5px solid #c0392b;background:#fff;color:#c0392b;border-radius:11px;font:700 13px var(--font);cursor:pointer">${t('지우기','Clear')}</button>`:''}
       <button onclick="document.getElementById('tui-cell-modal').remove()" style="flex:1;height:44px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:11px;font:700 13px var(--font);cursor:pointer">${t('닫기','Close')}</button>
@@ -23116,7 +23136,7 @@ function s360AllowCard(entries) {
     const tin  = entries.filter(e=>e.type==='income'  && (e.currency||'원')===cur).reduce((a,e)=>a+(Number(e.amount)||0),0);
     const tout = entries.filter(e=>e.type==='expense' && (e.currency||'원')===cur).reduce((a,e)=>a+(Number(e.amount)||0),0);
     return `<div style="flex:1;min-width:150px;background:linear-gradient(135deg,#2a7a5a,#2a5298);border-radius:12px;padding:12px 14px;color:#fff">
-      <div style="font-size:10.5px;opacity:.85">${t('잔액','Balance')} ${cur==='$'?t('(달러)','(USD)'):t('(원)','(KRW)')}</div>
+      <div style="font-size:10.5px;opacity:.85">${t('잔액','Balance')} (${curSign(cur)})</div>
       <div style="font-size:20px;font-weight:800;letter-spacing:-.02em">${allowMoney(tin-tout,cur)}</div>
       <div style="font-size:10.5px;opacity:.92;margin-top:3px">${t('수입','Income')} ${allowMoney(tin,cur)} · ${t('지출','Expense')} ${allowMoney(tout,cur)}</div>
     </div>`;
@@ -23133,7 +23153,7 @@ function s360AllowCard(entries) {
       <input id="s360al-date" type="date" value="${attTodayStr()}" style="${inp}"/>
       <select id="s360al-cat" style="${inp}">${catOpts}</select>
       <div style="display:flex;gap:4px">${cBtn('원','₩')}${cBtn('$','$')}</div>
-      <input id="s360al-amount" type="number" min="0" step="${s360AllowCur==='$'?'0.01':'100'}" placeholder="${t('금액','Amount')}" style="${inp};width:96px"/>
+      <input id="s360al-amount" type="number" min="0" step="${curStep(s360AllowCur)}" placeholder="${t('금액','Amount')}" style="${inp};width:96px"/>
     </div>
     <div style="display:flex;gap:6px">
       <input id="s360al-memo" placeholder="${t('내용 (예: 간식비)','Note (e.g. snacks)')}" style="${inp};flex:1" onkeydown="if(event.key==='Enter')teacherAddAllow()"/>
@@ -23199,7 +23219,7 @@ function s360DepCard(entries) {
     const tin  = entries.filter(e=>e.type==='in'  && (e.currency||'원')===cur).reduce((a,e)=>a+(Number(e.amount)||0),0);
     const tout = entries.filter(e=>e.type==='out' && (e.currency||'원')===cur).reduce((a,e)=>a+(Number(e.amount)||0),0);
     return `<div style="flex:1;min-width:150px;background:linear-gradient(135deg,#5A7C8B,#1d3a5f);border-radius:12px;padding:12px 14px;color:#fff">
-      <div style="font-size:10.5px;opacity:.85">${t('예치금 잔액','Deposit balance')} ${cur==='$'?t('(달러)','(USD)'):t('(원)','(KRW)')}</div>
+      <div style="font-size:10.5px;opacity:.85">${t('예치금 잔액','Deposit balance')} (${curSign(cur)})</div>
       <div style="font-size:20px;font-weight:800;letter-spacing:-.02em">${allowMoney(tin-tout,cur)}</div>
       <div style="font-size:10.5px;opacity:.92;margin-top:3px">${t('입금','Deposit')} ${allowMoney(tin,cur)} · ${t('출금','Withdraw')} ${allowMoney(tout,cur)}</div>
     </div>`;
@@ -23213,7 +23233,7 @@ function s360DepCard(entries) {
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;align-items:center">
       <input id="s360dep-date" type="date" value="${attTodayStr()}" style="${inp}"/>
       <div style="display:flex;gap:4px">${cBtn('원','₩')}${cBtn('$','$')}</div>
-      <input id="s360dep-amount" type="number" min="0" step="${s360DepCur==='$'?'0.01':'100'}" placeholder="${t('금액','Amount')}" style="${inp};width:110px"/>
+      <input id="s360dep-amount" type="number" min="0" step="${curStep(s360DepCur)}" placeholder="${t('금액','Amount')}" style="${inp};width:110px"/>
     </div>
     <div style="display:flex;gap:6px">
       <input id="s360dep-memo" placeholder="${t('내용 (예: 부모님 입금, 교재비 지출)','Note (e.g. parent deposit, textbook expense)')}" style="${inp};flex:1" onkeydown="if(event.key==='Enter')teacherAddDep()"/>
@@ -23361,7 +23381,7 @@ function printAllowancePdf() {
     const inc = list.filter(e => e.type === 'income'  && (e.currency||'원') === cur).reduce((a,e)=>a+(Number(e.amount)||0), 0);
     const exp = list.filter(e => e.type === 'expense' && (e.currency||'원') === cur).reduce((a,e)=>a+(Number(e.amount)||0), 0);
     return `<div class="sumcard">
-      <div class="sc-cur">${cur === '$' ? t('달러($)','USD($)') : (cur === '₱' ? t('페소(₱)','PHP(₱)') : t('원(₩)','KRW(₩)'))}</div>
+      <div class="sc-cur">${curName(cur)}</div>
       <div class="sc-row"><span>${t('수입','Income')}</span><b style="color:#15803d">${allowMoney(inc,cur)}</b></div>
       <div class="sc-row"><span>${t('지출','Expense')}</span><b style="color:#c0392b">${allowMoney(exp,cur)}</b></div>
       <div class="sc-row sc-bal"><span>${t('잔액','Balance')}</span><b>${allowMoney(inc-exp,cur)}</b></div>
@@ -23707,7 +23727,7 @@ function renderDeposit(list) {
     const tin  = list.filter(e=>e.type==='in'  && (e.currency||'원')===cur).reduce((a,e)=>a+(Number(e.amount)||0),0);
     const tout = list.filter(e=>e.type==='out' && (e.currency||'원')===cur).reduce((a,e)=>a+(Number(e.amount)||0),0);
     return `<div style="flex:1;min-width:180px;background:linear-gradient(135deg,#5A7C8B,#1d3a5f);border-radius:16px;padding:18px 20px;color:#fff">
-      <div style="font-size:12px;opacity:.85">${t('예치금 잔액','Deposit balance')} ${cur==='$'?t('(달러)','(USD)'):t('(원)','(KRW)')}</div>
+      <div style="font-size:12px;opacity:.85">${t('예치금 잔액','Deposit balance')} (${curSign(cur)})</div>
       <div style="font-size:26px;font-weight:800;letter-spacing:-.02em">${allowMoney(tin-tout,cur)}</div>
       <div style="font-size:11.5px;opacity:.9;margin-top:4px">${t('입금','Deposit')} ${allowMoney(tin,cur)} · ${t('출금','Withdrawal')} ${allowMoney(tout,cur)}</div>
     </div>`;
@@ -23729,14 +23749,29 @@ function renderDeposit(list) {
 }
 
 function allowWon(n) { return (Number(n)||0).toLocaleString('ko-KR') + '원'; }
+// 쓸 수 있는 통화. 새 통화를 더하려면 여기 한 줄만 보태면 된다 —
+// 표기·소수점·입력 단위·환율이 전부 여기서 나온다.
+//  dec  : 소수 몇 자리까지 (원은 0, 달러·페소는 2)
+//  step : 금액 입력칸의 증감 단위
+//  after: 숫자 뒤에 붙는 말 (원). 없으면 sign 을 앞에 붙인다.
+const CURRENCIES = {
+  '원': { code:'KRW', sign:'₩', ko:'원 (₩)',   en:'Won (₩)',   dec:0, step:'100',  bulkStep:'1000', locale:'ko-KR', after:'원' },
+  '$':  { code:'USD', sign:'$', ko:'달러 ($)', en:'Dollar ($)', dec:2, step:'0.01', bulkStep:'1',    locale:'en-US' },
+  '₱':  { code:'PHP', sign:'₱', ko:'페소 (₱)', en:'Peso (₱)',   dec:2, step:'1',    bulkStep:'50',   locale:'en-US' },
+};
+function curOf(cur) { return CURRENCIES[cur] || CURRENCIES['원']; }
+function curSign(cur) { return curOf(cur).sign; }
+function curStep(cur, bulk) { const c = curOf(cur); return bulk ? c.bulkStep : c.step; }
+function curName(cur) { const c = curOf(cur); return t(c.ko, c.en); }
+
 function allowMoney(n, cur) {
   n = Number(n) || 0;
   // 마이너스는 통화기호 앞에 붙인다. 전에는 '$-4.5' 처럼 나왔다.
-  // 달러는 센트를 늘 두 자리로 — 돈은 $4.5 보다 $4.50 이 맞다.
+  // 달러·페소는 소수 둘째 자리까지 — 돈은 $4.5 보다 $4.50 이 맞다.
+  const c = curOf(cur);
   const neg = n < 0 ? '-' : '', a = Math.abs(n);
-  return cur === '$'
-    ? neg + '$' + a.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-    : neg + a.toLocaleString('ko-KR') + '원';
+  const num = a.toLocaleString(c.locale, { minimumFractionDigits: c.dec, maximumFractionDigits: c.dec });
+  return c.after ? neg + num + c.after : neg + c.sign + num;
 }
 function allowCurrencies() {
   const set = [...new Set(allowEntries.map(e => e.currency || '원'))];
@@ -23986,7 +24021,7 @@ function renderAllowance() {
     const inP  = list.filter(e=>e.type==='income'  && (e.currency||'원')===cur).reduce((a,e)=>a+(Number(e.amount)||0),0);
     const outP = list.filter(e=>e.type==='expense' && (e.currency||'원')===cur).reduce((a,e)=>a+(Number(e.amount)||0),0);
     return `<div style="flex:1;min-width:230px;background:linear-gradient(135deg,#2a7a5a,#2a5298);border-radius:18px;padding:18px 20px;color:#fff;box-shadow:0 6px 18px rgba(42,82,152,.22)">
-      <div style="font-size:12px;opacity:.85">${t('현재 잔액','Current balance')} ${cur==='$'?t('(달러)','(USD)'):t('(원)','(KRW)')}</div>
+      <div style="font-size:12px;opacity:.85">${t('현재 잔액','Current balance')} (${curSign(cur)})</div>
       <div style="font-size:28px;font-weight:800;letter-spacing:-.02em;margin-top:2px">${allowMoney(inAll-outAll, cur)}</div>
       <div style="display:flex;gap:9px;margin-top:12px">
         <div style="flex:1;background:rgba(255,255,255,.15);border-radius:10px;padding:7px 11px">
@@ -24070,7 +24105,7 @@ function renderAllowance() {
         <input id="allow-date" type="date" value="${attTodayStr()}" style="${inp}"/>
         <select id="allow-cat" style="${inp}">${catOpts}</select>
         <div style="display:flex;gap:4px">${curBtn('원',t('₩ 원','₩ KRW'))}${curBtn('$',t('$ 달러','$ USD'))}</div>
-        <input id="allow-amount" type="number" min="0" step="${allowCurrency==='$'?'0.01':'100'}" placeholder="${t('금액','Amount')}" style="${inp};width:110px"/>
+        <input id="allow-amount" type="number" min="0" step="${curStep(allowCurrency)}" placeholder="${t('금액','Amount')}" style="${inp};width:110px"/>
       </div>
       <div style="display:flex;gap:8px">
         <input id="allow-memo" placeholder="${t('내용 (예: 편의점 과자)','Note (e.g. convenience store snacks)')}" style="${inp};flex:1" onkeydown="if(event.key==='Enter')addAllowEntry()"/>
