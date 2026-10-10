@@ -16944,6 +16944,7 @@ async function openApprDoc(id){
         </div>
       </div>
     </div>
+    <div id="appr-notes" style="margin-top:16px"></div>
     ${myTurn ? `<div style="background:linear-gradient(135deg,#eef4fb,#e3edf9);border:1px solid #c9ddf2;border-radius:14px;padding:16px 18px;margin-top:16px">
       <div style="font-size:13px;font-weight:800;color:#1d3a5f;margin-bottom:8px">${t('✍️ 내 결재 차례예요','✍️ It is your turn to approve')}</div>
       <textarea id="appr-act-comment" placeholder="${t('의견 (선택 · 반려 시 필수)','Comment (optional · required if rejecting)')}" style="width:100%;min-height:54px;padding:9px 11px;border:1.5px solid var(--border);border-radius:9px;font:13.5px var(--font);resize:vertical;margin-bottom:10px"></textarea>
@@ -16953,6 +16954,103 @@ async function openApprDoc(id){
       </div>
     </div>` : ''}
   </div>`;
+  apprNotesLoad(d);
+}
+
+// ── 결재 문서 의견 ────────────────────────────────────────────────
+// 결재선의 '결재 의견'은 승인·반려할 때 한 번 적고 끝난다. 결재가 끝나면
+// 그 문서엔 아무도 한 줄도 더 못 쓴다 — 집행 결과도, 뒤늦게 붙는 영수증
+// 이야기도 적을 자리가 없었다. 그래서 문서마다 따로 둔다.
+// 결재 중에도 끝난 뒤에도 쓸 수 있다.
+let _apprNotes = [];
+let _apprNoteDoc = null;
+
+function apprNotesMissing(e) {
+  const m = (e && (e.message || e.code || '')) + '';
+  return /approval_notes|does not exist|schema cache|could not find|PGRST205/i.test(m);
+}
+
+async function apprNotesLoad(d) {
+  _apprNoteDoc = d;
+  const box = document.getElementById('appr-notes');
+  if (!box) return;
+  try {
+    const { data, error } = await sb.from('approval_notes').select('*')
+      .eq('doc_id', d.id).order('created_at');
+    if (error) throw error;
+    _apprNotes = data || [];
+  } catch (e) {
+    box.innerHTML = apprNotesMissing(e)
+      ? `<div style="background:#FFF8E7;border:1px solid #F0D080;border-radius:12px;padding:11px 14px;font-size:12px;color:#8B6914;line-height:1.7">
+           ${t('의견을 쓰려면 관리자가 <code>db/결재_의견달기_DB설치.sql</code> 을 한 번 실행해야 해요',
+                'An admin needs to run <code>db/결재_의견달기_DB설치.sql</code> once')}</div>`
+      : '';
+    return;
+  }
+  apprNotesRender();
+}
+
+function apprNotesRender() {
+  const box = document.getElementById('appr-notes');
+  if (!box) return;
+  const canDel = n => n.author_id === ME.id || isCommunityAdmin();
+  const rows = _apprNotes.map(n => `
+    <div style="display:flex;gap:10px;padding:10px 0;border-top:1px solid var(--border)">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12px;font-weight:700;color:var(--ink2)">${escHtml(n.author_name || '')}
+          <span style="font-weight:400;color:var(--ink3);font-size:11px;margin-left:4px">${fmtTs(n.created_at)}</span></div>
+        <div style="font-size:13.5px;color:var(--ink);line-height:1.7;white-space:pre-wrap;margin-top:2px">${escHtml(n.body || '')}</div>
+      </div>
+      ${canDel(n) ? `<button onclick="apprNoteDel('${n.id}')" title="${t('지우기','Delete')}"
+        style="border:none;background:transparent;cursor:pointer;color:var(--ink3);font-size:12px;flex-shrink:0;align-self:flex-start">✕</button>` : ''}
+    </div>`).join('');
+
+  box.innerHTML = `<div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px">
+    <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:4px">
+      <span style="font-size:13px;font-weight:800;color:var(--ink2)">💬 ${t('의견','Comments')}</span>
+      <span style="font-size:11.5px;color:var(--ink3)">${t('결재가 끝난 뒤에도 쓸 수 있어요','You can add these after approval too')}</span>
+    </div>
+    ${rows || `<div style="font-size:12.5px;color:var(--ink3);padding:8px 0">${t('아직 의견이 없어요','No comments yet')}</div>`}
+    <div style="display:flex;gap:7px;margin-top:10px">
+      <textarea id="appr-note-input" rows="1" placeholder="${t('의견을 남겨주세요 (예: 10/15 집행 완료)','Leave a comment')}"
+        oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,140)+'px'"
+        onkeydown="if(event.key==='Enter'&&(event.metaKey||event.ctrlKey))apprNoteAdd()"
+        style="flex:1;min-height:38px;padding:9px 11px;border:1.5px solid var(--border);border-radius:9px;font:13px var(--font);background:var(--s2);color:var(--ink);outline:none;resize:none;line-height:1.5"></textarea>
+      <button onclick="apprNoteAdd()" style="height:38px;padding:0 14px;border:none;border-radius:9px;background:#1d3a5f;color:#fff;font:700 12.5px var(--font);cursor:pointer;align-self:flex-end">${t('등록','Post')}</button>
+    </div>
+  </div>`;
+}
+
+async function apprNoteAdd() {
+  const el = document.getElementById('appr-note-input');
+  const body = (el?.value || '').trim();
+  if (!body || !_apprNoteDoc) return;
+  const row = {
+    doc_id: _apprNoteDoc.id, community_id: _apprNoteDoc.community_id,
+    author_id: ME.id, author_name: ME.name, body,
+  };
+  const { data, error } = await sb.from('approval_notes').insert(row).select().single();
+  if (error) {
+    showUploadToast(apprNotesMissing(error)
+      ? t('db/결재_의견달기_DB설치.sql 을 먼저 실행해주세요','Run db/결재_의견달기_DB설치.sql first')
+      : t('등록 실패: ','Failed: ') + error.message);
+    return;
+  }
+  _apprNotes.push(data);
+  el.value = '';
+  apprNotesRender();
+}
+
+async function apprNoteDel(id) {
+  const n = _apprNotes.find(x => x.id === id);
+  if (!n) return;
+  if (!(n.author_id === ME.id || isCommunityAdmin())) { showUploadToast(t('지울 권한이 없어요','No permission')); return; }
+  if (!confirm(t('이 의견을 지울까요?','Delete this comment?'))) return;
+  const { data, error } = await sb.from('approval_notes').delete().eq('id', id).select('id');
+  if (error) { showUploadToast(t('지우기 실패: ','Delete failed: ') + error.message); return; }
+  if (!data || !data.length) { showUploadToast(t('지울 권한이 없어요','No permission')); return; }
+  _apprNotes = _apprNotes.filter(x => x.id !== id);
+  apprNotesRender();
 }
 
 function apprFormReadHtml(fd){
@@ -17067,7 +17165,14 @@ function apprDateLine(iso){
 }
 
 function printApprDoc(id){
-  sb.from('approval_docs').select('*').eq('id',id).single().then(({data:d})=>{
+  // 문서와 의견을 함께 가져온다 (의견 표가 아직 없는 공동체는 빈 목록으로)
+  Promise.all([
+    sb.from('approval_docs').select('*').eq('id',id).single(),
+    sb.from('approval_notes').select('*').eq('doc_id',id).order('created_at')
+      .then(r => (r && r.error) ? { data: [] } : r, () => ({ data: [] })),
+  ]).then(([docRes, noteRes])=>{
+    const d = docRes && docRes.data;
+    const pNotes = (noteRes && noteRes.data) || [];
     if(!d) return;
     const fd  = d.form_data || {};
     const src = fd._src || '';
@@ -17142,6 +17247,11 @@ function printApprDoc(id){
       notes.map(a=>`<tr><th>${escHtml(a.approver_name||'')}${a.status==='rejected'?` (${t('반려','Rejected')})`:''}</th><td class="wrap">${escHtml(a.comment)}</td></tr>`).join('')
     }</tbody></table>` : '';
 
+    // ── 의견 (결재 끝난 뒤에 붙은 것까지) ──
+    const noteHtml = pNotes.length ? `<div class="asec">${escHtml(t('의 견','Comments'))}</div><table class="ftbl"><colgroup><col style="width:20%"/><col/></colgroup><tbody>${
+      pNotes.map(n=>`<tr><th>${escHtml(n.author_name||'')}<span class="nd">${fmtTsDay(n.created_at).replace(/-/g,'. ')}</span></th><td class="wrap">${escHtml(n.body||'')}</td></tr>`).join('')
+    }</tbody></table>` : '';
+
     // ── 맺음말 + 신청인 ──
     const closing = `<div class="aclose">
       <div class="cstmt">${escHtml(apprClosingText(src, fd))}</div>
@@ -17177,7 +17287,7 @@ window.addEventListener('load', function(){ window.__fitOnePage(); });
       title: d.title,
       letterhead: false,          // 머리글을 직접 그린다 (결재란이 같은 줄에 온다)
       margin: '13mm 14mm 13mm',
-      body: `<div id="afit">${head}${titleHtml}${fieldsTbl}${itemsTbl}${wonLine}${notesHtml}${closing}${att}</div>${fitJs}`,
+      body: `<div id="afit">${head}${titleHtml}${fieldsTbl}${itemsTbl}${wonLine}${notesHtml}${noteHtml}${closing}${att}</div>${fitJs}`,
       footerNote: `${d.template_name||''} · ${t('전자결재','Electronic approval')} · ${docNo}`,   // buildPrintDoc 이 다시 escape 한다
       extraCss: `
         #afit { position: relative; }
@@ -17229,6 +17339,7 @@ window.addEventListener('load', function(){ window.__fitOnePage(); });
         .cdate { font-size: 11pt; margin-top: 6mm; letter-spacing: .08em; }
         .csig  { font-size: 11pt; margin-top: 4mm; letter-spacing: .06em; }
         .csig b { font-weight: 800; margin: 0 4px; letter-spacing: .12em; }
+        .ftbl th .nd { display: block; font-weight: 400; font-size: 8pt; color: #7b8698; }
         .att { font-size: 9pt; color: #5b6577; margin-top: 6mm; padding-top: 3px; border-top: 1px dashed #c3cddb; }
         .att b { color: #40506b; }
         /* ── 상태 도장 (완결 전 문서만) ── */
