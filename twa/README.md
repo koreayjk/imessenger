@@ -115,3 +115,98 @@ bubblewrap build
 
 앱의 시작 주소가 바뀌므로 **새 도메인으로 assetlinks 를 다시 확인시키고 앱을 업데이트**해야 합니다.
 사실 생각이 있으시면 지금 정하시는 편이 번거로움이 적습니다.
+
+---
+
+## 6. 앱을 더 올릴 때 — 저장소는 더 안 만들어도 됩니다
+
+`koreayjk.github.io` 저장소는 **한 번만** 만들면 됩니다.
+앞으로 앱을 몇 개를 더 올리셔도 **그 파일 하나에 블록만 덧붙이면** 됩니다.
+
+```jsonc
+[
+  {                                        // ← TCS
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": { "namespace": "android_app",
+      "package_name": "io.github.koreayjk.tcs",
+      "sha256_cert_fingerprints": ["AA:BB:... (TCS 의 지문)"] }
+  },
+  {                                        // ← 두 번째 앱
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": { "namespace": "android_app",
+      "package_name": "io.github.koreayjk.두번째앱",
+      "sha256_cert_fingerprints": ["CC:DD:... (그 앱의 지문)"] }
+  }
+]
+```
+
+> 실제 파일에는 `//` 주석을 넣으면 안 됩니다. 위는 설명용입니다.
+> 앱마다 **지문이 다릅니다** — 플레이가 앱마다 다른 서명 키를 만들기 때문입니다.
+
+### 앱마다 다르게 가져가야 할 것
+
+| | |
+|---|---|
+| **패키지 이름** | 앱마다 달라야 합니다 (`...tcs`, `...store`, …) |
+| **저장소(경로)** | 앱마다 다른 저장소 → `koreayjk.github.io/다른저장소/` |
+| **manifest 의 `id`** | `"./"` 로 두세요. `"/"` 로 두면 앱끼리 신원이 부딪힙니다 |
+| **manifest 의 `scope`** | `"./"` — 그 앱이 제 경로 안에만 머무릅니다 |
+
+### 링크를 어느 앱이 열지는 안 겹칩니다 ✅
+
+주소가 다 `koreayjk.github.io` 로 같으니 "링크를 누르면 어느 앱이 열리나"가
+걱정되실 수 있습니다. 확인해 봤습니다 — Bubblewrap 이 만드는
+`AndroidManifest.xml` 은 **시작 주소에 경로가 있으면 `pathPrefix` 를 넣습니다.**
+
+```xml
+<data android:scheme="https"
+      android:host="koreayjk.github.io"
+      android:pathPrefix="/imessenger/" />
+```
+
+그래서 TCS 앱은 `/imessenger/` 로 시작하는 주소만 맡습니다.
+다른 앱은 제 경로만 맡고요. 서로 안 겹칩니다.
+(PWABuilder 도 속으로 Bubblewrap 을 씁니다. 다만 받으신 뒤
+`AndroidManifest.xml` 에 `pathPrefix` 가 들어갔는지 한 번 보시는 게 좋습니다.)
+
+### ⚠️ 한 가지만 조심하세요 — 저장 공간을 같이 씁니다
+
+주소(`koreayjk.github.io`)가 같으면 브라우저가 보기엔 **한 사이트**입니다.
+그래서 `localStorage` 같은 저장 공간을 **앱끼리 같이 씁니다.**
+
+TCS 가 지금 쓰는 이름들입니다:
+
+```
+localStorage    app_lang · adm_group_by · tcs_reading_lang · comm_cur_* · tui_currency_*
+sessionStorage  last_mode · last_channel_id · view_cid · lang_synced
+```
+
+`app_lang`, `last_mode` 같은 건 다른 앱도 쓰기 쉬운 이름입니다.
+겹치면 **한 앱에서 바꾼 설정이 다른 앱에 튑니다.**
+
+**새로 만드시는 앱에서는 이름 앞에 꼬리표를 붙여 주세요.**
+
+```js
+localStorage.setItem('store:app_lang', 'ko');   // 'app_lang' 말고
+```
+
+그리고 **Supabase 를 같은 프로젝트로 쓰면 로그인도 같이 묶입니다.**
+한쪽에서 로그인하면 다른 쪽도 로그인됩니다 — 편할 수도 있고 아닐 수도 있으니,
+프로젝트를 나눌지 미리 정해 두세요.
+
+---
+
+## 7. 정리하면
+
+| | 도메인 사면 | github.io 로 가면 |
+|---|---|---|
+| 앱 여러 개 | 됩니다 | **됩니다** |
+| 돈 | 매년 도메인 값 | **0원** |
+| 준비 | DNS 설정 | 저장소 하나 (한 번만) |
+| 링크 겹침 | 없음 | 없음 (경로로 나뉨) |
+| 저장 공간 | 앱마다 따로 | **같이 씁니다** — 이름에 꼬리표 필요 |
+| 주소 모양 | `tcs.우리도메인.com` | `koreayjk.github.io/imessenger` |
+
+저장 공간 하나만 조심하시면 **도메인 없이 몇 개든 올리실 수 있습니다.**
+나중에 도메인이 생기면 그때 옮기셔도 되고요 — 다만 옮기는 시점에
+앱마다 assetlinks 를 다시 맞추고 업데이트를 올려야 합니다.
