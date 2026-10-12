@@ -9,9 +9,9 @@ MED  = Face('/tmp/claude-0/brand/mont-500.ttf')
 OUT  = '/home/user/imessenger/brand'
 os.makedirs(OUT, exist_ok=True)
 
-# ── 엠블럼: 100 박스 안의 실제 내용 범위 ──
-EM_X0, EM_X1 = 22.0, 78.0      # 받침 끝 + 선 굵기 포함
-EM_Y0, EM_Y1 = 8.0, 67.2
+# ── 엠블럼: 100 박스 안의 실제 내용 범위 (딴 그림에서 그대로) ──
+EM_X0, EM_X1 = EM.EM_X0, EM.EM_X1
+EM_Y0, EM_Y1 = EM.EM_Y0, EM.EM_Y1
 EM_W, EM_H = EM_X1 - EM_X0, EM_Y1 - EM_Y0
 
 def emblem_at(x, y, h, navy=NAVY, gold=GOLD, wick=True):
@@ -50,7 +50,7 @@ def vertical(ink=NAVY, gold=GOLD, pad=16):
     cap = BOLD.cap_height(S)
     tag_d, tag_w, TG, tag_cap = fit_tag(tcs_w)
 
-    e_h = 104
+    e_h = 112
     e_svg, e_w = emblem_at(0, 0, e_h, navy=ink, gold=gold)
 
     gap1, gap2, gap3 = 30, 22, 17   # 엠블럼→TCS, TCS→선, 선→태그라인
@@ -79,7 +79,7 @@ def horizontal(ink=NAVY, gold=GOLD, pad=16):
     cap = BOLD.cap_height(S)
     tag_d, tag_w, TG, tag_cap = fit_tag(tcs_w)
 
-    e_h = 108
+    e_h = 116
     _, e_w = emblem_at(0, 0, e_h)
     gapx, gapy = 26, 15
     block_w = max(tcs_w, tag_w)
@@ -100,9 +100,9 @@ def icon(size=512, safe=1.0, bg=NAVY, tile_radius=0.225):
     S, TR = 150, 5
     tcs_d, tcs_w = BOLD.text('TCS', S, TR)
     cap = BOLD.cap_height(S)
-    e_h = 118
+    e_h = 150
     _, e_w = emblem_at(0, 0, e_h)
-    gap = 30
+    gap = 22
     content_h = e_h + gap + cap
     content_w = max(e_w, tcs_w)
 
