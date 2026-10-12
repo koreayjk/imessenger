@@ -1377,6 +1377,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
         <div id="adm-tab-members" onclick="switchAdminTab('members')" class="adm-tab active-adm" style="white-space:nowrap" data-ko="👥 멤버" data-en="👥 Members">👥 멤버</div>
         <div id="adm-tab-channels" onclick="switchAdminTab('channels')" class="adm-tab" style="white-space:nowrap" data-ko="💬 채널" data-en="💬 Channels">💬 채널</div>
         <div id="adm-tab-notices" onclick="switchAdminTab('notices')" class="adm-tab" style="white-space:nowrap" data-ko="📢 공지사항" data-en="📢 Notices">📢 공지사항</div>
+        <div id="adm-tab-reports" onclick="switchAdminTab('reports')" class="adm-tab" style="display:none;white-space:nowrap" data-ko="🚩 신고함" data-en="🚩 Reports">🚩 신고함</div>
         <div id="adm-tab-goals" onclick="switchAdminTab('goals')" class="adm-tab" style="white-space:nowrap" data-ko="🎯 이달의 목표" data-en="🎯 Monthly Goals">🎯 이달의 목표</div>
         <div id="adm-tab-home" onclick="switchAdminTab('home')" class="adm-tab" style="display:none;white-space:nowrap" data-ko="🧩 홈 꾸미기" data-en="🧩 Edit Home">🧩 홈 꾸미기</div>
       </div></div>
@@ -1556,6 +1557,27 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
       <div style="display:flex;gap:10px">
         <div onclick="document.getElementById('delete-modal').style.display='none'" style="flex:1;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:var(--s3);color:var(--ink2);cursor:pointer;font-size:14px" data-ko="취소" data-en="Cancel">취소</div>
         <div onclick="confirmDeleteMsg()" style="flex:1;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:var(--rose);color:white;cursor:pointer;font-size:14px;font-weight:600" data-ko="삭제" data-en="Delete">삭제</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 메시지 신고 모달 -->
+  <div id="report-modal" style="display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.45);align-items:center;justify-content:center">
+    <div style="background:var(--surface);border-radius:20px;padding:24px;width:420px;max-width:94vw;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.2)">
+      <div style="font-size:17px;font-weight:700;margin-bottom:4px" data-ko="🚩 메시지 신고" data-en="🚩 Report message">🚩 메시지 신고</div>
+      <div style="font-size:12.5px;color:var(--ink3);margin-bottom:16px" data-ko="관리자에게 전달됩니다. 신고한 사람이 누구인지는 상대에게 알려지지 않아요." data-en="This goes to your community admins. The other person is never told who reported them.">관리자에게 전달됩니다. 신고한 사람이 누구인지는 상대에게 알려지지 않아요.</div>
+      <div id="report-preview" style="font-size:12.5px;color:var(--ink2);background:var(--s2);border-radius:11px;padding:11px 13px;margin-bottom:16px;line-height:1.55;max-height:110px;overflow-y:auto"></div>
+      <div style="font-size:11.5px;font-weight:700;color:var(--ink3);margin-bottom:7px" data-ko="신고 사유" data-en="Reason">신고 사유</div>
+      <div id="report-reasons" style="display:flex;flex-direction:column;gap:2px;margin-bottom:14px"></div>
+      <textarea id="report-detail" rows="3" maxlength="500" placeholder="자세한 내용 (선택)"
+        style="width:100%;padding:10px 13px;border:1.5px solid var(--border);border-radius:11px;font:13.5px var(--font);background:var(--s2);color:var(--ink);outline:none;resize:none;margin-bottom:12px"></textarea>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:18px;color:var(--ink2)">
+        <input type="checkbox" id="report-block" style="width:16px;height:16px"/>
+        <span data-ko="이 사람의 메시지를 앞으로 보지 않기 (차단)" data-en="Also block this person">이 사람의 메시지를 앞으로 보지 않기 (차단)</span>
+      </label>
+      <div style="display:flex;gap:10px">
+        <div onclick="closeReportModal()" style="flex:1;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:var(--s3);color:var(--ink2);cursor:pointer;font-size:14px" data-ko="취소" data-en="Cancel">취소</div>
+        <div onclick="submitReport()" style="flex:1;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:var(--rose);color:white;cursor:pointer;font-size:14px;font-weight:600" data-ko="신고 보내기" data-en="Send report">신고 보내기</div>
       </div>
     </div>
   </div>
@@ -2658,6 +2680,7 @@ async function init() {
     .eq('community_id', CID());
   members = {};
   (mems||[]).filter(m => m.status !== 'removed').forEach(m => { members[m.id] = m; });
+  await loadMyBlocks();
 
   const isAdmin = canViewAllCommunities();
   if (isAdmin) {
@@ -3359,6 +3382,7 @@ async function refreshReadCounts() {
 
 // ── 메시지 렌더 ──
 function renderMessages(msgs, readMap={}) {
+  _lastReadMap = readMap;
   const area = document.getElementById('msg-area');
   if (!msgs.length) {
     area.innerHTML = `<div class="msg-empty" style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--ink3);gap:10px">
@@ -3417,11 +3441,26 @@ function appendMessage(m, readMap={}) {
 }
 
 function msgHtml(m, prev, readMap={}) {
+  _msgById[m.id] = m;
   const isMine = m.sender_id === ME.id;
   const memHi = !isMine && msgMentionsMe(m);   // 나를 언급한 메시지 강조
   const sender = members[m.sender_id] || { name: m.sender_name||'알 수 없음', initials: (m.sender_name||'?')[0], color:'#999' };
   const sameAsPrev = prev && prev.sender_id === m.sender_id;
   const avStyle = `background:${sender.color}`;
+  const dateAttr = m.created_at ? new Date(m.created_at).toDateString() : '';
+
+  // 차단한 사람의 메시지 — 지우지 않고 접는다.
+  //  지워 버리면 앞뒤 대화가 끊겨서 무슨 얘기인지 알 수 없게 된다.
+  //  상대에게는 차단당한 사실을 알리지 않는다. 알리면 그게 또 다툼이 된다.
+  if (!isMine && myBlocks.has(m.sender_id) && !_blockShown.has(m.id)) {
+    return `<div class="msg-row" data-sender="${m.sender_id}" data-id="${m.id}" data-date="${dateAttr}" style="position:relative">
+      <div style="flex:1;display:flex;align-items:center;gap:8px;padding:7px 12px;margin:2px 0;border-radius:11px;background:var(--s2);border:1px dashed var(--border);font-size:12.5px;color:var(--ink3)">
+        <span>🚫</span>
+        <span style="flex:1">${t('차단한 사용자의 메시지입니다','Message from someone you blocked')}</span>
+        <span onclick="revealBlocked('${m.id}')" style="color:var(--accent);font-weight:600;cursor:pointer;flex-shrink:0">${t('보기','Show')}</span>
+      </div>
+    </div>`;
+  }
 
   // 읽음 표시
   let readLabel = '';
@@ -3461,6 +3500,12 @@ function msgHtml(m, prev, readMap={}) {
       ${m.kind !== 'poll' ? `<div onclick="startReply('${m.id}','${escJs(String(m.text||'').slice(0,100))}','${escJs(sender.name)}')" title="답장"
         style="width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px"
         onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background=''">↩️</div>` : ''}
+      ${!isMine ? `<div onclick="openReportModal('${m.id}')" title="${t('신고','Report')}"
+        style="width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:13px"
+        onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background=''">🚩</div>` : ''}
+      ${(!isMine && canModerateChat()) ? `<div onclick="toggleHideMsg('${m.id}')" title="${m.hidden_at ? t('가린 것 되돌리기','Unhide') : t('이 메시지 가리기','Hide this message')}"
+        style="width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:13px"
+        onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background=''">${m.hidden_at ? '👁' : '🙈'}</div>` : ''}
       ${isMine ? `<div onclick="askDeleteMsg('${m.id}')" title="삭제"
         style="width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:11px;color:var(--rose)"
         onmouseover="this.style.background='#FEE2E2'" onmouseout="this.style.background=''">✕</div>` : ''}
@@ -3526,6 +3571,13 @@ function msgHtml(m, prev, readMap={}) {
     } catch(e) { bubbleContent = escHtml(m.text); }
   }
   if (m.kind === 'poll') { bubbleContent = renderPollCard(m); }
+
+  // 관리자가 가린 메시지. 지우지 않고 가리는 이유는, 지우면 신고를 처리한
+  // 근거까지 같이 사라지기 때문이다. 원문은 교직원만 펼쳐 볼 수 있다.
+  if (m.hidden_at && !_hiddenShown.has(m.id)) {
+    bubbleContent = `<span style="color:var(--ink3);font-style:italic">🙈 ${t('관리자가 가린 메시지입니다','Hidden by a moderator')}</span>`
+      + (canModerateChat() ? ` <span onclick="revealHidden('${m.id}')" style="color:var(--accent);font-style:normal;font-weight:600;cursor:pointer;font-size:12px">${t('원문 보기','Show original')}</span>` : '');
+  }
 
   if (isMine) {
     return `<div class="msg-row mine${sameAsPrev?' same-sender':''}" data-sender="${m.sender_id}" data-id="${m.id}" data-date="${m.created_at ? new Date(m.created_at).toDateString() : ''}" style="position:relative">
@@ -4240,12 +4292,378 @@ function askDeleteMsg(id) {
 }
 async function confirmDeleteMsg() {
   if (!deletingMsgId) return;
-  await sb.from('messages').delete().eq('id', deletingMsgId);
+  // RLS 에 막히면 오류 없이 0행이 돌아온다. 지워진 척하고 넘어가면
+  // 새로 고쳤을 때 그대로 있어서, 지운 줄 알았던 글이 되살아난 것처럼 보인다.
+  const { data, error } = await sb.from('messages').delete().eq('id', deletingMsgId).select('id');
   document.getElementById('delete-modal').style.display = 'none';
-  // DOM에서 제거
+  if (error || !data || !data.length) {
+    showUploadToast(t('이 메시지는 지울 수 없어요','That message cannot be deleted'));
+    deletingMsgId = null;
+    return;
+  }
   const el = document.querySelector(`[data-id="${deletingMsgId}"]`);
   if (el) el.remove();
+  delete _msgById[deletingMsgId];
   deletingMsgId = null;
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  🚩 신고 · 🚫 차단 · 🙈 채팅 조정
+//
+//  구글 플레이는 채팅이 있는 앱에 ① 신고 ② 차단 ③ 운영자의 조치를
+//  요구합니다. 닫힌 공동체라 실제 위험은 낮지만, 수단 자체가 없으면
+//  정책 위반입니다. 설치: db/신고차단_DB설치.sql
+// ══════════════════════════════════════════════════════════════════
+
+let myBlocks     = new Set();   // 내가 차단한 사람
+let _msgById     = {};          // 화면에 그린 메시지 (한 줄만 다시 그릴 때 쓴다)
+let _lastReadMap = {};
+let _blockShown  = new Set();   // 차단했지만 '보기' 를 눌러 펼친 메시지
+let _hiddenShown = new Set();   // 가려졌지만 교직원이 펼쳐 본 메시지
+let _reportMsgId = null;
+
+// 채팅을 조정할 수 있는 사람 — 학생·학부모를 뺀 구성원
+function canModerateChat() {
+  return !!ME && ['super_admin','vice_admin','community_admin','admin_officer','teacher','staff']
+    .includes(ME.community_role);
+}
+
+const REPORT_REASONS = [
+  ['abuse',    '욕설 · 비방',           'Abusive language'],
+  ['harass',   '괴롭힘 · 따돌림',       'Harassment or bullying'],
+  ['sexual',   '음란물 · 성적인 내용',  'Sexual content'],
+  ['violence', '폭력 · 위협',           'Violence or threats'],
+  ['spam',     '스팸 · 광고',           'Spam or advertising'],
+  ['privacy',  '개인정보 노출',         'Personal information exposed'],
+  ['etc',      '그 밖에',               'Something else'],
+];
+function reportReasonLabel(k) {
+  const r = REPORT_REASONS.find(x => x[0] === k);
+  return r ? t(r[1], r[2]) : (k || '');
+}
+
+// 메시지를 한 줄 글로. 첨부·투표는 내용이 JSON 이라 그대로 두면 읽을 수 없다.
+function msgPlainText(m) {
+  if (!m) return '';
+  try {
+    if (m.kind === 'poll') return '[' + t('투표','Poll') + '] ' + (JSON.parse(m.text || '{}').q || '');
+    if (m.kind === 'file') {
+      const f = JSON.parse(m.text || '{}');
+      const names = f.name || (Array.isArray(f.items) ? f.items.map(x => x.name).join(', ') : '');
+      return '[' + t('첨부','Attachment') + '] ' + (names || '');
+    }
+  } catch (_) { return '[' + t('첨부파일','Attachment') + ']'; }
+  return String(m.text || '');
+}
+
+// 표·칸이 아직 없을 때. 권한 문제와 설치 문제는 알려줄 말이 다르다.
+function needsReportInstall(error) {
+  if (!error) return false;
+  const c = String(error.code || ''), m = String(error.message || '');
+  return c === '42P01' || c === '42703' || c.startsWith('PGRST2')
+      || /does not exist|schema cache/i.test(m);
+}
+
+async function loadMyBlocks() {
+  try {
+    const { data } = await sb.from('user_blocks').select('blocked_id').eq('blocker_id', ME.id);
+    myBlocks = new Set((data || []).map(r => r.blocked_id));
+  } catch (_) { myBlocks = new Set(); }   // 표가 아직 없으면 조용히 비운다
+}
+
+// 한 줄만 다시 그린다. 방 전체를 다시 불러오면 스크롤이 맨 아래로 튄다.
+function redrawMsgRow(id) {
+  const m = _msgById[id]; if (!m) return;
+  const el = document.querySelector(`#msg-area .msg-row[data-id="${id}"]`);
+  if (!el) return;
+  el.outerHTML = msgHtml(m, null, _lastReadMap);
+}
+function redrawAllMsgRows() {
+  document.querySelectorAll('#msg-area .msg-row').forEach(el => {
+    const m = _msgById[el.dataset.id];
+    if (m) el.outerHTML = msgHtml(m, null, _lastReadMap);
+  });
+}
+
+function revealBlocked(id) { _blockShown.add(id);  redrawMsgRow(id); }
+function revealHidden(id)  { _hiddenShown.add(id); redrawMsgRow(id); }
+
+// ── 신고 ─────────────────────────────────────────────────────────
+function openReportModal(id) {
+  const m = _msgById[id];
+  if (!m) return;
+  _reportMsgId = id;
+  const who = (members[m.sender_id] || {}).name || m.sender_name || t('알 수 없음','Unknown');
+  const body = msgPlainText(m).slice(0, 300);
+  document.getElementById('report-preview').innerHTML =
+    `<div style="font-weight:700;margin-bottom:4px">${escHtml(who)}</div>` +
+    `<div>${escHtml(body) || `<span style="color:var(--ink3)">${t('(내용 없음)','(no text)')}</span>`}</div>`;
+  document.getElementById('report-reasons').innerHTML = REPORT_REASONS.map(r => `
+    <label style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:9px;cursor:pointer;font-size:13.5px"
+      onmouseover="this.style.background='var(--s2)'" onmouseout="this.style.background=''">
+      <input type="radio" name="report-reason" value="${r[0]}" style="width:15px;height:15px"/>
+      <span>${t(r[1], r[2])}</span>
+    </label>`).join('');
+  document.getElementById('report-detail').value = '';
+  document.getElementById('report-detail').placeholder = t('자세한 내용 (선택)','More detail (optional)');
+  document.getElementById('report-block').checked = myBlocks.has(m.sender_id);
+  document.getElementById('report-modal').style.display = 'flex';
+}
+function closeReportModal() {
+  document.getElementById('report-modal').style.display = 'none';
+  _reportMsgId = null;
+}
+
+async function submitReport() {
+  const m = _msgById[_reportMsgId];
+  if (!m) { closeReportModal(); return; }
+  const picked = document.querySelector('input[name="report-reason"]:checked');
+  if (!picked) { showUploadToast(t('신고 사유를 골라주세요','Pick a reason')); return; }
+  const detail = document.getElementById('report-detail').value.trim();
+  const alsoBlock = document.getElementById('report-block').checked;
+
+  const { error } = await sb.from('message_reports').insert({
+    message_id: m.id,
+    channel_id: m.channel_id,
+    channel_name: (currentChannel && currentChannel.name) || null,
+    community_id: CID(),
+    reporter_id: ME.id,
+    reporter_name: ME.name,
+    reported_member_id: m.sender_id,
+    reported_name: (members[m.sender_id] || {}).name || m.sender_name || null,
+    reason: picked.value,
+    detail: detail || null,
+    status: 'open',            // 서버 기본값과 같지만, 분명히 적어 둔다
+    // 신고당한 사람이 바로 지워 버리면 관리자가 무엇을 신고한 건지 알 수
+    // 없게 된다. 그래서 신고하는 순간의 내용을 그대로 떠 둔다.
+    snapshot_text: msgPlainText(m).slice(0, 2000),
+    snapshot_at: new Date().toISOString(),
+  });
+  if (error) {
+    showUploadToast(needsReportInstall(error)
+      ? t('신고 기능이 아직 설치되지 않았어요. 관리자에게 알려주세요.',
+          'Reporting is not installed yet. Please tell your admin.')
+      : t('신고를 보내지 못했어요 — ','Could not send the report — ') + (error.message || ''));
+    return;
+  }
+  if (alsoBlock && !myBlocks.has(m.sender_id)) await blockMember(m.sender_id, true);
+  closeReportModal();
+  showUploadToast(t('신고를 보냈어요. 관리자가 확인합니다.','Report sent. Your admins will review it.'));
+}
+
+// ── 차단 ─────────────────────────────────────────────────────────
+async function blockMember(id, quiet) {
+  if (!id || id === ME.id) return false;
+  const { error } = await sb.from('user_blocks').insert({ blocker_id: ME.id, blocked_id: id });
+  if (error && error.code !== '23505') {          // 23505 = 이미 차단함
+    showUploadToast(t('차단하지 못했어요 — ','Could not block — ') + (error.message || ''));
+    return false;
+  }
+  myBlocks.add(id);
+  redrawAllMsgRows();
+  if (!quiet) {
+    const who = (members[id] || {}).name || '';
+    showUploadToast(t(`${who} 님을 차단했어요`, `Blocked ${who}`));
+  }
+  return true;
+}
+async function unblockMember(id) {
+  const { error } = await sb.from('user_blocks').delete()
+    .eq('blocker_id', ME.id).eq('blocked_id', id);
+  if (error) { showUploadToast(t('차단을 풀지 못했어요','Could not unblock')); return; }
+  myBlocks.delete(id);
+  redrawAllMsgRows();
+  const who = (members[id] || {}).name || '';
+  showUploadToast(t(`${who} 님 차단을 풀었어요`, `Unblocked ${who}`));
+  renderProfilePage();
+}
+async function blockFromPicker() {
+  const sel = document.getElementById('block-pick');
+  if (!sel || !sel.value) { showUploadToast(t('차단할 사람을 골라주세요','Pick someone to block')); return; }
+  if (await blockMember(sel.value)) renderProfilePage();
+}
+
+// 내 프로필 맨 아래 차단 목록 카드
+function blockListCardHtml() {
+  const blocked = [...myBlocks].map(id => members[id]).filter(Boolean);
+  const pickable = Object.values(members)
+    .filter(x => x.id !== ME.id && !myBlocks.has(x.id))
+    .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'ko'));
+  return `
+  <div class="adm-card" style="margin-bottom:16px">
+    <div style="font-size:14px;font-weight:700;color:var(--adeep);margin-bottom:6px">🚫 ${t('차단 목록','Blocked people')}</div>
+    <div style="font-size:12px;color:var(--ink3);line-height:1.6;margin-bottom:14px">
+      ${t('차단하면 그 사람의 메시지가 접혀서 보입니다. 상대는 차단당한 사실을 알 수 없어요.',
+          'Messages from someone you block are collapsed. They are never told.')}
+    </div>
+    ${blocked.length ? `<div style="display:flex;flex-direction:column;gap:7px;margin-bottom:14px">
+      ${blocked.map(x => `
+      <div style="display:flex;align-items:center;gap:9px;padding:8px 11px;border:1px solid var(--border);border-radius:11px;background:var(--s2)">
+        <div style="width:28px;height:28px;border-radius:9px;background:${x.color || '#999'};color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0">${escHtml(x.initials || (x.name || '?')[0])}</div>
+        <div style="flex:1;font-size:13.5px;font-weight:600">${escHtml(x.name || '')}</div>
+        <button onclick="unblockMember('${x.id}')" style="height:30px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);font:600 12px var(--font);cursor:pointer">${t('차단 해제','Unblock')}</button>
+      </div>`).join('')}
+    </div>` : `<div style="font-size:12.5px;color:var(--ink3);margin-bottom:14px">${t('아직 차단한 사람이 없어요','You have not blocked anyone')}</div>`}
+    <div style="display:flex;gap:8px">
+      <select id="block-pick" style="flex:1;min-width:0;height:38px;padding:0 11px;border-radius:10px;border:1.5px solid var(--border);background:var(--s2);font:13px var(--font);color:var(--ink);outline:none;cursor:pointer">
+        <option value="">${t('차단할 사람 고르기','Choose someone to block')}</option>
+        ${pickable.map(x => `<option value="${x.id}">${escHtml(x.name || '')}</option>`).join('')}
+      </select>
+      <button onclick="blockFromPicker()" style="height:38px;padding:0 15px;border-radius:10px;border:1.5px solid var(--rose);background:transparent;color:var(--rose);font:700 12.5px var(--font);cursor:pointer;flex-shrink:0">${t('차단','Block')}</button>
+    </div>
+  </div>`;
+}
+
+// ── 조정: 메시지 가리기 ──────────────────────────────────────────
+async function toggleHideMsg(id) {
+  const m = _msgById[id];
+  if (!m) return;
+  const hiding = !m.hidden_at;
+  if (hiding && !confirm(t('이 메시지를 가릴까요?\n모두에게 "관리자가 가린 메시지입니다" 로 보이고, 원문은 교직원만 볼 수 있어요.',
+                           'Hide this message?\nEveryone will see "Hidden by a moderator"; staff can still read the original.'))) return;
+  const patch = hiding
+    ? { hidden_at: new Date().toISOString(), hidden_by: ME.id }
+    : { hidden_at: null, hidden_by: null, hidden_reason: null };
+  // RLS 에 막히면 오류 없이 0행이 돌아온다. 반드시 select 로 확인한다.
+  const { data, error } = await sb.from('messages').update(patch).eq('id', id).select('id');
+  if (error || !data || !data.length) {
+    showUploadToast(needsReportInstall(error)
+      ? t('조정 기능이 아직 설치되지 않았어요 (db/신고차단_DB설치.sql)','Moderation is not installed yet')
+      : t('이 메시지를 가릴 권한이 없어요','You cannot moderate this message'));
+    return;
+  }
+  Object.assign(m, patch);
+  _hiddenShown.delete(id);
+  redrawMsgRow(id);
+  showUploadToast(hiding ? t('메시지를 가렸어요','Message hidden') : t('다시 보이게 했어요','Message restored'));
+}
+
+// ── 운영관리 → 🚩 신고함 ─────────────────────────────────────────
+let _reportFilter = 'open';
+function setReportFilter(f) { _reportFilter = f; renderAdminReports(); }
+
+async function renderAdminReports() {
+  const _seq = _admSeq;
+  let q = sb.from('message_reports').select('*')
+            .eq('community_id', CID())
+            .order('created_at', { ascending: false }).limit(200);
+  if (_reportFilter !== 'all') q = q.eq('status', _reportFilter);
+  const { data, error } = await q;
+  const area = document.getElementById('admin-content');
+  if (_seq !== _admSeq) return;
+
+  if (error) {
+    area.innerHTML = `<div class="adm-card" style="line-height:1.7">
+      <div style="font-size:15px;font-weight:700;margin-bottom:8px">🚩 ${t('신고함','Reports')}</div>
+      <div style="font-size:13px;color:var(--ink2)">${t('아직 설치되지 않았어요.','Not installed yet.')}</div>
+      <div style="font-size:12.5px;color:var(--ink3);margin-top:6px">Supabase → SQL Editor 에서 <code>db/신고차단_DB설치.sql</code> 을 실행해주세요.</div>
+      <div style="font-size:11.5px;color:var(--ink3);margin-top:10px">${escHtml(error.message || '')}</div>
+    </div>`;
+    return;
+  }
+
+  const list = data || [];
+  // 신고된 메시지가 지금 어떤 상태인지 (가려졌나 · 지워졌나) 한 번에 확인
+  const ids = [...new Set(list.map(r => r.message_id).filter(Boolean))];
+  let hiddenAt = {}, alive = new Set();
+  if (ids.length) {
+    const { data: ms } = await sb.from('messages').select('id,hidden_at').in('id', ids);
+    (ms || []).forEach(x => { alive.add(x.id); hiddenAt[x.id] = x.hidden_at; });
+  }
+  if (_seq !== _admSeq) return;
+
+  const chip = (k, label) => `<button onclick="setReportFilter('${k}')" class="adm-btn ${_reportFilter===k?'primary':'ghost'}">${label}</button>`;
+  const statusChip = (st) => st === 'open'
+    ? `<span style="font-size:11px;background:#FEE2E2;color:#b91c1c;padding:2px 8px;border-radius:6px;font-weight:700">${t('처리 전','Open')}</span>`
+    : st === 'resolved'
+    ? `<span style="font-size:11px;background:#DCFCE7;color:#15803d;padding:2px 8px;border-radius:6px;font-weight:700">${t('처리 완료','Resolved')}</span>`
+    : `<span style="font-size:11px;background:var(--s3);color:var(--ink3);padding:2px 8px;border-radius:6px;font-weight:700">${t('반려','Dismissed')}</span>`;
+
+  area.innerHTML = `
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap">
+    <div style="font-size:18px;font-weight:700">🚩 ${t('신고함','Reports')}</div>
+    <div style="display:flex;gap:6px">
+      ${chip('open', t('처리 전','Open'))}${chip('resolved', t('처리 완료','Resolved'))}${chip('dismissed', t('반려','Dismissed'))}${chip('all', t('전체','All'))}
+    </div>
+  </div>
+  <div style="font-size:12.5px;color:var(--ink3);line-height:1.6;margin-bottom:18px">
+    ${t('신고한 사람이 누구인지는 신고당한 사람에게 보이지 않습니다. 메시지를 가리면 지우지 않고도 모두에게서 감출 수 있고, 원문은 교직원만 볼 수 있습니다.',
+        'The reporter is never shown to the reported person. Hiding a message conceals it from everyone without deleting it; staff can still read the original.')}
+  </div>
+  <div style="display:flex;flex-direction:column;gap:12px">
+  ${list.length ? list.map(r => {
+    const gone   = r.message_id && !alive.has(r.message_id);
+    const hidden = r.message_id && !!hiddenAt[r.message_id];
+    return `
+    <div class="adm-card" style="padding:16px 18px">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+        ${statusChip(r.status)}
+        <span style="font-size:13.5px;font-weight:700">${escHtml(reportReasonLabel(r.reason))}</span>
+        ${hidden ? `<span style="font-size:11px;background:var(--s3);color:var(--ink2);padding:2px 8px;border-radius:6px;font-weight:700">🙈 ${t('가림','Hidden')}</span>` : ''}
+        ${gone ? `<span style="font-size:11px;background:var(--s3);color:var(--ink3);padding:2px 8px;border-radius:6px;font-weight:700">${t('메시지 삭제됨','Message deleted')}</span>` : ''}
+        <div style="flex:1"></div>
+        <span style="font-size:11.5px;color:var(--ink3)">${new Date(r.created_at).toLocaleString('ko-KR')}</span>
+      </div>
+      <div style="font-size:12.5px;color:var(--ink2);background:var(--s2);border-radius:11px;padding:11px 13px;line-height:1.6;margin-bottom:10px;white-space:pre-wrap;word-break:break-word">${escHtml(r.snapshot_text || '') || `<span style="color:var(--ink3)">${t('(내용 없음)','(no text)')}</span>`}</div>
+      ${r.detail ? `<div style="font-size:12.5px;color:var(--ink2);margin-bottom:10px;line-height:1.6">💬 ${escHtml(r.detail)}</div>` : ''}
+      <div style="font-size:11.5px;color:var(--ink3);margin-bottom:12px">
+        ${t('신고한 사람','Reporter')}: <b>${escHtml(r.reporter_name || '')}</b>
+        &nbsp;·&nbsp; ${t('신고당한 사람','Reported')}: <b>${escHtml(r.reported_name || '')}</b>
+        ${r.channel_name ? `&nbsp;·&nbsp; #${escHtml(r.channel_name)}` : ''}
+      </div>
+      ${r.status !== 'open' ? `<div style="font-size:11.5px;color:var(--ink3);margin-bottom:12px">
+        ${t('처리','Handled')}: ${escHtml(r.handled_name || '')} · ${r.handled_at ? new Date(r.handled_at).toLocaleString('ko-KR') : ''}${r.action_taken ? ' · ' + escHtml(r.action_taken) : ''}
+      </div>` : ''}
+      <div style="display:flex;gap:7px;flex-wrap:wrap">
+        ${(!gone && r.message_id) ? `<button class="adm-btn ${hidden?'sage':'ghost'}" onclick="reportToggleHide('${r.id}','${r.message_id}',${hidden?'false':'true'})">${hidden ? '👁 ' + t('다시 보이게','Unhide') : '🙈 ' + t('메시지 가리기','Hide message')}</button>` : ''}
+        ${(!gone && r.message_id) ? `<button class="adm-btn danger" onclick="reportDeleteMsg('${r.id}','${r.message_id}')">🗑 ${t('메시지 삭제','Delete message')}</button>` : ''}
+        ${r.status === 'open' ? `<button class="adm-btn primary" onclick="reportResolve('${r.id}','resolved')">✅ ${t('처리 완료','Mark resolved')}</button>` : ''}
+        ${r.status === 'open' ? `<button class="adm-btn ghost" onclick="reportResolve('${r.id}','dismissed')">${t('문제 없음 (반려)','No action needed')}</button>` : ''}
+      </div>
+    </div>`;
+  }).join('') : `<div class="adm-card" style="text-align:center;color:var(--ink3);padding:28px">${
+      _reportFilter === 'open' ? t('처리할 신고가 없어요 👍','No open reports 👍') : t('해당하는 신고가 없어요','No reports here')}</div>`}
+  </div>`;
+}
+
+async function reportToggleHide(reportId, msgId, hide) {
+  const patch = hide
+    ? { hidden_at: new Date().toISOString(), hidden_by: ME.id, hidden_reason: t('신고 접수','Reported') }
+    : { hidden_at: null, hidden_by: null, hidden_reason: null };
+  const { data, error } = await sb.from('messages').update(patch).eq('id', msgId).select('id');
+  if (error || !data || !data.length) { showUploadToast(t('권한이 없어요','No permission')); return; }
+  await sb.from('message_reports').update({ action_taken: hide ? 'hidden' : 'unhidden' }).eq('id', reportId);
+  const m = _msgById[msgId];
+  if (m) { Object.assign(m, patch); redrawMsgRow(msgId); }
+  showUploadToast(hide ? t('메시지를 가렸어요','Message hidden') : t('다시 보이게 했어요','Message restored'));
+  renderAdminReports();
+}
+
+async function reportDeleteMsg(reportId, msgId) {
+  if (!confirm(t('이 메시지를 지울까요?\n되돌릴 수 없습니다. 신고 기록에는 내용이 남습니다.',
+                 'Delete this message?\nThis cannot be undone. The report keeps a copy of the text.'))) return;
+  const { data, error } = await sb.from('messages').delete().eq('id', msgId).select('id');
+  if (error || !data || !data.length) { showUploadToast(t('권한이 없어요','No permission')); return; }
+  await sb.from('message_reports').update({ action_taken: 'deleted' }).eq('id', reportId);
+  const el = document.querySelector(`#msg-area .msg-row[data-id="${msgId}"]`);
+  if (el) el.remove();
+  delete _msgById[msgId];
+  showUploadToast(t('메시지를 지웠어요','Message deleted'));
+  renderAdminReports();
+}
+
+async function reportResolve(id, status) {
+  const note = status === 'resolved'
+    ? prompt(t('어떻게 처리했는지 간단히 적어주세요 (선택)','Briefly note what you did (optional)'), '')
+    : prompt(t('반려 사유 (선택)','Why no action? (optional)'), '');
+  if (note === null) return;    // 취소
+  const { data, error } = await sb.from('message_reports').update({
+    status, handled_by: ME.id, handled_name: ME.name,
+    handled_at: new Date().toISOString(), handled_note: note || null,
+  }).eq('id', id).select('id');
+  if (error || !data || !data.length) { showUploadToast(t('처리하지 못했어요','Could not update')); return; }
+  showUploadToast(status === 'resolved' ? t('처리 완료로 옮겼어요','Marked resolved') : t('반려했어요','Dismissed'));
+  renderAdminReports();
 }
 
 function escHtml(s) {
@@ -6066,7 +6484,7 @@ let _admSeq = 0;
 function switchAdminTab(tab) {
   adminTab = tab;
   _admSeq++;
-  ['communities','mysettings','members','channels','notices','goals','home'].forEach(t => {
+  ['communities','mysettings','members','channels','notices','reports','goals','home'].forEach(t => {
     const el = document.getElementById('adm-tab-'+t);
     if (!el) return;
     el.classList.toggle('active-adm', t===tab);
@@ -6080,6 +6498,7 @@ function switchAdminTab(tab) {
   else if (tab==='members') renderAdminMembers();
   else if (tab==='channels') renderAdminChannels();
   else if (tab==='notices') renderAdminNotices();
+  else if (tab==='reports') renderAdminReports();
   else if (tab==='goals') renderAdminGoals();
   else if (tab==='home') renderAdminHome();
 }
@@ -6536,6 +6955,9 @@ function showAdminTabsFor() {
 }
 
 function initAdminPage() {
+  // 신고함은 조정 권한이 있는 사람에게만 보인다.
+  const repTab = document.getElementById('adm-tab-reports');
+  if (repTab) repTab.style.display = canModerateChat() ? 'block' : 'none';
   // 지름길로 들어왔으면 그 탭으로 연다. 안 보이는 탭이면 무시.
   const want = _adminInitialTab;
   _adminInitialTab = null;
@@ -6816,6 +7238,8 @@ async function renderProfilePage() {
           ${t('비밀번호 변경','Change Password')}
         </button>
       </div>
+
+      ${blockListCardHtml()}
 
       </div><!-- /섹션 카드 그리드 -->
 
