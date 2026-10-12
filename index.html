@@ -16519,23 +16519,87 @@ function startApprCompose(id, builtin) {
   renderApprMain();
 }
 
+// ── 고쳐서 다시 올리기 ────────────────────────────────────────────
+// 반려되면 처음부터 다시 쓰게 돼 있었다. 금액 한 칸 빠뜨린 것 때문에
+// 영수증까지 다시 올리는 건 말이 안 된다. 그래서 반려·회수된 문서는
+// 그대로 불러와 고친 뒤 같은 문서로 다시 올린다 — 문서번호도 이력도
+// 그대로 남는다.
+function apprUntouched(d){
+  return (d.current_step || 0) === 0
+      && (d.line || []).every(a => a.status === 'pending' || a.status === 'waiting');
+}
+function apprCanRedo(d){
+  if (!d || d.submitter_id !== ME.id) return false;
+  if (d.status === 'rejected' || d.status === 'canceled') return true;
+  return d.status === 'pending' && apprUntouched(d);
+}
+function apprRejectNote(d){
+  const a = (d.line || []).filter(x => x.status === 'rejected').pop();
+  return a ? { who: a.approver_name || '', why: a.comment || '' } : null;
+}
+
+async function startApprRedo(id){
+  const { data:d, error } = await sb.from('approval_docs').select('*').eq('id', id).single();
+  if(error || !d){ showUploadToast(t('문서를 찾을 수 없어요','Document not found')); return; }
+  if(d.submitter_id !== ME.id){ showUploadToast(t('상신한 사람만 고칠 수 있어요','Only the submitter can edit this')); return; }
+  if(!apprCanRedo(d)){ showUploadToast(t('이미 결재가 진행된 문서는 고칠 수 없어요','This document is already being approved')); return; }
+  const fd  = d.form_data || {};
+  const tpl = apprTemplates.find(x => x.id === d.template_id)
+           || APPR_BUILTINS.find(x => x.id === fd._src) || null;
+  const meta = fd._itemsMeta || { enabled:false };
+  apprDraft = {
+    template: {
+      name:    d.template_name || (tpl && tpl.name) || '',
+      kind:    (tpl && tpl.kind) || 'form',
+      fields:  fd._fields || [],
+      items:   meta,
+      dbId:    d.template_id || null,
+      srcId:   fd._src || null,
+      fileUrl: (tpl && tpl.file_url) || null,
+    },
+    items: meta.enabled ? ((fd._items || []).length ? fd._items.map(r => ({...r})) : [{}]) : [],
+    attachments: (d.attachments || []).map(f => ({...f})),
+    line:   (d.line   || []).map(a => ({ approver_id:a.approver_id, approver_name:a.approver_name })),
+    shares: (d.shares || []).map(s => ({ member_id:s.member_id, member_name:s.member_name })),
+    orgId:  (fd._org && fd._org.id) || tcsSelectedOrgId || (tcsOrgs[0] && tcsOrgs[0].id) || '',
+    title:  d.title || '',
+    values: Object.fromEntries((fd._fields || []).map(f => [f.key, fd[f.key] == null ? '' : fd[f.key]])),
+    editId: d.id,
+    editStatus: d.status,
+    editHistory: d.history || [],
+    rejectNote: apprRejectNote(d),
+  };
+  renderApprMain();
+}
+
 function renderApprCompose() {
   const main = document.getElementById('approval-main');
   const t = apprDraft.template;
+  const redo = !!apprDraft.editId;
+  const vals = apprDraft.values || {};
+  const rj   = apprDraft.rejectNote;
   // 전자결재는 교직원 전용 — 학생은 결재자·공유자 대상에서 제외
   const memList = Object.values(members).filter(m => m.id!==ME.id && m.community_role!=='store_bot' && m.community_role!=='student' && m.status!=='removed');
   const approverCands = memList;
-  const fieldsHtml = t.fields.map(f => `<div style="margin-bottom:12px"><label style="font-size:12px;font-weight:700;color:var(--ink3);display:block;margin-bottom:5px">${escHtml(f.label)}</label>${apprFieldHtml(f, '')}</div>`).join('');
+  const fieldsHtml = t.fields.map(f => `<div style="margin-bottom:12px"><label style="font-size:12px;font-weight:700;color:var(--ink3);display:block;margin-bottom:5px">${escHtml(f.label)}</label>${apprFieldHtml(f, vals[f.key] || '')}</div>`).join('');
   main.innerHTML = `<div class="spage" style="max-width:1000px">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
-      <button onclick="apprDraft=null;renderApprMain()" style="height:34px;padding:0 12px;border:1.5px solid var(--border);background:var(--surface);border-radius:9px;cursor:pointer;font:600 12px var(--font);color:var(--ink2)">${window.t('← 양식 선택','← Back')}</button>
-      <div style="font-size:16px;font-weight:800;color:var(--ink)">📝 ${escHtml(t.name)} ${window.t('작성','')}</div>
+      <button onclick="${redo ? `apprDraft=null;openApprDoc('${escJs(apprDraft.editId)}')` : 'apprDraft=null;renderApprMain()'}" style="height:34px;padding:0 12px;border:1.5px solid var(--border);background:var(--surface);border-radius:9px;cursor:pointer;font:600 12px var(--font);color:var(--ink2)">${redo ? window.t('← 문서로','← Back') : window.t('← 양식 선택','← Back')}</button>
+      <div style="font-size:16px;font-weight:800;color:var(--ink)">${redo ? '✏️' : '📝'} ${escHtml(t.name)} ${redo ? window.t('고치기','— edit') : window.t('작성','')}</div>
     </div>
+    ${redo ? `<div style="background:${rj?'#FDECEA':'var(--s2)'};border:1px solid ${rj?'#F0B4AC':'var(--border)'};border-radius:13px;padding:13px 16px;margin-bottom:16px">
+      ${rj ? `<div style="font-size:12.5px;font-weight:800;color:#8E2A1E;margin-bottom:3px">${window.t('반려 사유','Reason for rejection')} · ${escHtml(rj.who)}</div>
+             <div style="font-size:13.5px;color:#7A2B21;line-height:1.7;white-space:pre-wrap">${escHtml(rj.why)}</div>` : ''}
+      <div style="font-size:12px;color:${rj?'#8E2A1E':'var(--ink3)'};margin-top:${rj?'8px':'0'};line-height:1.7">${window.t(
+        '고친 뒤 다시 올리면 같은 문서로 결재가 처음부터 다시 돌아요. 첨부와 결재선은 그대로 들어 있어요.',
+        'Fix it and resubmit — the same document starts a fresh approval round. Attachments and the approval line are kept.')}</div>
+      <input id="appr-redo-note" placeholder="${window.t('무엇을 고쳤는지 (선택 · 결재자에게 보여요)','What did you change? (optional)')}" style="${apprInp};margin-top:10px;background:var(--surface)"/>
+    </div>` : ''}
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:18px;align-items:start">
       <!-- 본문 -->
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px">
         <div style="margin-bottom:12px"><label style="font-size:12px;font-weight:700;color:var(--ink3);display:block;margin-bottom:5px">${window.t('제목 *','Title *')}</label>
-          <input id="appr-title" value="${escAttr(t.name)}" style="${apprInp}"/></div>
+          <input id="appr-title" value="${escAttr(apprDraft.title != null ? apprDraft.title : t.name)}" style="${apprInp}"/></div>
         ${apprOrgPickerHtml()}
         ${t.fileUrl?`<div style="margin-bottom:12px;background:var(--s2);border:1px solid var(--border);border-radius:9px;padding:10px 12px;font-size:12.5px"><a href="${t.fileUrl}" target="_blank" style="color:var(--accent);font-weight:700">${window.t('📄 양식 파일 내려받기','📄 Download form file')}</a>${window.t(' — 작성한 파일을 아래 첨부에 올려주세요.',' — Attach your completed file below.')}</div>`:''}
         ${fieldsHtml}
@@ -16583,7 +16647,7 @@ function renderApprCompose() {
             </optgroup>
           </select>
         </div>
-        <button onclick="submitApprDoc()" style="height:48px;border:none;border-radius:12px;background:linear-gradient(135deg,#1d3a5f,#2a5298);color:#fff;font:800 15px var(--font);cursor:pointer">${window.t('📤 상신하기','📤 Submit')}</button>
+        <button onclick="submitApprDoc()" style="height:48px;border:none;border-radius:12px;background:linear-gradient(135deg,#1d3a5f,#2a5298);color:#fff;font:800 15px var(--font);cursor:pointer">${redo ? window.t('🔁 고쳐서 다시 올리기','🔁 Fix and resubmit') : window.t('📤 상신하기','📤 Submit')}</button>
       </div>
     </div>
   </div>`;
@@ -16754,10 +16818,31 @@ async function submitApprDoc(){
   if (_org) form_data._org = { id:_org.id, name:_org.name||'', logo:_org.logo_url||'', address:_org.address||'' };
   t.fields.forEach(f=>{ const el=document.getElementById('appr-f-'+f.key); if(el) form_data[f.key]=el.value; });
   if(t.items && t.items.enabled){ form_data._items = apprDraft.items.filter(r=>Object.values(r).some(v=>String(v||'').trim())); form_data._itemsMeta = t.items; }
-  const line = apprDraft.line.map((a,i)=>({ order:i, approver_id:a.approver_id, approver_name:a.approver_name, status: i===0?'pending':'waiting', comment:'', acted_at:null }));
+  // 결재선은 처음부터 다시 — 전에 찍힌 서명·의견은 지운다
+  const line = apprDraft.line.map((a,i)=>({ order:i, approver_id:a.approver_id, approver_name:a.approver_name, status: i===0?'pending':'waiting', comment:'', acted_at:null, sign_url:null }));
   const shares = apprDraft.shares.map(s=>({ member_id:s.member_id, member_name:s.member_name }));
   const participant_ids = [...new Set([ME.id, ...line.map(a=>a.approver_id), ...shares.map(s=>s.member_id)])];
-  const history = [{ ts:new Date().toISOString(), actor_id:ME.id, actor_name:ME.name, action:'상신', comment:'' }];
+  const now = new Date().toISOString();
+
+  // 고쳐서 다시 올리기 — 같은 문서를 되살린다 (문서번호·이력 그대로)
+  if (apprDraft.editId) {
+    const note = (document.getElementById('appr-redo-note')?.value || '').trim();
+    const action = apprDraft.editStatus === 'pending' ? '수정' : '재상신';
+    const history = (apprDraft.editHistory || []).concat([{ ts:now, actor_id:ME.id, actor_name:ME.name, action, comment:note }]);
+    const { data, error } = await sb.from('approval_docs')
+      .update({ title, form_data, attachments:apprDraft.attachments, line, shares, history, participant_ids,
+                status:'pending', current_step:0, completed_at:null })
+      .eq('id', apprDraft.editId).select('id');
+    if(error){ showUploadToast(window.t('다시 올리기 실패: ','Resubmit failed: ')+error.message); return; }
+    if(!data || !data.length){ showUploadToast(window.t('고칠 권한이 없어요','No permission to edit')); return; }
+    showUploadToast(apprDraft.editStatus === 'pending'
+      ? window.t('✅ 고쳤어요','✅ Updated')
+      : window.t('✅ 다시 올렸어요 — 결재가 처음부터 다시 돌아요','✅ Resubmitted — approval starts over'));
+    apprDraft=null; apprSubMode='sent'; renderApprSubnav(); renderApprMain();
+    return;
+  }
+
+  const history = [{ ts:now, actor_id:ME.id, actor_name:ME.name, action:'상신', comment:'' }];
   const row = { community_id:CID(), template_id:t.dbId||null, template_name:t.name, title, form_data, attachments:apprDraft.attachments, line, shares, history, participant_ids, status:'pending', current_step:0, submitter_id:ME.id, submitter_name:ME.name };
   const { error } = await sb.from('approval_docs').insert(row);
   if(error){ if(schoolTableMissing(error)){ showUploadToast(window.t('결재 테이블이 없어요. db/서류결재_DB설치.sql 실행 필요','Approval table missing. Run db/서류결재_DB설치.sql')); return; } showUploadToast(window.t('상신 실패: ','Submit failed: ')+error.message); return; }
@@ -16922,9 +17007,16 @@ async function openApprDoc(id){
       <button onclick="renderApprMain()" style="height:34px;padding:0 12px;border:1.5px solid var(--border);background:var(--surface);border-radius:9px;cursor:pointer;font:600 12px var(--font);color:var(--ink2)">${t('← 목록','← List')}</button>
       ${apprStatusBadge(d.status)}
       <div style="flex:1"></div>
+      ${apprCanRedo(d) && d.status!=='rejected' ? `<button onclick="startApprRedo('${d.id}')" style="height:34px;padding:0 13px;background:var(--surface);color:var(--ink2);border:1.5px solid var(--border);border-radius:9px;cursor:pointer;font:700 12px var(--font)">${t('✏️ 고치기','✏️ Edit')}</button>` : ''}
       ${d.submitter_id===ME.id && d.status==='pending' ? `<button onclick="cancelApprDoc('${d.id}')" style="height:34px;padding:0 12px;border:1.5px solid var(--border);background:var(--surface);border-radius:9px;cursor:pointer;font:600 12px var(--font);color:#c0392b">${t('상신 취소','Cancel')}</button>` : ''}
       <button onclick="printApprDoc('${d.id}')" style="height:34px;padding:0 14px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 12px var(--font)">📄 PDF</button>
     </div>
+    ${d.status==='rejected' ? (() => { const rj = apprRejectNote(d); return `<div style="background:#FDECEA;border:1px solid #F0B4AC;border-radius:14px;padding:14px 17px;margin-bottom:16px">
+      <div style="font-size:13px;font-weight:800;color:#8E2A1E;margin-bottom:3px">✕ ${t('반려되었어요','Rejected')}${rj&&rj.who?` · ${escHtml(rj.who)}`:''}</div>
+      ${rj&&rj.why?`<div style="font-size:13.5px;color:#7A2B21;line-height:1.7;white-space:pre-wrap">${escHtml(rj.why)}</div>`:''}
+      ${d.submitter_id===ME.id?`<button onclick="startApprRedo('${d.id}')" style="margin-top:11px;height:40px;padding:0 16px;border:none;border-radius:10px;background:#c0392b;color:#fff;font:800 13.5px var(--font);cursor:pointer">${t('🔁 고쳐서 다시 올리기','🔁 Fix and resubmit')}</button>
+        <div style="font-size:11.5px;color:#8E2A1E;margin-top:7px">${t('처음부터 다시 쓰지 않아도 돼요 — 적은 내용과 첨부가 그대로 들어 있어요.','No need to start over — your text and attachments are kept.')}</div>`:''}
+    </div>`; })() : ''}
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:22px;margin-bottom:16px">
       <div style="font-size:19px;font-weight:800;color:var(--ink)">${escHtml(d.title)}</div>
       <div style="font-size:12px;color:var(--ink3);margin:4px 0 16px">${escHtml(d.template_name||'')} · ${t('상신','By')} ${escHtml(d.submitter_name||'')} · ${fmtTs(d.created_at)}</div>
