@@ -645,6 +645,17 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
   .bubble, .adm-card, .ch-preview { overflow-wrap: anywhere; word-break: break-word; }
 }
 
+/* 좁은 화면(360px 같은)에서는 머리글 단추들이 자리를 다 먹어서
+   채팅방 이름이 '3...' 으로 잘린다. 어느 방에 있는지 알 수가 없다.
+   단추를 조금 줄이고 이름에 최소 자리를 보장한다. */
+@media (max-width: 430px) {
+  #chat-header { padding: 0 12px; gap: 6px; }
+  #chat-header .header-action { width: 32px; height: 32px; }
+  #chat-header .chat-header-icon { width: 32px; height: 32px; font-size: 16px; }
+  #mobile-chat-back { width: 30px !important; margin-right: 0 !important; }
+  .chat-header-info { min-width: 84px; }
+}
+
 @media (max-width: 620px) {
   /* 2·3열 그리드 → 모바일에서 축소 (인라인 스타일 전역 대응) */
   [style*="grid-template-columns:1fr 1fr"] { grid-template-columns: 1fr !important; }
