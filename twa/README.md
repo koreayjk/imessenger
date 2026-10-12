@@ -29,23 +29,71 @@ https://koreayjk.github.io/.well-known/assetlinks.json   ← 여기
 
 지금 그 자리는 비어 있습니다(404). 저장소를 하나 더 만들면 채워집니다.
 
-1. GitHub 에서 **새 저장소**를 만듭니다. 이름은 **정확히** `koreayjk.github.io`
-2. 공개(Public)로 만듭니다
-3. 그 안에 파일 두 개를 넣습니다
+### ① 저장소 만들기
+
+1. <https://github.com/new> 로 갑니다
+2. **Repository name** 에 **정확히** 이렇게 적습니다 → `koreayjk.github.io`
+   - 점(`.`)까지 그대로입니다. 한 글자라도 다르면 주소 맨 앞을 못 맡습니다
+   - 내 계정 이름(`koreayjk`)과 앞부분이 같아야 합니다
+3. **Public** 을 고릅니다 (무료 계정은 Private 면 사이트가 안 열립니다)
+4. **Add a README file** 에 체크합니다 (빈 저장소면 다음 단계가 번거롭습니다)
+5. **Create repository**
+
+### ② 파일 두 개 넣기
+
+만든 저장소 화면에서 **Add file → Create new file** 을 누릅니다.
+
+**첫 번째 — `.nojekyll`**
+
+- 파일 이름 칸에 `.nojekyll` 만 적습니다 (앞의 점 포함)
+- 내용은 **비워 둡니다**. (빈 파일을 거부하면 아무 글자나 한 자 넣으셔도 됩니다)
+- 아래 **Commit changes**
+
+> ⚠️ 이 파일을 빠뜨리면 GitHub 이 점으로 시작하는 폴더(`.well-known`)를
+> 숨겨 버려서 또 404 가 납니다. **가장 흔히 걸리는 함정입니다.**
+
+**두 번째 — `.well-known/assetlinks.json`**
+
+- 다시 **Add file → Create new file**
+- 파일 이름 칸에 `.well-known/assetlinks.json` 을 통째로 적습니다
+  - `/` 를 치는 순간 폴더가 자동으로 만들어집니다. 폴더를 따로 만들 필요 없습니다
+- 내용에 `twa/assetlinks.json` 을 붙여넣습니다 (지문은 나중에 채웁니다)
+- **Commit changes**
+
+### ③ 사이트 켜기
+
+1. 그 저장소의 **Settings → Pages**
+2. **Source** 를 `Deploy from a branch`
+3. **Branch** 를 `main` / `/ (root)` → **Save**
+4. 2~3분 기다립니다
+
+### ④ 됐는지 확인
+
+브라우저에서 열어 보세요.
 
 ```
-koreayjk.github.io/
-├── .nojekyll                     ← 빈 파일. 없으면 .well-known 폴더가 숨겨져 404 가 납니다
-└── .well-known/
-    └── assetlinks.json           ← 이 폴더의 assetlinks.json 을 올리세요
+https://koreayjk.github.io/.well-known/assetlinks.json
 ```
 
-4. Settings → Pages → Source 를 `main` 브랜치로 두면 몇 분 뒤 열립니다
+**방금 넣은 내용이 보이면 성공입니다.**
+404 가 나면 → `.nojekyll` 이 있는지, 저장소 이름이 정확한지, Pages 가 켜졌는지
+이 세 가지를 보세요.
 
-> ⚠️ `.nojekyll` 을 빠뜨리면 GitHub 이 점으로 시작하는 폴더를 숨깁니다.
-> 가장 흔히 걸리는 함정입니다.
+> 💡 덤으로 `index.html` 을 하나 넣어 두시면 `koreayjk.github.io` 맨 앞이
+> 404 대신 간단한 안내 페이지가 됩니다. 꼭 필요하진 않습니다.
 
----
+### 명령어가 편하시면
+
+```bash
+git clone https://github.com/koreayjk/koreayjk.github.io.git
+cd koreayjk.github.io
+touch .nojekyll
+mkdir -p .well-known
+cp /경로/imessenger/twa/assetlinks.json .well-known/
+git add -A && git commit -m "assetlinks" && git push
+```
+
+그다음 Settings → Pages 에서 ③ 번만 해 주시면 됩니다.
 
 ## 2. 앱 만들기 — 두 가지 길
 
