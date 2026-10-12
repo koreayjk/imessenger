@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="ko">
+<meta charset="utf-8"/>
+<title>TCS 학부모 안내문</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --navy:#1d3a5f; --navy2:#2a5298; --ink:#14181f; --ink2:#40506b; --ink3:#7b8698;
+    --line:#dde4ed; --soft:#f3f7fc; --warm:#be5b2a; --warmbg:#fdf1e7; --warmline:#f0d5be;
+    --green:#1f6b42; --greenbg:#eaf6ee;
+  }
+  @page { size: A4; margin: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Noto Sans KR', 'WenQuanYi Zen Hei', sans-serif;
+    color: var(--ink); background:#fff;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .page { width: 210mm; min-height: 297mm; padding: 0 0 16mm; page-break-after: always; position: relative; overflow: hidden; }
+  .page:last-child { page-break-after: auto; }
+  .pad { padding: 0 18mm; }
+
+  /* ── 머리 ── */
+  .hero { background: linear-gradient(135deg,#1d3a5f 0%, #2a5298 100%); color:#fff; padding: 14mm 18mm 12mm; position:relative; overflow:hidden; }
+  .hero::after { content:''; position:absolute; right:-28mm; top:-30mm; width:90mm; height:90mm; border-radius:50%; background:rgba(255,255,255,.055); }
+  .hero::before { content:''; position:absolute; right:12mm; bottom:-24mm; width:46mm; height:46mm; border-radius:50%; background:rgba(255,255,255,.04); }
+  .brand { display:flex; align-items:center; gap:9px; margin-bottom:9mm; position:relative; }
+  .brand img { width:32px; height:32px; object-fit:contain; border-radius:9px; background:#fff; padding:4px; box-shadow:0 1px 6px rgba(0,0,0,.18); }
+  .brand b { font-size:12.5px; font-weight:700; letter-spacing:.22em; opacity:.92; }
+  .hero h1 { font-size:30px; font-weight:900; letter-spacing:-.02em; line-height:1.3; position:relative; }
+  .hero .sub { font-size:14px; font-weight:400; opacity:.88; margin-top:7px; line-height:1.75; position:relative; }
+  .hero .tag { display:inline-block; margin-top:9mm; font-size:11.5px; font-weight:700; letter-spacing:.04em;
+               background:rgba(255,255,255,.17); border:1px solid rgba(255,255,255,.3); border-radius:999px; padding:5px 14px; position:relative; }
+
+  /* ── 공통 ── */
+  h2 { font-size:16.5px; font-weight:800; color:var(--navy); margin:8.5mm 0 3.5mm; letter-spacing:-.01em; display:flex; align-items:center; gap:8px; }
+  h2 .n { width:22px; height:22px; border-radius:7px; background:var(--navy); color:#fff; font-size:12px; font-weight:800;
+          display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; }
+  p { font-size:13px; line-height:1.95; color:var(--ink2); }
+  p + p { margin-top:3.5mm; }
+  strong { color:var(--ink); font-weight:700; }
+  .lead { font-size:13.5px; line-height:2; color:var(--ink2); }
+
+  /* ── 보실 수 있는 것 ── */
+  .cards { display:grid; grid-template-columns:1fr 1fr; gap:3mm; margin-top:4mm; }
+  .card { border:1px solid var(--line); border-radius:12px; padding:4mm 4.6mm; background:#fff; display:flex; gap:3.4mm; align-items:flex-start; }
+  .card .ic { font-size:19px; line-height:1; margin-top:1px; }
+  .card .ti { font-size:13px; font-weight:800; color:var(--navy); }
+  .card .de { font-size:11.5px; color:var(--ink3); line-height:1.65; margin-top:2px; }
+  .card.wide { grid-column:1/3; background:var(--soft); border-color:#cfdcea; }
+
+  /* ── 상자 ── */
+  .note { border-radius:12px; padding:3.8mm 4.8mm; font-size:11.8px; line-height:1.78; margin-top:3.8mm; }
+  .note b { font-weight:800; }
+  .note.warm  { background:var(--warmbg); border:1px solid var(--warmline); color:#7a3b17; }
+  .note.green { background:var(--greenbg); border:1px solid #bee0ca; color:#17563a; }
+  .note.plain { background:var(--soft); border:1px solid #cfdcea; color:var(--ink2); }
+  .note .hd { font-weight:800; display:block; margin-bottom:1.6mm; font-size:12.5px; }
+
+  /* ── 가입 단계 ── */
+  .steps { margin-top:4mm; counter-reset:s; }
+  .step { display:flex; gap:4mm; padding:2.4mm 0; border-top:1px solid var(--line); }
+  .step:first-child { border-top:0; padding-top:0; }
+  .step .num { counter-increment:s; flex-shrink:0; width:24px; height:24px; border-radius:50%;
+               background:var(--navy); color:#fff; font-size:12px; font-weight:800;
+               display:flex; align-items:center; justify-content:center; margin-top:1px; }
+  .step .num::before { content:counter(s); }
+  .step .bd { font-size:12.5px; line-height:1.85; color:var(--ink2); }
+  .step .bd b { color:var(--ink); font-weight:700; }
+  .step .hint { font-size:11px; color:var(--ink3); margin-top:1.2mm; line-height:1.7; }
+  .pill { display:inline-block; background:var(--warmbg); border:1px solid var(--warmline); color:var(--warm);
+          border-radius:7px; padding:1px 8px; font-weight:800; font-size:12px; }
+  .pill.navy { background:#eaf1fb; border-color:#c9ddf2; color:var(--navy); }
+
+  /* ── 꼬리 ── */
+  .foot { margin-top:5mm; border-top:2px solid var(--navy); padding-top:4.5mm; display:flex; align-items:flex-end; gap:6mm; }
+  .foot .q { flex:1; }
+  .foot .q .hd { font-size:12.5px; font-weight:800; color:var(--navy); }
+  .foot .q .bd { font-size:12px; color:var(--ink2); line-height:1.8; margin-top:1.5mm; }
+  .foot .mark { font-size:10.5px; color:var(--ink3); letter-spacing:.14em; font-weight:700; text-align:right; white-space:nowrap; }
+  .blank { border:1.5px dashed #b9c6d6; border-radius:10px; background:#fbfdff; padding:3mm 4.5mm; margin-top:2mm; }
+  .blank .lb { font-size:10px; font-weight:700; color:var(--ink3); letter-spacing:.03em; }
+  .blank .ln { height:5mm; border-bottom:1px solid #d7e0ea; margin-top:1.2mm; }
+</style>
+<body>
+
+<!-- ───────────────── 1쪽 ───────────────── -->
+<div class="page">
+  <div class="hero">
+    <div class="brand">
+      <img src="../tcs_logo.png" alt=""/>
+      <b>TOTAL CARE SYSTEM</b>
+    </div>
+    <h1>학부모님,<br/>이제 함께 보실 수 있습니다</h1>
+    <div class="sub">우리 아이의 예치금·매점·학비를 언제든 열어보시고,<br/>필요한 서류도 여기서 바로 신청하실 수 있습니다.</div>
+    <span class="tag">TCS 학부모 가입 안내</span>
+  </div>
+
+  <div class="pad">
+    <h2><span class="n">1</span>TCS가 무엇인가요</h2>
+    <p class="lead"><strong>TCS(Total Care System)</strong> 는 저희 공동체가 학생 한 명 한 명을 돌보기 위해 쓰는 시스템입니다.
+      흩어져 있던 것들 &mdash; 출석, 학비, 매점, 일정, 공지, 생활기록 &mdash; 을 <strong>한곳에 모아 두는 곳</strong>입니다.</p>
+    <p class="lead">지금까지는 선생님과 학생들이 썼습니다. 이번에 <strong>학부모님도 들어오셔서, 우리 아이에 관한 것을 직접 보실 수 있게</strong> 되었습니다.
+      그동안 따로 여쭤보셔야 했던 것들을 이제 언제든 열어보실 수 있습니다.</p>
+
+    <h2><span class="n">2</span>학부모님이 보실 수 있는 것</h2>
+    <div class="cards">
+      <div class="card"><span class="ic">🏦</span><div><div class="ti">예치금</div><div class="de">아이에게 남은 돈과<br/>입금·출금 내역</div></div></div>
+      <div class="card"><span class="ic">🏪</span><div><div class="ti">매점</div><div class="de">아이가 매점에서 무엇을<br/>샀는지, 품목까지</div></div></div>
+      <div class="card"><span class="ic">💰</span><div><div class="ti">학비</div><div class="de">아직 안 낸 금액,<br/>고지 내역과 납입 내역</div></div></div>
+      <div class="card"><span class="ic">📄</span><div><div class="ti">서류 신청</div><div class="de">재학증명서 · 학비 납입<br/>증명서 등을 바로 신청</div></div></div>
+      <div class="card wide"><span class="ic">💬</span><div><div class="ti">공지방 · 일정 · 노트</div><div class="de">공동체 소식과 일정을 함께 보실 수 있습니다</div></div></div>
+    </div>
+
+    <div class="note green">
+      <span class="hd">🔒 보시는 것은 내 아이의 것만입니다</span>
+      다른 아이의 자료는 보이지 않습니다. 그리고 <b>생활기록부 · 출결 · 상담 · 보건 기록은 선생님만</b> 보실 수 있습니다.
+      아이에 관해 더 알고 싶으신 것이 있으면 담당 선생님께 편히 말씀해 주세요.
+    </div>
+  </div>
+</div>
+
+<!-- ───────────────── 2쪽 ───────────────── -->
+<div class="page">
+  <div class="pad" style="padding-top:9mm">
+    <h2 style="margin-top:0"><span class="n">3</span>가입하는 방법</h2>
+
+    <div class="note warm">
+      <span class="hd">먼저 확인해 주세요</span>
+      아이가 TCS에 <b>먼저 가입되어 있어야</b> 찾아드릴 수 있습니다. 아직이라면 담당 선생님께 먼저 말씀해 주세요.
+    </div>
+
+    <div class="steps">
+      <div class="step"><div class="num"></div><div class="bd">
+        아래 주소로 들어가 <b>회원가입</b>을 누릅니다.
+        <div class="blank"><span class="lb">TCS 주소</span><div class="ln"></div></div>
+      </div></div>
+      <div class="step"><div class="num"></div><div class="bd">
+        <b>이메일 주소</b>, <b>비밀번호</b>(6자 이상), <b>성함</b>, <b>생년월일</b>을 적습니다.
+        <div class="hint">생년월일은 학부모님 본인의 것입니다.</div>
+      </div></div>
+      <div class="step"><div class="num"></div><div class="bd">
+        <b>소속 공동체</b>를 고릅니다.
+      </div></div>
+      <div class="step"><div class="num"></div><div class="bd">
+        역할에서 <span class="pill">👨‍👩‍👧 학부모</span> 를 누릅니다.
+      </div></div>
+      <div class="step"><div class="num"></div><div class="bd">
+        아래에 칸이 열립니다. <b>아이 이름</b>과 <b>아이 생년월일</b>을 적고,
+        아버지 / 어머니 / 보호자 중 하나를 고른 뒤 <span class="pill navy">아이 확인하기</span> 를 누릅니다.
+        <div class="hint">맞으면 <b>✅ ○○○ 학생을 찾았어요</b> 라고 나옵니다.
+          안 나오면 이름이나 생년월일을 다시 확인해 주세요.</div>
+      </div></div>
+      <div class="step"><div class="num"></div><div class="bd">
+        <span class="pill navy">가입하기</span> 를 누르면 신청이 들어갑니다.
+      </div></div>
+      <div class="step"><div class="num"></div><div class="bd">
+        <b>관리자가 확인하고 아이와 연결해 드리면</b> 바로 쓰실 수 있습니다.
+      </div></div>
+    </div>
+
+    <div class="note plain">
+      <span class="hd">💡 아이 이름을 목록으로 보여드리지 않는 이유</span>
+      가입 화면은 로그인 전이라, 목록을 띄우면 누구나 전교생 이름을 볼 수 있게 됩니다.
+      그래서 <b>이름과 생년월일을 둘 다 맞히셨을 때만</b> 찾아드립니다.
+      번거로우시겠지만 아이들의 이름을 지키기 위한 것이니 양해 부탁드립니다.
+    </div>
+
+    <h2><span class="n">4</span>가입하신 뒤에는</h2>
+    <p>들어오시면 왼쪽에 <span class="pill">👨‍👩‍👧 내 아이</span> 가 보입니다. 누르시면 예치금 · 매점 · 학비 · 서류 신청이 한 화면에 있습니다.
+      아이가 둘 이상이면 위에서 이름을 눌러 바꿔 보실 수 있습니다.</p>
+    <p><b>서류가 필요하실 때는</b> <strong>📄 서류 신청</strong>에서 서류 종류와 어디에 내시는지를 적어 신청해 주세요.
+      사무실에서 확인하고 발급해 드립니다. 발급되면 같은 자리에 <strong>‘발급 완료’</strong> 로 표시됩니다.</p>
+
+    <div class="foot">
+      <div class="q">
+        <div class="hd">궁금한 점이 있으시면</div>
+        <div class="blank" style="margin-top:2mm"><span class="lb">담당 · 연락처</span><div class="ln"></div></div>
+      </div>
+      <div class="mark">TOTAL CARE SYSTEM</div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
