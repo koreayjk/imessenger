@@ -757,12 +757,12 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
     <!-- 왼쪽 브랜드 -->
     <div class="auth-left">
       <div style="display:flex;flex-direction:column;align-items:center;text-align:center">
-        <img src="./tcs_logo.png" alt="TCS 로고"
+        <!-- 남색 판 위에는 남색 타일 대신 흰 락업을 쓴다 (타일은 배경에 묻힌다) -->
+        <img src="./brand/tcs-logo-vertical-dark.svg" alt="TCS — Total Care System"
           id="auth-logo-img"
-          style="width:160px;margin-bottom:16px;border-radius:16px;box-shadow:0 8px 32px rgba(0,0,0,.3)"
+          style="width:210px;margin-bottom:18px"
           onerror="document.getElementById('auth-logo-img').style.display='none';document.getElementById('auth-logo-txt').style.display='block'"/>
         <div id="auth-logo-txt" style="display:none;font-size:56px;font-weight:900;color:white;letter-spacing:-2px;margin-bottom:16px;text-shadow:0 4px 20px rgba(0,0,0,.3)">TCS</div>
-        <div style="font-size:13px;font-weight:600;color:rgba(255,255,255,.5);letter-spacing:3px;text-transform:uppercase;margin-bottom:6px">Total Care System</div>
         <div class="tagline" data-ko-html="학생 한 명 한 명을 온전히 품는<br>교육 공동체 통합 플랫폼" data-en-html="An all-in-one platform for<br>education communities that care for every student">학생 한 명 한 명을 온전히 품는<br>교육 공동체 통합 플랫폼</div>
       </div>
       <div class="features">
