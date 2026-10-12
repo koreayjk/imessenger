@@ -823,7 +823,8 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
         <!-- 역할 선택 -->
         <div style="margin-bottom:14px">
           <div style="font-size:12px;color:var(--ink3);margin-bottom:6px;font-weight:500" data-ko="역할" data-en="Role">역할</div>
-          <div style="display:flex;gap:8px">
+          <!-- 넷이 되면서 한 줄에 다 넣으면 이름이 '교' '간' 으로 잘린다. 두 줄로 쌓는다. -->
+          <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px">
             <label style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:10px 8px;border:1.5px solid var(--border);border-radius:10px;cursor:pointer;font-size:13px;transition:border-color .15s var(--ease-out),background .15s var(--ease-out)" id="role-teacher-label">
               <input type="radio" name="su-role" value="teacher" id="role-teacher" style="width:auto"/> <span data-ko="👩‍🏫 교사" data-en="👩‍🏫 Teacher">👩‍🏫 교사</span>
             </label>
@@ -833,8 +834,33 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
             <label style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:10px 8px;border:1.5px solid var(--border);border-radius:10px;cursor:pointer;font-size:13px;transition:border-color .15s var(--ease-out),background .15s var(--ease-out)" id="role-student-label">
               <input type="radio" name="su-role" value="student" id="role-student" style="width:auto" checked/> <span data-ko="🎓 학생" data-en="🎓 Student">🎓 학생</span>
             </label>
+            <label style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:10px 8px;border:1.5px solid var(--border);border-radius:10px;cursor:pointer;font-size:13px;transition:border-color .15s var(--ease-out),background .15s var(--ease-out)" id="role-parent-label">
+              <input type="radio" name="su-role" value="parent" id="role-parent" style="width:auto"/> <span data-ko="👨‍👩‍👧 학부모" data-en="👨‍👩‍👧 Parent">👨‍👩‍👧 학부모</span>
+            </label>
           </div>
           <div style="font-size:11px;color:var(--ink3);margin-top:6px" data-ko="※ 관리자·행정담당자 권한은 가입 후 관리자가 지정합니다." data-en="※ Admin / officer roles are assigned by an administrator after sign-up.">※ 관리자·행정담당자 권한은 가입 후 관리자가 지정합니다.</div>
+        </div>
+        <!-- 학부모: 어느 아이의 보호자인지 -->
+        <div id="su-parent-box" style="display:none;margin:-6px 0 14px;background:var(--s2);border:1.5px solid var(--border);border-radius:12px;padding:13px 14px">
+          <div style="font-size:12.5px;font-weight:700;color:var(--ink2);margin-bottom:3px" data-ko="어느 학생의 보호자이신가요?" data-en="Which student are you the guardian of?">어느 학생의 보호자이신가요?</div>
+          <div style="font-size:11.5px;color:var(--ink3);line-height:1.6;margin-bottom:9px" data-ko="아이가 먼저 가입되어 있어야 해요. 이름과 생년월일이 둘 다 맞아야 찾을 수 있어요." data-en="Your child must already have an account. Both the name and the date of birth must match.">아이가 먼저 가입되어 있어야 해요. 이름과 생년월일이 둘 다 맞아야 찾을 수 있어요.</div>
+          <div class="field-row">
+            <div>
+              <div class="auth-label" data-ko="아이 이름" data-en="Child's name">아이 이름</div>
+              <input class="auth-input" id="su-child-name" placeholder="예) 홍길동" data-ko-ph="예) 홍길동" data-en-ph="e.g. Jane Doe" oninput="suParentReset()"/>
+            </div>
+            <div>
+              <div class="auth-label" data-ko="아이 생년월일" data-en="Child's date of birth">아이 생년월일</div>
+              <input class="auth-input" id="su-child-birth" type="date" style="color:var(--ink2)" onchange="suParentReset()"/>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;margin-top:8px">
+            <select class="auth-input" id="su-child-rel" style="flex:0 0 auto;width:auto;min-width:96px;margin:0;cursor:pointer">
+              <option value="부">아버지</option><option value="모">어머니</option><option value="보호자">보호자</option>
+            </select>
+            <button type="button" onclick="suCheckChild()" id="su-child-btn" style="flex:1;height:42px;border:1.5px solid var(--adeep);background:white;color:var(--adeep);border-radius:10px;font:700 13px var(--font);cursor:pointer" data-ko="아이 확인하기" data-en="Find my child">아이 확인하기</button>
+          </div>
+          <div id="su-child-msg" style="font-size:12px;margin-top:8px;line-height:1.6"></div>
         </div>
         <button class="auth-btn" onclick="doSignUp()" id="su-btn" data-ko="가입하기" data-en="Sign Up">가입하기</button>
         <div class="auth-msg" id="su-msg"></div>
@@ -1811,6 +1837,63 @@ async function loadCommunitiesForSignup() {
   });
 }
 
+// ── 학부모 가입: 어느 아이의 보호자인지 ─────────────────────────
+//  학생 목록은 내보내지 않는다. 가입 화면은 로그인 전이라, 목록을 띄우면
+//  아무나 그 공동체 전교생 이름을 볼 수 있다. 이름과 생년월일을 둘 다
+//  맞혔을 때만 "찾았어요" 라고 답한다 (parent-verify Edge Function).
+let suChildOk = false;
+
+function suParentReset() {
+  suChildOk = false;
+  const m = document.getElementById('su-child-msg');
+  if (m) { m.textContent = ''; m.style.color = ''; }
+}
+
+function suToggleParentBox() {
+  const on = (document.querySelector('input[name="su-role"]:checked') || {}).value === 'parent';
+  const box = document.getElementById('su-parent-box');
+  if (box) box.style.display = on ? 'block' : 'none';
+  if (!on) suParentReset();
+}
+document.addEventListener('change', e => {
+  if (e.target && e.target.name === 'su-role') suToggleParentBox();
+});
+
+async function suCheckChild() {
+  const msg  = document.getElementById('su-child-msg');
+  const btn  = document.getElementById('su-child-btn');
+  const cid  = document.getElementById('su-community').value;
+  const name = (document.getElementById('su-child-name').value || '').trim();
+  const birth= document.getElementById('su-child-birth').value;
+  const say = (text, color) => { if (msg) { msg.textContent = text; msg.style.color = color; } };
+  suChildOk = false;
+  if (!cid)   { say(t('먼저 공동체를 선택해주세요','Please select a community first'), '#c0392b'); return; }
+  if (!name || !birth) { say(t('아이 이름과 생년월일을 모두 적어주세요','Please enter both the name and the date of birth'), '#c0392b'); return; }
+  btn.disabled = true; btn.textContent = t('찾는 중...','Searching...');
+  try {
+    const { data, error } = await sb.functions.invoke('parent-verify', {
+      body: { community_id: cid, child_name: name, child_birth: birth },
+    });
+    if (error) throw error;
+    if (data && data.found) {
+      suChildOk = true;
+      say(t(`✅ ${data.masked} 학생을 찾았어요. 이대로 가입하시면 관리자 확인 후 연결됩니다.`,
+            `✅ Found ${data.masked}. An administrator will confirm the link after you sign up.`), '#15803d');
+    } else if (data && data.reason === 'ambiguous') {
+      say(t('같은 이름·같은 생일인 학생이 둘 이상이에요. 그대로 가입하시면 관리자가 직접 연결해 드려요.',
+            'More than one student matches. Sign up anyway and an administrator will link you.'), '#b45309');
+    } else {
+      say(t('그 이름과 생년월일로 가입된 학생을 찾지 못했어요. 아이가 먼저 가입했는지, 생년월일이 맞는지 확인해주세요.',
+            'No student found with that name and date of birth. Check that your child has signed up and that the date is correct.'), '#c0392b');
+    }
+  } catch (_e) {
+    // 함수를 아직 배포하지 않았어도 가입은 막지 않는다 — 확인만 건너뛴다
+    say(t('지금은 확인할 수 없어요. 그대로 가입하시면 관리자가 확인해 드려요.',
+          'Cannot verify right now. Sign up anyway and an administrator will check.'), '#b45309');
+  }
+  btn.disabled = false; btn.textContent = t('아이 확인하기','Find my child');
+}
+
 // ── 회원가입 ──
 async function doSignUp() {
   const email = document.getElementById('su-email').value.trim();
@@ -1834,6 +1917,16 @@ async function doSignUp() {
   if (!communityId) { msg.className='auth-msg error'; msg.textContent=t('소속 공동체를 선택해주세요','Please select your community'); return; }
   if (pw.length < 6) { msg.className='auth-msg error'; msg.textContent='비밀번호는 6자 이상이어야 해요'; return; }
 
+  // 학부모는 어느 아이의 보호자인지 적어야 한다
+  const childName  = (document.getElementById('su-child-name')?.value || '').trim();
+  const childBirth = document.getElementById('su-child-birth')?.value || '';
+  const childRel   = document.getElementById('su-child-rel')?.value || '보호자';
+  if (role === 'parent' && (!childName || !childBirth)) {
+    msg.className='auth-msg error';
+    msg.textContent = t('아이 이름과 생년월일을 적어주세요','Please enter your child\'s name and date of birth');
+    return;
+  }
+
   btn.textContent='가입 중...'; btn.disabled=true;
   msg.textContent='';
 
@@ -1849,19 +1942,33 @@ async function doSignUp() {
     // 넣고 나서 다시 읽지 않는다. 읽기 권한(RLS)은 '로그인한 사람'에게만 열려 있는데,
     // 이메일 확인을 켜 두면 가입 시점엔 아직 로그인 전이라 방금 넣은 행도 못 읽는다.
     // 그러면 가입은 됐는데 화면엔 실패라고 뜬다. 넣는 것만 확인하면 충분하다.
-    const { error: mErr } = await sb.from('members').insert({
+    const row = {
       id: uid, name: nick, initials: nick[0], color,
-      role: role === 'teacher' ? '교사' : role === 'staff' ? '간사' : '학생',
+      role: role === 'teacher' ? '교사' : role === 'staff' ? '간사' : role === 'parent' ? '학부모' : '학생',
       community_role: role,
       email, birth_date: birth,
       status: 'pending',
       community_id: communityId,
-    });
+    };
+    // 적어 낸 것일 뿐 — 연결은 관리자가 확인한 뒤에 맺어진다
+    if (role === 'parent') {
+      row.parent_claim_name  = childName;
+      row.parent_claim_birth = childBirth;
+      row.parent_claim_rel   = childRel;
+    }
+    let { error: mErr } = await sb.from('members').insert(row);
+    // 학부모 칸이 아직 없는 공동체 — 가입 자체는 되게 두고 관리자가 잇는다
+    if (mErr && role === 'parent' && /parent_claim|column .* does not exist|schema cache/i.test(mErr.message || '')) {
+      delete row.parent_claim_name; delete row.parent_claim_birth; delete row.parent_claim_rel;
+      ({ error: mErr } = await sb.from('members').insert(row));
+    }
 
     if (mErr) throw mErr;
 
     msg.className='auth-msg success';
-    msg.textContent='가입 신청 완료! 관리자 승인 후 이용 가능해요 ✅';
+    msg.textContent = role === 'parent'
+      ? '가입 신청 완료! 관리자가 아이와 연결해 드리면 이용할 수 있어요 ✅'
+      : '가입 신청 완료! 관리자 승인 후 이용 가능해요 ✅';
     btn.textContent='가입하기'; btn.disabled=false;
     setTimeout(() => switchTab('signin'), 2500);
   } catch(e) {
@@ -2006,6 +2113,10 @@ function isTeacher() {
 }
 function isStudent() {
   return ME && ME.community_role === 'student';
+}
+// 학부모 — 연결된 내 아이 것만 본다. 학사·운영·결재에는 들어오지 않는다.
+function isParent() {
+  return !!ME && ME.community_role === 'parent';
 }
 function isAdminOfficer() {
   return ME && ME.community_role === 'admin_officer';
@@ -2247,7 +2358,7 @@ function enterApp() {
     if (mnAdmin) mnAdmin.style.display = 'flex';
   }
   // TCS 버튼: 교사는 학사(👤학생)로 통합되어 숨김 / 학생·멤버는 개인정보·Triple School 입구로 유지
-  document.getElementById('sb-tcs').style.display = isTeacher() ? 'none' : 'flex';
+  document.getElementById('sb-tcs').style.display = (isTeacher() || isParent()) ? 'none' : 'flex';
   // 학사관리 버튼: 교사·간사·관리자만
   const sbSchool = document.getElementById('sb-school');
   if (sbSchool) sbSchool.style.display = canAccessSchool() ? 'flex' : 'none';
@@ -6503,9 +6614,9 @@ async function renderProfilePage() {
   if (me) Object.assign(ME, me);
 
   const roleLabel = APP_LANG === 'en'
-    ? ({super_admin:'Super Admin', vice_admin:'Deputy Admin', community_admin:'Admin', teacher:'Teacher', staff:'Staff', student:'Student', member:'Member'}[ME.community_role] || 'Member')
-    : ({super_admin:'총관리자', vice_admin:'부총관리자', community_admin:'관리자', teacher:'교사', staff:'간사', student:'학생', member:'멤버'}[ME.community_role] || '멤버');
-  const roleColor = {super_admin:'#7c3aed', vice_admin:'#9333ea', community_admin:'#1d4ed8', teacher:'#0369a1', staff:'#b45309', student:'#15803d', member:'#6b7280'}[ME.community_role] || '#6b7280';
+    ? ({super_admin:'Super Admin', vice_admin:'Deputy Admin', community_admin:'Admin', teacher:'Teacher', staff:'Staff', student:'Student', parent:'Parent', member:'Member'}[ME.community_role] || 'Member')
+    : ({super_admin:'총관리자', vice_admin:'부총관리자', community_admin:'관리자', teacher:'교사', staff:'간사', student:'학생', parent:'학부모', member:'멤버'}[ME.community_role] || '멤버');
+  const roleColor = {super_admin:'#7c3aed', vice_admin:'#9333ea', community_admin:'#1d4ed8', teacher:'#0369a1', staff:'#b45309', student:'#15803d', parent:'#be5b2a', member:'#6b7280'}[ME.community_role] || '#6b7280';
   let myGroups = [];
   if (isStudent()) {
     const { data: grps } = await sb.from('student_groups').select('*').eq('community_id', CID()).order('sort').order('name');
@@ -11736,8 +11847,8 @@ async function viewCommunityMembers(communityId, communityName) {
   const { data: members } = await sb.from('members').select('*').eq('community_id', communityId).order('created_at');
   const list = (members || []).filter(m => m.status !== 'removed');
   list.forEach(m => { try { moveRemember(m); } catch(_) {} });
-  const roleLabel = { super_admin:'총관리자', vice_admin:'부총관리자', community_admin:'관리자', teacher:'교사', staff:'간사', student:'학생', member:'멤버' };
-  const roleColor = { super_admin:'#7c3aed', vice_admin:'#9333ea', community_admin:'#1d4ed8', teacher:'#0369a1', staff:'#b45309', student:'#15803d', member:'#6b7280' };
+  const roleLabel = { super_admin:'총관리자', vice_admin:'부총관리자', community_admin:'관리자', teacher:'교사', staff:'간사', student:'학생', parent:'학부모', member:'멤버' };
+  const roleColor = { super_admin:'#7c3aed', vice_admin:'#9333ea', community_admin:'#1d4ed8', teacher:'#0369a1', staff:'#b45309', student:'#15803d', parent:'#be5b2a', member:'#6b7280' };
 
   area.innerHTML = `
     <div style="max-width:720px">
@@ -11768,6 +11879,7 @@ async function viewCommunityMembers(communityId, communityName) {
             ${m.community_role !== 'super_admin' ? `<button onclick="showMoveCommunityModal('${m.id}')" title="다른 공동체로 옮기기" style="height:28px;padding:0 10px;border-radius:7px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:600 12px var(--font);cursor:pointer">🏛️ 이동</button>` : ''}
             <select onchange="changeMemberCommunityRole('${m.id}',this.value)" style="height:28px;padding:0 8px;border-radius:7px;border:1.5px solid var(--border);font:500 12px var(--font);color:var(--ink);background:white;cursor:pointer">
               <option value="student" ${m.community_role==='student'?'selected':''}>학생</option>
+              <option value="parent" ${m.community_role==='parent'?'selected':''}>학부모</option>
               <option value="staff" ${m.community_role==='staff'?'selected':''}>간사</option>
               <option value="teacher" ${m.community_role==='teacher'?'selected':''}>교사</option>
               <option value="admin_officer" ${m.community_role==='admin_officer'?'selected':''}>행정담당자</option>
@@ -11782,6 +11894,14 @@ async function viewCommunityMembers(communityId, communityName) {
 }
 
 async function approveInCommunity(id, cid, cname) {
+  // 학부모는 아이와 이어 준 다음에 승인한다
+  const { data: who } = await sb.from('members').select('community_role').eq('id', id).maybeSingle();
+  if (who && who.community_role === 'parent') {
+    if (!await approveParentMember(id)) return;
+    await joinWelcomeChannels(id, cid);
+    viewCommunityMembers(cid, cname);
+    return;
+  }
   const { error } = await sb.from('members').update({ status: 'approved' }).eq('id', id);
   if (error) { showUploadToast('승인 실패 😥'); return; }
   // 이 경로에는 자동 참여가 아예 빠져 있었다. 그래서 총관리자가 승인한 사람은
@@ -11803,7 +11923,7 @@ async function changeMemberCommunityRole(memberId, role) {
     showUploadToast(role === 'vice_admin' ? '부총관리자 권한은 총관리자만 부여할 수 있어요' : '총관리자 권한은 총관리자만 부여할 수 있어요');
     renderMembers(); return;
   }
-  const koMap = { super_admin:'총관리자', vice_admin:'부총관리자', community_admin:'관리자', admin_officer:'행정담당자', teacher:'교사', staff:'간사', student:'학생' };
+  const koMap = { super_admin:'총관리자', vice_admin:'부총관리자', community_admin:'관리자', admin_officer:'행정담당자', teacher:'교사', staff:'간사', student:'학생', parent:'학부모' };
   const { error } = await sb.from('members').update({ community_role: role, role: koMap[role] || role }).eq('id', memberId);
   if (error) showUploadToast('변경 실패: ' + error.message + (/policy|denied|permission/i.test(error.message) ? ' (총관리자 보호 정책)' : ''));
   else showUploadToast('✅ 역할이 변경됐어요');
@@ -12116,7 +12236,7 @@ function setAdmGroupBy(v) {
   try { localStorage.setItem('adm_group_by', v); } catch (_) {}
   renderAdminMembers();
 }
-const ADM_ROLE_ORDER = ['super_admin','vice_admin','community_admin','admin_officer','teacher','staff','student','member'];
+const ADM_ROLE_ORDER = ['super_admin','vice_admin','community_admin','admin_officer','teacher','staff','student','parent','member'];
 
 // 그룹은 공동체가 직접 만든다. '주일학교·청년부' 는 예시였을 뿐,
 // 공동체마다 '교사그룹' 처럼 필요한 묶음이 다르다.
@@ -12242,6 +12362,8 @@ async function renderAdminMembers() {
   const list = data || [];
   // 그룹별로 묶을 때 이름이 필요하다 (아직 안 읽었으면 지금 읽는다)
   if (!tcsGroups.length) { try { await loadStudentGroups(); } catch (_) {} }
+  // 학부모가 어느 아이와 이어졌는지 (아직 표가 없는 공동체는 조용히 넘어간다)
+  if (list.some(m => m.community_role === 'parent')) await loadParentLinks(list);
 
   // 총관리자: 승인된 멤버 중에서는 교사/관리자만, pending/rejected는 전부 표시
   const pending  = list.filter(m => m.status === 'pending');
@@ -12250,9 +12372,9 @@ async function renderAdminMembers() {
   const approved = list.filter(m => (m.status === 'approved' || !m.status));
 
   const roleLabel = APP_LANG === 'en'
-    ? { super_admin:'Super Admin', vice_admin:'Deputy Admin', community_admin:'Admin', teacher:'Teacher', staff:'Staff', student:'Student', member:'Member' }
-    : { super_admin:'총관리자', vice_admin:'부총관리자', community_admin:'관리자', teacher:'교사', staff:'간사', student:'학생', member:'멤버' };
-  const roleColor = { super_admin:'#7c3aed', vice_admin:'#9333ea', community_admin:'#1d4ed8', teacher:'#0369a1', staff:'#b45309', student:'#15803d', member:'#6b7280' };
+    ? { super_admin:'Super Admin', vice_admin:'Deputy Admin', community_admin:'Admin', teacher:'Teacher', staff:'Staff', student:'Student', parent:'Parent', member:'Member' }
+    : { super_admin:'총관리자', vice_admin:'부총관리자', community_admin:'관리자', teacher:'교사', staff:'간사', student:'학생', parent:'학부모', member:'멤버' };
+  const roleColor = { super_admin:'#7c3aed', vice_admin:'#9333ea', community_admin:'#1d4ed8', teacher:'#0369a1', staff:'#b45309', student:'#15803d', parent:'#be5b2a', member:'#6b7280' };
 
   // 스토리지 사용량 — 버킷 전체를 훑느라 몇 초 걸린다.
   // 여기서 기다리면 멤버 목록이 그만큼 늦게 뜬다. 자리만 잡고 뒤에서 채운다.
@@ -12273,6 +12395,8 @@ async function renderAdminMembers() {
           <span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:99px;background:${roleColor[m.community_role]||'#6b728022'}22;color:${roleColor[m.community_role]||'#6b7280'}">${roleLabel[m.community_role]||m.community_role||t('멤버','Member')}</span>
         </div>
         <div style="font-size:12px;color:var(--ink3);margin-top:2px">${m.email||''} ${m.birth_date?'· '+m.birth_date:''}</div>
+        ${m.community_role==='parent' ? `<div style="font-size:12px;color:#8a4a22;background:#FDF1E7;border:1px solid #F0D5BE;border-radius:8px;padding:5px 9px;margin-top:5px;display:inline-block">
+          👨‍👩‍👧 ${admParentLine(m)}</div>` : ''}
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;flex-wrap:wrap">
         ${showApproval ? `
@@ -12516,7 +12640,72 @@ function copyBulkCredentials() {
   if (navigator.clipboard) navigator.clipboard.writeText(text).then(()=>showUploadToast('📋 복사됐어요'), ()=>showUploadToast('복사 실패'));
 }
 
+// 학부모 줄에 적을 한 마디 — 이미 이어졌으면 아이 이름, 아직이면 적어 낸 것
+function admParentLine(m) {
+  const kid = (admParentLinks && admParentLinks[m.id]) || null;
+  if (kid) return t(`${escHtml(kid)} 학생의 보호자`, `Guardian of ${escHtml(kid)}`);
+  if (m.parent_claim_name) {
+    return t(`${escHtml(m.parent_claim_name)} (${escHtml(m.parent_claim_birth||'')}) 학생의 보호자라고 적었어요 — 아직 연결 전`,
+             `Says they are the guardian of ${escHtml(m.parent_claim_name)} (${escHtml(m.parent_claim_birth||'')}) — not linked yet`);
+  }
+  return t('아직 아이와 연결되지 않았어요','Not linked to a child yet');
+}
+
+// 학부모 → 아이 이름 (관리 화면에서 한 번에 읽어 둔다)
+let admParentLinks = {};
+async function loadParentLinks(list) {
+  admParentLinks = {};
+  try {
+    const { data, error } = await sb.from('student_parents').select('parent_id, student_id');
+    if (error || !data || !data.length) return;
+    const names = {};
+    (Object.values(members || {})).forEach(m => { if (m) names[m.id] = m.name; });
+    (list || []).forEach(m => { if (m) names[m.id] = m.name; });
+    data.forEach(r => { if (names[r.student_id]) admParentLinks[r.parent_id] = names[r.student_id]; });
+  } catch (_) {}
+}
+
+// 학부모 승인 — 적어 낸 아이와 이어 준 다음에 승인한다.
+// 잇지 못하면 승인하지 않는다. 연결 없는 학부모 계정은 아무것도 못 보고,
+// 나중에 누구 부모였는지 아무도 모르게 된다.
+async function approveParentMember(id) {
+  const { data, error } = await sb.rpc('approve_parent', { p_parent: id });
+  if (error) {
+    if (/approve_parent|function|schema cache/i.test(error.message || '')) {
+      showUploadToast(t('db/학부모_2_가입연결_DB설치.sql 을 먼저 실행해주세요',
+                        'Run db/학부모_2_가입연결_DB설치.sql first'));
+    } else showUploadToast(t('연결 실패: ','Link failed: ') + error.message);
+    return false;
+  }
+  if (!data || !data.ok) {
+    showUploadToast((data && data.reason) || t('아이를 찾지 못했어요','Could not find the child'));
+    return false;
+  }
+  showUploadToast(t(`✅ ${data.student_name} 학생과 연결하고 승인했어요`,
+                    `✅ Linked to ${data.student_name} and approved`));
+  return true;
+}
+
 async function approveMember(id) {
+  // 역할은 서버에서 읽는다. 승인 대기 중인 사람은 채팅용 members 맵에
+  // 아직 없을 수 있어서, 그 맵만 보면 학부모를 못 알아본다.
+  let m = members && members[id];
+  if (!m || !m.community_role) {
+    const { data } = await sb.from('members').select('id,community_role,community_id').eq('id', id).maybeSingle();
+    if (data) m = data;
+  }
+  if (m && m.community_role === 'parent') {
+    const ok = await approveParentMember(id);
+    if (!ok) return;                       // 못 이었으면 승인도 하지 않는다
+    const pcid = m.community_id || CID();
+    await joinWelcomeChannels(id, pcid);
+    renderAdminMembers();
+    const { data: mems2 } = await sb.from('members').select('*').eq('community_id', CID());
+    members = {}; (mems2||[]).forEach(x => { members[x.id] = x; });
+    await loadParentLinks(CID());
+    renderMembers();
+    return;
+  }
   await sb.from('members').update({ status: 'approved' }).eq('id', id);
   // 그 멤버가 속한 공동체의 기본 채팅방에 넣는다.
   // 예전엔 CID()(승인하는 사람의 공동체)를 봐서, 총관리자가 남의 공동체 사람을
@@ -16653,7 +16842,7 @@ function renderApprCompose() {
   </div>`;
 }
 
-function roleKo(r){ return {super_admin:t('총관리자','Super Admin'),vice_admin:t('부총관리자','Deputy Admin'),community_admin:t('관리자','Admin'),admin_officer:t('행정','Officer'),teacher:t('교사','Teacher'),staff:t('간사','Staff'),student:t('학생','Student'),member:t('멤버','Member')}[r]||''; }
+function roleKo(r){ return {super_admin:t('총관리자','Super Admin'),vice_admin:t('부총관리자','Deputy Admin'),community_admin:t('관리자','Admin'),admin_officer:t('행정','Officer'),teacher:t('교사','Teacher'),staff:t('간사','Staff'),student:t('학생','Student'),parent:t('학부모','Parent'),member:t('멤버','Member')}[r]||''; }
 
 function apprFieldHtml(f, val){
   val = val || '';
