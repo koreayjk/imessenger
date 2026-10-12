@@ -1,10 +1,13 @@
-[{
-  "relation": ["delegate_permission/common.handle_all_urls"],
-  "target": {
-    "namespace": "android_app",
-    "package_name": "io.github.koreayjk.tcs",
-    "sha256_cert_fingerprints": [
-      "여기에 Play Console → 설정 → 앱 서명 → '앱 서명 키 인증서'의 SHA-256 지문을 붙여넣으세요"
-    ]
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "io.github.koreayjk.tcs",
+      "sha256_cert_fingerprints": [
+        "D5:D5:6C:78:14:40:DF:52:18:49:2B:16:96:4E:69:A4:E2:EA:4E:BA:C8:4B:C2:D5:99:D0:1E:4E:B2:6A:78:0B",
+        "4C:86:84:EB:FC:CB:44:AC:B3:40:1E:85:28:DC:BF:2A:AF:53:E7:D0:5C:2E:A4:6A:95:36:D1:F7:8D:31:E3:DF"
+      ]
+    }
   }
-}]
+]
