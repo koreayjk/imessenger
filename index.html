@@ -12566,6 +12566,25 @@ function rolePermGuideHtml() {
   </div>`;
 }
 
+// Edge Function 이 400 으로 답하면 supabase-js 는 error.message 를
+// "Edge Function returned a non-2xx status code" 로 덮어쓴다. 함수가 적어 보낸
+// 진짜 이유(예: "비밀번호는 6자 이상이어야 합니다")는 error.context 안에 있다.
+// 그걸 안 꺼내면 화면에는 영어 한 줄만 남아 왜 실패했는지 알 수가 없다.
+async function fnErrorText(error) {
+  try {
+    const res = error && error.context;
+    if (res && typeof res.json === 'function') {
+      const body = await res.clone().json().catch(() => null);
+      if (body && (body.error || body.message)) return String(body.error || body.message);
+    }
+    if (res && typeof res.text === 'function') {
+      const txt = await res.clone().text().catch(() => '');
+      if (txt && txt.length < 300) return txt;
+    }
+  } catch (_) {}
+  return (error && error.message) || '함수 오류';
+}
+
 // ── 학생 일괄 등록 (관리자가 계정 대신 생성) ──
 const ADMIN_CREATE_STUDENT_FN = 'admin-create-student';
 
@@ -12575,7 +12594,7 @@ function bulkStudentCardHtml() {
     <div style="font-size:14px;font-weight:700;margin-bottom:4px">🎓 학생 일괄 등록</div>
     <div style="font-size:12px;color:var(--ink3);line-height:1.7;margin-bottom:12px">
       학생 계정을 관리자가 대신 만들어 줍니다. 한 줄에 한 명씩 <b>이름, 이메일, 비밀번호</b> 순으로 입력하세요.
-      비밀번호를 생략하면 <b>임시 비밀번호를 자동 생성</b>합니다. 등록 후 <b>이메일·임시비번을 학생에게 전달</b>하면 바로 로그인할 수 있어요.
+      비밀번호는 <b>6자 이상</b>이어야 합니다. 생략하면 <b>임시 비밀번호를 자동 생성</b>합니다. 등록 후 <b>이메일·임시비번을 학생에게 전달</b>하면 바로 로그인할 수 있어요.
     </div>
     <textarea id="bulk-students" placeholder="예)&#10;김하은, haeun@example.com, tcs1234&#10;이준서, junseo@example.com&#10;박지민, jimin@example.com, pass2026"
       style="${inp};min-height:120px;line-height:1.7;resize:vertical;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px"></textarea>
@@ -12606,19 +12625,24 @@ async function bulkRegisterStudents() {
     const name = parts[0] || '';
     const email = parts[1] || '';
     const password = parts[2] || bulkGenPassword();
-    rows.push({ name, email, password, valid: !!name && /.+@.+\..+/.test(email) });
+    // 비밀번호는 6자 이상이어야 한다 (Supabase 규칙). 짧으면 보내기 전에 잡는다.
+    const bad = !name ? '이름이 비어 있어요'
+              : !/.+@.+\..+/.test(email) ? '이메일 형식이 아니에요'
+              : password.length < 6 ? `비밀번호가 ${password.length}자예요 — 6자 이상이어야 해요`
+              : '';
+    rows.push({ name, email, password, valid: !bad, why: bad });
   });
   if (!rows.length) { showUploadToast('올바른 형식이 아니에요'); return; }
 
   btn.disabled = true; btn.textContent = '⏳ 등록 중…';
   const results = [];
   for (const r of rows) {
-    if (!r.valid) { results.push({ ...r, status: 'fail', msg: '이름/이메일 형식 오류' }); continue; }
+    if (!r.valid) { results.push({ ...r, status: 'fail', msg: r.why || '형식 오류' }); continue; }
     try {
       const { data, error } = await sb.functions.invoke(ADMIN_CREATE_STUDENT_FN, {
         body: { name: r.name, email: r.email, password: r.password, grade: grade || null, community_id: CID() },
       });
-      if (error) { results.push({ ...r, status: 'fail', msg: error.message || '함수 오류' }); continue; }
+      if (error) { results.push({ ...r, status: 'fail', msg: await fnErrorText(error) }); continue; }
       if (data && data.ok) results.push({ ...r, status: 'ok' });
       else results.push({ ...r, status: 'fail', msg: (data && data.error) || '실패' });
     } catch(e) {
