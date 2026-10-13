@@ -13194,7 +13194,9 @@ async function approveMember(id) {
     renderMembers();
     return;
   }
-  await sb.from('members').update({ status: 'approved' }).eq('id', id);
+  const { data: okRows, error: okErr } = await sb.from('members')
+    .update({ status: 'approved' }).eq('id', id).select('id');
+  if (memberWriteFailed(okRows, okErr)) { memberNoPermToast(t('가입을 승인할','approve sign-ups')); return; }
   // 그 멤버가 속한 공동체의 기본 채팅방에 넣는다.
   // 예전엔 CID()(승인하는 사람의 공동체)를 봐서, 총관리자가 남의 공동체 사람을
   // 승인하면 엉뚱한 공동체 방에 넣었다.
@@ -13208,14 +13210,29 @@ async function approveMember(id) {
   renderMembers();
 }
 
+// 멤버 표 쓰기가 실패했는가.
+//  RLS 가 막으면 오류 없이 0행이 돌아옵니다. 그걸 성공으로 치면
+//  화면에서만 바뀐 척하다가 새로 고치면 그대로 되살아납니다.
+//  (실제로 부총관리자가 탈퇴를 눌러도 "✅ 탈퇴 처리됐어요" 만 뜨고
+//   아무 일도 일어나지 않고 있었습니다)
+function memberWriteFailed(data, error) { return !!error || !data || !data.length; }
+function memberNoPermToast(what) {
+  showUploadToast(t(`${what} 권한이 없어요. 총관리자에게 문의해주세요.`,
+                    `You do not have permission to ${what}.`));
+}
+
 async function rejectMember(id) {
   if (!confirm('이 멤버의 가입을 거절할까요?')) return;
-  await sb.from('members').update({ status: 'rejected' }).eq('id', id);
+  const { data, error } = await sb.from('members')
+    .update({ status: 'rejected' }).eq('id', id).select('id');
+  if (memberWriteFailed(data, error)) { memberNoPermToast(t('가입을 거절할','reject sign-ups')); return; }
   renderAdminMembers();
 }
 
 async function updateMemberRole(id, role) {
-  await sb.from('members').update({ role }).eq('id', id);
+  const { data, error } = await sb.from('members')
+    .update({ role }).eq('id', id).select('id');
+  if (memberWriteFailed(data, error)) { memberNoPermToast(t('역할을 바꿀','change roles')); return; }
   members[id] && (members[id].role = role);
   renderMembers();
 }
@@ -13223,8 +13240,10 @@ async function updateMemberRole(id, role) {
 async function deleteMember(id, name) {
   if (!confirm(`${name} 님을 탈퇴시킬까요?\n로그인이 차단되고 모든 목록에서 사라집니다. (작성한 메시지·기록은 유지)`)) return;
   // 하드 삭제는 RLS로 막혀 있어(관리자 delete 정책 없음) 소프트 탈퇴 처리
-  const { error } = await sb.from('members').update({ status: 'removed' }).eq('id', id);
+  const { data, error } = await sb.from('members')
+    .update({ status: 'removed' }).eq('id', id).select('id');
   if (error) { showUploadToast('탈퇴 실패: ' + error.message); return; }
+  if (!data || !data.length) { memberNoPermToast(t('이 멤버를 탈퇴시킬','remove this member')); return; }
   if (typeof members === 'object' && members) delete members[id];
   showUploadToast(`✅ ${name} 님 탈퇴 처리됐어요`);
   renderAdminMembers();
