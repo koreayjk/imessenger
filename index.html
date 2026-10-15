@@ -1867,6 +1867,9 @@ function notiSave(patch) {
   const c = Object.assign(notiCfg(), patch || {});
   _notiCfg = c;
   try { localStorage.setItem(NOTI_KEY, JSON.stringify(c)); } catch (_) {}
+  // 앱을 닫은 뒤의 알림은 서버가 보낸다. 서버도 이 설정을 알아야
+  // '방마다 끄기' 가 통한다.
+  try { pushSyncPrefs(); } catch (_) {}
   return c;
 }
 function notiSupported() { return typeof window !== 'undefined' && 'Notification' in window; }
@@ -2025,6 +2028,26 @@ function notiCardHtml() {
       ${row(c.onlyMention, t('나를 부른 것만','Only when I am mentioned'), "notiSave({onlyMention:this.checked})", t('@이름 이나 @전체 가 들어간 메시지만 알려요','Only messages with @yourname or @everyone'))}
       ${row(c.sound, t('소리','Sound'), "notiSave({sound:this.checked}); if(this.checked) notiBeep()", t('교실에서 울리면 곤란해서 기본은 꺼져 있어요','Off by default — classrooms'))}
     ` : ''}
+    ${perm === 'granted' ? `
+      <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+        <div style="display:flex;align-items:flex-start;gap:10px">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13.5px;font-weight:700;color:var(--ink)">${t('앱을 닫아도 알림 받기','Alerts when the app is closed')}</div>
+            <div style="font-size:11.5px;color:var(--ink3);margin-top:3px;line-height:1.6">
+              ${pushSupported()
+                ? t('휴대폰에서 TCS 를 닫아 두어도 알림이 옵니다. 이 기기에서 한 번만 켜면 돼요.',
+                    'Alerts arrive even with TCS closed. Turn it on once per device.')
+                : t('이 기기에서는 안 돼요. 아이폰 앱은 애플 푸시가 따로 필요합니다.',
+                    'Not supported here. The iPhone app needs Apple push.')}
+            </div>
+          </div>
+          ${pushSupported() ? `<button onclick="${pushOn() ? 'pushUnsubscribe()' : 'pushSubscribe()'}"
+            style="flex-shrink:0;height:34px;padding:0 14px;border-radius:10px;cursor:pointer;font:700 12.5px var(--font);
+                   border:1.5px solid ${pushOn() ? 'var(--border)' : '#1d3a5f'};
+                   background:${pushOn() ? 'var(--surface)' : '#1d3a5f'};color:${pushOn() ? 'var(--ink2)' : '#fff'}">
+            ${pushOn() ? t('끄기','Turn off') : t('켜기','Turn on')}</button>` : ''}
+        </div>
+      </div>` : ''}
     ${muted.length ? `
       <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
         <div style="font-size:12px;font-weight:700;color:var(--ink2);margin-bottom:8px">${t('알림 끈 채팅방','Muted chats')} · ${muted.length}</div>
@@ -2050,6 +2073,127 @@ function notiSyncBell() {
   if (on)  on.style.display  = off ? 'none' : '';
   if (mut) mut.style.display = off ? '' : 'none';
   btn.title = off ? t('이 채팅방 알림 켜기','Unmute this chat') : t('이 채팅방 알림 끄기','Mute this chat');
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  🔔 2단계 — 앱을 닫아도 오는 알림 (웹푸시)
+//
+//  1단계는 앱이 켜져 있어야만 알렸다. 휴대폰에서 앱을 닫아 두면
+//  소용이 없다. 브라우저가 앱 대신 받아 주게 하려면 서비스워커와
+//  '이 기기로 보내는 주소'(구독)가 있어야 한다.
+//
+//  설치: db/알림_푸시_DB설치.sql + Edge Function push-notify
+//  ※ 아이폰 앱(Capacitor)에서는 웹푸시가 통하지 않는다. 애플 APNs 가
+//    따로 필요하다. 여기서는 조용히 '안 됨' 으로 둔다.
+// ══════════════════════════════════════════════════════════════════
+
+const VAPID_PUBLIC = 'BMBU-XhqjL3n1yVOf_V097vf0DOKbvCTXDmuBjVNhWmM-o0h1oFqBnhdSHHbaE3lS6G0AUAcCfmpR49A3TelmB4';
+let _swReg = null;
+let _pushSub = null;          // 지금 이 기기의 구독
+let _pushMissing = false;     // 표나 함수가 아직 없다
+
+function pushSupported() {
+  // 'serviceWorker' in navigator 로만 보면, 열쇠만 있고 값이 비어 있는
+  // 일부 웹뷰(아이폰 앱 등)에서 '된다' 고 잘못 읽는다. 실제로 있는지 본다.
+  return typeof navigator !== 'undefined' && !!navigator.serviceWorker
+      && typeof window !== 'undefined' && !!window.PushManager && notiSupported();
+}
+
+function b64ToBytes(b64) {
+  const pad = '='.repeat((4 - (b64.length % 4)) % 4);
+  const raw = atob((b64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
+  const out = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
+}
+
+async function pushInit() {
+  if (!pushSupported()) return;
+  try {
+    _swReg = await navigator.serviceWorker.register('./sw.js');
+    _pushSub = await _swReg.pushManager.getSubscription();
+    // 알림을 누르면 서비스워커가 이 창에 말을 건다
+    navigator.serviceWorker.addEventListener('message', (e) => {
+      const d = e.data || {};
+      if (d.type === 'tcs-open-channel' && d.channelId) {
+        try { window.focus(); } catch (_) {}
+        try { setMode('chat'); openChannel(d.channelId); } catch (_) {}
+      }
+    });
+  } catch (_) { _swReg = null; }
+}
+
+function pushOn() { return !!_pushSub; }
+
+async function pushSubscribe() {
+  if (!pushSupported()) { showUploadToast(t('이 기기에서는 앱을 닫은 뒤의 알림이 안 돼요','Background notifications are not supported here')); return false; }
+  if (notiPerm() !== 'granted') { const okd = await notiAsk(); if (!okd) return false; }
+  if (!_swReg) await pushInit();
+  if (!_swReg) { showUploadToast(t('알림을 켤 수 없어요','Could not enable')); return false; }
+  try {
+    _pushSub = await _swReg.pushManager.getSubscription()
+      || await _swReg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(VAPID_PUBLIC) });
+  } catch (e) {
+    showUploadToast(t('알림을 켤 수 없어요 — ','Could not enable — ') + (e.message || ''));
+    return false;
+  }
+  const ok = await pushSaveSub();
+  if (ok) showUploadToast(t('앱을 닫아도 알림이 와요 🔔','You will get alerts even when the app is closed 🔔'));
+  try { renderProfilePage(); } catch (_) {}
+  return ok;
+}
+
+async function pushSaveSub() {
+  if (!_pushSub || !ME) return false;
+  const j = _pushSub.toJSON ? _pushSub.toJSON() : {};
+  const keys = j.keys || {};
+  if (!j.endpoint || !keys.p256dh || !keys.auth) return false;
+  const c = notiCfg();
+  const { error } = await sb.from('push_subscriptions').upsert({
+    member_id: ME.id, endpoint: j.endpoint, p256dh: keys.p256dh, auth: keys.auth,
+    ua: String(navigator.userAgent || '').slice(0, 180),
+    enabled: c.on, only_mention: c.onlyMention, preview: c.preview, mutes: c.mutes.join(','),
+    fail_count: 0,
+  }, { onConflict: 'endpoint' });
+  if (error) {
+    _pushMissing = needsReportInstall(error);
+    showUploadToast(_pushMissing
+      ? t('이 기능이 아직 설치되지 않았어요 (db/알림_푸시_DB설치.sql)','Not installed yet')
+      : t('알림 설정을 저장하지 못했어요','Could not save'));
+    return false;
+  }
+  _pushMissing = false;
+  return true;
+}
+
+async function pushUnsubscribe() {
+  try {
+    if (_pushSub) {
+      const ep = (_pushSub.toJSON ? _pushSub.toJSON() : {}).endpoint;
+      try { await _pushSub.unsubscribe(); } catch (_) {}
+      if (ep) await sb.from('push_subscriptions').delete().eq('endpoint', ep);
+    }
+  } catch (_) {}
+  _pushSub = null;
+  showUploadToast(t('앱을 닫으면 알림이 오지 않아요','Background alerts are off'));
+  try { renderProfilePage(); } catch (_) {}
+}
+
+// 설정을 바꾸면 이 기기의 구독 줄에도 반영한다.
+//  안 하면 '방마다 끄기' 를 눌러도 서버는 그걸 몰라서 계속 보낸다.
+let _pushSyncT = null;
+function pushSyncPrefs() {
+  if (!_pushSub || !ME) return;
+  clearTimeout(_pushSyncT);
+  _pushSyncT = setTimeout(() => { pushSaveSub(); }, 400);
+}
+
+// 보낸 메시지를 그 방 사람들 기기로 밀어 보낸다.
+//  서버가 '정말 네가 쓴 메시지인가' 를 다시 확인하므로, 번호만 넘긴다.
+function pushNotifySent(messageId) {
+  if (!messageId) return;
+  try { sb.functions.invoke('push-notify', { body: { message_id: messageId } }).then(() => {}, () => {}); }
+  catch (_) {}
 }
 
 function notiTest() {
@@ -2726,6 +2870,7 @@ function enterApp() {
     const myAvEl = document.getElementById('my-av');
     if (myAvEl) myAvEl.title = `${ME.name} (총관리자)`;
   }
+  try { pushInit(); } catch (_) {}   // 알림 받을 준비 (서비스워커)
   applyGuestBar();       // 남의 공동체를 보는 중이면 알려준다
   restoreLastChrome();   // 보던 화면부터 띄우고 (채팅 화면이 먼저 비치지 않게)
   initPresence();
@@ -2746,6 +2891,12 @@ async function restoreLastState() {
   // (권한·컨텍스트가 안 맞는 모드는 setMode 내부에서 자동으로 홈으로 우회함)
   const saved = sessionStorage.getItem('last_mode') || (isParent() ? 'child' : 'home');
   const lastChannelId = sessionStorage.getItem('last_channel_id');
+
+  // 알림을 눌러 들어왔으면 그 방부터
+  if (_pendingChannelId) {
+    const id = _pendingChannelId; _pendingChannelId = null;
+    if (myChannelIds.has(id)) { setMode('chat'); await openChannel(id); return; }
+  }
 
   // 링크로 들어온 노트가 있으면 보던 화면보다 그게 먼저다
   if (_pendingNoteId) { setMode('note'); return; }
@@ -4881,6 +5032,7 @@ async function sendRichMessage() {
   if (replyingTo) cancelReply();
   closeRichCompose();
   appendMessage({ ...ins, reactions: [] }, {});
+  pushNotifySent(ins.id);
   const nowIso = new Date().toISOString();
   currentChannel.last_message_at = nowIso;
   try { touchChannelActivity(currentChannel.id, nowIso); } catch (_) {}
@@ -5620,7 +5772,7 @@ async function sendMsg() {
       delete msgData.mentions;   // mentions 컬럼 없으면(멘션_DB설치 전) 없이 저장
       ({ data: ins } = await sb.from('messages').insert(msgData).select().single());
     }
-    if (ins) appendMessage({ ...ins, reactions: [] }, {});  // 내 화면에 즉시 표시 (realtime 중복은 id로 무시)
+    if (ins) { appendMessage({ ...ins, reactions: [] }, {}); pushNotifySent(ins.id); }  // 내 화면에 즉시 표시 (realtime 중복은 id로 무시)
   } else {
     inp.value = '';
     inp.style.height = 'auto';
@@ -15822,6 +15974,7 @@ function imOnSearch(v) { imNoteQ = v; renderNotePage(); }
 //  볼 수 있는지는 링크가 아니라 노트의 공개 범위(RLS)가 정합니다 —
 //  링크를 안다고 남의 노트가 열리지는 않습니다.
 let _pendingNoteId = null;
+let _pendingChannelId = null;   // 알림을 눌러 들어온 채팅방
 
 function imNoteLinkUrl(n) {
   // 해시·질의는 떼고 앱 주소만 — 링크 안에 링크가 겹치지 않게
@@ -16764,6 +16917,13 @@ window.addEventListener('load', async () => {
 
   // 노트 링크 (#note=<id>) — 로그인이 필요하다. 로그인 뒤에 그 노트로 간다.
   //  주소에서 지우는 이유: 안 지우면 나중에 새로고침할 때마다 노트로 튄다.
+  // 알림을 눌러 새 창이 열린 경우 — 그 채팅방으로 간다
+  const chMatch = (location.hash || '').match(/#ch=([0-9a-fA-F-]{36})/);
+  if (chMatch) {
+    _pendingChannelId = chMatch[1];
+    try { history.replaceState(null, '', location.pathname + location.search); } catch (_) {}
+  }
+
   const noteMatch = (location.hash || '').match(/#note=([0-9a-fA-F-]{36})/);
   if (noteMatch) {
     _pendingNoteId = noteMatch[1];

@@ -12,12 +12,15 @@
   "navigationDividerColor": "#1d3a5f",
   "navigationDividerColorDark": "#1d3a5f",
   "backgroundColor": "#ffffff",
-  "enableNotifications": false,
+  "enableNotifications": true,
   "startUrl": "/imessenger/",
   "iconUrl": "https://koreayjk.github.io/imessenger/tcs_icon-512.png",
   "maskableIconUrl": "https://koreayjk.github.io/imessenger/tcs_icon-maskable-512.png",
   "splashScreenFadeOutDuration": 300,
-  "signingKey": { "path": "./android.keystore", "alias": "tcs" },
+  "signingKey": {
+    "path": "./android.keystore",
+    "alias": "tcs"
+  },
   "appVersionName": "1.0.0",
   "appVersionCode": 1,
   "shortcuts": [],
@@ -25,7 +28,9 @@
   "webManifestUrl": "https://koreayjk.github.io/imessenger/manifest.webmanifest",
   "fallbackType": "customtabs",
   "features": {},
-  "alphaDependencies": { "enabled": false },
+  "alphaDependencies": {
+    "enabled": false
+  },
   "enableSiteSettingsShortcut": true,
   "isChromeOSOnly": false,
   "isMetaQuest": false,
