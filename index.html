@@ -1624,6 +1624,10 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
         <input type="checkbox" id="poll-multi" style="width:17px;height:17px;cursor:pointer"/>
         <span style="font-size:13.5px;color:var(--ink)" data-ko="복수 선택 허용" data-en="Allow multiple choices">복수 선택 허용</span>
       </label>
+      <label style="display:flex;align-items:center;gap:9px;margin-bottom:10px;cursor:pointer">
+        <input type="checkbox" id="poll-addon" style="width:17px;height:17px;cursor:pointer"/>
+        <span style="font-size:13.5px;color:var(--ink)" data-ko="참여자도 항목을 더할 수 있게" data-en="Let voters add their own options">참여자도 항목을 더할 수 있게</span>
+      </label>
       <label style="display:flex;align-items:center;gap:9px;margin-bottom:14px;cursor:pointer">
         <input type="checkbox" id="poll-anon" style="width:17px;height:17px;cursor:pointer"/>
         <span style="font-size:13.5px;color:var(--ink)" data-ko="익명 투표 (누가 선택했는지 숨김)" data-en="Anonymous (hide who voted)">익명 투표 (누가 선택했는지 숨김)</span>
@@ -3299,8 +3303,13 @@ async function openChannel(id) {
   // 투표(poll) 표 로드
   pollVotesByMsg = {}; pollMsgCache = {};
   const pollIds = (msgs||[]).filter(m => m.kind === 'poll').map(m => m.id);
+  pollOptsByMsg = {};
   if (pollIds.length) {
-    const { data: pv } = await sb.from('poll_votes').select('*').in('message_id', pollIds);
+    const [pvRes] = await Promise.all([
+      sb.from('poll_votes').select('*').in('message_id', pollIds),
+      loadPollOptions(pollIds),
+    ]);
+    const pv = pvRes.data;
     (pv||[]).forEach(v => { (pollVotesByMsg[v.message_id] = pollVotesByMsg[v.message_id] || []).push(v); });
   }
 
@@ -3667,7 +3676,7 @@ function msgHtml(m, prev, readMap={}) {
     <div class="msg-body">
       ${!sameAsPrev ? `<div class="msg-meta"><span class="name">${sender.name}</span><span class="time">${fmtTime(m.created_at)}</span></div>` : ''}
       ${replyQuote}
-      <div class="bubble"${memHi?' style="box-shadow:inset 3px 0 0 #F0B429;background:rgba(240,180,41,.12)"':''}>${bubbleContent}</div>
+      <div class="bubble${m.kind==='poll'?' poll-bubble':''}"${memHi?' style="box-shadow:inset 3px 0 0 #F0B429;background:rgba(240,180,41,.12)"':''}>${bubbleContent}</div>
       ${reactions}
     </div>
   </div>`;
@@ -3697,7 +3706,67 @@ function escJs(s) {
 // ══════════════════════════════════════════════════════════════════
 //  채팅 투표(poll) — 카카오톡/잔디 스타일
 // ══════════════════════════════════════════════════════════════════
-let pollVotesByMsg = {};   // message_id -> [{option_index, member_id, member_name}]
+let pollVotesByMsg = {};   // message_id -> [{option_index, option_id, member_id, member_name}]
+let pollOptsByMsg  = {};   // message_id -> 나중에 더한 항목들
+let pollOptsMissing = false;   // db/투표_직접입력_DB설치.sql 을 아직 안 돌렸다
+
+// 처음 항목과 나중에 더한 항목을 한 줄로 세운다.
+//  표가 어디로 갔는지는 'i<번호>'(처음) / 'o<id>'(더한 것) 로 가린다.
+//  번호로만 하면 둘이 동시에 더할 때 번호가 밀려 남의 표가 옮겨 붙는다.
+function pollOptList(msgId, meta) {
+  const added = pollOptsByMsg[msgId] || [];
+  return [
+    ...(meta.opts || []).map((label, idx) => ({ key: 'i' + idx, label, by: null, id: null })),
+    ...added.map(o => ({ key: 'o' + o.id, label: o.label, by: o.created_name || '', id: o.id, mine: o.created_by === ME.id })),
+  ];
+}
+function pollVoteKey(v) { return v.option_id ? 'o' + v.option_id : 'i' + v.option_index; }
+
+async function loadPollOptionsOne(msgId) {
+  const { data, error } = await sb.from('poll_options').select('*').eq('message_id', msgId).order('created_at');
+  if (error) { pollOptsMissing = needsReportInstall(error); return; }
+  pollOptsMissing = false;
+  pollOptsByMsg[msgId] = data || [];
+}
+
+async function loadPollOptions(ids) {
+  pollOptsByMsg = {};
+  if (!ids || !ids.length) return;
+  const { data, error } = await sb.from('poll_options').select('*').in('message_id', ids).order('created_at');
+  if (error) { pollOptsMissing = needsReportInstall(error); return; }
+  pollOptsMissing = false;
+  (data || []).forEach(o => { (pollOptsByMsg[o.message_id] = pollOptsByMsg[o.message_id] || []).push(o); });
+}
+
+// 참여자가 항목을 적어 올린다
+async function pollAddOption(msgId) {
+  const m = pollMsgCache[msgId]; if (!m) return;
+  let meta; try { meta = JSON.parse(m.text); } catch (_) { return; }
+  if (pollIsClosed(meta)) { showUploadToast(t('마감된 투표예요','This poll has ended')); return; }
+  const label = (prompt(t('더할 항목을 적어주세요','Add an option')) || '').trim();
+  if (!label) return;
+  const list = pollOptList(msgId, meta);
+  if (list.some(o => o.label.trim() === label)) { showUploadToast(t('이미 있는 항목이에요','That option already exists')); return; }
+  const { error } = await sb.from('poll_options')
+    .insert({ message_id: msgId, label, created_by: ME.id, created_name: ME.name });
+  if (error) {
+    showUploadToast(needsReportInstall(error)
+      ? t('이 기능이 아직 설치되지 않았어요 (db/투표_직접입력_DB설치.sql)','Not installed yet')
+      : t('더하지 못했어요','Could not add'));
+    return;
+  }
+  await reloadPollVotes(msgId);
+  rerenderPoll(msgId);
+}
+
+// 더한 항목 지우기 — 적은 본인이나 교직원만
+async function pollDelOption(msgId, optId) {
+  if (!confirm(t('이 항목을 지울까요? 거기에 준 표도 같이 사라집니다.','Delete this option? Votes on it go too.'))) return;
+  const { data, error } = await sb.from('poll_options').delete().eq('id', optId).select('id');
+  if (error || !data || !data.length) { showUploadToast(t('지우지 못했어요','Could not delete')); return; }
+  await reloadPollVotes(msgId);
+  rerenderPoll(msgId);
+}
 let pollMsgCache   = {};   // message_id -> 메시지 row (재렌더용)
 
 function openPollModal() {
@@ -3705,6 +3774,7 @@ function openPollModal() {
   document.getElementById('poll-q').value = '';
   document.getElementById('poll-multi').checked = false;
   document.getElementById('poll-anon').checked = false;
+  const _ao = document.getElementById('poll-addon'); if (_ao) _ao.checked = false;
   document.getElementById('poll-deadline').value = '';
   const wrap = document.getElementById('poll-options');
   wrap.innerHTML = '';
@@ -3739,8 +3809,9 @@ async function createPoll() {
   if (opts.length < 2) { showUploadToast(t('항목을 2개 이상 입력하세요','Enter at least 2 options')); return; }
   const multi = document.getElementById('poll-multi').checked;
   const anon  = document.getElementById('poll-anon').checked;
+  const addOn = !!(document.getElementById('poll-addon') || {}).checked;
   const dlVal = document.getElementById('poll-deadline').value;
-  const meta = { type:'poll', q, opts, multi, anon, deadline: dlVal ? new Date(dlVal).toISOString() : null, closed:false };
+  const meta = { type:'poll', q, opts, multi, anon, addOn, deadline: dlVal ? new Date(dlVal).toISOString() : null, closed:false };
   const { data: ins, error } = await sb.from('messages').insert({
     channel_id: currentChannel.id, sender_id: ME.id, sender_name: ME.name,
     text: JSON.stringify(meta), kind: 'poll',
@@ -3777,7 +3848,7 @@ function renderPollCard(m) {
   const voterIds = new Set(votes.map(v => v.member_id));
   const total = voterIds.size;
   const closed = pollIsClosed(meta);
-  const myOpts = new Set(votes.filter(v => v.member_id === ME.id).map(v => v.option_index));
+  const myOpts = new Set(votes.filter(v => v.member_id === ME.id).map(pollVoteKey));
   const isCreator = m.sender_id === ME.id;
   const isMine = m.sender_id === ME.id;
 
@@ -3787,11 +3858,12 @@ function renderPollCard(m) {
   if (meta.deadline) badges.push((closed ? t('마감 · ','Ended · ') : t('~','until ')) + fmtPollDeadline(meta.deadline));
   const badgeHtml = badges.map(b => `<span style="font-size:10.5px;font-weight:700;color:var(--ink3);background:var(--s3);padding:2px 8px;border-radius:99px">${escHtml(b)}</span>`).join(' ');
 
-  const optsHtml = meta.opts.map((o, idx) => {
-    const ov = votes.filter(v => v.option_index === idx);
+  const optsHtml = pollOptList(m.id, meta).map((opt) => {
+    const o = opt.label;
+    const ov = votes.filter(v => pollVoteKey(v) === opt.key);
     const cnt = ov.length;
     const pct = total ? Math.round(cnt / total * 100) : 0;
-    const mine = myOpts.has(idx);
+    const mine = myOpts.has(opt.key);
     let voterHtml = '';
     if (!meta.anon && cnt) {
       const shown = ov.slice(0, 6).map(v => {
@@ -3801,18 +3873,30 @@ function renderPollCard(m) {
       const more = cnt > 6 ? `<span style="font-size:10.5px;color:var(--ink3);margin-left:4px">+${cnt-6}</span>` : '';
       voterHtml = `<div style="display:flex;align-items:center;padding-left:4px;margin-top:5px">${shown}${more}</div>`;
     }
-    return `<div onclick="${closed ? '' : `votePoll('${m.id}',${idx})`}"
+    // 더한 항목은 누가 적었는지 같이 보여 준다. 누가 올린 건지 모르면
+    // '○○병원' 이 왜 들어왔는지 아무도 모른다.
+    const byHtml = opt.by
+      ? `<span style="font-size:10.5px;color:var(--ink3);font-weight:500;margin-left:5px;white-space:nowrap">＋${escHtml(opt.by)}</span>` : '';
+    const delHtml = (opt.id && !closed && (opt.mine || canManageAnnounce()))
+      ? `<span onclick="event.stopPropagation();pollDelOption('${m.id}','${opt.id}')" title="${imAttr(t('이 항목 지우기','Delete this option'))}"
+           style="flex-shrink:0;font-size:11px;color:var(--ink3);cursor:pointer;padding:0 3px">✕</span>` : '';
+    return `<div onclick="${closed ? '' : `votePoll('${m.id}','${opt.key}')`}"
       style="position:relative;border:1.5px solid ${mine?'var(--accent)':'var(--border)'};border-radius:11px;padding:9px 12px;margin-bottom:7px;overflow:hidden;cursor:${closed?'default':'pointer'};background:var(--surface)">
       <div style="position:absolute;left:0;top:0;bottom:0;width:${pct}%;background:${mine?'rgba(42,82,152,.16)':'rgba(120,130,150,.12)'};transition:width .3s var(--ease-out)"></div>
       <div style="position:relative;display:flex;align-items:center;gap:8px">
         <div style="width:17px;height:17px;flex-shrink:0;border-radius:${meta.multi?'5px':'50%'};border:2px solid ${mine?'var(--accent)':'var(--border)'};background:${mine?'var(--accent)':'transparent'};display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px">${mine?'✓':''}</div>
-        <div style="flex:1;min-width:0;font-size:13.5px;font-weight:${mine?'700':'500'};color:var(--ink);word-break:break-word">${escHtml(o)}</div>
+        <div style="flex:1;min-width:0;font-size:13.5px;font-weight:${mine?'700':'500'};color:var(--ink);word-break:break-word">${escHtml(o)}${byHtml}</div>
         <div style="flex-shrink:0;font-size:12px;font-weight:700;color:var(--ink2)">${pct}%</div>
         <div style="flex-shrink:0;font-size:11.5px;color:var(--ink3);min-width:34px;text-align:right">${t(cnt+'명', cnt+'')}</div>
+        ${delHtml}
       </div>
       ${voterHtml}
     </div>`;
-  }).join('');
+  }).join('')
+  + ((meta.addOn && !closed) ? `<div onclick="pollAddOption('${m.id}')"
+      style="display:flex;align-items:center;justify-content:center;gap:5px;border:1.5px dashed var(--border);border-radius:11px;
+             padding:9px 12px;margin-bottom:7px;cursor:pointer;font:700 12.5px var(--font);color:var(--ink2)">
+      ＋ ${t('항목 추가','Add an option')}</div>` : '');
 
   const footer = `<div style="display:flex;align-items:center;justify-content:space-between;margin-top:4px">
     <div style="font-size:11.5px;color:var(--ink3)">${t('참여 '+total+'명', total+' voted')}</div>
@@ -3829,21 +3913,27 @@ function renderPollCard(m) {
   </div>`;
 }
 
-async function votePoll(messageId, optionIndex) {
+async function votePoll(messageId, key) {
   const m = pollMsgCache[messageId]; if (!m) return;
   let meta; try { meta = JSON.parse(m.text); } catch(e) { return; }
   if (pollIsClosed(meta)) { showUploadToast(t('마감된 투표예요','This poll has ended')); return; }
+  // 예전 카드는 번호를 그대로 넘겼다. 숫자로 오면 처음 항목으로 본다.
+  const k = (typeof key === 'number') ? 'i' + key : String(key);
+  const isAdded = k[0] === 'o';
+  const target = isAdded ? { option_id: k.slice(1) } : { option_index: Number(k.slice(1)) };
   const votes = pollVotesByMsg[messageId] || [];
   const mine = votes.filter(v => v.member_id === ME.id);
-  const already = mine.find(v => v.option_index === optionIndex);
+  const already = mine.find(v => pollVoteKey(v) === k);
   try {
     if (already) {
-      await sb.from('poll_votes').delete().eq('message_id', messageId).eq('member_id', ME.id).eq('option_index', optionIndex);
+      let d = sb.from('poll_votes').delete().eq('message_id', messageId).eq('member_id', ME.id);
+      d = isAdded ? d.eq('option_id', target.option_id) : d.eq('option_index', target.option_index);
+      await d;
     } else {
       if (!meta.multi && mine.length) {
         await sb.from('poll_votes').delete().eq('message_id', messageId).eq('member_id', ME.id);
       }
-      await sb.from('poll_votes').insert({ message_id: messageId, option_index: optionIndex, member_id: ME.id, member_name: ME.name });
+      await sb.from('poll_votes').insert({ message_id: messageId, ...target, member_id: ME.id, member_name: ME.name });
     }
   } catch(e) { showUploadToast(t('투표 처리 실패 😥','Vote failed 😥')); return; }
   await reloadPollVotes(messageId);
@@ -3863,8 +3953,11 @@ async function closePoll(messageId) {
 }
 
 async function reloadPollVotes(messageId) {
-  const { data } = await sb.from('poll_votes').select('*').eq('message_id', messageId);
-  pollVotesByMsg[messageId] = data || [];
+  const [vRes] = await Promise.all([
+    sb.from('poll_votes').select('*').eq('message_id', messageId),
+    loadPollOptionsOne(messageId),
+  ]);
+  pollVotesByMsg[messageId] = vRes.data || [];
 }
 function rerenderPoll(messageId) {
   const bubble = document.querySelector(`.msg-row[data-id="${messageId}"] .bubble`);
@@ -13778,19 +13871,97 @@ let ciQueued   = false; // 받는 중에 또 부르면 끝나고 한 번 더
 const CI_DOW_KO = ['일','월','화','수','목','금','토'];
 const CI_DOW_EN = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
+// 제출란은 한 방에 여러 개다.
+//  예전에는 설정이 channels 표의 칸(checkin_label·checkin_days…)으로 박혀
+//  있어서, 둘째를 만들면 첫째를 덮어썼다. 구조상 하나밖에 될 수 없었다.
+//  (사용자 말: "제출란이 하나 등록하면 다른 것이 등록이 안되네요")
+//  설치: db/제출란_여러개_DB설치.sql
+let ciItems = [];            // 이 방의 제출란들
+let ciItemId = null;         // 지금 보고 있는 것
+let ciItemsMissing = false;  // 표가 아직 없다 (설치 전)
+let ciNewItem = false;       // 설정 화면이 '새로 만들기' 인가
+
+function ciItem() { return ciItems.find(x => x.id === ciItemId) || ciItems[0] || null; }
+
+async function ciLoadItems() {
+  ciItems = [];
+  if (!currentChannel) { ciItemId = null; return; }
+  const { data, error } = await sb.from('checkin_items').select('*')
+    .eq('channel_id', currentChannel.id).order('sort').order('created_at');
+  if (error) {
+    // 표가 아직 없으면 예전 방식(채팅방 칸)으로 돌아간다 — 설치 전에도
+    // 쓰던 제출란이 그대로 보여야 한다.
+    ciItemsMissing = ciTableMissing(error);
+    ciItemId = null;
+    return;
+  }
+  ciItemsMissing = false;
+  ciItems = data || [];
+  if (!ciItems.some(x => x.id === ciItemId)) ciItemId = ciItems.length ? ciItems[0].id : null;
+}
+
+const CI_BLANK = () => ({ on:false, id:null, label:t('플래너','Planner'),
+  days:[0,1,2,3,4,5,6], require:'image', keyword:'Daily Report', start:'', exempt:[] });
+
 function ciCfg() {
-  const c = currentChannel || {};
-  return {
-    on:      !!c.checkin_on,
-    label:   c.checkin_label || t('플래너','Planner'),
-    days:    String(c.checkin_days || '0,1,2,3,4,5,6').split(',').map(Number).filter(n => n >= 0 && n <= 6),
-    require: c.checkin_require || 'image',
-    keyword: c.checkin_keyword || 'Daily Report',
-    start:   c.checkin_start || '',
+  const it = ciItem();
+  if (it) return {
+    on:      true,
+    id:      it.id,
+    label:   it.label || t('플래너','Planner'),
+    days:    String(it.days || '0,1,2,3,4,5,6').split(',').map(Number).filter(n => n >= 0 && n <= 6),
+    require: it.require || 'image',
+    keyword: it.keyword || 'Daily Report',
+    start:   it.start_date || '',
     // 선생님처럼 '받는 사람'까지 줄에 넣으면 0/14 로 뜨고 미제출 명단에도 섞인다.
     // 이름을 눌러 빼 둘 수 있게 한다.
-    exempt:  String(c.checkin_exempt || '').split(',').filter(Boolean),
+    exempt:  String(it.exempt || '').split(',').filter(Boolean),
   };
+  if (ciItemsMissing) {
+    const c = currentChannel || {};
+    return {
+      on:      !!c.checkin_on,
+      id:      null,
+      label:   c.checkin_label || t('플래너','Planner'),
+      days:    String(c.checkin_days || '0,1,2,3,4,5,6').split(',').map(Number).filter(n => n >= 0 && n <= 6),
+      require: c.checkin_require || 'image',
+      keyword: c.checkin_keyword || 'Daily Report',
+      start:   c.checkin_start || '',
+      exempt:  String(c.checkin_exempt || '').split(',').filter(Boolean),
+    };
+  }
+  return CI_BLANK();
+}
+
+// 제출란 이름표 줄 — 여러 개일 때 골라 가며 본다
+function ciTabsHtml() {
+  if (ciItemsMissing) return '';
+  const canEdit = canManageAnnounce();
+  if (!ciItems.length && !canEdit) return '';
+  const chip = (on, label, act, extra) => `<div onclick="${act}" style="
+      display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 11px;border-radius:999px;cursor:pointer;
+      border:1.5px solid ${on?'#1d3a5f':'var(--border)'};background:${on?'#1d3a5f':'var(--surface)'};
+      color:${on?'#fff':'var(--ink2)'};font:700 12px var(--font);white-space:nowrap">${label}${extra||''}</div>`;
+  return `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:10px 20px 0">
+    ${ciItems.map(it => chip(it.id === ciItemId, escHtml(it.label || ''), `ciPickItem('${it.id}')`)).join('')}
+    ${canEdit ? chip(false, '＋', 'ciAddItem()') : ''}
+  </div>`;
+}
+
+async function ciPickItem(id) {
+  if (ciItemId === id) return;
+  ciItemId = id; ciSetupOpen = false; ciNewItem = false;
+  ciHits = {}; ciMarks = {}; ciRaw = [];
+  ciSyncHeader();
+  await loadCheckin();
+}
+
+function ciAddItem() {
+  if (!canManageAnnounce()) return;
+  if (ciItemsMissing) { showUploadToast(t('DB 설치가 먼저 필요해요 — db/제출란_여러개_DB설치.sql','Run db/제출란_여러개_DB설치.sql first')); return; }
+  ciNewItem = true; ciSetupOpen = true;
+  renderCheckin();
+  try { ciPreview(); } catch (_) {}
 }
 
 // 이름을 누르면 '안 내도 되는 사람'으로 빼거나 되돌린다
@@ -13800,14 +13971,23 @@ async function ciToggleExempt(memberId) {
   const next = cfg.exempt.includes(memberId)
     ? cfg.exempt.filter(x => x !== memberId)
     : cfg.exempt.concat(memberId);
-  const patch = { checkin_exempt: next.join(',') };
-  Object.assign(currentChannel, patch);
-  const ci = channels.find(c => c.id === currentChannel.id); if (ci) Object.assign(ci, patch);
-  renderCheckin();
-  const { error } = await sb.from('channels').update(patch).eq('id', currentChannel.id);
+  const it = ciItem();
+  let error = null;
+  if (it) {
+    it.exempt = next.join(',');            // 화면부터 바꾸고
+    renderCheckin();
+    const r = await sb.from('checkin_items').update({ exempt: it.exempt }).eq('id', it.id).select('id');
+    error = r.error || ((!r.data || !r.data.length) ? { message: t('권한이 없어요','No permission') } : null);
+  } else {
+    const patch = { checkin_exempt: next.join(',') };
+    Object.assign(currentChannel, patch);
+    const ci = channels.find(c => c.id === currentChannel.id); if (ci) Object.assign(ci, patch);
+    renderCheckin();
+    error = (await sb.from('channels').update(patch).eq('id', currentChannel.id)).error;
+  }
   if (error) showUploadToast(ciTableMissing(error)
     ? t('DB 설치가 먼저 필요해요 — db/제출현황_DB설치.sql', 'Run db/제출현황_DB설치.sql first')
-    : t('저장 실패: ','Save failed: ') + error.message);
+    : t('저장 실패: ','Save failed: ') + (error.message||''));
   else showUploadToast(next.includes(memberId)
     ? t(`${(members[memberId]||{}).name||''} 는 세지 않아요`, 'Not counted anymore')
     : t(`${(members[memberId]||{}).name||''} 를 다시 세요`, 'Counted again'));
@@ -13890,7 +14070,16 @@ function toggleCheckinPanel() {
 }
 
 // 채널을 열 때마다 버튼을 보일지 말지 정한다
-function ciOnOpenChannel() {
+async function ciOnOpenChannel() {
+  const btn = document.getElementById('checkin-btn');
+  if (!btn) return;
+  ciItems = []; ciItemId = null; ciSetupOpen = false; ciNewItem = false;
+  ciSyncHeader();                 // 먼저 전 방의 흔적을 지우고
+  await ciLoadItems();            // 이 방의 제출란을 읽은 뒤
+  ciSyncHeader();                 // 다시 머리글을 맞춘다
+}
+
+function ciSyncHeader() {
   const btn = document.getElementById('checkin-btn');
   if (!btn) return;
   const cfg = ciCfg();
@@ -13937,9 +14126,12 @@ async function loadCheckin() {
       ciRaw = msgs || [];
       ciRecount();
 
-      const { data: marks, error: mErr } = await sb.from('checkin_marks')
+      let mq = sb.from('checkin_marks')
         .select('member_id,day,state').eq('channel_id', currentChannel.id)
         .gte('day', days[0]).lte('day', days[days.length - 1]);
+      const _it = ciItem();
+      if (_it) mq = mq.eq('item_id', _it.id);   // 제출란마다 따로 센다
+      const { data: marks, error: mErr } = await mq;
       if (mErr) { if (ciTableMissing(mErr)) ciMissing = true; }
       else { ciMissing = false; (marks || []).forEach(k => { ciMarks[k.member_id + '|' + k.day] = k.state; }); }
     }
@@ -14007,9 +14199,11 @@ function renderCheckin() {
   const cfg = ciCfg();
   const canEdit = canManageAnnounce();
 
-  if (ciSetupOpen) { box.innerHTML = ciSetupHtml(cfg); return; }
+  const ciTabs = ciTabsHtml();
+
+  if (ciSetupOpen) { box.innerHTML = ciSetupHtml(ciNewItem ? CI_BLANK() : cfg); return; }
   if (!cfg.on) {
-    box.innerHTML = `<div style="padding:16px 20px 18px">
+    box.innerHTML = ciTabs + `<div style="padding:16px 20px 18px">
       <div style="font-size:13px;color:var(--ink2);line-height:1.8">
         ${t('이 채팅방에 <b>매일 올려야 하는 것</b>이 있다면 켜 보세요.','Turn this on if people must post something <b>every day</b> in this room.')}<br>
         ${t('지금처럼 사진을 올리기만 하면, 누가 올렸고 누가 안 올렸는지 표로 보여줍니다.','They keep posting photos as they do now — this shows who posted and who did not.')}
@@ -14030,7 +14224,7 @@ function renderCheckin() {
   rows.sort((a, b) => String(members[a] && members[a].name || '').localeCompare(String(members[b] && members[b].name || ''), 'ko'));
 
   if (!rows.length) {
-    box.innerHTML = `<div style="padding:18px;text-align:center;color:var(--ink3);font-size:13px">${t('이 채팅방에 멤버가 없어요','No members in this room')}</div>`;
+    box.innerHTML = ciTabs + `<div style="padding:18px;text-align:center;color:var(--ink3);font-size:13px">${t('이 채팅방에 멤버가 없어요','No members in this room')}</div>`;
     return;
   }
 
@@ -14077,8 +14271,8 @@ function renderCheckin() {
     ? `<button onclick="ciNudge()" style="height:30px;padding:0 11px;border:1.5px solid #fcd34d;background:#fef3c7;color:#92400e;border-radius:9px;font:700 11.5px var(--font);cursor:pointer;white-space:nowrap">${t(`💬 미제출 ${missNames.length}명 알리기`, `💬 Notify ${missNames.length} missing`)}</button>`
     : '';
 
-  box.innerHTML = `
-    <div style="padding:0 20px 6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+  box.innerHTML = ciTabs + `
+    <div style="padding:8px 20px 6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
       <div style="display:flex;align-items:center;gap:2px">
         <button onclick="ciShift(-1)" style="width:26px;height:26px;border:none;background:transparent;cursor:pointer;color:var(--ink2);font-size:13px">◀</button>
         <span style="font:800 12px var(--font);color:var(--ink2);min-width:116px;text-align:center">${days[0] || ''} ~ ${days[days.length-1] || ''}</span>
@@ -14123,14 +14317,18 @@ async function ciCycle(memberId, day) {
   if (next) ciMarks[key] = next; else delete ciMarks[key];
   renderCheckin();                                  // 눌렀으면 바로 바뀌어 보이게
   try {
+    const it = ciItem();
     if (next) {
+      const row = { channel_id: currentChannel.id, member_id: memberId, day, state: next, marked_by: ME.id };
+      if (it) row.item_id = it.id;
       const { error } = await sb.from('checkin_marks')
-        .upsert({ channel_id: currentChannel.id, member_id: memberId, day, state: next, marked_by: ME.id },
-                { onConflict: 'channel_id,member_id,day' });
+        .upsert(row, { onConflict: it ? 'item_id,member_id,day' : 'channel_id,member_id,day' });
       if (error) throw error;
     } else {
-      const { error } = await sb.from('checkin_marks').delete()
+      let dq = sb.from('checkin_marks').delete()
         .eq('channel_id', currentChannel.id).eq('member_id', memberId).eq('day', day);
+      if (it) dq = dq.eq('item_id', it.id);
+      const { error } = await dq;
       if (error) throw error;
     }
     ciMissing = false;
@@ -14161,8 +14359,8 @@ async function ciNudge() {
 }
 
 // ── 설정 ──
-function ciOpenSetup() { ciSetupOpen = true; renderCheckin(); try { ciPreview(); } catch (_) {} }
-function ciCloseSetup() { ciSetupOpen = false; renderCheckin(); }
+function ciOpenSetup() { ciSetupOpen = true; ciNewItem = false; renderCheckin(); try { ciPreview(); } catch (_) {} }
+function ciCloseSetup() { ciSetupOpen = false; ciNewItem = false; renderCheckin(); }
 
 function ciSetupHtml(cfg) {
   const inp = 'height:36px;padding:0 11px;border:1.5px solid var(--border);border-radius:9px;font:600 13px var(--font);background:var(--surface);color:var(--ink);outline:none';
@@ -14170,7 +14368,7 @@ function ciSetupHtml(cfg) {
       <input type="checkbox" class="ci-dow" value="${n}" ${cfg.days.includes(n) ? 'checked' : ''}/>${APP_LANG === 'en' ? CI_DOW_EN[n] : CI_DOW_KO[n]}</label>`).join('');
   const opt = (v, ko, en) => `<option value="${v}" ${cfg.require === v ? 'selected' : ''}>${t(ko, en)}</option>`;
   return `<div style="padding:4px 20px 16px;max-width:460px">
-    <div style="font:800 13px var(--font);color:var(--ink);margin-bottom:10px">⚙️ ${t('제출 현황 설정','Check-in settings')}</div>
+    <div style="font:800 13px var(--font);color:var(--ink);margin-bottom:10px">⚙️ ${ciNewItem ? t('제출란 새로 만들기','New check-in') : t('제출 현황 설정','Check-in settings')}</div>
 
     <div style="font:700 11.5px var(--font);color:var(--ink3);margin-bottom:4px">${t('무엇을 내나요','What is it')}</div>
     <input id="ci-label" value="${escAttr(cfg.label)}" placeholder="${t('플래너','Planner')}" style="${inp};width:100%;box-sizing:border-box;margin-bottom:11px"/>
@@ -14200,9 +14398,9 @@ function ciSetupHtml(cfg) {
     <input id="ci-start" type="date" value="${cfg.start || ''}" style="${inp};margin-bottom:14px"/>
 
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button onclick="ciSaveSetup(true)" style="height:38px;padding:0 16px;border:none;border-radius:10px;background:#1d3a5f;color:#fff;font:700 13px var(--font);cursor:pointer">${t('저장하고 켜기','Save and turn on')}</button>
+      <button onclick="ciSaveSetup(true)" style="height:38px;padding:0 16px;border:none;border-radius:10px;background:#1d3a5f;color:#fff;font:700 13px var(--font);cursor:pointer">${ciNewItem ? t('만들기','Create') : t('저장하고 켜기','Save and turn on')}</button>
       <button onclick="ciCloseSetup()" style="height:38px;padding:0 14px;border:1.5px solid var(--border);border-radius:10px;background:var(--surface);color:var(--ink2);font:700 13px var(--font);cursor:pointer">${t('취소','Cancel')}</button>
-      ${cfg.on ? `<div style="flex:1"></div><button onclick="ciSaveSetup(false)" style="height:38px;padding:0 14px;border:1.5px solid #f5c6c0;border-radius:10px;background:#fdecea;color:#b91c1c;font:700 13px var(--font);cursor:pointer">${t('끄기','Turn off')}</button>` : ''}
+      ${(cfg.on && !ciNewItem) ? `<div style="flex:1"></div><button onclick="ciSaveSetup(false)" style="height:38px;padding:0 14px;border:1.5px solid #f5c6c0;border-radius:10px;background:#fdecea;color:#b91c1c;font:700 13px var(--font);cursor:pointer">${ciItems.length > 1 ? t('이 제출란 지우기','Delete this one') : t('끄기','Turn off')}</button>` : ''}
     </div>
   </div>`;
 }
@@ -14240,6 +14438,25 @@ function ciPreview() {
 
 async function ciSaveSetup(on) {
   if (!canManageAnnounce() || !currentChannel) return;
+
+  // '끄기 / 이 제출란 지우기' — 설정 폼의 칸을 읽을 필요가 없다.
+  //  아래에서 읽으면 폼이 닫힌 채로 불렀을 때 그대로 터진다.
+  if (!on && !ciItemsMissing) {
+    const it = ciItem();
+    if (!it) { ciSetupOpen = false; ciNewItem = false; renderCheckin(); return; }
+    if (!confirm(t(`'${it.label}' 제출란을 지울까요?\n손으로 고쳐 둔 표시도 같이 사라집니다. 채팅 메시지는 그대로입니다.`,
+                   `Delete the "${it.label}" check-in?\nManual marks go with it. Chat messages are untouched.`))) return;
+    const { data, error } = await sb.from('checkin_items').delete().eq('id', it.id).select('id');
+    if (error || !data || !data.length) { showUploadToast(t('지우지 못했어요','Could not delete')); return; }
+    await ciLoadItems();
+    ciSetupOpen = false; ciNewItem = false;
+    ciSyncHeader();
+    showUploadToast(t('지웠어요','Deleted'));
+    ciHits = {}; ciMarks = {}; ciRaw = [];
+    if (ciCfg().on) await loadCheckin(); else renderCheckin();
+    return;
+  }
+
   const days = [...document.querySelectorAll('.ci-dow')].filter(x => x.checked).map(x => x.value);
   if (on && !days.length) { showUploadToast(t('세는 요일을 하나는 골라주세요','Pick at least one day')); return; }
   const req = document.getElementById('ci-require').value || 'image';
@@ -14248,29 +14465,57 @@ async function ciSaveSetup(on) {
   if (on && /keyword/.test(req) && !ciNorm(kw)) {
     showUploadToast(t('첫 줄에 들어갈 말을 적어주세요','Enter a keyword')); return;
   }
-  const patch = {
-    checkin_on: !!on,
-    checkin_label: (document.getElementById('ci-label').value || '').trim() || t('플래너','Planner'),
-    checkin_days: days.join(',') || '0,1,2,3,4,5,6',
-    checkin_require: req,
-    checkin_keyword: kw || null,
-    checkin_start: document.getElementById('ci-start').value || null,
-  };
-  const { error } = await sb.from('channels').update(patch).eq('id', currentChannel.id);
-  if (error) {
-    if (ciTableMissing(error)) {
-      showUploadToast(t('DB 설치가 먼저 필요해요 — db/제출현황_DB설치.sql','Run db/제출현황_DB설치.sql first'));
-    } else showUploadToast(t('저장 실패: ','Save failed: ') + error.message);
-    return;
+  const label = (document.getElementById('ci-label').value || '').trim() || t('플래너','Planner');
+
+  // 아직 설치 전이면 예전 방식(채팅방 칸)으로 저장한다
+  if (ciItemsMissing) {
+    const patch = {
+      checkin_on: !!on,
+      checkin_label: label,
+      checkin_days: days.join(',') || '0,1,2,3,4,5,6',
+      checkin_require: req,
+      checkin_keyword: kw || null,
+      checkin_start: document.getElementById('ci-start').value || null,
+    };
+    const { error } = await sb.from('channels').update(patch).eq('id', currentChannel.id);
+    if (error) {
+      showUploadToast(ciTableMissing(error)
+        ? t('DB 설치가 먼저 필요해요 — db/제출현황_DB설치.sql','Run db/제출현황_DB설치.sql first')
+        : t('저장 실패: ','Save failed: ') + error.message);
+      return;
+    }
+    Object.assign(currentChannel, patch);
+    const ci0 = channels.find(c => c.id === currentChannel.id); if (ci0) Object.assign(ci0, patch);
+  } else {
+    const row = { label, days: days.join(',') || '0,1,2,3,4,5,6', require: req,
+                  keyword: kw || null, start_date: document.getElementById('ci-start').value || null };
+    let res;
+    if (ciNewItem || !ciItem()) {
+      res = await sb.from('checkin_items')
+        .insert({ ...row, channel_id: currentChannel.id, sort: ciItems.length }).select('id').single();
+      if (!res.error && res.data) ciItemId = res.data.id;
+    } else {
+      res = await sb.from('checkin_items').update(row).eq('id', ciItem().id).select('id');
+      if (!res.error && (!res.data || !res.data.length)) res.error = { message: t('권한이 없어요','No permission') };
+    }
+    if (res.error) {
+      showUploadToast(ciTableMissing(res.error)
+        ? t('DB 설치가 먼저 필요해요 — db/제출란_여러개_DB설치.sql','Run db/제출란_여러개_DB설치.sql first')
+        : t('저장 실패: ','Save failed: ') + (res.error.message || ''));
+      return;
+    }
+    await ciLoadItems();
   }
-  Object.assign(currentChannel, patch);
-  const ci = channels.find(c => c.id === currentChannel.id); if (ci) Object.assign(ci, patch);
-  ciSetupOpen = false;
-  ciOnOpenChannel();
-  document.getElementById('checkin-panel').style.display = 'block';
-  document.getElementById('checkin-btn').style.background = 'var(--asoft)';
-  showUploadToast(on ? t('켰어요 ✅','Turned on ✅') : t('껐어요','Turned off'));
-  if (on) await loadCheckin(); else renderCheckin();
+
+  const wasNew = ciNewItem;
+  ciSetupOpen = false; ciNewItem = false;
+  ciSyncHeader();
+  const nowOn = ciCfg().on;
+  const panel = document.getElementById('checkin-panel');
+  const btn = document.getElementById('checkin-btn');
+  if (nowOn) { if (panel) panel.style.display = 'block'; if (btn) btn.style.background = 'var(--asoft)'; }
+  showUploadToast(!on ? t('껐어요','Turned off') : wasNew ? t('만들었어요 ✅','Created ✅') : t('저장했어요 ✅','Saved ✅'));
+  if (nowOn) { ciHits = {}; ciMarks = {}; ciRaw = []; await loadCheckin(); } else renderCheckin();
 }
 
 function toggleTodoPanel() {
