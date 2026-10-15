@@ -656,6 +656,14 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
   .chat-header-info { min-width: 84px; }
 }
 
+/* 일정 추가 — 아주 좁은 화면(320px 같은)에서는 날짜·시간을 한 줄에 하나씩.
+   날짜 입력칸은 'yyyy-mm-dd' 를 보여줘야 해서 그 밑으로 줄지 않는다.
+   두 칸을 한 줄에 두면 158+158 로 넘쳐서 '종료일' 이 화면 밖으로 나갔다. */
+@media (max-width: 380px) {
+  #event-modal .ev-2col { flex-wrap: wrap; }
+  #event-modal .ev-2col > div { flex: 1 1 100%; }
+}
+
 /* 기록부 미리보기 — 좁은 화면.
    단추 묶음에 줄바꿈이 없어서 [PDF 저장] 부터 화면 밖으로 밀려나고,
    [닫기] 는 아예 보이지 않았다. 나갈 길이 없는 창이 되어 있었다. */
@@ -1679,22 +1687,22 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
       <div style="font-size:17px;font-weight:700;margin-bottom:20px" id="event-modal-title">📅 일정 추가</div>
       <input id="ev-title" placeholder="일정 제목 (예: 주일예배)" data-ko-ph="일정 제목 (예: 주일예배)" data-en-ph="Event title (e.g. Sunday service)" style="width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none;margin-bottom:10px"/>
       <textarea id="ev-desc" placeholder="설명 (선택사항)" data-ko-ph="설명 (선택사항)" data-en-ph="Description (optional)" rows="2" style="width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none;resize:none;margin-bottom:10px"></textarea>
-      <div style="display:flex;gap:10px;margin-bottom:10px">
-        <div style="flex:1">
+      <div class="ev-2col" style="display:flex;gap:10px;margin-bottom:10px">
+        <div style="flex:1;min-width:0">
           <div style="font-size:11.5px;color:var(--ink3);margin-bottom:5px" data-ko="날짜" data-en="Date">날짜</div>
           <input id="ev-date" type="date" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none"/>
         </div>
-        <div style="flex:1">
+        <div style="flex:1;min-width:0">
           <div style="font-size:11.5px;color:var(--ink3);margin-bottom:5px" data-ko="종료일 (선택)" data-en="End date (optional)">종료일 (선택)</div>
           <input id="ev-end-date" type="date" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none"/>
         </div>
       </div>
-      <div style="display:flex;gap:10px;margin-bottom:14px">
-        <div style="flex:1">
+      <div class="ev-2col" style="display:flex;gap:10px;margin-bottom:14px">
+        <div style="flex:1;min-width:0">
           <div style="font-size:11.5px;color:var(--ink3);margin-bottom:5px" data-ko="시작 시간" data-en="Start time">시작 시간</div>
           <input id="ev-time" type="time" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none"/>
         </div>
-        <div style="flex:1">
+        <div style="flex:1;min-width:0">
           <div style="font-size:11.5px;color:var(--ink3);margin-bottom:5px" data-ko="종료 시간" data-en="End time">종료 시간</div>
           <input id="ev-end-time" type="time" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none"/>
         </div>
@@ -18329,7 +18337,7 @@ function apprTplRenderBody(){
     </div>`;
   } else {
     const fieldRows=apprTplBuild.fields.map((f,i)=>`<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
-      <input value="${escAttr(f.label)}" oninput="apprTplBuild.fields[${i}].label=this.value;apprTplBuild.fields[${i}].key='f'+${i}" placeholder="${t('항목 이름 (예: 부서)','Field name (e.g. Department)')}" style="flex:1;height:34px;padding:0 10px;border:1px solid var(--border);border-radius:8px;font:13px var(--font)"/>
+      <input value="${escAttr(f.label)}" oninput="apprTplBuild.fields[${i}].label=this.value;apprTplBuild.fields[${i}].key='f'+${i}" placeholder="${t('항목 이름 (예: 부서)','Field name (e.g. Department)')}" style="flex:1;min-width:0;height:34px;padding:0 10px;border:1px solid var(--border);border-radius:8px;font:13px var(--font)"/>
       <select onchange="apprTplBuild.fields[${i}].type=this.value" style="height:34px;padding:0 8px;border:1px solid var(--border);border-radius:8px;font:13px var(--font)">
         <option value="text" ${f.type==='text'?'selected':''}>${t('한 줄','Single line')}</option>
         <option value="textarea" ${f.type==='textarea'?'selected':''}>${t('여러 줄','Multi-line')}</option>
