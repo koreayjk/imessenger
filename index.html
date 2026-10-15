@@ -656,6 +656,23 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
   .chat-header-info { min-width: 84px; }
 }
 
+/* 기록부 미리보기 — 좁은 화면.
+   단추 묶음에 줄바꿈이 없어서 [PDF 저장] 부터 화면 밖으로 밀려나고,
+   [닫기] 는 아예 보이지 않았다. 나갈 길이 없는 창이 되어 있었다. */
+@media (max-width: 760px) {
+  #tcs-preview-overlay { padding: 0 !important; }
+  #tcs-preview-overlay .tcspv-card {
+    border-radius: 0 !important; max-height: 100% !important; height: 100%;
+  }
+  #tcs-preview-overlay .tcspv-head { padding: 10px 12px !important; gap: 8px !important; }
+  #tcs-preview-overlay .tcspv-title { font-size: 13.5px !important; width: 100%; white-space: nowrap; }
+  #tcs-preview-overlay .tcspv-acts { width: 100%; }
+  /* 넷(학년·기관·PDF·닫기)을 2×2 로. 그냥 두면 [닫기] 가 혼자 한 줄을 먹는다. */
+  #tcs-preview-overlay .tcspv-acts > * { flex: 1 1 calc(50% - 4px); min-width: 0; }
+  #tcs-preview-overlay .tcspv-inc { padding: 8px 12px !important; gap: 7px 11px !important; }
+  #tcs-preview-content { padding: 14px 10px calc(14px + env(safe-area-inset-bottom)) !important; }
+}
+
 @media (max-width: 620px) {
   /* 2·3열 그리드 → 모바일에서 축소 (인라인 스타일 전역 대응) */
   [style*="grid-template-columns:1fr 1fr"] { grid-template-columns: 1fr !important; }
@@ -10376,28 +10393,72 @@ async function showTcsPreview() {
       ${tcsOrgs.map(o => `<option value="${o.id}" ${o.id === tcsSelectedOrgId ? 'selected' : ''}>${o.name}</option>`).join('')}
     </select>` : '';
   const overlay = document.createElement('div');
+  overlay.id = 'tcs-preview-overlay';
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
   overlay.innerHTML = `
-    <div style="background:white;border-radius:20px;width:100%;max-width:860px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.3)">
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 24px;border-bottom:1px solid #e5e7eb;flex-shrink:0;gap:10px;flex-wrap:wrap">
-        <div id="tcs-preview-title" style="font-size:16px;font-weight:700;color:#1d3a5f">📄 TCS 기록부 미리보기 — ${tcsCurrentStudent.name}${tcsGradeFilter() ? ' · ' + tcsPrintGradeLabel() : ''}</div>
-        <div style="display:flex;gap:8px;align-items:center">
+    <div class="tcspv-card" style="background:white;border-radius:20px;width:100%;max-width:860px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.3)">
+      <div class="tcspv-head" style="display:flex;align-items:center;justify-content:space-between;padding:16px 24px;border-bottom:1px solid #e5e7eb;flex-shrink:0;gap:10px;flex-wrap:wrap">
+        <div id="tcs-preview-title" class="tcspv-title" style="font-size:16px;font-weight:700;color:#1d3a5f;min-width:0;overflow:hidden;text-overflow:ellipsis">📄 TCS 기록부 미리보기 — ${tcsCurrentStudent.name}${tcsGradeFilter() ? ' · ' + tcsPrintGradeLabel() : ''}</div>
+        <div class="tcspv-acts" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           ${gradeSelect}
           ${orgSelect}
-          <button onclick="printTcsPdf()" style="height:34px;padding:0 16px;border-radius:8px;border:none;background:#1d3a5f;color:white;font:600 13px sans-serif;cursor:pointer">📄 PDF 저장</button>
-          <button onclick="this.closest('[style*=fixed]').remove()" style="height:34px;padding:0 12px;border-radius:8px;border:1.5px solid #e5e7eb;background:white;color:#6b7280;font:500 13px sans-serif;cursor:pointer">✕ 닫기</button>
+          <button onclick="printTcsPdf()" style="height:34px;padding:0 16px;border-radius:8px;border:none;background:#1d3a5f;color:white;font:600 13px sans-serif;cursor:pointer;flex-shrink:0">📄 PDF 저장</button>
+          <button class="tcspv-close" onclick="closeTcsPreview()" style="height:34px;padding:0 12px;border-radius:8px;border:1.5px solid #e5e7eb;background:white;color:#6b7280;font:500 13px sans-serif;cursor:pointer;flex-shrink:0">✕ 닫기</button>
         </div>
       </div>
-      <div style="padding:10px 24px;border-bottom:1px solid #eef1f5;display:flex;flex-wrap:wrap;gap:9px 14px;align-items:center;flex-shrink:0">
+      <div class="tcspv-inc" style="padding:10px 24px;border-bottom:1px solid #eef1f5;display:flex;flex-wrap:wrap;gap:9px 14px;align-items:center;flex-shrink:0">
         <span style="font-size:12px;font-weight:700;color:#1d3a5f">포함 항목</span>
         ${TCS_INCLUDE_SECTIONS.map(([k,label]) => `<label style="font-size:12px;color:#374151;display:inline-flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" ${tcsInc(k)?'checked':''} onchange="toggleTcsSection('${k}',this.checked)"/> ${label}</label>`).join('')}
       </div>
-      <div style="overflow-y:auto;flex:1;padding:32px 40px" id="tcs-preview-content">
+      <div style="overflow:auto;flex:1;padding:32px 40px" id="tcs-preview-content">
         ${buildTcsPreviewHtml('ko')}
       </div>
     </div>`;
   overlay.addEventListener('click', e => { if(e.target===overlay) overlay.remove(); });
   document.body.appendChild(overlay);
+  tcsFitPreview();
+  window.addEventListener('resize', tcsFitPreview);
+  // 좁은 화면에서는 겉창이 거의 안 보여서 '밖을 눌러 닫기' 가 통하지 않는다.
+  // 뒤로가기(스와이프)와 ESC 로도 닫히게 한다.
+  document.addEventListener('keydown', tcsPreviewEsc);
+  try { history.pushState({ tcspv: 1 }, ''); window.addEventListener('popstate', tcsPreviewPop); } catch (_) {}
+}
+
+function closeTcsPreview(skipBack) {
+  const el = document.getElementById('tcs-preview-overlay');
+  if (el) el.remove();
+  window.removeEventListener('resize', tcsFitPreview);
+  document.removeEventListener('keydown', tcsPreviewEsc);
+  window.removeEventListener('popstate', tcsPreviewPop);
+  // 닫기 단추로 닫았으면, 아까 쌓아둔 기록도 같이 걷어낸다.
+  // 안 그러면 뒤로가기를 한 번 더 눌러야 화면이 움직인다.
+  if (!skipBack) { try { if (history.state && history.state.tcspv) history.back(); } catch (_) {} }
+}
+function tcsPreviewEsc(e) { if (e.key === 'Escape') closeTcsPreview(); }
+function tcsPreviewPop() { closeTcsPreview(true); }
+
+// 좁은 화면에서 A4 폭 문서를 화면 폭에 맞춰 줄인다.
+//  문서는 mm·pt 로 짜여 있어 390px 에 그대로는 안 들어간다.
+//  zoom 은 자리도 같이 줄어들어 아래에 빈 공간이 남지 않는다.
+//  (zoom 을 모르는 옛 기기에서는 가로로 밀어 보면 된다)
+function tcsFitPreview() {
+  const box = document.getElementById('tcs-preview-content');
+  if (!box) return;
+  const doc = box.querySelector('.tcsdoc');
+  if (!doc) return;
+  doc.style.zoom = ''; doc.style.width = '';
+  if (window.innerWidth > 760) return;
+  // clientWidth 는 안쪽 여백까지 포함한다. 그걸 빼지 않으면 딱 여백만큼
+  // (좌우 10px 씩, 20px) 넘친다.
+  const cs = getComputedStyle(box);
+  const avail = box.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+  // 문서 폭을 데스크탑과 같게 고정한 뒤 통째로 줄인다.
+  //  그냥 줄이기만 하면 표의 머리칸(70~120px, 줄바꿈 금지)과 사진칸(30mm)이
+  //  안 줄어들어 가로로 삐져나온다. 폭을 먼저 못박아야 안에서 자리가 잡힌다.
+  const NATURAL = 720;                       // A4 본문 폭을 px 로 환산한 값
+  if (avail >= NATURAL) return;
+  doc.style.width = NATURAL + 'px';
+  doc.style.zoom = (avail / NATURAL).toFixed(4);
 }
 
 // 생활기록부 문서 양식 — 화면 미리보기와 PDF 가 같은 CSS 를 씁니다.
