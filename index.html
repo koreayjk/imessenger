@@ -3557,6 +3557,12 @@ function msgHtml(m, prev, readMap={}) {
       ${m.kind !== 'poll' ? `<div onclick="startReply('${m.id}','${escJs(String(m.text||'').slice(0,100))}','${escJs(sender.name)}')" title="답장"
         style="width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px"
         onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background=''">↩️</div>` : ''}
+      ${(m.reactions && m.reactions.length) ? `<div onclick="showReactionDetails('${m.id}')" title="${t('누가 눌렀는지 보기','See who reacted')}"
+        style="width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:13px"
+        onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background=''">👀</div>` : ''}
+      ${(isMine && !m.hidden_at && m.kind !== 'file' && m.kind !== 'poll') ? `<div onclick="startEditMsg('${m.id}')" title="${t('고치기','Edit')}"
+        style="width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:13px"
+        onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background=''">✏️</div>` : ''}
       ${!isMine ? `<div onclick="openReportModal('${m.id}')" title="${t('신고','Report')}"
         style="width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:13px"
         onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background=''">🚩</div>` : ''}
@@ -3628,6 +3634,12 @@ function msgHtml(m, prev, readMap={}) {
     } catch(e) { bubbleContent = escHtml(m.text); }
   }
   if (m.kind === 'poll') { bubbleContent = renderPollCard(m); }
+
+  // 고친 메시지에는 흔적을 남긴다. 남기지 않으면 "나는 그렇게 안 썼는데" 가
+  // 되고, 공동체 안에서는 그게 다툼이 된다.
+  if (m.edited_at && !m.hidden_at && m.kind !== 'file' && m.kind !== 'poll') {
+    bubbleContent += ` <span style="font-size:10.5px;color:var(--ink3);white-space:nowrap">(${t('수정됨','edited')})</span>`;
+  }
 
   // 관리자가 가린 메시지. 지우지 않고 가리는 이유는, 지우면 신고를 처리한
   // 근거까지 같이 사라지기 때문이다. 원문은 교직원만 펼쳐 볼 수 있다.
@@ -4262,11 +4274,30 @@ async function showReactionDetails(msgId) {
   const groups = groupReactions(data || []);
   if (!groups.length) return;
   const total = (data || []).length;
+
+  // 아직 안 누른 사람.
+  //  요청: "다 대답하는 것보다 파악하기 좋고, 이모지로 체크해서 확인한
+  //   학생들 볼 수 있는 기능" — 줌 출석 확인처럼 쓰시려는 것이라,
+  //  누른 사람만큼이나 '안 누른 사람' 이 알고 싶은 쪽이다.
+  const msg = _msgById[msgId];
+  const reacted = new Set((data || []).map(r => r.member_id));
+  const pool = (currentChannelMemberIds && currentChannelMemberIds.size)
+    ? [...currentChannelMemberIds]
+    : Object.keys(members);
+  const pending = pool
+    .filter(id => !reacted.has(id))
+    .filter(id => !msg || id !== msg.sender_id)        // 쓴 사람은 뺀다
+    .map(id => members[id])
+    .filter(x => x && x.status !== 'removed' && x.community_role !== 'store_bot')
+    .sort((a, b) => String(a.name||'').localeCompare(String(b.name||''), 'ko'));
+  const seen = reacted.size;
   const pop = document.createElement('div');
   pop.className = 'reaction-detail-pop';
   pop.style.cssText = 'position:fixed;z-index:300;background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:0 8px 30px rgba(0,0,0,.18);padding:8px;min-width:210px;max-width:290px;max-height:60vh;overflow-y:auto';
   pop.innerHTML = `
-    <div style="font-size:12px;font-weight:700;color:var(--ink3);padding:4px 8px 8px">${t('공감한 사람','Who reacted')} · ${total}</div>
+    <div style="font-size:12px;font-weight:700;color:var(--ink3);padding:4px 8px 8px">
+      ${t('누른 사람','Who reacted')} · ${seen}${pending.length ? ` / ${seen + pending.length}` : ''}
+    </div>
     ${groups.map(g => `
       <div style="padding:7px 8px;border-top:1px solid var(--bs)">
         <div style="display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;color:var(--ink2);margin-bottom:7px">${g.emoji}<span>${g.count}</span></div>
@@ -4280,7 +4311,20 @@ async function showReactionDetails(msgId) {
             </div>`;
           }).join('')}
         </div>
-      </div>`).join('')}`;
+      </div>`).join('')}
+    ${pending.length ? `
+      <div style="padding:9px 8px 4px;border-top:1px solid var(--bs)">
+        <div style="font-size:12.5px;font-weight:700;color:#b45309;margin-bottom:7px">
+          ${t('아직 안 누름','Not yet')} · ${pending.length}
+        </div>
+        <div style="display:flex;flex-direction:column;gap:7px">
+          ${pending.slice(0, 40).map(x => `<div style="display:flex;align-items:center;gap:8px">
+            <div style="width:26px;height:26px;border-radius:8px;background:${x.color||'#999'};color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;opacity:.55">${escHtml(x.initials||(x.name||'?')[0])}</div>
+            <div style="font-size:13px;color:var(--ink2)">${escHtml(x.name||'')}</div>
+          </div>`).join('')}
+          ${pending.length > 40 ? `<div style="font-size:11.5px;color:var(--ink3);padding-left:34px">${t(`그 밖에 ${pending.length-40}명`, `and ${pending.length-40} more`)}</div>` : ''}
+        </div>
+      </div>` : ''}`;
   document.body.appendChild(pop);
   const w = pop.offsetWidth, h = pop.offsetHeight;
   pop.style.left = Math.max(10, (window.innerWidth - w) / 2) + 'px';
@@ -4312,6 +4356,74 @@ function setupReactionInteractions() {
   document.addEventListener('click', (e) => {
     if (_reactLPFired) { e.stopPropagation(); e.preventDefault(); _reactLPFired = false; }
   }, true);
+}
+
+// ── ✏️ 메시지 고치기 ────────────────────────────────────────────
+//  요청: "삭제 후 다시 보내는 것이 번거로워 일부분 수정할 수 있게"
+//  고친 흔적('수정됨')은 반드시 남긴다. 설치: db/메시지수정_DB설치.sql
+function startEditMsg(id) {
+  const m = _msgById[id];
+  if (!m || m.sender_id !== ME.id || m.hidden_at) return;
+  if (m.kind === 'file' || m.kind === 'poll') return;
+  const row = document.querySelector(`#msg-area .msg-row[data-id="${id}"]`);
+  const bubble = row && row.querySelector('.bubble');
+  if (!bubble || bubble.querySelector('.msg-edit-box')) return;   // 이미 고치는 중
+
+  // 말풍선은 white-space:pre-wrap 이다. 여기에 들여쓴 HTML 을 그대로 넣으면
+  // 줄바꿈과 공백이 전부 빈 줄로 찍혀 말풍선이 허옇게 늘어난다.
+  bubble.style.whiteSpace = 'normal';
+  bubble.innerHTML = `
+    <div class="msg-edit-box" style="min-width:min(280px,62vw)">
+      <textarea id="msg-edit-${id}" rows="1"
+        style="width:100%;box-sizing:border-box;padding:7px 10px;border:1.5px solid var(--accent);border-radius:9px;
+               font:14px/1.6 var(--font);color:var(--ink);background:var(--surface);outline:none;resize:none;overflow:hidden"></textarea>
+      <div style="display:flex;align-items:center;gap:6px;margin-top:6px">
+        <span style="flex:1;font-size:10.5px;color:var(--ink3)">${t('Enter 저장 · Shift+Enter 줄바꿈 · Esc 취소','Enter to save · Shift+Enter newline · Esc to cancel')}</span>
+        <button onclick="cancelEditMsg('${id}')" style="height:26px;padding:0 10px;border:1px solid var(--border);background:var(--surface);border-radius:7px;font:600 11.5px var(--font);color:var(--ink2);cursor:pointer">${t('취소','Cancel')}</button>
+        <button onclick="saveEditMsg('${id}')" style="height:26px;padding:0 11px;border:none;background:var(--accent);color:#fff;border-radius:7px;font:700 11.5px var(--font);cursor:pointer">${t('저장','Save')}</button>
+      </div>
+    </div>`;
+
+  // 값은 HTML 로 넣지 않고 직접 꽂는다 — 따옴표·줄바꿈·꺾쇠가 깨지지 않게
+  const ta = document.getElementById('msg-edit-' + id);
+  ta.value = String(m.text || '');
+  const grow = () => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 220) + 'px'; };
+  grow();
+  ta.addEventListener('input', grow);
+  ta.focus();
+  ta.setSelectionRange(ta.value.length, ta.value.length);
+  ta.onkeydown = (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); cancelEditMsg(id); }
+    else if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveEditMsg(id); }
+  };
+}
+
+function cancelEditMsg(id) { redrawMsgRow(id); }
+
+async function saveEditMsg(id) {
+  const m = _msgById[id];
+  const ta = document.getElementById('msg-edit-' + id);
+  if (!m || !ta) return;
+  const next = ta.value.trim();
+  if (!next) {
+    // 빈 메시지로 만들면 '지운 척' 하는 유령이 남는다. 지우려면 ✕ 로.
+    showUploadToast(t('내용을 비울 수는 없어요. 지우려면 ✕ 를 누르세요','Cannot be empty — use ✕ to delete'));
+    return;
+  }
+  if (next === String(m.text || '')) { cancelEditMsg(id); return; }
+  const now = new Date().toISOString();
+  // RLS 에 막히면 오류 없이 0행이 온다. 반드시 select 로 확인한다.
+  const { data, error } = await sb.from('messages')
+    .update({ text: next, edited_at: now }).eq('id', id).select('id');
+  if (error || !data || !data.length) {
+    showUploadToast(needsReportInstall(error)
+      ? t('수정 기능이 아직 설치되지 않았어요 (db/메시지수정_DB설치.sql)','Editing is not installed yet')
+      : t('고치지 못했어요','Could not edit'));
+    return;
+  }
+  m.text = next; m.edited_at = now;
+  redrawMsgRow(id);
+  showUploadToast(t('고쳤어요','Edited'));
 }
 
 // ── 답장 ──
