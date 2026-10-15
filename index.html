@@ -313,6 +313,12 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
   border-top-left-radius: 4px;
 }
 .mine .bubble { background: var(--asoft); color: var(--adeep); border-top-left-radius: 16px; border-top-right-radius: 4px; }
+/* 꾸민 글은 이미 HTML 이다. pre-wrap 이면 태그 사이 줄바꿈이 빈 줄로 찍힌다. */
+.bubble.rich-bubble { white-space: normal; }
+.bubble.rich-bubble p { margin: 0 0 4px; }
+.bubble.rich-bubble p:last-child { margin-bottom: 0; }
+.bubble.rich-bubble ul, .bubble.rich-bubble ol { margin: 4px 0; padding-left: 20px; }
+.bubble.rich-bubble mark { padding: 0 2px; border-radius: 3px; }
 .bubble.poll-bubble, .mine .bubble.poll-bubble { background: transparent !important; padding: 0 !important; border-radius: 0; white-space: normal; }
 #announce-bar { flex-shrink: 0; }
 .announce-text { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; white-space: pre-wrap; word-break: break-word; }
@@ -1138,6 +1144,9 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
             </div>
             <input type="file" id="fileInput" style="display:none" accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt" onchange="handleFileUpload(this)" multiple/>
             <input type="file" id="schedFileInput" style="display:none" accept="image/*" onchange="handleScheduleFile(this)"/>
+            <div class="icon-btn" id="rich-btn" onclick="openRichCompose()" title="꾸며서 쓰기 (굵게·색·형광펜)">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--ink3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>
+            </div>
             <div class="icon-btn" id="poll-btn" onclick="openPollModal()" title="투표 만들기">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--ink3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="20" x2="6" y2="11"/><line x1="12" y1="20" x2="12" y2="5"/><line x1="18" y1="20" x2="18" y2="14"/></svg>
             </div>
@@ -1582,6 +1591,24 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
       <div style="display:flex;gap:10px">
         <div onclick="document.getElementById('delete-modal').style.display='none'" style="flex:1;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:var(--s3);color:var(--ink2);cursor:pointer;font-size:14px" data-ko="취소" data-en="Cancel">취소</div>
         <div onclick="confirmDeleteMsg()" style="flex:1;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:var(--rose);color:white;cursor:pointer;font-size:14px;font-weight:600" data-ko="삭제" data-en="Delete">삭제</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 꾸며서 쓰기 (굵게·밑줄·색·형광펜) -->
+  <div id="rich-modal" style="display:none;position:fixed;inset:0;z-index:210;background:rgba(0,0,0,.45);align-items:center;justify-content:center;padding:16px">
+    <div class="rich-card" style="background:var(--surface);border-radius:20px;width:100%;max-width:560px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.2)">
+      <div style="padding:16px 20px 10px;flex-shrink:0">
+        <div id="rich-title" style="font-size:17px;font-weight:700" data-ko="🎨 꾸며서 쓰기" data-en="🎨 Write with formatting">🎨 꾸며서 쓰기</div>
+        <div style="font-size:12.5px;color:var(--ink3);margin-top:3px" data-ko="글자를 고른 다음 단추를 누르세요" data-en="Select text, then press a button">글자를 고른 다음 단추를 누르세요</div>
+      </div>
+      <div id="rich-bar" class="rich-bar" style="padding:0 20px 10px;display:flex;gap:4px;flex-wrap:wrap;align-items:center;flex-shrink:0"></div>
+      <div id="rich-body" contenteditable="true" data-ph="여기에 적어요…"
+        style="flex:1;min-height:180px;margin:0 20px;padding:13px 15px;border:1.5px solid var(--border);border-radius:12px;background:var(--s2);font:14px/1.7 var(--font);color:var(--ink);outline:none;overflow-y:auto;overflow-wrap:break-word"></div>
+      <div style="padding:14px 20px 18px;display:flex;gap:10px;align-items:center;flex-shrink:0">
+        <span style="flex:1;font-size:11.5px;color:var(--ink3)" data-ko="붙여넣은 글의 서식도 그대로 들어와요" data-en="Pasted formatting is kept">붙여넣은 글의 서식도 그대로 들어와요</span>
+        <button onclick="closeRichCompose()" style="height:42px;padding:0 16px;border-radius:12px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);font:600 14px var(--font);cursor:pointer" data-ko="취소" data-en="Cancel">취소</button>
+        <button id="rich-send" onclick="sendRichMessage()" style="height:42px;padding:0 20px;border-radius:12px;border:none;background:var(--accent);color:#fff;font:700 14px var(--font);cursor:pointer" data-ko="보내기" data-en="Send">보내기</button>
       </div>
     </div>
   </div>
@@ -3563,7 +3590,7 @@ function msgHtml(m, prev, readMap={}) {
       ${(canManageAnnounce() && m.kind !== 'file' && m.kind !== 'poll') ? `<div onclick="setAnnouncement('${m.id}')" title="${t('공지로 등록','Pin as notice')}"
         style="width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:13px"
         onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background=''">📢</div>` : ''}
-      ${m.kind !== 'poll' ? `<div onclick="startReply('${m.id}','${escJs(String(m.text||'').slice(0,100))}','${escJs(sender.name)}')" title="답장"
+      ${m.kind !== 'poll' ? `<div onclick="startReply('${m.id}','${escJs(msgTextOf(m).slice(0,100))}','${escJs(sender.name)}')" title="답장"
         style="width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px"
         onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background=''">↩️</div>` : ''}
       ${(m.reactions && m.reactions.length) ? `<div onclick="showReactionDetails('${m.id}')" title="${t('누가 눌렀는지 보기','See who reacted')}"
@@ -3597,7 +3624,8 @@ function msgHtml(m, prev, readMap={}) {
     </div>` : '';
 
   // 파일 메시지
-  let bubbleContent = renderMessageText(m.text);
+  const isRich = m.format === 'html' && m.kind !== 'file' && m.kind !== 'poll';
+  let bubbleContent = isRich ? richRender(m.text) : renderMessageText(m.text);
   if (m.kind === 'file') {
     try {
       const f = JSON.parse(m.text);
@@ -3664,7 +3692,7 @@ function msgHtml(m, prev, readMap={}) {
       <div class="msg-body">
         ${!sameAsPrev ? `<div class="msg-meta"><span class="name">${sender.name}</span><span class="time">${fmtTime(m.created_at)}</span></div>` : ''}
         ${replyQuote}
-        <div class="bubble${m.kind==='poll'?' poll-bubble':''}"${memHi?' style="box-shadow:inset 3px 0 0 #F0B429;background:rgba(240,180,41,.12)"':''}>${bubbleContent}</div>
+        <div class="bubble${m.kind==='poll'?' poll-bubble':''}${isRich?' rich-bubble':''}"${memHi?' style="box-shadow:inset 3px 0 0 #F0B429;background:rgba(240,180,41,.12)"':''}>${bubbleContent}</div>
         ${reactions}
         ${readLabel}
       </div>
@@ -3676,7 +3704,7 @@ function msgHtml(m, prev, readMap={}) {
     <div class="msg-body">
       ${!sameAsPrev ? `<div class="msg-meta"><span class="name">${sender.name}</span><span class="time">${fmtTime(m.created_at)}</span></div>` : ''}
       ${replyQuote}
-      <div class="bubble${m.kind==='poll'?' poll-bubble':''}"${memHi?' style="box-shadow:inset 3px 0 0 #F0B429;background:rgba(240,180,41,.12)"':''}>${bubbleContent}</div>
+      <div class="bubble${m.kind==='poll'?' poll-bubble':''}${isRich?' rich-bubble':''}"${memHi?' style="box-shadow:inset 3px 0 0 #F0B429;background:rgba(240,180,41,.12)"':''}>${bubbleContent}</div>
       ${reactions}
     </div>
   </div>`;
@@ -4216,8 +4244,8 @@ async function setAnnouncement(msgId) {
   if (nameEl) name = (nameEl.innerText || '').trim();
   if (!text || !name) {
     try {
-      const { data } = await sb.from('messages').select('text,sender_name,kind').eq('id', msgId).single();
-      if (data) { if (!text) text = (data.kind==='file'||data.kind==='poll') ? '' : (data.text||''); if (!name) name = data.sender_name || ''; }
+      const { data } = await sb.from('messages').select('text,sender_name,kind,format').eq('id', msgId).single();
+      if (data) { if (!text) text = (data.kind==='file'||data.kind==='poll') ? '' : msgTextOf(data); if (!name) name = data.sender_name || ''; }
     } catch(e) {}
   }
   text = (text||'').trim();
@@ -4451,6 +4479,176 @@ function setupReactionInteractions() {
   }, true);
 }
 
+// ══════════════════════════════════════════════════════════════════
+//  🎨 꾸며서 쓰기 — 굵게 · 밑줄 · 색 · 형광펜
+//
+//  요청: "공지를 보낼 때 중요한 낱말을 강조하고 싶다. 기숙사 공지는
+//   초록, 긴급은 빨강, KFD는 파랑처럼 색으로 나눠 두면 나중에 찾기도
+//   쉽다."
+//
+//  본래 입력창(textarea)은 그대로 둔다. 거기에 @멘션 자동완성과
+//  이미지 붙여넣기가 묶여 있어서, 꾸미기를 끼워 넣으면 매일 쓰는
+//  길이 흔들린다. 공지는 작정하고 쓰는 글이므로 따로 창을 연다.
+//
+//  저장도 표시도 노트와 같은 위생 처리(imSanitizeHtml)를 거친다.
+//  설치: db/채팅_글꾸미기_DB설치.sql
+// ══════════════════════════════════════════════════════════════════
+
+let _richEditId = null;     // 고치는 중이면 그 메시지 id
+
+const RICH_COLORS = [
+  ['#dc2626', '빨강',   'Red'],
+  ['#ea580c', '주황',   'Orange'],
+  ['#15803d', '초록',   'Green'],
+  ['#1d4ed8', '파랑',   'Blue'],
+  ['#7c3aed', '보라',   'Purple'],
+  ['#111827', '검정',   'Black'],
+];
+const RICH_MARKS = [
+  ['#fef08a', '노랑 형광', 'Yellow'],
+  ['#bbf7d0', '초록 형광', 'Green'],
+  ['#bfdbfe', '파랑 형광', 'Blue'],
+  ['#fecdd3', '분홍 형광', 'Pink'],
+];
+
+function richBarHtml() {
+  const b = (label, act, title, style) =>
+    `<button onmousedown="event.preventDefault()" onclick="${act}" title="${imAttr(title)}"
+      style="min-width:32px;height:32px;padding:0 9px;border:1.5px solid var(--border);background:var(--surface);
+             border-radius:9px;cursor:pointer;font:${style || '700 13px'} var(--font);color:var(--ink2)"
+      onmouseover="this.style.borderColor='#2a5298'" onmouseout="this.style.borderColor='var(--border)'">${label}</button>`;
+  const swatch = (hex, title, act) =>
+    `<button onmousedown="event.preventDefault()" onclick="${act}" title="${imAttr(title)}"
+      style="width:26px;height:26px;padding:0;border:1.5px solid var(--border);border-radius:8px;cursor:pointer;background:${hex}"></button>`;
+  return `
+    ${b('<b>B</b>', "richExec('bold')", t('굵게','Bold'))}
+    ${b('<i>I</i>', "richExec('italic')", t('기울임','Italic'))}
+    ${b('<u>U</u>', "richExec('underline')", t('밑줄','Underline'))}
+    ${b('<s>S</s>', "richExec('strikeThrough')", t('취소선','Strikethrough'))}
+    <span style="width:1px;height:22px;background:var(--border);margin:0 4px"></span>
+    ${b('A<sup>+</sup>', "richSize(1)", t('글씨 크게','Bigger'), '700 12px')}
+    ${b('A<sup>-</sup>', "richSize(-1)", t('글씨 작게','Smaller'), '700 12px')}
+    <span style="width:1px;height:22px;background:var(--border);margin:0 4px"></span>
+    <span style="font:700 11px var(--font);color:var(--ink3)">${t('글자색','Color')}</span>
+    ${RICH_COLORS.map(c => swatch(c[0], t(c[1], c[2]), `richColor('${c[0]}')`)).join('')}
+    <span style="width:1px;height:22px;background:var(--border);margin:0 4px"></span>
+    <span style="font:700 11px var(--font);color:var(--ink3)">${t('형광펜','Highlight')}</span>
+    ${RICH_MARKS.map(c => swatch(c[0], t(c[1], c[2]), `richMark('${c[0]}')`)).join('')}
+    <span style="width:1px;height:22px;background:var(--border);margin:0 4px"></span>
+    ${b('✕', "richExec('removeFormat')", t('서식 지우기','Clear formatting'), '700 12px')}`;
+}
+
+function richFocus() {
+  const el = document.getElementById('rich-body');
+  if (el && document.activeElement !== el) el.focus();
+}
+function richExec(cmd, val) { richFocus(); try { document.execCommand(cmd, false, val); } catch (_) {} }
+function richColor(hex) { richFocus(); try { document.execCommand('foreColor', false, hex); } catch (_) {} }
+function richMark(hex) {
+  richFocus();
+  // hiliteColor 를 모르는 브라우저가 있어 backColor 로 한 번 더 시도한다
+  try { if (!document.execCommand('hiliteColor', false, hex)) document.execCommand('backColor', false, hex); }
+  catch (_) { try { document.execCommand('backColor', false, hex); } catch (__) {} }
+}
+// execCommand 의 fontSize 는 1~7 단계다. 지금 단계를 읽을 방법이 마땅찮아
+// 3(보통)을 기준으로 오르내린다.
+let _richSize = 3;
+function richSize(d) {
+  _richSize = Math.min(6, Math.max(2, _richSize + d));
+  richFocus();
+  try { document.execCommand('fontSize', false, String(_richSize)); } catch (_) {}
+}
+
+function openRichCompose(editId) {
+  if (!currentChannel && !editId) { showUploadToast(t('먼저 채팅방을 선택하세요','Open a chat first')); return; }
+  _richEditId = editId || null;
+  _richSize = 3;
+  const bar = document.getElementById('rich-bar');
+  if (bar) bar.innerHTML = richBarHtml();
+  const body = document.getElementById('rich-body');
+  const ttl = document.getElementById('rich-title');
+  const send = document.getElementById('rich-send');
+  if (ttl)  ttl.textContent  = editId ? t('🎨 꾸민 글 고치기','🎨 Edit formatted message') : t('🎨 꾸며서 쓰기','🎨 Write with formatting');
+  if (send) send.textContent = editId ? t('저장','Save') : t('보내기','Send');
+  if (body) {
+    const m = editId ? _msgById[editId] : null;
+    // 꾸민 글이면 그대로, 그냥 글이면 줄바꿈만 살려서 가져온다
+    body.innerHTML = m
+      ? (m.format === 'html' ? imSanitizeHtml(m.text || '') : escHtml(String(m.text || '')))
+      : '';
+  }
+  document.getElementById('rich-modal').style.display = 'flex';
+  setTimeout(() => {
+    richFocus();
+    // 고칠 때는 글 끝으로 커서를 옮긴다
+    if (editId && body) { try { const r = document.createRange(); r.selectNodeContents(body); r.collapse(false);
+      const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r); } catch (_) {} }
+  }, 60);
+}
+function closeRichCompose() {
+  document.getElementById('rich-modal').style.display = 'none';
+  _richEditId = null;
+}
+
+async function sendRichMessage() {
+  const body = document.getElementById('rich-body');
+  if (!body) return;
+  const html = imSanitizeHtml(body.innerHTML || '');
+  if (!msgStripHtml(html)) { showUploadToast(t('내용을 적어주세요','Write something first')); return; }
+
+  // 고치는 중
+  if (_richEditId) {
+    const id = _richEditId;
+    const m = _msgById[id];
+    const now = new Date().toISOString();
+    const { data, error } = await sb.from('messages')
+      .update({ text: html, format: 'html', edited_at: now }).eq('id', id).select('id');
+    if (error || !data || !data.length) {
+      showUploadToast(needsReportInstall(error)
+        ? t('이 기능이 아직 설치되지 않았어요 (db/채팅_글꾸미기_DB설치.sql)','Not installed yet')
+        : t('고치지 못했어요','Could not edit'));
+      return;
+    }
+    if (m) { m.text = html; m.format = 'html'; m.edited_at = now; redrawMsgRow(id); }
+    closeRichCompose();
+    showUploadToast(t('고쳤어요','Edited'));
+    return;
+  }
+
+  if (!currentChannel) return;
+  const plain = msgStripHtml(html);
+  const row = {
+    channel_id: currentChannel.id, sender_id: ME.id, sender_name: ME.name,
+    text: html, format: 'html', kind: 'text',
+  };
+  if (replyingTo) {
+    row.reply_to_id = replyingTo.id;
+    row.reply_to_text = String(replyingTo.text || '').slice(0, 100);
+    row.reply_to_name = replyingTo.name;
+  }
+  const mids = parseMentions(plain);
+  if (mids.length) row.mentions = mids;
+
+  let { data: ins, error } = await sb.from('messages').insert(row).select().single();
+  if (error && /format/.test(error.message || '') && /column|schema/i.test(error.message || '')) {
+    showUploadToast(t('이 기능이 아직 설치되지 않았어요 (db/채팅_글꾸미기_DB설치.sql)','Not installed yet'));
+    return;
+  }
+  if (error && row.mentions && /mention|column|schema/i.test(error.message || '')) {
+    delete row.mentions;
+    ({ data: ins, error } = await sb.from('messages').insert(row).select().single());
+  }
+  if (error || !ins) { showUploadToast(t('보내지 못했어요','Could not send')); return; }
+
+  if (replyingTo) cancelReply();
+  closeRichCompose();
+  appendMessage({ ...ins, reactions: [] }, {});
+  const nowIso = new Date().toISOString();
+  currentChannel.last_message_at = nowIso;
+  try { touchChannelActivity(currentChannel.id, nowIso); } catch (_) {}
+  sb.from('channels').update({ last_message_at: nowIso }).eq('id', currentChannel.id).then(()=>{}, ()=>{});
+}
+
 // ── ✏️ 메시지 고치기 ────────────────────────────────────────────
 //  요청: "삭제 후 다시 보내는 것이 번거로워 일부분 수정할 수 있게"
 //  고친 흔적('수정됨')은 반드시 남긴다. 설치: db/메시지수정_DB설치.sql
@@ -4458,6 +4656,8 @@ function startEditMsg(id) {
   const m = _msgById[id];
   if (!m || m.sender_id !== ME.id || m.hidden_at) return;
   if (m.kind === 'file' || m.kind === 'poll') return;
+  // 꾸민 글은 말풍선 안에서 고치면 서식이 날아간다. 꾸미기 창으로 보낸다.
+  if (m.format === 'html') { openRichCompose(id); return; }
   const row = document.querySelector(`#msg-area .msg-row[data-id="${id}"]`);
   const bubble = row && row.querySelector('.bubble');
   if (!bubble || bubble.querySelector('.msg-edit-box')) return;   // 이미 고치는 중
@@ -4615,7 +4815,7 @@ function msgPlainText(m) {
       return '[' + t('첨부','Attachment') + '] ' + (names || '');
     }
   } catch (_) { return '[' + t('첨부파일','Attachment') + ']'; }
-  return String(m.text || '');
+  return msgTextOf(m);
 }
 
 // 표·칸이 아직 없을 때. 권한 문제와 설치 문제는 알려줄 말이 다르다.
@@ -4991,6 +5191,57 @@ function parseMentions(text) {
   return [...new Set(ids)];
 }
 // 메시지 텍스트 렌더 (링크 + @멘션 하이라이트)
+// 꾸민 글에서 글자만 뽑는다. 답장 미리보기·알림·제출란 키워드·신고
+// 기록처럼 '글자' 가 필요한 곳은 전부 이걸 거친다. 안 거치면 그런 곳에
+// <span style=...> 가 그대로 나온다.
+function msgStripHtml(html) {
+  try {
+    const doc = new DOMParser().parseFromString('<body>' + String(html == null ? '' : html) + '</body>', 'text/html');
+    return (doc.body.textContent || '').replace(/ /g, ' ').replace(/[ \t]+\n/g, '\n').trim();
+  } catch (_) { return String(html == null ? '' : html).replace(/<[^>]*>/g, '').trim(); }
+}
+// 이 메시지의 '글자' — 꾸민 글이면 태그를 벗긴다
+function msgTextOf(m) {
+  if (!m) return '';
+  return m.format === 'html' ? msgStripHtml(m.text) : String(m.text || '');
+}
+
+// 꾸민 글을 화면에 올린다. 위생 처리를 거친 뒤 @멘션만 덧입힌다.
+function richRender(html) {
+  const safe = imSanitizeHtml(html || '');
+  let doc;
+  try { doc = new DOMParser().parseFromString('<body>' + safe + '</body>', 'text/html'); }
+  catch (_) { return safe; }
+  const names = mentionCandidates().map(x => x.name).filter(Boolean).sort((a, b) => b.length - a.length);
+  const re = names.length
+    ? new RegExp('@(' + names.map(n => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + '|전체|everyone|all)(?![\\w가-힣])', 'gi')
+    : /@(전체|everyone|all)(?![\w가-힣])/gi;
+  // 멘션은 글자 마디에만 입힌다. 통째로 바꾸면 style="…" 안의 글자까지 건드린다.
+  const walk = (node) => {
+    [...node.childNodes].forEach(ch => {
+      if (ch.nodeType === 3) {
+        const txt = ch.nodeValue || '';
+        if (!re.test(txt)) { re.lastIndex = 0; return; }
+        re.lastIndex = 0;
+        const frag = doc.createDocumentFragment();
+        let last = 0, mm;
+        while ((mm = re.exec(txt))) {
+          if (mm.index > last) frag.appendChild(doc.createTextNode(txt.slice(last, mm.index)));
+          const span = doc.createElement('span');
+          span.className = (ME && mm[1] === ME.name) ? 'mention mention-me' : 'mention';
+          span.textContent = mm[0];
+          frag.appendChild(span);
+          last = mm.index + mm[0].length;
+        }
+        if (last < txt.length) frag.appendChild(doc.createTextNode(txt.slice(last)));
+        ch.parentNode.replaceChild(frag, ch);
+      } else if (ch.nodeType === 1 && ch.tagName !== 'A') walk(ch);
+    });
+  };
+  try { walk(doc.body); } catch (_) {}
+  return doc.body.innerHTML;
+}
+
 function renderMessageText(s) {
   let html = linkify(s);
   const names = mentionCandidates().map(m=>m.name).filter(Boolean).sort((a,b)=>b.length-a.length);
@@ -5006,8 +5257,9 @@ function renderMessageText(s) {
 function msgMentionsMe(msg) {
   if (!msg || !ME) return false;
   if (Array.isArray(msg.mentions) && msg.mentions.includes(ME.id)) return true;
-  if (typeof msg.text === 'string' && /@(전체|everyone|all)(?![\w가-힣])/i.test(msg.text)) return true;
-  if (typeof msg.text === 'string' && ME.name && msg.text.includes('@' + ME.name)) return true;
+  const plain = msgTextOf(msg);
+  if (/@(전체|everyone|all)(?![\w가-힣])/i.test(plain)) return true;
+  if (ME.name && plain.includes('@' + ME.name)) return true;
   return false;
 }
 
@@ -14031,7 +14283,7 @@ function ciHasKeyword(m, keyword) {
   const k = ciNorm(keyword);
   if (!k) return false;
   if (m.kind !== 'text') return false;          // 사진 메시지에는 글이 따로 없다
-  const first = String(m.text || '').split('\n').map(x => x.trim()).filter(Boolean)[0] || '';
+  const first = msgTextOf(m).split('\n').map(x => x.trim()).filter(Boolean)[0] || '';
   return ciNorm(first).includes(k);
 }
 function ciIsPhoto(m) {
@@ -16139,11 +16391,18 @@ async function saveMsgAsNote(msgId) {
   if (nameEl) name = (nameEl.innerText || '').trim();
   if (!text) { showUploadToast(t('메시지 내용을 찾지 못했어요','Could not read the message')); return; }
   const chName = currentChannel ? (currentChannel.name || '') : '';
-  const body = text + '\n\n— ' + (name || '') + (chName ? ' · ' + chName : '') + ' ' + t('(채팅에서 저장)','(saved from chat)');
+  const sign = '— ' + (name || '') + (chName ? ' · ' + chName : '') + ' ' + t('(채팅에서 저장)','(saved from chat)');
+  const body = text + '\n\n' + sign;
+  // 꾸민 글은 굵게·색까지 그대로 노트로 옮긴다. 글자만 옮기면 강조가 사라져
+  // 무엇이 중요했는지 알 수 없게 된다.
+  const rich = _msgById[msgId];
+  const htmlBody = (rich && rich.format === 'html')
+    ? imSanitizeHtml(rich.text || '') + imTextToHtml('\n' + sign)
+    : imTextToHtml(body);
   const { data, error } = await sb.from('notes').insert({
     community_id: CID(), user_id: ME.id, author_name: ME.name || '',
     title: text.replace(/\s+/g, ' ').slice(0, 40),
-    body: imTextToHtml(body), format: 'html', tags: imTagsOf(body), visibility: 'private',
+    body: htmlBody, format: 'html', tags: imTagsOf(body), visibility: 'private',
     channel_id: currentChannel ? currentChannel.id : null,
   }).select().single();
   if (error) { showUploadToast(t('노트 저장 실패: ','Could not save: ') + (error.message || '')); return; }
