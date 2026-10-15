@@ -1,0 +1,21 @@
+{
+  "appId": "io.github.koreayjk.tcs",
+  "appName": "TCS",
+  "webDir": "www",
+  "ios": {
+    "contentInset": "always",
+    "limitsNavigationsToAppBoundDomains": false,
+    "backgroundColor": "#1d3a5f"
+  },
+  "server": {
+    "iosScheme": "capacitor"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchAutoHide": true,
+      "launchShowDuration": 1200,
+      "backgroundColor": "#1d3a5f",
+      "showSpinner": false
+    }
+  }
+}

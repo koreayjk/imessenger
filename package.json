@@ -1,0 +1,29 @@
+{
+  "name": "tcs",
+  "version": "1.0.0",
+  "description": "TCS — Total Care System (iOS 껍데기)",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "www": "node scripts/build-www.mjs",
+    "sync": "npm run www && npx cap sync ios",
+    "ios": "npm run sync && npx cap open ios"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/koreayjk/imessenger.git"
+  },
+  "bugs": {
+    "url": "https://github.com/koreayjk/imessenger/issues"
+  },
+  "homepage": "https://github.com/koreayjk/imessenger#readme",
+  "devDependencies": {
+    "@capacitor/cli": "^8.5.3"
+  },
+  "dependencies": {
+    "@capacitor/core": "^8.5.3",
+    "@capacitor/ios": "^8.5.3"
+  },
+  "private": true
+}
