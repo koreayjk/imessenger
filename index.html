@@ -1082,6 +1082,10 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ink3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
             <span style="font-size:12.5px;font-weight:600;color:var(--ink3)" data-ko="할 일" data-en="To-Do">할 일</span>
           </div>
+          <div class="header-action" id="noti-mute-btn" onclick="notiToggleMute(currentChannel && currentChannel.id)" title="이 채팅방 알림 끄기">
+            <svg id="noti-mute-on" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--ink3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 01-3.4 0"/></svg>
+            <svg id="noti-mute-off" style="display:none" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#c0392b" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 00-9.3-5"/><path d="M6.3 6.3A6 6 0 006 8c0 7-3 9-3 9h13"/><path d="M13.7 21a2 2 0 01-3.4 0"/><path d="M2 2l20 20"/></svg>
+          </div>
           <div class="header-action" onclick="toggleRightPanel()">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--ink3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="9" r="3.5"/><path d="M3 19c0-3 3-5 6-5s6 2 6 5"/><circle cx="17" cy="8" r="2.5"/><path d="M15 19c0-2 2-3.5 4-3.5"/></svg>
           </div>
@@ -1825,6 +1829,237 @@ let members = {};
 let currentChannel = null;
 let realtimeSub = null;
 let globalMsgSub = null;
+
+// ══════════════════════════════════════════════════════════════════
+//  🔔 알림 — 새 메시지가 오면 알려준다
+//
+//  요청: "원활한 소통을 위해 채팅이 오면 알림이 오는 기능이 있으면
+//   좋겠습니다"
+//
+//  여기는 '앱이 열려 있을 때' 의 알림이다. 다른 탭을 보고 있거나
+//  창이 뒤에 있어도 뜬다. 앱을 아주 닫았을 때까지 오게 하려면
+//  서비스워커와 웹푸시가 따로 필요하고, 아이폰 앱은 그것도 안 통해서
+//  애플 APNs 를 따로 붙여야 한다.
+//
+//  설정은 이 기기에만 둔다(localStorage). 알림은 '이 기기에서 받을지'
+//  의 문제라, 공용 컴퓨터에서 켠 것이 내 휴대폰까지 따라가면 곤란하다.
+// ══════════════════════════════════════════════════════════════════
+
+const NOTI_KEY = 'tcs_noti';
+let _notiCfg = null;
+let _notiLast = 0;          // 소리가 연달아 울리지 않게
+let _notiOpen = {};         // 띄워 둔 알림 (방마다 하나만)
+
+function notiCfg() {
+  if (_notiCfg) return _notiCfg;
+  let v = {};
+  try { v = JSON.parse(localStorage.getItem(NOTI_KEY) || '{}') || {}; } catch (_) { v = {}; }
+  _notiCfg = {
+    on:      v.on !== false,          // 기본 켜짐 (권한이 없으면 어차피 안 뜬다)
+    sound:   v.sound === true,        // 소리는 기본 꺼짐 — 교실에서 울리면 곤란하다
+    preview: v.preview !== false,     // 내용 미리보기
+    onlyMention: v.onlyMention === true,
+    mutes:   Array.isArray(v.mutes) ? v.mutes : [],   // 알림 끈 채팅방
+  };
+  return _notiCfg;
+}
+function notiSave(patch) {
+  const c = Object.assign(notiCfg(), patch || {});
+  _notiCfg = c;
+  try { localStorage.setItem(NOTI_KEY, JSON.stringify(c)); } catch (_) {}
+  return c;
+}
+function notiSupported() { return typeof window !== 'undefined' && 'Notification' in window; }
+function notiPerm() { return notiSupported() ? Notification.permission : 'unsupported'; }
+
+async function notiAsk() {
+  if (!notiSupported()) {
+    showUploadToast(t('이 브라우저는 알림을 지원하지 않아요','This browser cannot show notifications'));
+    return false;
+  }
+  if (Notification.permission === 'granted') { notiSave({ on: true }); renderProfilePage(); return true; }
+  if (Notification.permission === 'denied') {
+    // 한 번 거절하면 브라우저가 다시 묻지 않는다. 어디서 푸는지 알려준다.
+    showUploadToast(t('브라우저에서 알림이 차단돼 있어요. 주소창 왼쪽 자물쇠 → 알림 → 허용으로 바꿔주세요.',
+                      'Notifications are blocked. Use the lock icon in the address bar → Notifications → Allow.'));
+    return false;
+  }
+  let p = 'default';
+  try { p = await Notification.requestPermission(); } catch (_) {}
+  if (p === 'granted') { notiSave({ on: true }); showUploadToast(t('알림을 켰어요 🔔','Notifications on 🔔')); }
+  else showUploadToast(t('알림을 켜지 않았어요','Notifications were not enabled'));
+  try { renderProfilePage(); } catch (_) {}
+  return p === 'granted';
+}
+
+function notiMuted(channelId) { return notiCfg().mutes.includes(channelId); }
+function notiToggleMute(channelId) {
+  const c = notiCfg();
+  const next = c.mutes.includes(channelId) ? c.mutes.filter(x => x !== channelId) : c.mutes.concat(channelId);
+  notiSave({ mutes: next });
+  const ch = channels.find(x => x.id === channelId);
+  showUploadToast(next.includes(channelId)
+    ? t(`${ch ? ch.name : ''} 알림을 껐어요`, 'Muted')
+    : t(`${ch ? ch.name : ''} 알림을 켰어요`, 'Unmuted'));
+  try { notiSyncBell(); } catch (_) {}
+  renderPanel();
+}
+
+// 짧은 알림음. 파일을 받아오지 않고 그 자리에서 만든다 —
+// 음원 파일을 두면 1.7MB 짜리 앱이 더 무거워지고, 못 받아오면 조용히 실패한다.
+function notiBeep() {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext; if (!Ctx) return;
+    const ctx = notiBeep._ctx || (notiBeep._ctx = new Ctx());
+    if (ctx.state === 'suspended') ctx.resume();
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = 'sine'; o.frequency.value = 880;
+    g.gain.setValueAtTime(0.0001, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.12, ctx.currentTime + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.22);
+    o.connect(g); g.connect(ctx.destination);
+    o.start(); o.stop(ctx.currentTime + 0.24);
+  } catch (_) {}
+}
+
+// 지금 이 메시지를 보고 있는가 — 보고 있으면 알릴 이유가 없다
+function notiLookingAt(channelId) {
+  if (typeof document !== 'undefined' && document.hidden) return false;
+  if (typeof document !== 'undefined' && document.hasFocus && !document.hasFocus()) return false;
+  return !!(currentChannel && currentChannel.id === channelId);
+}
+
+function notifyNewMessage(msg) {
+  const c = notiCfg();
+  if (!c.on || !notiSupported() || Notification.permission !== 'granted') return;
+  if (!msg || !ME || msg.sender_id === ME.id) return;
+  if (!myChannelIds.has(msg.channel_id)) return;
+  if (notiMuted(msg.channel_id)) return;
+  if (notiLookingAt(msg.channel_id)) return;
+  const mentioned = msgMentionsMe(msg);
+  if (c.onlyMention && !mentioned) return;
+  if (myBlocks.has(msg.sender_id)) return;   // 차단한 사람 메시지로는 안 울린다
+
+  const ch = channels.find(x => x.id === msg.channel_id);
+  const who = msg.sender_name || (members[msg.sender_id] || {}).name || t('누군가','Someone');
+  const where = ch ? (ch.kind === 'dm' ? '' : ' · ' + ch.name) : '';
+  const title = (mentioned ? '@ ' : '') + who + where;
+  let body = '';
+  if (c.preview) {
+    body = msgPlainText(msg).replace(/\s+/g, ' ').slice(0, 120);
+  } else {
+    body = t('새 메시지가 왔어요','New message');
+  }
+
+  try {
+    // 같은 방 알림은 하나로 겹쳐 쌓이지 않게 한다
+    const prev = _notiOpen[msg.channel_id];
+    if (prev) { try { prev.close(); } catch (_) {} }
+    const n = new Notification(title, {
+      body,
+      icon: './tcs_icon-192.png?v=2',
+      badge: './tcs_icon-192.png?v=2',
+      tag: 'tcs-' + msg.channel_id,
+      renotify: false,
+    });
+    _notiOpen[msg.channel_id] = n;
+    n.onclick = () => {
+      try { window.focus(); } catch (_) {}
+      try { setMode('chat'); openChannel(msg.channel_id); } catch (_) {}
+      try { n.close(); } catch (_) {}
+    };
+    setTimeout(() => { try { n.close(); } catch (_) {} }, 12000);
+  } catch (_) {}
+
+  if (c.sound && Date.now() - _notiLast > 1500) { _notiLast = Date.now(); notiBeep(); }
+}
+
+// 창 제목에 안읽음 수를 띄운다 — 다른 탭을 보고 있어도 눈에 띈다
+const NOTI_BASE_TITLE = (typeof document !== 'undefined' && document.title) || 'TCS';
+function notiSyncTitle() {
+  if (typeof document === 'undefined') return;
+  let n = 0;
+  try { n = Object.values(unreadCounts || {}).reduce((a, b) => a + (b || 0), 0); } catch (_) {}
+  document.title = n > 0 ? `(${n > 99 ? '99+' : n}) ${NOTI_BASE_TITLE}` : NOTI_BASE_TITLE;
+}
+
+// 내 프로필의 알림 카드
+function notiCardHtml() {
+  const c = notiCfg();
+  const perm = notiPerm();
+  const muted = c.mutes.map(id => channels.find(x => x.id === id)).filter(Boolean);
+  const row = (checked, label, act, hint) => `
+    <label style="display:flex;align-items:flex-start;gap:9px;padding:7px 0;cursor:pointer">
+      <input type="checkbox" ${checked ? 'checked' : ''} onchange="${act}" style="width:16px;height:16px;margin-top:2px;flex-shrink:0"/>
+      <span style="flex:1;min-width:0">
+        <span style="font-size:13.5px;color:var(--ink)">${label}</span>
+        ${hint ? `<span style="display:block;font-size:11.5px;color:var(--ink3);margin-top:2px;line-height:1.5">${hint}</span>` : ''}
+      </span>
+    </label>`;
+  let head;
+  if (perm === 'unsupported') {
+    head = `<div style="font-size:12.5px;color:var(--ink3);line-height:1.7">${t('이 브라우저는 알림을 지원하지 않아요.','This browser cannot show notifications.')}</div>`;
+  } else if (perm === 'granted') {
+    head = `<div style="display:flex;align-items:center;gap:7px;margin-bottom:10px">
+      <span style="font-size:11.5px;font-weight:700;color:#15803d;background:#DCFCE7;padding:3px 9px;border-radius:999px">${t('허용됨','Allowed')}</span>
+      <button onclick="notiTest()" style="height:28px;padding:0 11px;border-radius:9px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);font:600 12px var(--font);cursor:pointer">${t('시험 삼아 보내보기','Send a test')}</button>
+    </div>`;
+  } else if (perm === 'denied') {
+    head = `<div style="font-size:12.5px;color:#b45309;background:#FEF3C7;border-radius:10px;padding:10px 12px;line-height:1.7;margin-bottom:10px">
+      ${t('브라우저에서 알림이 막혀 있어요. 주소창 왼쪽 자물쇠 → 알림 → 허용으로 바꿔주세요.','Notifications are blocked. Use the lock icon in the address bar → Notifications → Allow.')}
+    </div>`;
+  } else {
+    head = `<button onclick="notiAsk()" style="height:38px;padding:0 16px;border-radius:11px;border:none;background:#1d3a5f;color:#fff;font:700 13px var(--font);cursor:pointer;margin-bottom:12px">🔔 ${t('알림 켜기','Turn on notifications')}</button>`;
+  }
+  return `
+  <div class="adm-card" style="margin-bottom:16px">
+    <div style="font-size:14px;font-weight:700;color:var(--adeep);margin-bottom:6px">🔔 ${t('알림','Notifications')}</div>
+    <div style="font-size:12px;color:var(--ink3);line-height:1.6;margin-bottom:12px">
+      ${t('앱을 켜 둔 동안 새 메시지를 알려드려요. 다른 탭을 보고 있어도 뜹니다. 이 설정은 이 기기에만 적용돼요.',
+          'Alerts you to new messages while the app is open, even from another tab. These settings apply to this device only.')}
+    </div>
+    ${head}
+    ${perm === 'granted' ? `
+      ${row(c.on, t('새 메시지 알림','New message alerts'), "notiSave({on:this.checked});renderProfilePage()")}
+      ${row(c.preview, t('내용 미리보기','Show a preview'), "notiSave({preview:this.checked})", t('끄면 "새 메시지가 왔어요" 만 보여요. 옆자리에서 화면이 보일 때.','Off shows only "New message" — useful when others can see your screen.'))}
+      ${row(c.onlyMention, t('나를 부른 것만','Only when I am mentioned'), "notiSave({onlyMention:this.checked})", t('@이름 이나 @전체 가 들어간 메시지만 알려요','Only messages with @yourname or @everyone'))}
+      ${row(c.sound, t('소리','Sound'), "notiSave({sound:this.checked}); if(this.checked) notiBeep()", t('교실에서 울리면 곤란해서 기본은 꺼져 있어요','Off by default — classrooms'))}
+    ` : ''}
+    ${muted.length ? `
+      <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+        <div style="font-size:12px;font-weight:700;color:var(--ink2);margin-bottom:8px">${t('알림 끈 채팅방','Muted chats')} · ${muted.length}</div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          ${muted.map(ch => `<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;border:1px solid var(--border);border-radius:10px;background:var(--s2)">
+            <span style="flex:1;min-width:0;font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(ch.emoji || '#')} ${escHtml(ch.name || '')}</span>
+            <button onclick="notiToggleMute('${ch.id}');renderProfilePage()" style="height:28px;padding:0 11px;border-radius:9px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);font:600 12px var(--font);cursor:pointer;flex-shrink:0">${t('다시 켜기','Unmute')}</button>
+          </div>`).join('')}
+        </div>
+      </div>` : `<div style="margin-top:10px;font-size:11.5px;color:var(--ink3)">${t('채팅방 머리글의 🔔 로 방마다 알림을 끌 수 있어요','Use 🔔 in the chat header to mute a single room')}</div>`}
+  </div>`;
+}
+
+// 머리글의 종 — 이 방의 알림이 꺼져 있으면 빗금 친 종으로 바꾼다
+function notiSyncBell() {
+  const btn = document.getElementById('noti-mute-btn');
+  if (!btn) return;
+  if (!currentChannel) { btn.style.display = 'none'; return; }
+  btn.style.display = 'flex';
+  const off = notiMuted(currentChannel.id);
+  const on  = document.getElementById('noti-mute-on');
+  const mut = document.getElementById('noti-mute-off');
+  if (on)  on.style.display  = off ? 'none' : '';
+  if (mut) mut.style.display = off ? '' : 'none';
+  btn.title = off ? t('이 채팅방 알림 켜기','Unmute this chat') : t('이 채팅방 알림 끄기','Mute this chat');
+}
+
+function notiTest() {
+  if (notiPerm() !== 'granted') { notiAsk(); return; }
+  try {
+    const n = new Notification('TCS', { body: t('알림이 이렇게 보여요 🔔','This is how alerts look 🔔'), icon: './tcs_icon-192.png?v=2', tag: 'tcs-test' });
+    setTimeout(() => { try { n.close(); } catch (_) {} }, 6000);
+  } catch (_) { showUploadToast(t('알림을 띄우지 못했어요','Could not show a notification')); }
+  if (notiCfg().sound) notiBeep();
+}
 function subscribeGlobalMessages() {
   if (globalMsgSub) { try { sb.removeChannel(globalMsgSub); } catch(_) {} }
   globalMsgSub = sb.channel('global-messages')
@@ -1842,6 +2077,7 @@ function subscribeGlobalMessages() {
         const bch = channels.find(c => c.id === msg.channel_id);
         if (bch) { bch.last_message_at = msg.created_at || new Date().toISOString(); if (bch.kind === 'dm') renderPanel(); }
         updateUnreadBadges();
+        notifyNewMessage(msg);
         if (msgMentionsMe(msg)) {
           const ch = channels.find(c => c.id === msg.channel_id);
           showUploadToast('💬 ' + (msg.sender_name || '누군가') + '님이 ' + (ch ? ch.name : '다른 채널') + '에서 회원님을 언급했어요');
@@ -3165,6 +3401,7 @@ async function loadUnreadCounts() {
 }
 
 function updateUnreadBadges() {
+  try { notiSyncTitle(); } catch (_) {}   // 다른 탭을 보고 있어도 눈에 띄게
   // 사이드바 채팅 아이콘 배지
   const totalUnread = Object.values(unreadCounts).reduce((a, b) => a + b, 0);
   let badge = document.getElementById('chat-unread-badge');
@@ -3281,6 +3518,7 @@ async function openChannel(id) {
   document.getElementById('ch-icon').textContent = currentChannel.emoji || '#';
   document.getElementById('ch-name').textContent = currentChannel.name;
   document.getElementById('ch-desc').textContent = currentChannel.description || '';
+  try { notiSyncBell(); } catch (_) {}
 
   // 공지글(고정) 배너 — 최신값 반영 후 렌더
   _announceExpanded = false;
@@ -7754,6 +7992,8 @@ async function renderProfilePage() {
           ${t('비밀번호 변경','Change Password')}
         </button>
       </div>
+
+      ${notiCardHtml()}
 
       ${blockListCardHtml()}
 
