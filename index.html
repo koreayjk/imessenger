@@ -478,6 +478,15 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
 .adm-tab:hover { color:var(--ink); }
 .adm-tab.active-adm { border-bottom-color:var(--accent);color:var(--adeep);font-weight:600; }
 .adm-card { background:var(--surface);border-radius:16px;padding:18px 20px;margin-bottom:12px;box-shadow:0 1px 4px rgba(29,58,95,.07); }
+/* 내 프로필 카드 — 칸을 세로로 채운다.
+   격자로 두면 한 카드가 길어질 때 그 옆이 통째로 비어 버린다.
+   (알림 카드가 길어지면서 왼쪽이 화면 반쯤 텅 비었다) */
+.prof-cards { column-width: 320px; column-gap: 16px; }
+.prof-cards > .adm-card {
+  break-inside: avoid;
+  -webkit-column-break-inside: avoid;
+  page-break-inside: avoid;
+}
 .adm-row { display:flex;align-items:center;gap:14px;padding:12px 0;border-bottom:1px solid var(--bs); }
 .adm-row:last-child { border-bottom:none; }
 .adm-input { height:38px;padding:0 12px;border-radius:10px;border:1.5px solid var(--border);background:var(--s2);font:14px var(--font);color:var(--ink);outline:none;transition:border-color .15s; }
@@ -2083,17 +2092,24 @@ function notiCardHtml() {
             ${pushOn() ? t('끄기','Turn off') : t('켜기','Turn on')}</button>` : ''}
         </div>
         ${pushOn() ? `
-          <button onclick="pushSelfTest()" style="margin-top:9px;height:32px;padding:0 13px;border-radius:9px;
-                 border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);
-                 font:600 12.5px var(--font);cursor:pointer">
-            📨 ${t('서버에서 시험 알림 보내기','Send a test from the server')}</button>
-          <div style="font-size:11px;color:var(--ink3);margin-top:5px;line-height:1.6">
-            ${t('내 기기로만 갑니다. 안 오면 왜 안 왔는지 아래에 적힙니다.',
-                'Goes only to your own devices. If nothing arrives, the reason appears below.')}
-          </div>
-          ${_pushTest ? `<pre style="margin:8px 0 0;padding:9px 11px;background:var(--s2);border:1px solid var(--border);
-                 border-radius:9px;font:600 11px/1.6 ui-monospace,Menlo,monospace;color:var(--ink2);
-                 white-space:pre-wrap;word-break:break-all">${escHtml(_pushTest)}</pre>` : ''}
+          <button onclick="pushTestToggle()" style="margin-top:8px;height:26px;padding:0;border:none;
+                 background:none;color:var(--accent);font:600 12px var(--font);cursor:pointer">
+            ${_pushTestOpen ? '▾' : '▸'} ${t('알림이 안 오나요?','Not getting alerts?')}</button>
+          ${_pushTestOpen ? `
+            <div style="margin-top:6px;padding:11px 12px;background:var(--s2);border:1px solid var(--border);border-radius:11px">
+              <button onclick="pushSelfTest()" style="height:32px;padding:0 13px;border-radius:9px;
+                     border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);
+                     font:600 12.5px var(--font);cursor:pointer">
+                📨 ${t('서버에서 시험 알림 보내기','Send a test from the server')}</button>
+              <div style="font-size:11px;color:var(--ink3);margin-top:6px;line-height:1.6">
+                ${t('내 기기로만 갑니다. 안 오면 왜 안 왔는지 여기 적힙니다.',
+                    'Goes only to your own devices. If nothing arrives, the reason appears here.')}
+              </div>
+              ${_pushTest ? `<pre style="margin:8px 0 0;padding:9px 10px;background:var(--surface);
+                     border:1px solid var(--border);border-radius:8px;
+                     font:600 10.5px/1.65 ui-monospace,Menlo,monospace;color:var(--ink2);
+                     white-space:pre-wrap;word-break:break-word;overflow-x:auto">${escHtml(_pushTest)}</pre>` : ''}
+            </div>` : ''}
         ` : ''}
       </div>` : ''}
     ${muted.length ? `
@@ -2523,7 +2539,13 @@ function pushNotifySent(messageId) {
 // 서버가 실제로 쏴 보고, 애플·구글이 뭐라 했는지 그대로 적는다.
 //  '왜 안 오지' 를 로그를 뒤지며 찾지 않게 하려는 것이다.
 let _pushTest = '';
+let _pushTestOpen = false;
+function pushTestToggle() {
+  _pushTestOpen = !_pushTestOpen;
+  try { renderProfilePage(); } catch (_) {}
+}
 async function pushSelfTest() {
+  _pushTestOpen = true;
   _pushTest = t('보내보는 중…','Sending…');
   try { renderProfilePage(); } catch (_) {}
   let data, error;
@@ -8426,7 +8448,7 @@ async function renderProfilePage() {
       </div>
 
       <!-- 섹션 카드: 데스크탑에선 2열, 모바일에선 1열 자동 배치 -->
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:0 16px;align-items:start">
+      <div class="prof-cards">
 
       ${isStudent() && myGroups.length ? `
       <!-- 내 그룹 (학생 자가 선택) -->
