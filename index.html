@@ -18606,6 +18606,7 @@ const SCHOOL_TABS = [
   { id:'student',    icon:'👤', label:t('학생','Students'),          group:'student', section:'school' },
   { id:'record',     icon:'🗂', label:t('생활기록부','Records'),       group:'student', section:'school' },
   { id:'reading',    icon:'📖', label:t('트리플스쿨','Triple School'), group:'student', section:'school' },
+  { id:'memory',     icon:'📜', label:t('성구암송','Memory'),          group:'student', section:'school' },
   { id:'timetable',  icon:'🗓', label:t('시간표','Timetable'),        group:'class',   section:'school' },
   { id:'attendance', icon:'✅', label:t('출석부','Attendance'),       group:'class',   section:'school' },
   { id:'leave',      icon:'📝', label:t('출결 신청','Leave'),         group:'class',   section:'school' },
@@ -18745,6 +18746,7 @@ function renderSchoolMain() {
     sub.textContent = (g && g !== tab.label) ? `${g} · ${tab.label}` : tab.label;
   }
   document.getElementById('school-header-actions').innerHTML = '';
+  if (schoolSubMode === 'memory')     return renderMemoryHub();
   if (['student','record','reading'].includes(schoolSubMode)) return renderStudent360();
   if (schoolSubMode === 'attendance') return renderAttendanceHub();
   if (schoolSubMode === 'leave')      return renderApprovalHub();
@@ -18755,6 +18757,380 @@ function renderSchoolMain() {
   if (schoolSubMode === 'newsletter') return renderNewsletterHub();
   if (schoolSubMode === 'cert')       return renderCertHub();
   return renderStudent360();
+}
+
+
+// ════════════════════════════════════════════════════════════════════
+//  📜 성구암송 — 60구절 · 소교리문답
+//
+//  요청: "학사란 윗 부분에 트리플스쿨 옆에 성구암송 칸을 넣어주시면
+//   좋겠습니다. 60구절이랑 소교리문답 체크를 하고 싶은데…"
+//   + "암송체크는 교사도 체크하게"
+//
+//  두 단계다 — 학생이 '외웠어요' 하고, 교사가 '확인' 도장을 찍는다.
+//  교사가 학생 앞에서 듣고 곧바로 둘 다 찍을 수도 있다.
+//
+//  설치: db/성구암송_DB설치.sql
+// ════════════════════════════════════════════════════════════════════
+let memItems = [];
+let memChecks = {};          // item_id → 체크 줄
+let memKind = 'verse';       // 'verse' | 'catechism'
+let memMode = 'me';          // 'me'(내 암송) | 'class'(학생 현황) | 'manage'(항목 관리)
+let memStudent = null;       // 교사가 고른 학생
+let memStudents = [];
+let memAllChecks = [];       // 학생 현황용
+let memHide = false;         // 본문 가리고 외우기
+let memMissing = false;
+let memQ = '';
+
+const MEM_KINDS = [
+  { key: 'verse',     icon: '📖', ko: '성경 60구절', en: '60 Verses' },
+  { key: 'catechism', icon: '📜', ko: '소교리문답',  en: 'Catechism' },
+];
+function memKindName(k) {
+  const g = MEM_KINDS.find(x => x.key === (k || memKind)) || MEM_KINDS[0];
+  return APP_LANG === 'en' ? g.en : g.ko;
+}
+
+async function renderMemoryHub() {
+  const main = document.getElementById('school-main'); if (!main) return;
+  main.innerHTML = `<div style="text-align:center;padding:40px;color:var(--ink3);font-size:13px">${t('불러오는 중...','Loading...')}</div>`;
+  try {
+    const { data, error } = await sb.from('memory_items').select('*')
+      .eq('active', true).order('kind').order('sort', { nullsFirst: false }).order('no');
+    if (error) throw error;
+    memItems = data || [];
+    memMissing = false;
+  } catch (e) {
+    if (schoolTableMissing(e)) { memMissing = true; return schoolSetupNeeded(e, 'db/성구암송_DB설치.sql'); }
+    main.innerHTML = `<div style="color:#b91c1c;padding:30px;text-align:center;font-size:13px">${t('불러오기 실패: ','Failed to load: ')}${escHtml(e.message || e)}</div>`;
+    return;
+  }
+  if (!canAccessSchool()) memMode = 'me';
+  if (memMode === 'me') await memLoadChecks(ME.id);
+  else if (memMode === 'class') await memLoadClass();
+  memRender();
+}
+
+async function memLoadChecks(studentId) {
+  memChecks = {};
+  if (!studentId) return;
+  try {
+    const { data } = await sb.from('memory_checks').select('*').eq('student_id', studentId);
+    const out = {};
+    (data || []).forEach(c => { out[c.item_id] = c; });
+    memChecks = out;
+  } catch (_) {}
+}
+
+async function memLoadClass() {
+  try {
+    const { data: studs } = await sb.from('members').select('id,name,initials,color,status,community_role')
+      .eq('community_id', CID()).or('community_role.eq.student,role.eq.학생').order('name');
+    memStudents = (studs || []).filter(m => m.status !== 'removed');
+  } catch (_) { memStudents = []; }
+  try {
+    const { data } = await sb.from('memory_checks').select('*').eq('community_id', CID());
+    memAllChecks = data || [];
+  } catch (_) { memAllChecks = []; }
+}
+
+function memList(kind) {
+  const k = kind || memKind;
+  const q = (memQ || '').trim().toLowerCase();
+  return memItems.filter(i => i.kind === k)
+    .filter(i => !q || (i.title || '').toLowerCase().includes(q)
+                    || (i.body || '').toLowerCase().includes(q)
+                    || String(i.no).includes(q));
+}
+function memState(item) {
+  const c = memChecks[item.id];
+  if (!c || !c.checked_at) return 'none';
+  return c.confirmed_at ? 'confirmed' : 'checked';
+}
+function memCounts(kind) {
+  const list = memItems.filter(i => i.kind === (kind || memKind));
+  let checked = 0, confirmed = 0;
+  list.forEach(i => { const s = memState(i); if (s !== 'none') checked++; if (s === 'confirmed') confirmed++; });
+  return { total: list.length, checked, confirmed };
+}
+
+function memSetKind(k) { memKind = k; memRender(); }
+function memSetMode(m) { memMode = m; memStudent = null; renderMemoryHub(); }
+function memToggleHide() { memHide = !memHide; memRender(); }
+function memSearch(v) { memQ = v || ''; memRender(); }
+
+// 학생이 '외웠어요' 를 켜고 끈다
+async function memToggleCheck(itemId) {
+  const cur = memState({ id: itemId });
+  const on = cur === 'none';
+  const { error } = await sb.rpc('memory_check', { p_item: itemId, p_on: on });
+  if (error) {
+    showUploadToast(needsReportInstall(error)
+      ? t('이 기능이 아직 설치되지 않았어요 (db/성구암송_DB설치.sql)','Not installed yet')
+      : t('저장하지 못했어요','Could not save'));
+    return;
+  }
+  await memLoadChecks(ME.id);
+  memRender();
+}
+
+// 교사가 '확인' 도장을 찍고 뗀다 (학생이 아직 체크 안 했으면 같이 찍힌다)
+async function memToggleConfirm(itemId, studentId) {
+  const c = memChecks[itemId];
+  const on = !(c && c.confirmed_at);
+  const { error } = await sb.rpc('memory_confirm', { p_item: itemId, p_student: studentId, p_on: on });
+  if (error) { showUploadToast(t('확인하지 못했어요 — ','Could not confirm — ') + (error.message || '')); return; }
+  await memLoadChecks(studentId);
+  memRender();
+}
+
+async function memPickStudent(id) {
+  memStudent = memStudents.find(s => s.id === id) || null;
+  if (memStudent) await memLoadChecks(memStudent.id);
+  memRender();
+}
+
+function memRender() {
+  const main = document.getElementById('school-main'); if (!main) return;
+  const staff = canAccessSchool();
+  const modeBtn = (m, ko, en) => {
+    const on = memMode === m;
+    return `<button onclick="memSetMode('${m}')" style="height:34px;padding:0 14px;border:none;border-radius:8px;cursor:pointer;font:700 12.5px var(--font);${on?'background:#1d3a5f;color:#fff':'background:transparent;color:var(--ink2)'}">${t(ko,en)}</button>`;
+  };
+  const modes = staff
+    ? `<div style="display:inline-flex;gap:2px;background:var(--s2);border-radius:10px;padding:3px;margin-bottom:14px">
+        ${modeBtn('me','내 암송','Mine')}${modeBtn('class','학생 현황','Students')}${modeBtn('manage','항목 관리','Manage')}</div>`
+    : '';
+  const kindTabs = `<div style="display:flex;gap:7px;margin-bottom:14px">
+    ${MEM_KINDS.map(g => {
+      const on = memKind === g.key;
+      const n = memItems.filter(i => i.kind === g.key).length;
+      return `<button onclick="memSetKind('${g.key}')" style="flex:1;min-width:0;height:40px;border-radius:11px;cursor:pointer;
+        border:1.5px solid ${on?'#1d3a5f':'var(--border)'};background:${on?'var(--asoft)':'var(--surface)'};
+        font:700 13px var(--font);color:${on?'var(--adeep)':'var(--ink2)'}">${g.icon} ${APP_LANG==='en'?g.en:g.ko} <span style="font-weight:600;font-size:11px;color:var(--ink3)">${n}</span></button>`;
+    }).join('')}</div>`;
+
+  if (memMode === 'manage') { main.innerHTML = `<div style="max-width:760px">${modes}${kindTabs}${memManageHtml()}</div>`; return; }
+  if (memMode === 'class' && !memStudent) { main.innerHTML = `<div style="max-width:760px">${modes}${kindTabs}${memClassHtml()}</div>`; return; }
+
+  const who = memMode === 'class' ? memStudent : ME;
+  const c = memCounts();
+  const pct = c.total ? Math.round(c.checked / c.total * 100) : 0;
+  const cpct = c.total ? Math.round(c.confirmed / c.total * 100) : 0;
+  const items = memList();
+
+  main.innerHTML = `<div style="max-width:760px">
+    ${modes}
+    ${memMode === 'class' ? `<div style="display:flex;align-items:center;gap:9px;margin-bottom:12px">
+      <button onclick="memPickStudent(null)" style="height:30px;padding:0 11px;border-radius:8px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);font:600 12px var(--font);cursor:pointer">${t('← 학생 목록','← Students')}</button>
+      <div style="font-size:15px;font-weight:700;color:var(--ink)">${escHtml(who ? who.name : '')}</div>
+    </div>` : ''}
+    ${kindTabs}
+    <div style="background:linear-gradient(135deg,#1d3a5f,#2a5298);border-radius:16px;padding:16px 20px;margin-bottom:12px;color:white">
+      <div style="display:flex;justify-content:space-between;align-items:baseline">
+        <div style="font-size:13px;opacity:.8">${memKindName()}</div>
+        <div style="font-size:22px;font-weight:800">${c.confirmed} / ${c.total}</div>
+      </div>
+      <div style="background:rgba(255,255,255,.25);border-radius:99px;height:8px;margin-top:10px;overflow:hidden;display:flex">
+        <div style="height:100%;width:${cpct}%;background:white"></div>
+        <div style="height:100%;width:${Math.max(0,pct-cpct)}%;background:rgba(255,255,255,.45)"></div>
+      </div>
+      <div style="font-size:11px;opacity:.78;margin-top:7px">${t('확인 완료','Confirmed')} ${c.confirmed} · ${t('확인 대기','Waiting')} ${c.checked - c.confirmed}</div>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <input value="${escAttr(memQ)}" oninput="memSearch(this.value)" placeholder="${escAttr(t('🔍 번호·제목·본문 찾기','🔍 Search'))}"
+        style="flex:1;min-width:0;height:38px;padding:0 13px;border-radius:11px;border:1.5px solid var(--border);background:var(--s2);font:14px var(--font);color:var(--ink);outline:none"/>
+      <button onclick="memToggleHide()" style="flex-shrink:0;height:38px;padding:0 13px;border-radius:11px;cursor:pointer;
+        border:1.5px solid ${memHide?'#1d3a5f':'var(--border)'};background:${memHide?'var(--asoft)':'var(--surface)'};
+        color:var(--ink2);font:700 12.5px var(--font)">${memHide ? t('👁 본문 보기','👁 Show') : t('🙈 가리고 외우기','🙈 Hide')}</button>
+    </div>
+    ${items.length ? items.map(i => memRowHtml(i, who)).join('')
+      : `<div style="text-align:center;color:var(--ink3);font-size:13px;padding:40px 10px;line-height:1.8">
+          ${memQ ? t('찾는 항목이 없어요','No matching items')
+                 : t('아직 등록된 항목이 없어요.<br>선생님이 [성구암송 → 항목 관리] 에서 넣어주시면 여기에 나와요.',
+                     'No items yet.<br>A teacher can add them under [Memory → Manage].')}</div>`}
+  </div>`;
+}
+
+function memRowHtml(item, who) {
+  const st = memState(item);
+  const c = memChecks[item.id];
+  const staff = canAccessSchool() && memMode === 'class';
+  const line = st === 'confirmed' ? '#15803d' : (st === 'checked' ? '#b8860b' : 'var(--border)');
+  const fill = st === 'confirmed' ? '#e8f5ee' : (st === 'checked' ? '#fdf6e3' : 'var(--surface)');
+  const body = (item.body || '').trim();
+  const ans  = (item.answer || '').trim();
+  const hidden = memHide && st !== 'confirmed';
+  return `<div style="border:1.5px solid ${line};background:${fill};border-radius:12px;padding:11px 13px;margin-bottom:8px">
+    <div style="display:flex;align-items:flex-start;gap:11px">
+      <div style="flex-shrink:0;width:30px;text-align:center;font:800 13px var(--font);color:var(--ink3);padding-top:1px">${item.no}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13.5px;font-weight:700;color:var(--ink);word-break:break-word">${escHtml(item.title || '')}</div>
+        ${body ? `<div style="font-size:12.5px;color:var(--ink2);line-height:1.75;margin-top:3px;white-space:pre-wrap;word-break:break-word">${hidden ? `<span onclick="memPeek(this)" style="cursor:pointer;color:var(--ink3)">${t('··· 눌러서 보기','··· tap to reveal')}</span><span style="display:none">${escHtml(body)}</span>` : escHtml(body)}</div>` : ''}
+        ${ans ? `<div style="font-size:12.5px;color:var(--ink);line-height:1.75;margin-top:5px;padding-left:9px;border-left:3px solid var(--border);white-space:pre-wrap;word-break:break-word">${hidden ? `<span onclick="memPeek(this)" style="cursor:pointer;color:var(--ink3)">${t('··· 답 보기','··· tap for answer')}</span><span style="display:none">${escHtml(ans)}</span>` : escHtml(ans)}</div>` : ''}
+        ${st === 'confirmed' && c && c.confirmed_at ? `<div style="font-size:10.5px;color:#15803d;margin-top:5px">✅ ${t('확인','Confirmed')} ${memWhen(c.confirmed_at)}</div>`
+          : (st === 'checked' ? `<div style="font-size:10.5px;color:#8b6914;margin-top:5px">⏳ ${t('교사 확인 기다리는 중','Waiting for a teacher')}</div>` : '')}
+      </div>
+      <div style="flex-shrink:0;display:flex;flex-direction:column;gap:5px">
+        ${staff
+          ? `<button onclick="memToggleConfirm('${item.id}','${who ? who.id : ''}')"
+               style="height:30px;padding:0 11px;border-radius:9px;cursor:pointer;font:700 11.5px var(--font);white-space:nowrap;
+                      border:1.5px solid ${st==='confirmed'?'#15803d':'var(--border)'};
+                      background:${st==='confirmed'?'#15803d':'var(--surface)'};color:${st==='confirmed'?'#fff':'var(--ink2)'}">
+               ${st==='confirmed' ? t('확인 취소','Unconfirm') : t('✅ 확인','✅ Confirm')}</button>`
+          : `<button onclick="memToggleCheck('${item.id}')"
+               ${st==='confirmed' ? 'disabled title="'+escAttr(t('교사가 확인한 항목이에요. 풀려면 선생님께 말씀하세요.','A teacher confirmed this — ask a teacher to undo.'))+'"' : ''}
+               style="height:30px;padding:0 11px;border-radius:9px;font:700 11.5px var(--font);white-space:nowrap;
+                      cursor:${st==='confirmed'?'not-allowed':'pointer'};opacity:${st==='confirmed'?'.55':'1'};
+                      border:1.5px solid ${st==='none'?'var(--border)':'#1d3a5f'};
+                      background:${st==='none'?'var(--surface)':'#1d3a5f'};color:${st==='none'?'var(--ink2)':'#fff'}">
+               ${st==='none' ? t('외웠어요','I know it') : t('✓ 체크됨','✓ Checked')}</button>`}
+      </div>
+    </div>
+  </div>`;
+}
+
+function memPeek(el) {
+  const next = el.nextElementSibling;
+  if (next) { next.style.display = ''; el.style.display = 'none'; }
+}
+function memWhen(iso) {
+  try { const d = new Date(iso);
+    return APP_LANG === 'en' ? d.toLocaleDateString('en-US',{month:'short',day:'numeric'})
+                             : `${d.getMonth()+1}월 ${d.getDate()}일`; } catch (_) { return ''; }
+}
+
+// ── 교사: 학생 현황 ─────────────────────────────────────────────
+function memClassHtml() {
+  const list = memItems.filter(i => i.kind === memKind);
+  const total = list.length;
+  const ids = new Set(list.map(i => i.id));
+  const by = {};
+  memStudents.forEach(s => { by[s.id] = { ck: 0, cf: 0 }; });
+  memAllChecks.forEach(c => {
+    if (!ids.has(c.item_id) || !by[c.student_id]) return;
+    if (c.checked_at) by[c.student_id].ck++;
+    if (c.confirmed_at) by[c.student_id].cf++;
+  });
+  const waiting = memStudents.filter(s => by[s.id].ck > by[s.id].cf);
+  if (!memStudents.length) return `<div style="font-size:13px;color:var(--ink3);padding:20px 0">${t('등록된 학생이 없어요','No students')}</div>`;
+  return `
+    ${waiting.length ? `<div style="background:#fdf6e3;border:1.5px solid #f0d080;border-radius:12px;padding:11px 14px;margin-bottom:12px;font-size:12.5px;color:#8b6914;line-height:1.7">
+      ⏳ ${t('확인을 기다리는 학생','Waiting for confirmation')} <b>${waiting.length}</b>${t('명','')} — ${escHtml(waiting.slice(0,6).map(s=>s.name).join(', '))}${waiting.length>6?' 외 '+(waiting.length-6):''}
+    </div>` : ''}
+    <div class="adm-card">
+      ${memStudents.map(s => {
+        const v = by[s.id]; const pct = total ? Math.round(v.cf/total*100) : 0;
+        const wpct = total ? Math.round((v.ck-v.cf)/total*100) : 0;
+        return `<div onclick="memPickStudent('${s.id}')" style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);cursor:pointer">
+          <div style="width:30px;height:30px;border-radius:8px;background:${s.color||'#1d3a5f'};color:#fff;display:flex;align-items:center;justify-content:center;font:600 12px var(--font);flex-shrink:0">${escHtml(s.initials||(s.name||'?')[0])}</div>
+          <div style="width:88px;font-size:13px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(s.name)}</div>
+          <div style="flex:1;background:var(--s3);border-radius:99px;height:8px;overflow:hidden;display:flex">
+            <div style="height:100%;width:${pct}%;background:#15803d"></div>
+            <div style="height:100%;width:${wpct}%;background:#f0d080"></div>
+          </div>
+          <div style="width:52px;text-align:right;font-size:12px;color:var(--ink2)">${v.cf}/${total}</div>
+        </div>`;
+      }).join('')}
+      <div style="display:flex;align-items:center;gap:12px;font-size:11px;color:var(--ink3);margin-top:9px">
+        <span style="display:inline-flex;align-items:center;gap:5px"><i style="width:10px;height:10px;border-radius:3px;background:#15803d;display:inline-block"></i>${t('확인 완료','Confirmed')}</span>
+        <span style="display:inline-flex;align-items:center;gap:5px"><i style="width:10px;height:10px;border-radius:3px;background:#f0d080;display:inline-block"></i>${t('확인 대기','Waiting')}</span>
+      </div>
+    </div>`;
+}
+
+// ── 교사: 항목 관리 ─────────────────────────────────────────────
+function memManageHtml() {
+  const list = memList();
+  return `
+    <div class="adm-card" style="margin-bottom:16px">
+      <div style="font-size:13.5px;font-weight:800;color:var(--adeep);margin-bottom:5px">📥 ${t('여러 줄 한꺼번에 넣기','Paste many at once')}</div>
+      <div style="font-size:11.5px;color:var(--ink3);line-height:1.75;margin-bottom:9px">
+        ${t('한 줄에 하나씩. 칸은 <b>|</b> 로 나눕니다.<br><code>번호 | 제목 | 본문 | 답(소교리문답만)</code><br>예: <code>1 | 창세기 1:1 | 태초에 하나님이 천지를 창조하시니라</code>',
+            'One per line, fields split by <b>|</b>.<br><code>no | title | body | answer</code>')}
+      </div>
+      <textarea id="mem-bulk" rows="6" placeholder="1 | 창세기 1:1 | 태초에 하나님이 천지를 창조하시니라"
+        style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;background:var(--s2);
+               font:400 12.5px/1.7 ui-monospace,Menlo,monospace;color:var(--ink);outline:none;resize:vertical"></textarea>
+      <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink2);cursor:pointer;margin:9px 0">
+        <input id="mem-bulk-replace" type="checkbox" style="width:16px;height:16px"/>
+        ${t('지금 있는 ','Replace all existing ')}<b>${memKindName()}</b>${t(' 항목을 모두 지우고 새로 넣기',' items')}
+      </label>
+      <button onclick="memBulkSave()" style="height:38px;padding:0 16px;border-radius:10px;border:none;background:#1d3a5f;color:#fff;font:700 13px var(--font);cursor:pointer">${t('넣기','Add')}</button>
+    </div>
+    <div style="font-size:13.5px;font-weight:800;color:var(--adeep);margin:0 0 9px">${memKindName()} · ${list.length}${t('개','')}</div>
+    <div class="adm-card">
+      ${list.length ? list.map(i => `<div style="display:flex;align-items:flex-start;gap:9px;padding:8px 0;border-bottom:1px solid var(--border)">
+        <div style="width:28px;flex-shrink:0;font:800 12px var(--font);color:var(--ink3);padding-top:2px">${i.no}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:700;color:var(--ink);word-break:break-word">${escHtml(i.title||'')}</div>
+          ${i.body ? `<div style="font-size:11.5px;color:var(--ink3);line-height:1.6;margin-top:2px;word-break:break-word;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${escHtml(i.body)}</div>` : ''}
+        </div>
+        <button onclick="memDeleteItem('${i.id}')" style="flex-shrink:0;width:26px;height:26px;border-radius:7px;border:1.5px solid var(--border);background:var(--surface);color:#ef4444;font-size:14px;cursor:pointer">×</button>
+      </div>`).join('') : `<div style="font-size:13px;color:var(--ink3);padding:10px 0">${t('아직 없어요','None yet')}</div>`}
+    </div>`;
+}
+
+function memParseBulk(raw) {
+  const out = [];
+  String(raw || '').split(/\r?\n/).forEach((lineRaw) => {
+    const line = lineRaw.trim();
+    if (!line) return;
+    const parts = line.split('|').map(x => x.trim());
+    let no, title, body, answer;
+    if (/^\d+$/.test(parts[0])) {
+      // '1 | 창세기 1:1 | 본문'
+      no = parseInt(parts[0], 10);
+      title = parts[1] || ''; body = parts[2] || ''; answer = parts[3] || '';
+    } else {
+      // '제4문 | 하나님은 어떤 분이신가 | 답' — 첫 칸이 제목이다.
+      // 그 안에 숫자가 있으면 번호로 쓴다. 없으면 순서대로.
+      title = parts[0]; body = parts[1] || ''; answer = parts[2] || '';
+      const m = String(parts[0]).match(/\d+/);
+      no = m ? parseInt(m[0], 10) : out.length + 1;
+    }
+    if (!title && !body) return;
+    if (!title) { title = body.slice(0, 24); }
+    out.push({ no, title, body: body || null, answer: answer || null });
+  });
+  return out;
+}
+
+async function memBulkSave() {
+  if (!canAccessSchool()) { showUploadToast(t('권한이 없어요','No permission')); return; }
+  const ta = document.getElementById('mem-bulk');
+  const rows = memParseBulk(ta ? ta.value : '');
+  if (!rows.length) { showUploadToast(t('넣을 줄이 없어요','Nothing to add')); return; }
+  const replace = !!(document.getElementById('mem-bulk-replace') || {}).checked;
+  if (replace && !confirm(t(`지금 있는 ${memKindName()} 항목을 모두 지우고 ${rows.length}개를 새로 넣을까요?`,
+                           `Delete all existing items and add ${rows.length}?`))) return;
+  if (replace) {
+    const { error } = await sb.from('memory_items').delete().eq('kind', memKind);
+    if (error) { showUploadToast(t('지우지 못했어요 — ','Could not clear — ') + (error.message||'')); return; }
+  }
+  const payload = rows.map((r, idx) => ({
+    kind: memKind, no: r.no, title: r.title, body: r.body, answer: r.answer,
+    community_id: CID(), sort: idx,
+  }));
+  const { error } = await sb.from('memory_items').insert(payload);
+  if (error) {
+    showUploadToast(needsReportInstall(error)
+      ? t('이 기능이 아직 설치되지 않았어요 (db/성구암송_DB설치.sql)','Not installed yet')
+      : t('넣지 못했어요 — ','Could not add — ') + (error.message || ''));
+    return;
+  }
+  if (ta) ta.value = '';
+  showUploadToast(t(`${rows.length}개를 넣었어요`, `Added ${rows.length}`));
+  renderMemoryHub();
+}
+
+async function memDeleteItem(id) {
+  if (!confirm(t('이 항목을 지울까요? 학생들의 체크도 같이 사라져요.','Delete this item? Student checks go with it.'))) return;
+  const { data, error } = await sb.from('memory_items').delete().eq('id', id).select();
+  if (error || !data || !data.length) { showUploadToast(t('지우지 못했어요','Could not delete')); return; }
+  memItems = memItems.filter(i => i.id !== id);
+  memRender();
 }
 
 // ════════════════════════════════════════════════════════════════════
