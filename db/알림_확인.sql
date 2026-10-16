@@ -6,15 +6,14 @@
 --
 --  ↓ 보고 싶은 채팅방 이름을 여기 적으세요 (일부만 적어도 됩니다)
 -- =====================================================================
-\set ON_ERROR_STOP off
-
-with target as (
-  select id, name, kind, community_id
-    from public.channels
-   where name ilike '%' || 'IM뉴스룸' || '%'      -- ← 여기를 바꾸세요
-)
+-- ⚠️ 네 조회가 따로따로입니다. 방 이름은 ①②③ 에 각각 한 번씩,
+--    모두 같게 바꿔주세요. (④ 는 공동체 전체라 이름이 없습니다)
 
 -- ① 이 방에 알림이 갈 사람 / 안 갈 사람
+with target as (
+  select id, name, kind, community_id from public.channels
+   where name ilike '%IM뉴스룸%'          -- ← 여기
+)
 select
   c.name                                   as "채팅방",
   count(*)                                 as "방 사람",
@@ -31,6 +30,10 @@ group by c.name
 order by c.name;
 
 -- ② 누가 못 받는지 이름으로 (알림을 한 번도 안 켠 사람)
+with target as (
+  select id, name, kind, community_id from public.channels
+   where name ilike '%IM뉴스룸%'          -- ← 여기
+)
 select
   c.name  as "채팅방",
   m.name  as "알림 안 켠 사람",
@@ -45,6 +48,10 @@ order by c.name, m.name;
 -- ③ ⚠️ 방을 볼 수는 있는데 '방 사람' 줄이 없는 사람
 --    총관리자처럼 모든 방이 보이는 사람은 channel_members 줄이 없을 수
 --    있습니다. 알림은 이 줄을 보고 보내므로, 줄이 없으면 안 갑니다.
+with target as (
+  select id, name, kind, community_id from public.channels
+   where name ilike '%IM뉴스룸%'          -- ← 여기
+)
 select
   c.name as "채팅방",
   m.name as "방 사람 줄이 없어 알림이 안 가는 사람",
