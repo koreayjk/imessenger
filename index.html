@@ -2142,6 +2142,7 @@ let _swReg = null;
 let _pushSub = null;          // 지금 이 기기의 구독
 let _pushSaved = false;       // 그 구독이 '서버 줄에 실제로 적혔는가'
 let _pushMissing = false;     // 표나 함수가 아직 없다
+let _pushTaken = false;       // 이 기기 줄을 다른 계정이 쥐고 있다
 
 function pushSupported() {
   if (nativePush()) return true;          // 아이폰 앱은 애플 길로 간다
@@ -2213,7 +2214,18 @@ async function pushSubscribeOnce() {
     showUploadToast(t('알림을 켤 수 없어요 — ','Could not enable — ') + (e.message || ''));
     return false;
   }
-  const ok = await pushSaveSub();
+  let ok = await pushSaveSub();
+  if (!ok && _pushTaken && _swReg) {
+    // 이 브라우저 주소를 전에 쓰던 계정이 쥐고 있다. 남의 줄은 못 고치니
+    // 주소 자체를 버리고 새로 받는다. 버려진 주소는 다음 발송 때
+    // 404·410 으로 돌아와 서버가 알아서 치운다.
+    try {
+      if (_pushSub) await _pushSub.unsubscribe();
+      _pushSub = await _swReg.pushManager.subscribe(
+        { userVisibleOnly: true, applicationServerKey: b64ToBytes(VAPID_PUBLIC) });
+      ok = await pushSaveSub();
+    } catch (_) {}
+  }
   if (ok) showUploadToast(t('앱을 닫아도 알림이 와요 🔔','You will get alerts even when the app is closed 🔔'));
   try { renderProfilePage(); } catch (_) {}
   return ok;
@@ -2252,6 +2264,10 @@ async function pushSaveSub(quiet) {
   }
   if (error) {
     _pushMissing = needsReportInstall(error);
+    // 이 기기 줄이 아직 '전에 로그인했던 사람' 것이면 RLS 가 막는다.
+    // 한 기기에 줄 하나라, 공용 노트북에서 계정을 바꾸면 반드시 난다.
+    _pushTaken = String(error.code || '') === '42501'
+      || /row-level security|row level security/i.test(String(error.message || ''));
     _pushSaved = false;
     // 앱을 열 때마다 저절로 부르는 길에서는 잔소리를 하지 않는다.
     // 대신 단추가 '켜기' 로 남아, 누르면 그때 까닭을 알려준다.
@@ -2263,6 +2279,7 @@ async function pushSaveSub(quiet) {
     return false;
   }
   _pushMissing = false;
+  _pushTaken = false;
   _pushSaved = true;
   return true;
 }
@@ -2389,6 +2406,12 @@ async function iosPushEnable() {
       return false;
     }
     const saved = await pushSaveSub();
+    if (!saved && _pushTaken) {
+      // 애플 기기 표는 앱을 지웠다 깔기 전에는 안 바뀐다. 웹처럼
+      // 새로 받을 수 없으니, 할 수 있는 길을 일러 준다.
+      showUploadToast(t('이 아이폰은 다른 계정으로 알림이 켜져 있어요. 그 계정에서 끄거나, 앱을 지웠다 다시 깔아주세요.',
+                        'This iPhone has notifications on under another account. Turn it off there, or reinstall the app.'));
+    }
     if (saved) showUploadToast(t('앱을 닫아도 알림이 와요 🔔','You will get alerts even when the app is closed 🔔'));
     try { renderProfilePage(); } catch (_) {}
     return saved;
