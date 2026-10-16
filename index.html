@@ -2426,6 +2426,15 @@ async function pushSelfTest() {
       head.push(`${t('애플키','Apple key')}: ${k['키_바이트'] ? k['키_바이트'] + 'B' : (k['오류'] || '?')} · ${t('서명','sign')} ${k['토큰_서명'] || '?'}`);
       head.push(`${t('번들','bundle')} ${data['번들id']}`);
     }
+    // 몇 대가 붙어 있는지 늘 보여준다. 줄이 '빠진 것' 으로 없음을
+    // 눈치채게 하면 안 된다 — 아이폰이 안 붙은 걸 한참 못 찾는다.
+    const kinds = rows.map((r) => r['길']);
+    const nIos = kinds.filter((k) => k === 'ios').length;
+    const nWeb = kinds.filter((k) => k === 'web').length;
+    head.push(`${t('내 기기','My devices')} ${data['내_기기수'] != null ? data['내_기기수'] : rows.length}` +
+              ` · ${t('아이폰','iPhone')} ${nIos} · ${t('브라우저','browser')} ${nWeb}`);
+    if (!nIos) head.push(t('⚠️ 이 계정에 아이폰이 안 붙어 있어요. 아이폰에서 TCS 를 껐다 켜고, 내 프로필 → 알림 을 보세요. 노트북과 같은 계정인지도 확인하세요.',
+                           'No iPhone is linked to this account. Reopen TCS on the iPhone, and check it is the same account.'));
     if (!rows.length) head.push(t('이 계정에 켜 둔 기기가 없어요','No devices turned on for this account'));
     const body = rows.map((r) => {
       const where = r['어디'] ? `(${r['어디']})` : '';

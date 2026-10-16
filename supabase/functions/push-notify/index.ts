@@ -69,21 +69,28 @@ function pemToDer(pem: string): Uint8Array {
     .replace(/\\n/g, '\n')
     .replace(/-----[^-]*-----/g, '')
     .replace(/[^A-Za-z0-9+/=]/g, '');
-  // 길이가 4의 배수가 아니면 애플 키가 아니라 잘려 들어온 것입니다.
-  // 패딩만 빠진 경우는 채워 줍니다.
-  if (clean.length % 4 === 2) clean += '==';
-  else if (clean.length % 4 === 3) clean += '=';
   if (!clean) throw new Error('APNS_PRIVATE_KEY 가 비어 있습니다');
+  // base64 는 길이가 4의 배수여야 합니다. 패딩(=)만 빠진 경우는 채웁니다.
+  const rest = clean.length % 4;
+  if (rest === 2) clean += '==';
+  else if (rest === 3) clean += '=';
+  // 나머지 1 은 있을 수 없는 길이입니다 — 글자가 빠졌거나 더해진 것이라
+  // 채워도 소용이 없습니다. 어떻게 넣어야 하는지 바로 알려 줍니다.
+  const how = 'openssl 로 키만 뽑아 넣으세요:  supabase secrets set APNS_PRIVATE_KEY=' +
+              '"$(openssl pkcs8 -topk8 -nocrypt -in AuthKey_XXXX.p8 -outform DER | base64 | tr -d \'\\n\')"';
+  // 키 내용은 절대 찍지 않습니다. 모양만 알려 줍니다.
+  const shape = `받은 길이 ${pem.length}, base64 글자만 남기면 ${clean.length - (rest ? 4 - rest : 0)}, ` +
+                `머리말 ${/-----BEGIN/.test(pem) ? '있음' : '없음'}`;
+  if (rest === 1) {
+    throw new Error(
+      `APNS_PRIVATE_KEY 의 길이가 base64 로 있을 수 없는 값입니다 (${shape}). ` +
+      `글자가 빠졌거나 더해졌습니다. 애플 키는 보통 184자입니다. ${how}`,
+    );
+  }
   let raw: string;
   try { raw = atob(clean); }
   catch {
-    // 키 내용은 절대 찍지 않습니다. 모양만 알려 줍니다.
-    throw new Error(
-      `APNS_PRIVATE_KEY 를 읽을 수 없습니다 (받은 길이 ${pem.length}, ` +
-      `base64 글자만 남기면 ${clean.length}, 머리말 ` +
-      `${/-----BEGIN/.test(pem) ? '있음' : '없음'}). ` +
-      `AuthKey_XXXX.p8 안의 내용을 그대로 넣었는지 보세요.`,
-    );
+    throw new Error(`APNS_PRIVATE_KEY 를 읽을 수 없습니다 (${shape}). ${how}`);
   }
   const out = new Uint8Array(raw.length);
   for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
@@ -106,7 +113,7 @@ async function apnsJwt(): Promise<string> {
     } catch (e) {
       throw new Error(
         `APNS_PRIVATE_KEY 가 애플 키 모양이 아닙니다 (${der.length}바이트). ` +
-        `애플 .p8 은 보통 250바이트 안팎입니다. 원인: ${String(e)}`,
+        `애플 .p8 의 알맹이는 138바이트 안팎입니다. ${how} 원인: ${String(e)}`,
       );
     }
   }
