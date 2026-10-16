@@ -62,9 +62,29 @@ function b64urlText(s: string): string {
   return b64url(new TextEncoder().encode(s));
 }
 function pemToDer(pem: string): Uint8Array {
-  // 비밀값으로 넣을 때 줄바꿈이 \n 글자로 들어오는 일이 잦습니다. 풀어 줍니다.
-  const clean = pem.replace(/\\n/g, '\n').replace(/-----[^-]+-----/g, '').replace(/\s+/g, '');
-  const raw = atob(clean);
+  // 비밀값으로 넣는 길이 여러 가지라 별게 다 섞여 들어옵니다 —
+  // 줄바꿈이 \n 글자로, 따옴표가 그대로, 캐리지리턴, 앞뒤 공백.
+  // 머리말을 걷어낸 다음 base64 글자가 아닌 것은 전부 버립니다.
+  let clean = pem
+    .replace(/\\n/g, '\n')
+    .replace(/-----[^-]*-----/g, '')
+    .replace(/[^A-Za-z0-9+/=]/g, '');
+  // 길이가 4의 배수가 아니면 애플 키가 아니라 잘려 들어온 것입니다.
+  // 패딩만 빠진 경우는 채워 줍니다.
+  if (clean.length % 4 === 2) clean += '==';
+  else if (clean.length % 4 === 3) clean += '=';
+  if (!clean) throw new Error('APNS_PRIVATE_KEY 가 비어 있습니다');
+  let raw: string;
+  try { raw = atob(clean); }
+  catch {
+    // 키 내용은 절대 찍지 않습니다. 모양만 알려 줍니다.
+    throw new Error(
+      `APNS_PRIVATE_KEY 를 읽을 수 없습니다 (받은 길이 ${pem.length}, ` +
+      `base64 글자만 남기면 ${clean.length}, 머리말 ` +
+      `${/-----BEGIN/.test(pem) ? '있음' : '없음'}). ` +
+      `AuthKey_XXXX.p8 안의 내용을 그대로 넣었는지 보세요.`,
+    );
+  }
   const out = new Uint8Array(raw.length);
   for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
   return out;
@@ -78,10 +98,17 @@ async function apnsJwt(): Promise<string> {
   // 애플은 1시간 넘은 토큰을 거절하고, 너무 자주 새로 만들어도 막습니다.
   if (_apnsJwt.tok && now - _apnsJwt.at < 2400) return _apnsJwt.tok;
   if (!_apnsKey) {
-    _apnsKey = await crypto.subtle.importKey(
-      'pkcs8', pemToDer(APNS_PRIVATE_KEY),
-      { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign'],
-    );
+    const der = pemToDer(APNS_PRIVATE_KEY);
+    try {
+      _apnsKey = await crypto.subtle.importKey(
+        'pkcs8', der, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign'],
+      );
+    } catch (e) {
+      throw new Error(
+        `APNS_PRIVATE_KEY 가 애플 키 모양이 아닙니다 (${der.length}바이트). ` +
+        `애플 .p8 은 보통 250바이트 안팎입니다. 원인: ${String(e)}`,
+      );
+    }
   }
   const head = b64urlText(JSON.stringify({ alg: 'ES256', kid: APNS_KEY_ID }));
   const body = b64urlText(JSON.stringify({ iss: APNS_TEAM_ID, iat: now }));
