@@ -10917,16 +10917,60 @@ function readingModeToggle() {
   return `<div style="display:inline-flex;gap:2px;background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:3px;margin-bottom:14px">${seg('mine','📖 내 독서','📖 My Reading')}${seg('admin','📊 전체 현황·책 관리','📊 Overview · Manage')}</div>`;
 }
 
+// '예전에 읽음' 은 독후감을 쓴 읽음과 다르게 보여야 한다.
+//  같아 보이면 선생님이 진도를 잘못 읽는다.
+function isPriorRead(log) { return !!(log && log.prior_read); }
+
 function readingBookRow(b, log) {
   const done = !!log;
-  return `<div onclick="openReadingLog('${b.id}')" style="display:flex;align-items:center;gap:12px;padding:11px 13px;border:1.5px solid ${done ? '#2a5298' : 'var(--border)'};background:${done ? '#f0f7ff' : 'white'};border-radius:11px;margin-bottom:7px;cursor:pointer">
-    <div style="width:20px;height:20px;border-radius:50%;background:${done ? '#2a5298' : 'var(--border)'};display:flex;align-items:center;justify-content:center;flex-shrink:0">${done ? '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>' : ''}</div>
+  const prior = isPriorRead(log);
+  const line = prior ? '#7f8c8d' : '#2a5298';
+  const fill = prior ? '#f4f5f6' : '#f0f7ff';
+  return `<div onclick="openReadingLog('${b.id}')" style="display:flex;align-items:center;gap:12px;padding:11px 13px;border:1.5px solid ${done ? line : 'var(--border)'};background:${done ? fill : 'white'};border-radius:11px;margin-bottom:7px;cursor:pointer">
+    <div style="width:20px;height:20px;border-radius:50%;background:${done ? line : 'var(--border)'};display:flex;align-items:center;justify-content:center;flex-shrink:0">${done ? '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>' : ''}</div>
     <div style="flex:1;min-width:0">
       <div style="font-size:13.5px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${b.title}</div>
       ${(b.author || b.publisher) ? `<div style="font-size:11px;color:var(--ink3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${[b.author, b.publisher].filter(Boolean).join(' · ')}</div>` : ''}
     </div>
-    ${done ? `<div style="font-size:10.5px;color:#1d4ed8;text-align:right;flex-shrink:0">${log.read_date || ''}${log.include_in_record ? ' 📋' : ''}</div>` : `<div style="font-size:11px;color:var(--ink3);flex-shrink:0">${t('기록 →','Log →')}</div>`}
+    ${done
+      ? `<div style="font-size:10.5px;color:${prior ? 'var(--ink3)' : '#1d4ed8'};text-align:right;flex-shrink:0">${prior ? t('예전에 읽음','Read earlier') : (log.read_date || '')}${log.include_in_record ? ' 📋' : ''}</div>`
+      : `<button onclick="event.stopPropagation();markPriorRead('${b.id}')"
+           title="${escAttr(t('독후감 없이 읽은 것만 체크해요','Mark as read without a report'))}"
+           style="flex-shrink:0;height:28px;padding:0 10px;border-radius:9px;border:1.5px solid var(--border);
+                  background:var(--surface);color:var(--ink2);font:700 11.5px var(--font);cursor:pointer;white-space:nowrap">
+           ✓ ${t('예전에 읽음','Read earlier')}</button>`}
   </div>`;
+}
+
+// 예전에 읽은 책 — 독후감 없이 체크만 한다.
+//  요청: "이전에 읽었던 걸 기록하려는데 독후감을 써야 해서 어려워요"
+//  입학 전에 읽은 책까지 다시 독후감을 쓰게 하는 건 무리다.
+async function markPriorRead(bookId, dateStr) {
+  const book = readingBooks.find(b => b.id === bookId);
+  const row = {
+    student_id: ME.id, book_id: bookId, community_id: CID(),
+    report: '', prior_read: true,
+    read_date: dateStr || null,
+    include_in_record: false,          // 담을 글이 없다
+    updated_at: new Date().toISOString(), updated_by: ME.id,
+  };
+  let { error } = await sb.from('reading_logs').upsert(row, { onConflict: 'student_id,book_id' });
+  if (error && /prior_read|column|schema/i.test(error.message || '')) {
+    showUploadToast(t('이 기능이 아직 설치되지 않았어요 (db/트리플스쿨_예전읽음_DB설치.sql)','Not installed yet'));
+    return false;
+  }
+  if (error) { showUploadToast(t('체크 실패 😥 ','Failed 😥 ') + (error.message || '')); return false; }
+  showUploadToast(t(`✓ ${book ? book.title : ''} — 읽은 책으로 체크했어요`, '✓ Marked as read'));
+  await reloadMyReadingLogs();
+  if (document.getElementById('reading-list')) renderReadingList(); else renderReadingStudent();
+  return true;
+}
+
+async function reloadMyReadingLogs() {
+  try {
+    const { data } = await sb.from('reading_logs').select('*').eq('student_id', ME.id);
+    readingMyLogs = data || [];
+  } catch (_) {}
 }
 
 function setReadingCat(c) { readingStudentFilter.cat = c; renderReadingStudent(); }
@@ -11087,13 +11131,24 @@ function renderReadingLog(bookId) {
               <div><div style="font-size:13px;font-weight:800;color:#15803d">${t('제출 완료','Submitted')}</div>
               <div style="font-size:11.5px;color:#2a7a5a">${t('최종 독후감이 제출되었어요','Your final book report has been submitted')} · ${wc0}${t('단어',' words')}</div></div>
             </div>`
-          : (log
-            ? `<div style="display:flex;align-items:center;gap:8px;background:#fdf6e3;border:1.5px solid #f0d080;border-radius:11px;padding:11px 14px;margin-bottom:12px">
-              <span style="font-size:18px">⏳</span>
-              <div><div style="font-size:13px;font-weight:800;color:#8b6914">${t('작성 중 (미제출)','In progress (not submitted)')}</div>
-              <div style="font-size:11.5px;color:#8b6914">${t('제출하려면 최소','At least')} ${MIN_REPORT_WORDS}${t('단어가 필요해요',' words required')} · ${t('현재','now')} ${wc0}${t('단어',' words')}</div></div>
+          : (isPriorRead(log)
+            // 예전에 읽은 체크를 '작성 중(미제출)' 이라고 하면 안 된다.
+            // 쓰다 만 것이 아니라, 안 써도 되는 것이다.
+            ? `<div style="display:flex;align-items:flex-start;gap:8px;background:var(--s2);border:1.5px solid var(--border);border-radius:11px;padding:11px 14px;margin-bottom:12px">
+              <span style="font-size:18px;line-height:1.2">✓</span>
+              <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:800;color:var(--ink2)">${t('예전에 읽은 책으로 체크했어요','Marked as read earlier')}</div>
+              <div style="font-size:11.5px;color:var(--ink3);line-height:1.6">${t('독후감은 안 써도 됩니다. 쓰고 싶으면 아래에 적어 제출하면 정식 독후감이 돼요.','No report needed. If you want to write one, submit below and it becomes a full report.')}</div></div>
             </div>`
-            : '')}
+            : (log
+              ? `<div style="display:flex;align-items:center;gap:8px;background:#fdf6e3;border:1.5px solid #f0d080;border-radius:11px;padding:11px 14px;margin-bottom:12px">
+                <span style="font-size:18px">⏳</span>
+                <div><div style="font-size:13px;font-weight:800;color:#8b6914">${t('작성 중 (미제출)','In progress (not submitted)')}</div>
+                <div style="font-size:11.5px;color:#8b6914">${t('제출하려면 최소','At least')} ${MIN_REPORT_WORDS}${t('단어가 필요해요',' words required')} · ${t('현재','now')} ${wc0}${t('단어',' words')}</div></div>
+              </div>`
+              : `<div style="display:flex;align-items:center;gap:8px;background:var(--s2);border:1px solid var(--border);border-radius:11px;padding:10px 12px;margin-bottom:12px">
+                <div style="flex:1;min-width:0;font-size:12px;color:var(--ink3);line-height:1.6">${t('예전에 읽은 책인가요? 독후감 없이 체크만 할 수 있어요.','Already read this before? You can just check it off.')}</div>
+                <button onclick="markPriorRead('${bookId}')" style="flex-shrink:0;height:30px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);font:700 12px var(--font);cursor:pointer;white-space:nowrap">✓ ${t('예전에 읽음','Read earlier')}</button>
+              </div>`))}
         <div style="font-size:11px;color:var(--ink3);margin-bottom:12px">${t(`쌓은 메모를 바탕으로 이 책의 소감을 정리해 제출하세요. 최소 ${MIN_REPORT_WORDS}단어 이상이어야 제출돼요. (PDF엔 이 마무리만 담겨요)`,`Based on your notes, write and submit your thoughts on this book. At least ${MIN_REPORT_WORDS} words are required to submit. (Only this summary goes into the PDF)`)}</div>
         <label style="font-size:12px;font-weight:600;color:var(--ink3);display:block;margin-bottom:6px">${t('완독한 날짜','Date finished')}</label>
         <input id="rd-date" type="date" value="${log?.read_date || today}" style="${inputCss};margin-bottom:14px"/>
@@ -11104,6 +11159,7 @@ function renderReadingLog(bookId) {
         </label>
         <button onclick="saveReadingLog('${bookId}')" style="width:100%;height:42px;border-radius:11px;border:none;background:#1d3a5f;color:white;font:700 14px var(--font);cursor:pointer;margin-bottom:${log ? '10px' : '0'}">${submitted ? t('💾 다시 제출','💾 Re-submit') : t('📤 제출하기','📤 Submit')}</button>
         ${log ? `<button onclick="deleteReadingLog('${bookId}')" style="width:100%;height:38px;border-radius:10px;border:1.5px solid var(--border);background:white;color:#ef4444;font:600 13px var(--font);cursor:pointer">${t('읽음 취소','Undo Read')}</button>` : ''}
+        ${isPriorRead(log) ? `<div style="font-size:11px;color:var(--ink3);margin-top:7px;line-height:1.6">${t('※ 예전에 읽은 체크는 생활기록부(PDF)에 들어가지 않아요 — 담을 글이 없어서예요.','※ A read-earlier check is not included in the student record (PDF) — there is no text to include.')}</div>` : ''}
       </div>
       ${readingMyComments.length ? `<div style="border-top:2px solid var(--border);padding-top:16px;margin-top:16px">
         <div style="font-size:12.5px;font-weight:800;color:var(--ink);margin-bottom:10px">💬 ${t('선생님 피드백','Teacher Feedback')} <span style="color:var(--ink3);font-weight:600">(${readingMyComments.length})</span></div>
@@ -11163,11 +11219,16 @@ async function saveReadingLog(bookId) {
     return;
   }
   const include = document.getElementById('rd-include').checked;
-  const { error } = await sb.from('reading_logs').upsert({
+  const row = {
     student_id: ME.id, book_id: bookId, community_id: CID(),
     report, read_date, include_in_record: include,
     updated_at: new Date().toISOString(), updated_by: ME.id,
-  }, { onConflict: 'student_id,book_id' });
+  };
+  // 예전에 체크만 해둔 책에 독후감을 쓰면, 이제 진짜 독후감이다.
+  let { error } = await sb.from('reading_logs').upsert({ ...row, prior_read: false }, { onConflict: 'student_id,book_id' });
+  if (error && /prior_read/.test(error.message || '')) {
+    ({ error } = await sb.from('reading_logs').upsert(row, { onConflict: 'student_id,book_id' }));
+  }
   if (error) { showUploadToast(t('제출 실패 😥 ','Submit failed 😥 ') + error.message); return; }
   showUploadToast(t('📤 제출됐어요!','📤 Submitted!'));
   try { const { data: logs } = await sb.from('reading_logs').select('*').eq('student_id', ME.id); readingMyLogs = logs || []; } catch(_) {}
@@ -11198,8 +11259,16 @@ async function renderReadingAdmin() {
   logs = logs.filter(l => langIds.has(l.book_id));      // 지금 보고 있는 언어의 책만 센다
   const total = langBooks.length;
   const byStudent = {}; studs.forEach(s => byStudent[s.id] = 0);
+  // 예전에 읽은 체크는 따로 센다. 독후감 쓴 것과 섞어 놓으면
+  // 진도를 잘못 읽는다.
+  const byStudentPrior = {}; studs.forEach(s => byStudentPrior[s.id] = 0);
   const byBook = {}; langBooks.forEach(b => byBook[b.id] = 0);
-  logs.forEach(l => { if (byStudent[l.student_id] !== undefined) byStudent[l.student_id]++; if (byBook[l.book_id] !== undefined) byBook[l.book_id]++; });
+  logs.forEach(l => {
+    if (byStudent[l.student_id] !== undefined) byStudent[l.student_id]++;
+    if (l.prior_read && byStudentPrior[l.student_id] !== undefined) byStudentPrior[l.student_id]++;
+    if (byBook[l.book_id] !== undefined) byBook[l.book_id]++;
+  });
+  const priorTotal = logs.filter(l => l.prior_read).length;
   const avg = studs.length ? (logs.length / studs.length) : 0;
 
   const canManage = canAccessSchool();   // 간사 포함 전 교직원이 책 관리 가능
@@ -11212,14 +11281,24 @@ async function renderReadingAdmin() {
     </div>`;
 
   const studentRows = studs.length ? studs.map(s => {
-    const c = byStudent[s.id] || 0; const pct = total ? Math.round(c / total * 100) : 0;
+    const c = byStudent[s.id] || 0; const pr = byStudentPrior[s.id] || 0;
+    const pct = total ? Math.round(c / total * 100) : 0;
+    const prPct = total ? Math.round(pr / total * 100) : 0;
     return `<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)">
       <div style="width:30px;height:30px;border-radius:8px;background:${s.color || '#1d3a5f'};color:white;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex-shrink:0">${s.initials || s.name[0]}</div>
       <div style="width:90px;font-size:13px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.name}</div>
-      <div style="flex:1;background:var(--s3);border-radius:99px;height:8px;overflow:hidden"><div style="height:100%;width:${pct}%;background:#2a5298;border-radius:99px"></div></div>
-      <div style="width:54px;text-align:right;font-size:12px;color:var(--ink2)">${c}/${total}</div>
+      <div style="flex:1;background:var(--s3);border-radius:99px;height:8px;overflow:hidden;display:flex">
+        <div style="height:100%;width:${Math.max(0, pct - prPct)}%;background:#2a5298"></div>
+        <div style="height:100%;width:${prPct}%;background:#b9c2cb"></div>
+      </div>
+      <div style="width:66px;text-align:right;font-size:12px;color:var(--ink2)">${c}/${total}${pr ? `<span style="color:var(--ink3);font-size:10.5px"> (${t('예전','prior')} ${pr})</span>` : ''}</div>
     </div>`;
   }).join('') : `<div style="font-size:13px;color:var(--ink3);padding:12px 0">${t('등록된 학생이 없어요','No students registered')}</div>`;
+  const priorLegend = priorTotal
+    ? `<div style="display:flex;align-items:center;gap:12px;font-size:11px;color:var(--ink3);margin-top:8px">
+         <span style="display:inline-flex;align-items:center;gap:5px"><i style="width:10px;height:10px;border-radius:3px;background:#2a5298;display:inline-block"></i>${t('독후감 쓴 것','With a report')}</span>
+         <span style="display:inline-flex;align-items:center;gap:5px"><i style="width:10px;height:10px;border-radius:3px;background:#b9c2cb;display:inline-block"></i>${t('예전에 읽음 체크','Checked as read earlier')} ${priorTotal}</span>
+       </div>` : '';
 
   const popular = [...langBooks].sort((a, b) => (byBook[b.id] || 0) - (byBook[a.id] || 0)).slice(0, 10);
   const popularRows = popular.length ? popular.map(b => `
@@ -11267,7 +11346,7 @@ async function renderReadingAdmin() {
     ${summary}
     ${manageHtml}
     <div style="font-size:14px;font-weight:700;color:var(--adeep);margin:0 0 8px">👥 ${t('학생별 진도','Progress by Student')}</div>
-    <div class="adm-card" style="margin-bottom:20px">${studentRows}</div>
+    <div class="adm-card" style="margin-bottom:20px">${studentRows}${priorLegend}</div>
     <div style="font-size:14px;font-weight:700;color:var(--adeep);margin:0 0 8px">🔥 ${t('많이 읽은 책 TOP 10','Most Read Books TOP 10')}</div>
     <div class="adm-card" style="margin-bottom:4px">${popularRows}</div>
   </div>`;
