@@ -2124,6 +2124,93 @@ function notiSyncBell() {
 }
 
 // ══════════════════════════════════════════════════════════════════
+//  🔔 처음 켤 때 — 묻지 않아도 되는 건 묻지 않는다
+//
+//  요청: "어플 받으면 알림을 스스로 켜야 하는 게 아니라 먼저 켜 있는
+//   값으로 시작하게 할 수 있어?"
+//
+//  허락 자체는 미리 켤 수 없다. 애플도 브라우저도 본인에게 직접 묻게
+//  돼 있다. 대신 나머지는 다 없앴다 —
+//   · 이미 허락돼 있으면 묻지도, 단추를 누르게 하지도 않고 조용히 켠다.
+//   · 아직 안 물었으면 애플 창을 바로 띄우지 않고 우리 말로 먼저 여쭌다.
+//     아이폰은 한 번 '허용 안 함' 을 누르면 앱이 다시 묻지 못한다.
+//     그 한 번을 아무 때나 써버리면 그 사람은 영영 알림을 못 받는다.
+// ══════════════════════════════════════════════════════════════════
+
+const NOTI_ASK_KEY = 'tcs_noti_ask';
+function notiAskState() {
+  try { return JSON.parse(localStorage.getItem(NOTI_ASK_KEY) || '{}') || {}; }
+  catch (_) { return {}; }
+}
+function notiAskSave(patch) {
+  try { localStorage.setItem(NOTI_ASK_KEY, JSON.stringify(Object.assign(notiAskState(), patch))); }
+  catch (_) {}
+}
+
+async function notiAutoStart() {
+  if (!ME || !notiSupported()) return;
+  const perm = notiPerm();
+  if (perm === 'granted') {
+    // 허락은 이미 받았다. 단추를 또 누르게 할 이유가 없다.
+    if (notiCfg().on && !pushOn()) { try { await pushSubscribe({ quiet: true }); } catch (_) {} }
+    return;
+  }
+  if (perm !== 'default') return;                 // 거절했다 — 다시 못 묻는다
+  const st = notiAskState();
+  if ((st.n || 0) >= 3) return;                   // 세 번까지만 여쭌다
+  if (st.at && Date.now() - st.at < 7 * 864e5) return;   // 한 번 미루면 일주일은 쉰다
+  // 앱이 뜨자마자 들이밀지 않는다. 화면이 자리를 잡고 나서.
+  setTimeout(() => { try { notiShowInvite(); } catch (_) {} }, 2500);
+}
+
+function notiShowInvite() {
+  if (!ME || document.getElementById('noti-invite')) return;
+  if (notiPerm() !== 'default') return;
+  const d = document.createElement('div');
+  d.id = 'noti-invite';
+  // 휴대폰에서는 아래 메뉴막대를 덮지 않게 그 위로 올린다.
+  //  덮으면 카드를 치우려다 엉뚱한 탭을 누르게 된다.
+  let lift = 12;
+  try {
+    const nav = document.getElementById('mobile-nav');
+    if (nav && getComputedStyle(nav).display !== 'none') lift += nav.offsetHeight + 4;
+  } catch (_) {}
+  d.style.cssText = `position:fixed;left:12px;right:12px;bottom:calc(${lift}px + env(safe-area-inset-bottom));`
+    + 'z-index:9000;max-width:460px;margin:0 auto;background:var(--surface);border:1.5px solid var(--border);'
+    + 'border-radius:16px;box-shadow:0 10px 32px rgba(29,58,95,.18);padding:15px 16px 13px';
+  d.innerHTML = `
+    <div style="display:flex;gap:11px;align-items:flex-start">
+      <div style="font-size:22px;line-height:1.1;flex-shrink:0">🔔</div>
+      <div style="flex:1;min-width:0">
+        <div style="font:700 14px var(--font);color:var(--adeep);margin-bottom:4px">
+          ${t('새 메시지를 알려드릴까요?','Shall we alert you to new messages?')}
+        </div>
+        <div style="font:500 12.5px/1.65 var(--font);color:var(--ink3)">
+          ${t('공지와 답장을 놓치지 않습니다. 방마다 끄거나 나중에 바꿀 수 있어요.',
+              'So you never miss a notice or a reply. You can mute any room or change this later.')}
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:13px">
+      <button onclick="notiInviteClose(false)" style="flex:1;height:38px;border-radius:11px;
+             border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);
+             font:600 13px var(--font);cursor:pointer">${t('나중에','Later')}</button>
+      <button onclick="notiInviteClose(true)" style="flex:1.4;height:38px;border-radius:11px;border:none;
+             background:#1d3a5f;color:#fff;font:700 13px var(--font);cursor:pointer">${t('알림 켜기','Turn on')}</button>
+    </div>`;
+  document.body.appendChild(d);
+}
+
+function notiInviteClose(yes) {
+  const el = document.getElementById('noti-invite');
+  if (el) el.remove();
+  const st = notiAskState();
+  notiAskSave({ at: Date.now(), n: (st.n || 0) + 1 });
+  // '좋다' 고 하신 분에게만 애플·브라우저 창을 띄운다
+  if (yes) { try { pushSubscribe(); } catch (_) {} }
+}
+
+// ══════════════════════════════════════════════════════════════════
 //  🔔 2단계 — 앱을 닫아도 오는 알림 (웹푸시)
 //
 //  1단계는 앱이 켜져 있어야만 알렸다. 휴대폰에서 앱을 닫아 두면
@@ -2189,21 +2276,26 @@ function pushOn() { return _pushSaved; }
 //  겹쳐 부르면 한 사람 앞으로 줄이 여러 개 쌓이고 알림이 여러 번 온다.
 //  단추를 빨리 두 번 누르는 일은 휴대폰에서 아주 흔하다.
 let _pushBusy = null;
-async function pushSubscribe() {
+async function pushSubscribe(opt) {
   if (_pushBusy) return _pushBusy;          // 이미 켜는 중 — 그 결과를 같이 쓴다
   _pushBusy = (async () => {
-    try { return await pushSubscribeOnce(); }
+    try { return await pushSubscribeOnce(opt || {}); }
     finally { _pushBusy = null; }
   })();
   return _pushBusy;
 }
 
-async function pushSubscribeOnce() {
-  if (nativePush()) return iosPushEnable();
-  if (!pushSupported()) { showUploadToast(t('이 기기에서는 앱을 닫은 뒤의 알림이 안 돼요','Background notifications are not supported here')); return false; }
-  if (notiPerm() !== 'granted') { const okd = await notiAsk(); if (!okd) return false; }
+async function pushSubscribeOnce(opt) {
+  opt = opt || {};
+  const say = (ko, en) => { if (!opt.quiet) showUploadToast(t(ko, en)); };
+  if (nativePush()) return iosPushEnable(opt);
+  if (!pushSupported()) { say('이 기기에서는 앱을 닫은 뒤의 알림이 안 돼요','Background notifications are not supported here'); return false; }
+  if (notiPerm() !== 'granted') {
+    if (opt.quiet) return false;            // 조용히 켜는 길에서는 묻지 않는다
+    const okd = await notiAsk(); if (!okd) return false;
+  }
   if (!_swReg) await pushInit();
-  if (!_swReg) { showUploadToast(t('알림을 켤 수 없어요','Could not enable')); return false; }
+  if (!_swReg) { say('알림을 켤 수 없어요','Could not enable'); return false; }
   try {
     // 서비스워커가 아직 깨어나지 않았으면 getSubscription() 이 비어 있다고
     // 답할 수 있다. 그 말을 믿고 subscribe() 하면 '이미 있는데 또' 만든다.
@@ -2211,10 +2303,10 @@ async function pushSubscribeOnce() {
     _pushSub = await _swReg.pushManager.getSubscription()
       || await _swReg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(VAPID_PUBLIC) });
   } catch (e) {
-    showUploadToast(t('알림을 켤 수 없어요 — ','Could not enable — ') + (e.message || ''));
+    if (!opt.quiet) showUploadToast(t('알림을 켤 수 없어요 — ','Could not enable — ') + (e.message || ''));
     return false;
   }
-  let ok = await pushSaveSub();
+  let ok = await pushSaveSub(opt.quiet);
   if (!ok && _pushTaken && _swReg) {
     // 이 브라우저 주소를 전에 쓰던 계정이 쥐고 있다. 남의 줄은 못 고치니
     // 주소 자체를 버리고 새로 받는다. 버려진 주소는 다음 발송 때
@@ -2223,10 +2315,10 @@ async function pushSubscribeOnce() {
       if (_pushSub) await _pushSub.unsubscribe();
       _pushSub = await _swReg.pushManager.subscribe(
         { userVisibleOnly: true, applicationServerKey: b64ToBytes(VAPID_PUBLIC) });
-      ok = await pushSaveSub();
+      ok = await pushSaveSub(opt.quiet);
     } catch (_) {}
   }
-  if (ok) showUploadToast(t('앱을 닫아도 알림이 와요 🔔','You will get alerts even when the app is closed 🔔'));
+  if (ok) say('앱을 닫아도 알림이 와요 🔔','You will get alerts even when the app is closed 🔔');
   try { renderProfilePage(); } catch (_) {}
   return ok;
 }
@@ -2387,12 +2479,14 @@ async function iosPushAsk() {
 }
 
 let _iosEnabling = false;
-async function iosPushEnable() {
+async function iosPushEnable(opt) {
+  opt = opt || {};
   const P = nativePush();
   if (!P) return false;
   _iosEnabling = true;
   try {
     if (_iosPerm !== 'granted') {
+      if (opt.quiet) return false;        // 조용히 켜는 길에서는 묻지 않는다
       const okd = await iosPushAsk();     // 여기서 묻고 register 까지 한다
       if (!okd) return false;
     } else {
@@ -2401,18 +2495,18 @@ async function iosPushEnable() {
     // 기기 표는 'registration' 으로 돌아온다. 바로 오지 않으므로 기다린다.
     for (let i = 0; i < 20 && !_iosToken; i++) await new Promise(r => setTimeout(r, 150));
     if (!_iosToken) {
-      showUploadToast(t('아이폰에서 알림 주소를 받지 못했어요. 잠시 뒤 다시 해주세요.',
-                        'iOS did not return a push token. Please try again shortly.'));
+      if (!opt.quiet) showUploadToast(t('아이폰에서 알림 주소를 받지 못했어요. 잠시 뒤 다시 해주세요.',
+                                        'iOS did not return a push token. Please try again shortly.'));
       return false;
     }
-    const saved = await pushSaveSub();
-    if (!saved && _pushTaken) {
+    const saved = await pushSaveSub(opt.quiet);
+    if (!saved && _pushTaken && !opt.quiet) {
       // 애플 기기 표는 앱을 지웠다 깔기 전에는 안 바뀐다. 웹처럼
       // 새로 받을 수 없으니, 할 수 있는 길을 일러 준다.
       showUploadToast(t('이 아이폰은 다른 계정으로 알림이 켜져 있어요. 그 계정에서 끄거나, 앱을 지웠다 다시 깔아주세요.',
                         'This iPhone has notifications on under another account. Turn it off there, or reinstall the app.'));
     }
-    if (saved) showUploadToast(t('앱을 닫아도 알림이 와요 🔔','You will get alerts even when the app is closed 🔔'));
+    if (saved && !opt.quiet) showUploadToast(t('앱을 닫아도 알림이 와요 🔔','You will get alerts even when the app is closed 🔔'));
     try { renderProfilePage(); } catch (_) {}
     return saved;
   } finally { _iosEnabling = false; }
@@ -2451,9 +2545,13 @@ async function pushSelfTest() {
     }
     // 몇 대가 붙어 있는지 늘 보여준다. 줄이 '빠진 것' 으로 없음을
     // 눈치채게 하면 안 된다 — 아이폰이 안 붙은 걸 한참 못 찾는다.
+    //  수는 서버가 센 것을 쓴다. 보낸 결과로 세면 한 아이폰에 두 번
+    //  넣어 본 것(production·sandbox)을 두 대로 잘못 센다.
     const kinds = rows.map((r) => r['길']);
-    const nIos = kinds.filter((k) => k === 'ios').length;
-    const nWeb = kinds.filter((k) => k === 'web').length;
+    const nIos = data['내_아이폰'] != null ? data['내_아이폰']
+               : new Set(kinds.filter((k) => k === 'ios')).size;
+    const nWeb = data['내_브라우저'] != null ? data['내_브라우저']
+               : kinds.filter((k) => k !== 'ios').length;
     head.push(`${t('내 기기','My devices')} ${data['내_기기수'] != null ? data['내_기기수'] : rows.length}` +
               ` · ${t('아이폰','iPhone')} ${nIos} · ${t('브라우저','browser')} ${nWeb}`);
     if (!nIos) head.push(t('⚠️ 이 계정에 아이폰이 안 붙어 있어요. 아이폰에서 TCS 를 껐다 켜고, 내 프로필 → 알림 을 보세요. 노트북과 같은 계정인지도 확인하세요.',
@@ -3465,6 +3563,7 @@ async function init() {
   renderPanel();
   renderMembers();
   restoreLastState();          // 화면부터 띄운다
+  try { notiAutoStart(); } catch (_) {}   // 허락돼 있으면 조용히, 아니면 여쭤본다
 
   // 1:1 목록 정렬과 안읽음 배지는 화면이 뜬 뒤에 채운다.
   //  둘 다 messages 를 훑는 무거운 질문인데(한쪽은 800줄), 화면을 그리는

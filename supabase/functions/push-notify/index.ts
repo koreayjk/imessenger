@@ -240,6 +240,10 @@ Deno.serve(async (req) => {
     const { data: mine } = await admin.from('push_subscriptions')
       .select('*').eq('member_id', user.id);
     rep.내_기기수 = (mine ?? []).length;
+    // 기기 수는 여기서 센다. 보낸 결과로 세면 한 기기에 두 번
+    // 넣어 본 것(production·sandbox)을 두 대로 잘못 센다.
+    rep.내_아이폰 = (mine ?? []).filter((x) => x.kind === 'ios').length;
+    rep.내_브라우저 = (mine ?? []).filter((x) => x.kind !== 'ios').length;
     const out: unknown[] = [];
     for (const s of mine ?? []) {
       if (s.kind === 'ios') {
