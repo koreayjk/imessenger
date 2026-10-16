@@ -5146,24 +5146,229 @@ function reactionChipsHtml(msgId, reactionData) {
   }).join('');
 }
 
+// ══════════════════════════════════════════════════════════════════
+//  😀 이모지창 — 반응을 마음껏 고른다
+//
+//  요청: "이모지 반응이 한정적이라 더 다양하게 표현하고 싶어요!!
+//   이모지창을 띄울 수는 없을까요?"
+//
+//  빠른 8개는 그대로 둔다. 거의 그 8개로 끝나는데 매번 창을 열게
+//  하면 더 번거롭다. 옆에 ➕ 를 두고, 누르면 전부 펼친다.
+//  글로도 찾을 수 있게 했다 — 393개를 눈으로 훑는 건 찾는 게 아니다.
+// ══════════════════════════════════════════════════════════════════
+const EMOJI_GROUPS = [
+  { key:'face', icon:'😊', ko:'표정', en:'Smileys', list:[['😀','웃음 미소 smile grin'],['😃','웃음 smile happy'],['😄','웃음 smile joy'],['😁','활짝 beam grin'],['😆','깔깔 laugh'],['😅','땀 식은땀 sweat laugh'],['🤣','빵터짐 rofl'],['😂','눈물 웃음 joy tears'],['🙂','살짝 미소 slight smile'],['🙃','거꾸로 upside down'],['😉','윙크 wink'],['😊','흐뭇 blush'],['😇','천사 angel halo'],['🥰','사랑 하트 love hearts'],['😍','반함 heart eyes'],['🤩','별 star struck'],['😘','뽀뽀 kiss'],['😗','키스 kiss'],['😚','키스 kiss'],['😙','키스 kiss'],['🥲','울컥 미소 tear smile'],['😋','맛있다 yum'],['😛','메롱 tongue'],['😜','장난 wink tongue'],['🤪','익살 zany'],['😝','메롱 tongue'],['🤑','돈 money'],['🤗','안아줌 hug'],['🤭','앗 oops hand mouth'],['🤫','쉿 shush quiet'],['🤔','생각 thinking'],['🤐','입막음 zipper'],['🤨','의심 raised brow'],['😐','무표정 neutral'],['😑','무덤덤 expressionless'],['😶','말없음 no mouth'],['😏','흥 smirk'],['😒','시큰둥 unamused'],['🙄','눈굴림 eye roll'],['😬','어색 grimace'],['😮‍💨','휴 exhale relief'],['🤥','거짓말 lying'],['😌','평온 relieved'],['😔','풀죽음 pensive'],['😪','졸림 sleepy'],['🤤','침 drool'],['😴','잠 sleep'],['😷','마스크 mask'],['🤒','열 아픔 sick fever'],['🤕','다침 injured'],['🤢','메스꺼움 nauseated'],['🤮','토 vomit'],['🥵','더움 hot'],['🥶','추움 cold'],['😵','어지러움 dizzy'],['🤯','머리폭발 mind blown'],['🤠','카우보이 cowboy'],['🥳','축하 파티 party'],['🥸','변장 disguise'],['😎','선글라스 cool'],['🤓','공부 nerd'],['🧐','살펴봄 monocle'],['😕','갸우뚱 confused'],['😟','걱정 worried'],['🙁','시무룩 frown'],['😮','놀람 open mouth'],['😯','헉 hushed'],['😲','깜짝 astonished'],['😳','당황 flushed'],['🥺','간청 pleading'],['😦','헉 frowning'],['😨','무서움 fearful'],['😰','식은땀 anxious'],['😥','속상 sad relieved'],['😢','눈물 cry'],['😭','펑펑 sob'],['😱','비명 scream'],['😖','괴로움 confounded'],['😣','끙 persevere'],['😞','실망 disappointed'],['😓','힘듦 downcast'],['😩','지침 weary'],['😫','지침 tired'],['🥱','하품 yawn'],['😤','씩씩 triumph huff'],['😡','화남 pouting angry'],['😠','화 angry'],['🤬','욕 cursing'],['😈','장난 악마 devil'],['💀','해골 skull'],['🤡','광대 clown'],['👻','유령 ghost'],['👽','외계인 alien'],['🤖','로봇 robot'],['💩','똥 poop']] },
+  { key:'hand', icon:'👍', ko:'손·사람', en:'People', list:[['👍','좋아요 최고 thumbs up good'],['👎','별로 thumbs down'],['👏','박수 clap'],['🙌','만세 raise hands'],['👐','손벌림 open hands'],['🤲','기도손 palms'],['🤝','악수 handshake'],['🙏','기도 감사 pray thanks'],['✌️','브이 victory peace'],['🤞','행운 fingers crossed'],['🤟','사랑해 love you'],['🤘','락 rock'],['👌','오케이 ok'],['🤌','손가락 pinch'],['🤏','조금 pinch small'],['👈','왼쪽 left'],['👉','오른쪽 right'],['👆','위 up'],['👇','아래 down'],['☝️','하나 point up'],['✋','손 hand stop'],['🤚','손등 back hand'],['🖐️','손가락 hand'],['🖖','벌칸 vulcan'],['👋','안녕 wave hello'],['🤙','전화해 call me'],['💪','힘 근육 muscle strong'],['🦾','의수 mechanical'],['✍️','쓰기 writing'],['👀','눈 봄 eyes look'],['👁️','눈 eye'],['🧠','뇌 brain'],['👶','아기 baby'],['🧒','아이 child'],['👦','남자아이 boy'],['👧','여자아이 girl'],['🧑','사람 person'],['👨','남자 man'],['👩','여자 woman'],['🧓','어르신 older'],['👨‍🏫','남교사 teacher'],['👩‍🏫','여교사 teacher'],['👨‍🎓','남학생 student'],['👩‍🎓','여학생 student'],['👨‍👩‍👧‍👦','가족 family'],['🧑‍🤝‍🧑','친구 friends'],['🙋','손들기 raise hand'],['🙆','동그라미 ok gesture'],['🙅','엑스 no gesture'],['💁','안내 info desk'],['🤷','몰라 shrug'],['🤦','이런 facepalm'],['🏃','달리기 run'],['🚶','걷기 walk'],['🧎','무릎 kneel'],['💃','춤 dance'],['🕺','춤 dance']] },
+  { key:'heart', icon:'❤️', ko:'마음', en:'Hearts', list:[['❤️','사랑 하트 red heart love'],['🧡','주황하트 orange heart'],['💛','노란하트 yellow heart'],['💚','초록하트 green heart'],['💙','파란하트 blue heart'],['💜','보라하트 purple heart'],['🖤','검은하트 black heart'],['🤍','흰하트 white heart'],['🤎','갈색하트 brown heart'],['💔','상심 broken heart'],['❣️','하트 heart exclamation'],['💕','하트둘 two hearts'],['💞','하트 revolving hearts'],['💓','두근 beating heart'],['💗','커지는 growing heart'],['💖','반짝 sparkling heart'],['💘','화살 cupid'],['💝','선물하트 heart gift'],['💟','하트장식 heart decoration'],['☮️','평화 peace'],['✝️','십자가 cross'],['🙏','기도 pray'],['🕊️','비둘기 dove'],['😇','천사 angel'],['💒','교회 church wedding'],['⛪','교회 church'],['📖','성경 bible book'],['🕯️','촛불 candle'],['👑','왕관 crown'],['🎁','선물 gift']] },
+  { key:'nature', icon:'🌸', ko:'자연·동물', en:'Nature', list:[['🐶','강아지 dog'],['🐱','고양이 cat'],['🐭','쥐 mouse'],['🐹','햄스터 hamster'],['🐰','토끼 rabbit'],['🦊','여우 fox'],['🐻','곰 bear'],['🐼','판다 panda'],['🐨','코알라 koala'],['🐯','호랑이 tiger'],['🦁','사자 lion'],['🐮','소 cow'],['🐷','돼지 pig'],['🐸','개구리 frog'],['🐵','원숭이 monkey'],['🐔','닭 chicken'],['🐧','펭귄 penguin'],['🐦','새 bird'],['🦆','오리 duck'],['🦉','부엉이 owl'],['🐝','벌 bee'],['🦋','나비 butterfly'],['🐢','거북 turtle'],['🐳','고래 whale'],['🐬','돌고래 dolphin'],['🐟','물고기 fish'],['🦄','유니콘 unicorn'],['🐘','코끼리 elephant'],['🌸','벚꽃 blossom'],['🌼','꽃 flower'],['🌻','해바라기 sunflower'],['🌹','장미 rose'],['🌷','튤립 tulip'],['🌺','꽃 hibiscus'],['🌿','잎 herb'],['🍀','네잎클로버 clover luck'],['🍁','단풍 maple'],['🍂','낙엽 fallen leaf'],['🌱','새싹 seedling'],['🌳','나무 tree'],['🌵','선인장 cactus'],['⭐','별 star'],['🌟','반짝 glowing star'],['✨','반짝임 sparkles'],['⚡','번개 lightning'],['🔥','불 fire hot'],['🌈','무지개 rainbow'],['☀️','해 sun'],['🌤️','맑음 sun cloud'],['☁️','구름 cloud'],['🌧️','비 rain'],['⛈️','천둥 storm'],['❄️','눈 snow'],['⛄','눈사람 snowman'],['🌊','파도 wave'],['🌙','달 moon'],['🌍','지구 earth'],['🏔️','산 mountain']] },
+  { key:'food', icon:'🍎', ko:'음식', en:'Food', list:[['🍎','사과 apple'],['🍊','귤 orange'],['🍋','레몬 lemon'],['🍌','바나나 banana'],['🍉','수박 watermelon'],['🍇','포도 grapes'],['🍓','딸기 strawberry'],['🍑','복숭아 peach'],['🍍','파인애플 pineapple'],['🥝','키위 kiwi'],['🍅','토마토 tomato'],['🥕','당근 carrot'],['🌽','옥수수 corn'],['🥔','감자 potato'],['🍞','빵 bread'],['🥐','크루아상 croissant'],['🧀','치즈 cheese'],['🥚','계란 egg'],['🍳','계란후라이 fried egg'],['🥓','베이컨 bacon'],['🍔','햄버거 burger'],['🍟','감자튀김 fries'],['🍕','피자 pizza'],['🌭','핫도그 hotdog'],['🌮','타코 taco'],['🍜','라면 ramen noodles'],['🍲','찌개 stew'],['🍛','카레 curry'],['🍚','밥 rice'],['🍱','도시락 bento'],['🍣','초밥 sushi'],['🍙','주먹밥 rice ball'],['🥟','만두 dumpling'],['🍗','치킨 chicken'],['🥗','샐러드 salad'],['🍦','아이스크림 ice cream'],['🍩','도넛 donut'],['🍪','쿠키 cookie'],['🎂','케이크 cake birthday'],['🧁','컵케이크 cupcake'],['🍫','초콜릿 chocolate'],['🍬','사탕 candy'],['🍿','팝콘 popcorn'],['☕','커피 coffee'],['🍵','차 tea'],['🥤','음료 drink'],['🧃','주스 juice'],['💧','물 water']] },
+  { key:'act', icon:'⚽', ko:'활동·물건', en:'Activity', list:[['⚽','축구 soccer'],['🏀','농구 basketball'],['🏈','미식축구 football'],['⚾','야구 baseball'],['🎾','테니스 tennis'],['🏐','배구 volleyball'],['🏓','탁구 pingpong'],['🏸','배드민턴 badminton'],['🥅','골대 goal'],['🏊','수영 swim'],['🚴','자전거 bike'],['🧗','등반 climb'],['🏆','트로피 trophy'],['🥇','금메달 gold medal'],['🥈','은메달 silver'],['🥉','동메달 bronze'],['🎯','과녁 target'],['🎮','게임 game'],['🎲','주사위 dice'],['🧩','퍼즐 puzzle'],['🎨','그림 art'],['🎭','연극 theater'],['🎤','노래 mic sing'],['🎧','음악 headphone'],['🎵','음표 music note'],['🎶','음악 music'],['🎸','기타 guitar'],['🎹','피아노 piano'],['🥁','드럼 drum'],['🎺','트럼펫 trumpet'],['📚','책 books study'],['📖','책 book read'],['✏️','연필 pencil'],['🖊️','펜 pen'],['📝','메모 memo note'],['📒','공책 notebook'],['📅','달력 calendar'],['⏰','알람 alarm clock'],['⌛','모래시계 hourglass'],['💻','노트북 laptop'],['📱','휴대폰 phone'],['📷','카메라 camera'],['🎥','영상 video'],['📺','티비 tv'],['🔔','종 알림 bell'],['📢','확성기 announce'],['📣','응원 cheer megaphone'],['🔑','열쇠 key'],['💡','아이디어 idea bulb'],['🔦','손전등 flashlight'],['🧹','청소 clean'],['🧺','빨래 laundry'],['🚗','자동차 car'],['🚌','버스 bus'],['✈️','비행기 plane'],['🚀','로켓 rocket'],['🏠','집 home house'],['🏫','학교 school'],['🏥','병원 hospital'],['🏪','가게 store']] },
+  { key:'sym', icon:'✅', ko:'기호', en:'Symbols', list:[['✅','체크 완료 check done'],['☑️','체크 checkbox'],['✔️','체크 check'],['❌','엑스 x no'],['❎','엑스 cross'],['⭕','동그라미 circle o'],['❗','느낌표 exclamation'],['❓','물음표 question'],['‼️','중요 double exclamation'],['⚠️','주의 warning'],['🚫','금지 forbidden'],['🔴','빨강 red'],['🟠','주황 orange'],['🟡','노랑 yellow'],['🟢','초록 green'],['🔵','파랑 blue'],['🟣','보라 purple'],['⚫','검정 black'],['⚪','하양 white'],['🔺','세모 triangle'],['🔻','역삼각 triangle down'],['🔶','주황마름모 diamond'],['💯','백점 hundred perfect'],['🆗','오케이 ok'],['🆕','새것 new'],['🔝','톱 top'],['🔜','곧 soon'],['➕','더하기 plus'],['➖','빼기 minus'],['✖️','곱하기 multiply'],['➗','나누기 divide'],['♾️','무한 infinity'],['💬','말풍선 speech'],['💭','생각 thought'],['🗯️','화남말풍선 anger'],['🔍','돋보기 search'],['📌','핀 pin'],['📍','위치 location'],['🔗','링크 link'],['📎','클립 clip'],['🎉','축하 party popper'],['🎊','축하 confetti'],['🎈','풍선 balloon'],['🎀','리본 ribbon']] },
+];
+
+const EMOJI_RECENT_KEY = 'tcs_emoji_recent';
+function emojiRecent() {
+  try {
+    const v = JSON.parse(localStorage.getItem(EMOJI_RECENT_KEY) || '[]');
+    return Array.isArray(v) ? v.slice(0, 24) : [];
+  } catch (_) { return []; }
+}
+function emojiRemember(e) {
+  try {
+    const list = [e].concat(emojiRecent().filter(x => x !== e)).slice(0, 24);
+    localStorage.setItem(EMOJI_RECENT_KEY, JSON.stringify(list));
+  } catch (_) {}
+}
+function emojiAll() {
+  if (emojiAll._c) return emojiAll._c;
+  // 🙏 처럼 '손' 에도 '마음' 에도 둘 만한 것이 있다. 갈래에서는 둘 다
+  // 보여주되, 찾기에서 같은 이모지가 두 번 나오면 고르기 어렵다.
+  // 한 줄로 합치고 찾을 말만 이어 붙인다.
+  const at = new Map();
+  EMOJI_GROUPS.forEach(g => g.list.forEach(([e, k]) => {
+    at.set(e, at.has(e) ? at.get(e) + ' ' + k : k);
+  }));
+  return (emojiAll._c = [...at.entries()]);
+}
+
+let _emojiPick = null;      // 고르면 부를 함수
+let _emojiTab = 'recent';
+let _emojiQuery = '';
+
+function closeEmojiPanel() {
+  const el = document.getElementById('emoji-panel');
+  if (el) el.remove();
+  document.removeEventListener('keydown', emojiPanelEsc);
+  _emojiPick = null;
+}
+function emojiPanelEsc(e) { if (e.key === 'Escape') closeEmojiPanel(); }
+
+// anchor 가 있으면 그 옆에, 없거나 좁은 화면이면 아래에서 올라오는 창
+function openEmojiPanel(onPick, anchor) {
+  closeEmojiPanel();
+  document.querySelectorAll('.reaction-picker').forEach(p => p.remove());
+  _emojiPick = onPick;
+  _emojiTab = emojiRecent().length ? 'recent' : EMOJI_GROUPS[0].key;
+  _emojiQuery = '';
+
+  const narrow = window.innerWidth < 560;
+  const box = document.createElement('div');
+  box.id = 'emoji-panel';
+  box.style.cssText = narrow
+    ? 'position:fixed;left:0;right:0;bottom:0;z-index:10000;background:var(--surface);'
+      + 'border-top:1.5px solid var(--border);border-radius:18px 18px 0 0;'
+      + 'box-shadow:0 -8px 30px rgba(29,58,95,.2);padding:10px 12px calc(10px + env(safe-area-inset-bottom));'
+      + 'max-height:62vh;display:flex;flex-direction:column'
+    : 'position:fixed;z-index:10000;width:330px;background:var(--surface);border:1.5px solid var(--border);'
+      + 'border-radius:16px;box-shadow:0 10px 34px rgba(29,58,95,.22);padding:10px 10px 8px;'
+      + 'display:flex;flex-direction:column;max-height:380px';
+  box.innerHTML = emojiPanelHtml();
+  // 창 안을 눌러도 닫히지 않게 — 검색칸에 글자를 못 치면 소용이 없다
+  box.addEventListener('click', (e) => e.stopPropagation());
+  document.body.appendChild(box);
+
+  if (!narrow && anchor) {
+    const r = anchor.getBoundingClientRect();
+    const w = 330, h = Math.min(380, box.offsetHeight || 380);
+    let left = Math.min(Math.max(8, r.left), window.innerWidth - w - 8);
+    let top = r.top - h - 8;
+    if (top < 8) top = Math.min(r.bottom + 8, window.innerHeight - h - 8);
+    box.style.left = left + 'px';
+    box.style.top = Math.max(8, top) + 'px';
+  }
+
+  document.addEventListener('keydown', emojiPanelEsc);
+  setTimeout(() => {
+    document.addEventListener('click', function once() {
+      closeEmojiPanel();
+      document.removeEventListener('click', once);
+    }, { once: true });
+    const q = document.getElementById('emoji-q');
+    if (q && !narrow) q.focus();   // 휴대폰에서는 자판이 창을 덮는다
+  }, 60);
+}
+
+function emojiPanelHtml() {
+  const tabs = [{ key: 'recent', icon: '🕘', ko: '최근', en: 'Recent' }].concat(EMOJI_GROUPS);
+  return `
+    <input id="emoji-q" value="${escAttr(_emojiQuery)}" oninput="emojiSearch(this.value)"
+      placeholder="${t('찾기 — 하트, 박수, pray…','Search — heart, clap, pray…')}"
+      style="height:34px;padding:0 11px;border:1.5px solid var(--border);border-radius:10px;
+             background:var(--s2);font:500 13px var(--font);color:var(--ink);outline:none;flex-shrink:0"/>
+    <div style="display:flex;gap:2px;margin:8px 0 6px;overflow-x:auto;flex-shrink:0;scrollbar-width:none">
+      ${tabs.map(g => `<button onclick="emojiTab('${g.key}')"
+        title="${escAttr(APP_LANG === 'en' ? g.en : g.ko)}"
+        style="flex-shrink:0;width:32px;height:30px;border-radius:8px;cursor:pointer;font-size:16px;line-height:1;
+               border:none;background:${_emojiTab === g.key && !_emojiQuery ? 'var(--asoft)' : 'transparent'}">${g.icon}</button>`).join('')}
+    </div>
+    <div id="emoji-grid" style="flex:1;overflow-y:auto;display:grid;
+         grid-template-columns:repeat(auto-fill,minmax(38px,1fr));gap:2px">
+      ${emojiGridHtml()}
+    </div>`;
+}
+
+function emojiGridHtml() {
+  let list;
+  if (_emojiQuery) {
+    const q = _emojiQuery.trim().toLowerCase();
+    list = emojiAll().filter(([e, k]) => k.toLowerCase().includes(q) || e === q).map(x => x[0]);
+    if (!list.length) {
+      return `<div style="grid-column:1/-1;padding:22px 8px;text-align:center;font:500 12.5px var(--font);color:var(--ink3)">
+        ${t('찾는 이모지가 없어요','No emoji found')}</div>`;
+    }
+  } else if (_emojiTab === 'recent') {
+    list = emojiRecent();
+    if (!list.length) {
+      return `<div style="grid-column:1/-1;padding:22px 8px;text-align:center;font:500 12.5px var(--font);color:var(--ink3)">
+        ${t('고른 이모지가 여기 쌓여요','Emojis you pick will appear here')}</div>`;
+    }
+  } else {
+    const g = EMOJI_GROUPS.find(x => x.key === _emojiTab) || EMOJI_GROUPS[0];
+    list = g.list.map(x => x[0]);
+  }
+  return list.map(e => `<button onclick="emojiChoose('${e}')"
+    style="height:38px;border:none;background:none;border-radius:8px;font-size:21px;line-height:1;cursor:pointer"
+    onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background=''">${e}</button>`).join('');
+}
+
+function emojiRedrawGrid() {
+  const g = document.getElementById('emoji-grid');
+  if (g) g.innerHTML = emojiGridHtml();
+}
+function emojiTab(key) {
+  _emojiTab = key; _emojiQuery = '';
+  const q = document.getElementById('emoji-q'); if (q) q.value = '';
+  const box = document.getElementById('emoji-panel');
+  if (box) {
+    // 고른 칸 표시만 다시 그린다 (검색칸 포커스를 뺏지 않게)
+    [...box.querySelectorAll('button[onclick^="emojiTab"]')].forEach(b => {
+      const k = (b.getAttribute('onclick').match(/'([^']+)'/) || [])[1];
+      b.style.background = k === key ? 'var(--asoft)' : 'transparent';
+    });
+  }
+  emojiRedrawGrid();
+}
+function emojiSearch(v) {
+  _emojiQuery = v || '';
+  if (_emojiQuery) {
+    const box = document.getElementById('emoji-panel');
+    if (box) [...box.querySelectorAll('button[onclick^="emojiTab"]')].forEach(b => { b.style.background = 'transparent'; });
+  }
+  emojiRedrawGrid();
+}
+function emojiChoose(e) {
+  emojiRemember(e);
+  const f = _emojiPick;
+  closeEmojiPanel();
+  if (f) { try { f(e); } catch (_) {} }
+}
+
+
 // ── 리액션 ──
+//  빠른 줄은 '최근 쓴 것' 을 앞세운다. 쓰는 이모지는 사람마다 다르다.
 const REACTION_EMOJIS = ['❤️','👍','😂','🙏','🔥','👏','😮','😢'];
+function reactionQuick() {
+  const r = emojiRecent();
+  const out = [];
+  for (const e of r.concat(REACTION_EMOJIS)) {
+    if (!out.includes(e)) out.push(e);
+    if (out.length === 8) break;
+  }
+  return out;
+}
 
 function showReactionPicker(msgId, btn) {
+  closeEmojiPanel();
   document.querySelectorAll('.reaction-picker').forEach(p => p.remove());
   const picker = document.createElement('div');
   picker.className = 'reaction-picker';
-  picker.style.cssText = 'position:fixed;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:8px;display:flex;gap:4px;box-shadow:0 4px 16px rgba(0,0,0,.15);z-index:100';
-  picker.innerHTML = REACTION_EMOJIS.map(e =>
-    `<div onclick="toggleReaction('${msgId}','${e}');this.closest('.reaction-picker').remove()"
+  picker.style.cssText = 'position:fixed;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:8px;display:flex;gap:4px;box-shadow:0 4px 16px rgba(0,0,0,.15);z-index:100;max-width:calc(100vw - 16px);flex-wrap:wrap';
+  picker.innerHTML = reactionQuick().map(e =>
+    `<div onclick="reactionPick('${msgId}','${e}')"
       style="width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:20px;cursor:pointer"
       onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background=''">${e}</div>`
-  ).join('');
+  ).join('') + `<div onclick="reactionMore('${msgId}',this)" title="${escAttr(t('더 많은 이모지','More emojis'))}"
+      style="width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;
+             font:700 17px var(--font);color:var(--ink3);cursor:pointer;border:1.5px dashed var(--border)"
+      onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background=''">+</div>`;
   const rect = btn.getBoundingClientRect();
-  picker.style.top = (rect.top - 54) + 'px';
-  picker.style.left = rect.left + 'px';
   document.body.appendChild(picker);
+  const w = picker.offsetWidth || 330;
+  picker.style.top = Math.max(8, rect.top - picker.offsetHeight - 6) + 'px';
+  picker.style.left = Math.min(Math.max(8, rect.left), window.innerWidth - w - 8) + 'px';
   setTimeout(() => document.addEventListener('click', () => picker.remove(), {once:true}), 100);
+}
+
+function reactionPick(msgId, emoji) {
+  emojiRemember(emoji);
+  document.querySelectorAll('.reaction-picker').forEach(p => p.remove());
+  toggleReaction(msgId, emoji);
+}
+
+function reactionMore(msgId, el) {
+  const anchor = el;
+  document.querySelectorAll('.reaction-picker').forEach(p => p.remove());
+  openEmojiPanel((e) => toggleReaction(msgId, e), anchor);
 }
 
 async function toggleReaction(msgId, emoji) {
