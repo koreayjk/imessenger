@@ -191,10 +191,10 @@ Deno.serve(async (req) => {
   const auth = req.headers.get('Authorization') ?? '';
   if (!auth) return json({ error: '로그인이 필요합니다' }, 401);
 
-  let body: { message_id?: string };
+  let body: { message_id?: string; check?: boolean };
   try { body = await req.json(); } catch { return json({ error: '잘못된 요청' }, 400); }
   const messageId = String(body.message_id ?? '');
-  if (!messageId) return json({ error: 'message_id 가 없습니다' }, 400);
+  if (!messageId && !body.check) return json({ error: 'message_id 가 없습니다' }, 400);
 
   const url = Deno.env.get('SUPABASE_URL')!;
   // 부른 사람이 누구인지는 그 사람의 토큰으로 확인한다
@@ -206,6 +206,69 @@ Deno.serve(async (req) => {
 
   // 보낼 대상은 RLS 너머라서 service_role 로 읽는다
   const admin = createClient(url, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+
+  // ── 🔎 시험 ({ check: true }) ──────────────────────────────────────
+  //  '왜 안 오지' 를 로그를 뒤지며 찾지 않게 한다. 부른 사람 '자기'
+  //  기기에만 시험 알림을 쏘고, 애플·구글이 뭐라 했는지 그대로 돌려준다.
+  //  남의 기기로는 절대 보내지 않는다 — 보냈다면 아무나 남을 괴롭힐 수 있다.
+  //  키 내용은 길이와 모양만 돌려준다. 값은 어디에도 찍지 않는다.
+  if (body.check) {
+    const rep: Record<string, unknown> = {
+      웹푸시_비밀값: HAS_WEB, 아이폰_비밀값: HAS_IOS,
+      번들id: APNS_BUNDLE_ID || '(없음)', 보내는곳: APNS_ENV,
+    };
+    if (HAS_IOS) {
+      const k: Record<string, unknown> = {
+        받은_길이: APNS_PRIVATE_KEY.length,
+        머리말: /-----BEGIN/.test(APNS_PRIVATE_KEY) ? '있음' : '없음',
+        키id_길이: APNS_KEY_ID.length, 팀id_길이: APNS_TEAM_ID.length,
+      };
+      try { k.키_바이트 = pemToDer(APNS_PRIVATE_KEY).length; }
+      catch (e) { k.오류 = String((e as Error).message ?? e); }
+      try { k.토큰_서명 = (await apnsJwt()).split('.').length === 3 ? '됨' : '안 됨'; }
+      catch (e) { k.토큰_서명 = String((e as Error).message ?? e); }
+      rep.애플키 = k;
+    }
+
+    const { data: mine } = await admin.from('push_subscriptions')
+      .select('*').eq('member_id', user.id);
+    rep.내_기기수 = (mine ?? []).length;
+    const out: unknown[] = [];
+    for (const s of mine ?? []) {
+      if (s.kind === 'ios') {
+        if (!HAS_IOS) { out.push({ 길: 'ios', 건너뜀: 'APNS 비밀값이 없습니다' }); continue; }
+        try {
+          const jwt = await apnsJwt();
+          for (const host of apnsHosts()) {
+            const r = await apnsPost(host, s.endpoint, jwt, {
+              aps: { alert: { title: 'TCS', body: '시험 알림입니다 🔔' }, sound: 'default' },
+            });
+            out.push({ 길: 'ios', 어디: host.includes('sandbox') ? 'sandbox' : 'production',
+                       상태: r.status, 까닭: r.reason || (r.status === 200 ? '보냈습니다' : '') });
+            if (r.status === 200) break;
+            if (!(r.status === 400 && r.reason === 'BadDeviceToken')) break;
+          }
+        } catch (e) { out.push({ 길: 'ios', 오류: String((e as Error).message ?? e) }); }
+      } else {
+        if (!HAS_WEB) { out.push({ 길: 'web', 건너뜀: 'VAPID 비밀값이 없습니다' }); continue; }
+        try {
+          webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC, VAPID_PRIVATE);
+          await webpush.sendNotification(
+            { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
+            JSON.stringify({ title: 'TCS', body: '시험 알림입니다 🔔', tag: 'tcs-test' }),
+            { TTL: 60 },
+          );
+          out.push({ 길: 'web', 상태: 201, 까닭: '보냈습니다' });
+        } catch (e) {
+          const err = e as { statusCode?: number; body?: string; message?: string };
+          out.push({ 길: 'web', 상태: err?.statusCode ?? 0,
+                     까닭: String(err?.body ?? err?.message ?? '').slice(0, 160) });
+        }
+      }
+    }
+    rep.결과 = out;
+    return json(rep);
+  }
 
   const { data: msg } = await admin.from('messages')
     .select('id,channel_id,sender_id,sender_name,text,kind,format,hidden_at')
