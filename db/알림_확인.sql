@@ -72,3 +72,32 @@ select
   max(last_ok_at)      as "마지막으로 잘 간 때"
 from public.push_subscriptions
 group by 1 order by 1;
+
+-- =====================================================================
+--  ⑤ 알림 켠 기기를 하나하나 — 누가 · 어떤 기기 · 언제
+--     줄이 수상하게 많을 때 봅니다. 한 사람이 여러 줄이면
+--     브라우저를 바꿀 때마다 새로 생긴 것입니다 (그건 정상).
+--     같은 사람이 몇 초 안에 여러 줄이면 그건 정상이 아닙니다.
+-- =====================================================================
+select
+  m.name                                  as "사람",
+  ps.kind                                 as "길",
+  left(coalesce(ps.ua,''), 60)            as "기기",
+  ps.created_at                           as "켠 때",
+  ps.last_ok_at                           as "마지막으로 잘 간 때",
+  ps.fail_count                           as "연속 실패"
+from public.push_subscriptions ps
+left join public.members m on m.id = ps.member_id
+order by ps.created_at desc;
+
+-- ⑥ 사람별로 몇 줄인지
+select
+  coalesce(m.name,'(알 수 없음)') as "사람",
+  count(*)                        as "기기 줄",
+  min(ps.created_at)              as "처음",
+  max(ps.created_at)              as "마지막"
+from public.push_subscriptions ps
+left join public.members m on m.id = ps.member_id
+group by 1
+having count(*) > 1
+order by 2 desc;

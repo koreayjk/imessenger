@@ -2127,6 +2127,7 @@ function notiSyncBell() {
 const VAPID_PUBLIC = 'BMBU-XhqjL3n1yVOf_V097vf0DOKbvCTXDmuBjVNhWmM-o0h1oFqBnhdSHHbaE3lS6G0AUAcCfmpR49A3TelmB4';
 let _swReg = null;
 let _pushSub = null;          // 지금 이 기기의 구독
+let _pushSaved = false;       // 그 구독이 '서버 줄에 실제로 적혔는가'
 let _pushMissing = false;     // 표나 함수가 아직 없다
 
 function pushSupported() {
@@ -2151,6 +2152,9 @@ async function pushInit() {
   try {
     _swReg = await navigator.serviceWorker.register('./sw.js');
     _pushSub = await _swReg.pushManager.getSubscription();
+    // 브라우저가 구독을 들고 있어도 서버 줄이 지워졌을 수 있다.
+    // 한 번 덮어써 보고, 그 결과로 '켜짐' 을 정한다.
+    if (_pushSub) pushSaveSub(true).then(() => { try { renderProfilePage(); } catch (_) {} }, () => {});
     // 알림을 누르면 서비스워커가 이 창에 말을 건다
     navigator.serviceWorker.addEventListener('message', (e) => {
       const d = e.data || {};
@@ -2162,7 +2166,10 @@ async function pushInit() {
   } catch (_) { _swReg = null; }
 }
 
-function pushOn() { return !!_pushSub || !!_iosToken; }
+// '이 기기 주소를 받았는가' 가 아니라 '서버가 그 주소를 아는가' 로 본다.
+//  받기만 하고 저장이 막히면 알림은 한 통도 안 온다. 그걸 '켜짐' 으로
+//  보여주면 화면이 거짓말을 한다.
+function pushOn() { return _pushSaved; }
 
 async function pushSubscribe() {
   if (nativePush()) return iosPushEnable();
@@ -2183,7 +2190,7 @@ async function pushSubscribe() {
   return ok;
 }
 
-async function pushSaveSub() {
+async function pushSaveSub(quiet) {
   if (!ME) return false;
   let row;
   if (_iosToken) {
@@ -2216,7 +2223,10 @@ async function pushSaveSub() {
   }
   if (error) {
     _pushMissing = needsReportInstall(error);
-    showUploadToast(_pushMissing
+    _pushSaved = false;
+    // 앱을 열 때마다 저절로 부르는 길에서는 잔소리를 하지 않는다.
+    // 대신 단추가 '켜기' 로 남아, 누르면 그때 까닭을 알려준다.
+    if (!quiet) showUploadToast(_pushMissing
       ? (row.kind === 'ios'
           ? t('이 기능이 아직 설치되지 않았어요 (db/알림_아이폰_DB설치.sql)','Not installed yet')
           : t('이 기능이 아직 설치되지 않았어요 (db/알림_푸시_DB설치.sql)','Not installed yet'))
@@ -2224,6 +2234,7 @@ async function pushSaveSub() {
     return false;
   }
   _pushMissing = false;
+  _pushSaved = true;
   return true;
 }
 
@@ -2233,6 +2244,7 @@ async function pushUnsubscribe() {
     // 지우면 보낼 곳이 없어지므로 그걸로 끈다.
     const tok = _iosToken;
     _iosToken = null;
+    _pushSaved = false;
     try { await sb.from('push_subscriptions').delete().eq('endpoint', tok); } catch (_) {}
     showUploadToast(t('알림을 껐어요','Notifications are off'));
     try { renderProfilePage(); } catch (_) {}
@@ -2246,6 +2258,7 @@ async function pushUnsubscribe() {
     }
   } catch (_) {}
   _pushSub = null;
+  _pushSaved = false;
   showUploadToast(t('앱을 닫으면 알림이 오지 않아요','Background alerts are off'));
   try { renderProfilePage(); } catch (_) {}
 }
@@ -2254,7 +2267,7 @@ async function pushUnsubscribe() {
 //  안 하면 '방마다 끄기' 를 눌러도 서버는 그걸 몰라서 계속 보낸다.
 let _pushSyncT = null;
 function pushSyncPrefs() {
-  if ((!_pushSub && !_iosToken) || !ME) return;
+  if (!_pushSaved || !ME) return;
   clearTimeout(_pushSyncT);
   _pushSyncT = setTimeout(() => { pushSaveSub(); }, 400);
 }
@@ -2281,7 +2294,7 @@ async function iosPushInit() {
       // 사람이 '켜기' 를 눌러 들어온 길이면 그쪽이 기다렸다 저장한다.
       // 여기서도 저장하면 같은 줄을 두 번 쓴다.
       if (_iosEnabling) return;
-      pushSaveSub().then(() => { try { renderProfilePage(); } catch (_) {} }, () => {});
+      pushSaveSub(true).then(() => { try { renderProfilePage(); } catch (_) {} }, () => {});
     });
     P.addListener('registrationError', () => { _iosToken = null; });
     // 알림을 눌러서 들어왔다 — 그 방을 연다
