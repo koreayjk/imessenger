@@ -2171,13 +2171,29 @@ async function pushInit() {
 //  보여주면 화면이 거짓말을 한다.
 function pushOn() { return _pushSaved; }
 
+// 켜는 중에 또 누르면 구독을 또 만든다. 구독 하나가 기기 하나라,
+//  겹쳐 부르면 한 사람 앞으로 줄이 여러 개 쌓이고 알림이 여러 번 온다.
+//  단추를 빨리 두 번 누르는 일은 휴대폰에서 아주 흔하다.
+let _pushBusy = null;
 async function pushSubscribe() {
+  if (_pushBusy) return _pushBusy;          // 이미 켜는 중 — 그 결과를 같이 쓴다
+  _pushBusy = (async () => {
+    try { return await pushSubscribeOnce(); }
+    finally { _pushBusy = null; }
+  })();
+  return _pushBusy;
+}
+
+async function pushSubscribeOnce() {
   if (nativePush()) return iosPushEnable();
   if (!pushSupported()) { showUploadToast(t('이 기기에서는 앱을 닫은 뒤의 알림이 안 돼요','Background notifications are not supported here')); return false; }
   if (notiPerm() !== 'granted') { const okd = await notiAsk(); if (!okd) return false; }
   if (!_swReg) await pushInit();
   if (!_swReg) { showUploadToast(t('알림을 켤 수 없어요','Could not enable')); return false; }
   try {
+    // 서비스워커가 아직 깨어나지 않았으면 getSubscription() 이 비어 있다고
+    // 답할 수 있다. 그 말을 믿고 subscribe() 하면 '이미 있는데 또' 만든다.
+    try { await navigator.serviceWorker.ready; } catch (_) {}
     _pushSub = await _swReg.pushManager.getSubscription()
       || await _swReg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(VAPID_PUBLIC) });
   } catch (e) {
