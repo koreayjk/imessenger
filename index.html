@@ -1608,7 +1608,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
   <!-- 채널/DM 추가 모달 -->
   <div id="add-modal" style="display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.45);align-items:center;justify-content:center">
     <div style="background:var(--surface);border-radius:20px;padding:28px;width:460px;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.2)">
-      <div style="font-size:17px;font-weight:700;margin-bottom:20px">새 채널 / 1:1 채팅 추가</div>
+      <div id="add-modal-title" style="font-size:17px;font-weight:700;margin-bottom:20px">새 채널 / 1:1 채팅 추가</div>
       <div style="display:flex;gap:10px;margin-bottom:20px">
         <div id="add-tab-topic" onclick="switchAddTab('topic')" style="flex:1;padding:10px;border-radius:12px;background:var(--accent);color:white;text-align:center;cursor:pointer;font-size:14px;font-weight:600">📢 토픽 채널</div>
         <div id="add-tab-dm" onclick="switchAddTab('dm')" style="flex:1;padding:10px;border-radius:12px;background:var(--s3);color:var(--ink2);text-align:center;cursor:pointer;font-size:14px;font-weight:600">💬 1:1 채팅</div>
@@ -2060,7 +2060,12 @@ const NOTI_BASE_TITLE = (typeof document !== 'undefined' && document.title) || '
 function notiSyncTitle() {
   if (typeof document === 'undefined') return;
   let n = 0;
-  try { n = Object.values(unreadCounts || {}).reduce((a, b) => a + (b || 0), 0); } catch (_) {}
+  // 지켜보는 방은 빼고 센다 (사이드바 배지와 같은 셈)
+  try {
+    n = Object.keys(unreadCounts || {})
+      .filter(id => !myRealChannelIds || !myRealChannelIds.size || myRealChannelIds.has(id))
+      .reduce((a, id) => a + (unreadCounts[id] || 0), 0);
+  } catch (_) {}
   document.title = n > 0 ? `(${n > 99 ? '99+' : n}) ${NOTI_BASE_TITLE}` : NOTI_BASE_TITLE;
 }
 
@@ -3055,6 +3060,15 @@ function isAdminOfficer() {
 function isStudentMember(m) {
   return !!m && (m.community_role === 'student' || m.role === '학생');
 }
+// 이 사람과 1:1 을 틀 수 있나 — 데이터베이스의 can_dm() 과 같은 규칙.
+// (한쪽만 고치면 화면과 서버가 어긋나므로 같이 두고 같이 고칩니다)
+function canDmMember(m) {
+  if (!m || !ME || m.id === ME.id) return false;
+  if (m.status === 'removed') return false;
+  if (m.community_role === 'store_bot') return false;
+  if (isStudent() && isStudentMember(m)) return false;   // 학생 × 학생
+  return true;
+}
 // 학사 허브(👤학생·출석부·시간표·생활기록부) 접근 — 학생 제외 전 구성원
 function canAccessSchool() {
   return ME && ['super_admin','community_admin','admin_officer','teacher','staff','vice_admin'].includes(ME.community_role);
@@ -3546,6 +3560,22 @@ function msgDateLabel(isoStr) {
 
 // ── 초기화 ──
 let myChannelIds = new Set();
+// 👁 총·부총관리자는 지켜보려고 남의 방까지 봅니다. 그래서 myChannelIds 에는
+//    내가 안 들어간 방도 섞여 있습니다. '진짜 내가 들어가 있는 방' 은 따로 둡니다 —
+//    목록에서 내 방과 지켜보는 방을 가르는 데 씁니다.
+let myRealChannelIds = new Set();
+let watchOpen = (() => { try { return localStorage.getItem('tcs_watch_open') === '1'; } catch (_) { return false; } })();
+function isWatchOnly(ch) {
+  // 내 멤버십을 한 줄도 못 읽었으면 가를 수가 없습니다. 그럴 때 전부
+  // '내가 없는 방' 으로 몰면 목록이 통째로 사라집니다 — 그러느니 다 보입니다.
+  if (!myRealChannelIds || !myRealChannelIds.size) return false;
+  return !!ch && !myRealChannelIds.has(ch.id);
+}
+function toggleWatchRooms() {
+  watchOpen = !watchOpen;
+  try { localStorage.setItem('tcs_watch_open', watchOpen ? '1' : '0'); } catch (_) {}
+  renderPanel();
+}
 let channelGroups = [];
 let dmFavorites = new Set();
 let dmExpanded = false;
@@ -3586,6 +3616,7 @@ async function init() {
   const myCh = myChRes.data || [];
   dmFavorites = new Set(myCh.filter(r => r.favorite).map(r => r.channel_id));
   const myChIdSet = new Set(myCh.map(r => r.channel_id));
+  myRealChannelIds = myChIdSet;
 
   if (canViewAllCommunities()) {
     // 총·부총관리자는 공개방을 다 보되, 1:1 은 내가 낀 것만
@@ -3606,6 +3637,7 @@ async function init() {
       if (canViewAllCommunities()) {
         const { data: myDMs } = await sb.from('channel_members').select('channel_id').eq('member_id', ME.id);
         const myDMIds = new Set((myDMs||[]).map(m => m.channel_id));
+        myRealChannelIds = myDMIds;
         myChannelIds = new Set(channels.map(c => {
           if (c.kind === 'dm') return myDMIds.has(c.id) ? c.id : null;
           return c.id;
@@ -3613,12 +3645,19 @@ async function init() {
       } else {
         const { data: myMemberships } = await sb.from('channel_members').select('channel_id').eq('member_id', ME.id);
         myChannelIds = new Set((myMemberships||[]).map(m => m.channel_id));
+        myRealChannelIds = myChannelIds;
       }
       renderPanel();
     })
     .on('postgres_changes', { event: '*', schema: 'public', table: 'channel_members', filter: `member_id=eq.${ME.id}` }, async () => {
       const { data: myMemberships } = await sb.from('channel_members').select('channel_id').eq('member_id', ME.id);
-      myChannelIds = new Set((myMemberships||[]).map(m => m.channel_id));
+      const mine = new Set((myMemberships||[]).map(m => m.channel_id));
+      myRealChannelIds = mine;
+      if (canViewAllCommunities()) {
+        myChannelIds = new Set(channels.filter(c => c.kind !== 'dm' || mine.has(c.id)).map(c => c.id));
+      } else {
+        myChannelIds = mine;
+      }
       renderPanel();
     })
     .subscribe();
@@ -3914,7 +3953,14 @@ async function toggleDmFavorite(id) {
 function renderPanel() {
   const isAdmin = canViewAllCommunities();
   const canEdit = canReorderChannels();
-  const visibleChannels = isAdmin ? channels : channels.filter(c => myChannelIds.has(c.id));
+  const allVisible = isAdmin ? channels : channels.filter(c => myChannelIds.has(c.id));
+  // 👁 내가 안 들어가 있는 방 — 총관리자라 지켜보려고 보이는 방들.
+  //    이것들이 진짜 내 대화 사이에 섞여서 목록이 뒤죽박죽이 됩니다.
+  //    맨 아래로 빼고, 평소에는 접어 둡니다.
+  //  지켜보는 방은 총·부총관리자에게만 생깁니다. 다른 사람은 애초에
+  //  자기 방만 보이므로 가를 것이 없습니다.
+  const watch = isAdmin ? allVisible.filter(isWatchOnly) : [];
+  const visibleChannels = watch.length ? allVisible.filter(c => !isWatchOnly(c)) : allVisible;
   const pinned = visibleChannels.filter(c => c.pinned && c.kind !== 'dm');
   const topics = visibleChannels.filter(c => !c.pinned && c.kind !== 'dm');
   const dms = visibleChannels.filter(c => c.kind === 'dm');
@@ -3948,8 +3994,34 @@ function renderPanel() {
       html += `<div onclick="dmExpanded=!dmExpanded;renderPanel()" style="text-align:center;padding:9px;font-size:12px;color:var(--accent);cursor:pointer;font-weight:700">${dmExpanded?t('접기 ▲','Collapse ▲'):`${t('더보기','More')} (${sorted.length-10}) ▼`}</div>`;
     }
   }
-  if (!html) html = `<div style="padding:24px;text-align:center;color:var(--ink3);font-size:13px">${t('초대된 채널이 없어요','No channels yet')}</div>`;
+  if (!html && !watch.length) html = `<div style="padding:24px;text-align:center;color:var(--ink3);font-size:13px">${t('초대된 채널이 없어요','No channels yet')}</div>`;
+  html += watchRoomsHtml(watch);
   document.getElementById('panel-body').innerHTML = html;
+}
+
+// 👁 지켜보는 방 — 내가 들어가 있지 않은 방. 맨 아래에 접어 둔다.
+function watchRoomsHtml(watch) {
+  if (!watch || !watch.length) return '';
+  const unread = watch.reduce((n, c) => n + (unreadCounts[c.id] || 0), 0);
+  const head = `<div onclick="toggleWatchRooms()" class="section-label"
+      style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
+    <span style="transition:transform .15s;display:inline-block;transform:rotate(${watchOpen?90:0}deg)">▸</span>
+    <span>👁 ${t('지켜보는 방','Watching')}</span>
+    <span style="font-weight:600;color:var(--ink3)">${watch.length}</span>
+    <div style="flex:1"></div>
+    ${unread ? `<span style="min-width:18px;height:18px;border-radius:9px;padding:0 5px;background:var(--ink3);color:#fff;font-size:10.5px;font-weight:700;display:inline-flex;align-items:center;justify-content:center">${unread>99?'99+':unread}</span>` : ''}
+    <span style="font-size:11px;color:var(--accent);font-weight:700">${watchOpen ? t('숨기기','Hide') : t('보이기','Show')}</span>
+  </div>`;
+  if (!watchOpen) return head;
+  const sorted = watch.slice().sort((a, b) => {
+    const ua = unreadCounts[a.id] || 0, ub = unreadCounts[b.id] || 0;
+    if (ua !== ub) return ub - ua;                       // 새 글 있는 방 먼저
+    const ka = a.kind === 'dm' ? 1 : 0, kb = b.kind === 'dm' ? 1 : 0;
+    if (ka !== kb) return ka - kb;                       // 단체방 → 1:1
+    return String(a.name||'').localeCompare(String(b.name||''));
+  });
+  const note = `<div style="padding:2px 14px 8px;font-size:11px;color:var(--ink3);line-height:1.6">${t('내가 들어가 있지 않은 방이에요. 눌러서 들여다볼 수 있어요.','Rooms you are not a member of. Tap to look in.')}</div>`;
+  return head + note + sorted.map(ch => chRow(ch)).join('');
 }
 
 // ── 읽지 않은 메시지 추적 ──
@@ -3999,8 +4071,12 @@ async function loadUnreadCounts() {
 
 function updateUnreadBadges() {
   try { notiSyncTitle(); } catch (_) {}   // 다른 탭을 보고 있어도 눈에 띄게
-  // 사이드바 채팅 아이콘 배지
-  const totalUnread = Object.values(unreadCounts).reduce((a, b) => a + b, 0);
+  // 사이드바 채팅 아이콘 배지 — 내가 들어가 있는 방만 센다.
+  // 지켜보는 방까지 세면 숫자가 늘 세 자리라 아무 뜻이 없어집니다.
+  // 그 방들의 새 글은 '👁 지켜보는 방' 줄에 따로 적힙니다.
+  const totalUnread = Object.keys(unreadCounts)
+    .filter(id => myRealChannelIds.has(id))
+    .reduce((n, id) => n + (unreadCounts[id] || 0), 0);
   let badge = document.getElementById('chat-unread-badge');
   if (!badge) {
     const sbChat = document.getElementById('sb-chat');
@@ -4058,7 +4134,7 @@ function chRow(ch) {
       <div class="ch-preview">${ch.description||''}</div>
     </div>
     ${unread ? `<div style="min-width:20px;height:20px;border-radius:10px;padding:0 5px;background:#E53935;color:white;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">${unread > 99 ? '99+' : unread}</div>` : ''}
-    ${ch.kind==='dm' ? `<div onclick="event.stopPropagation();toggleDmFavorite('${ch.id}')" title="즐겨찾기" style="cursor:pointer;font-size:15px;line-height:1;flex-shrink:0;color:${dmFavorites.has(ch.id)?'#F5B301':'var(--ink3)'}">${dmFavorites.has(ch.id)?'★':'☆'}</div>` : ''}
+    ${ch.kind==='dm' && !isWatchOnly(ch) ? `<div onclick="event.stopPropagation();toggleDmFavorite('${ch.id}')" title="즐겨찾기" style="cursor:pointer;font-size:15px;line-height:1;flex-shrink:0;color:${dmFavorites.has(ch.id)?'#F5B301':'var(--ink3)'}">${dmFavorites.has(ch.id)?'★':'☆'}</div>` : ''}
     ${isAdmin ? `<div class="ch-edit-btn" onclick="event.stopPropagation();showEditChannel('${ch.id}')"
       style="width:26px;height:26px;border-radius:7px;
       background:rgba(0,0,0,.07);display:flex;align-items:center;justify-content:center;
@@ -4070,7 +4146,10 @@ function filterChannels(q) {
   if (!q) { renderPanel(); return; }
   const isAdmin = canViewAllCommunities();
   const visibleChannels = isAdmin ? channels : channels.filter(c => myChannelIds.has(c.id));
-  const filtered = visibleChannels.filter(c => c.name.includes(q) || (c.description||'').includes(q));
+  const all = visibleChannels.filter(c => c.name.includes(q) || (c.description||'').includes(q));
+  // 찾을 때는 지켜보는 방도 찾아지되, 아래로 따로 모은다
+  const watch = isAdmin ? all.filter(isWatchOnly) : [];
+  const filtered = watch.length ? all.filter(c => !isWatchOnly(c)) : all;
   const pinned = filtered.filter(c => c.pinned && c.kind !== 'dm');
   const topics = filtered.filter(c => !c.pinned && c.kind !== 'dm');
   const dms = filtered.filter(c => c.kind === 'dm');
@@ -4087,7 +4166,8 @@ function filterChannels(q) {
     html += `<div class="section-label"><span>💬 1:1 대화</span></div>`;
     sortDms(dms).forEach(ch => html += chRow(ch));
   }
-  if (!html) html = '<div style="padding:20px;text-align:center;color:var(--ink3);font-size:13px">검색 결과가 없어요</div>';
+  if (!html && !watch.length) html = '<div style="padding:20px;text-align:center;color:var(--ink3);font-size:13px">검색 결과가 없어요</div>';
+  html += watchRoomsHtml(watch);
   document.getElementById('panel-body').innerHTML = html;
 }
 
@@ -6633,8 +6713,8 @@ async function renderMembers() {
     return aOnline - bOnline;
   });
 
-  // 채팅방에 멤버 추가 버튼 (1:1 제외, 학생 제외 — 간사 이상)
-  const canAddMembers = currentChannel && currentChannel.kind !== 'dm' && !isStudentMember(ME);
+  // 채팅방에 멤버 추가 버튼 (1:1 제외 · 간사 이상 — 데이터베이스와 같은 규칙)
+  const canAddMembers = currentChannel && currentChannel.kind !== 'dm' && canAccessSchool();
   const addBtn = canAddMembers
     ? `<div onclick="openAddMemberModal()" style="display:flex;align-items:center;justify-content:center;gap:6px;margin:0 0 10px;padding:9px;border:1.5px dashed var(--accent);border-radius:10px;color:var(--accent);font:700 12.5px var(--font);cursor:pointer">＋ ${t('멤버 추가','Add member')}</div>`
     : '';
@@ -6836,8 +6916,10 @@ async function openDMwithOnce(memberId) {
   const target = members[memberId];
   if (!target) return;
   // 학생끼리는 1:1 대화 금지 (학생↔교사/관리자는 허용)
-  if (isStudent() && isStudentMember(target)) {
-    showUploadToast('학생끼리는 1:1 대화를 할 수 없어요');
+  if (!canDmMember(target)) {
+    showUploadToast(isStudent() && isStudentMember(target)
+      ? t('학생끼리는 1:1 대화를 할 수 없어요','Students cannot message each other')
+      : t('이 분과는 1:1 대화를 할 수 없어요','You cannot message this person'));
     return;
   }
 
@@ -6847,20 +6929,31 @@ async function openDMwithOnce(memberId) {
     // 없으면 새로 만들기
     const dmName = `${ME.name} · ${target.name}`;
     const { data, error } = await sb.from('channels').insert({
-      name: dmName, emoji: '💬', description: '1:1 대화', pinned: false, kind: 'dm', community_id: CID()
+      name: dmName, emoji: '💬', description: '1:1 대화', pinned: false, kind: 'dm',
+      community_id: CID(), created_by: ME.id
     }).select().single();
-    if (error || !data) return;
-    await sb.from('channel_members').insert([
+    if (error || !data) {
+      showUploadToast(t('대화방을 만들지 못했어요 — ','Could not open the chat — ') + ((error && error.message) || ''));
+      return;
+    }
+    const { error: mErr } = await sb.from('channel_members').insert([
       { channel_id: data.id, member_id: ME.id },
       { channel_id: data.id, member_id: memberId },
     ]);
+    if (mErr) {
+      // 줄이 안 들어갔는데 방만 열면, 상대에게는 영영 안 보이는 방이 된다.
+      showUploadToast(t('대화방을 만들지 못했어요 — ','Could not open the chat — ') + mErr.message);
+      return;
+    }
     myChannelIds.add(data.id);
+    myRealChannelIds.add(data.id);
     channels.push(data);
     dmChannel = data;
   } else if (!myChannelIds.has(dmChannel.id)) {
     // 예전에 나갔던 대화 다시 열기 → 멤버십 복구(내역 유지)
     await sb.from('channel_members').insert({ channel_id: dmChannel.id, member_id: ME.id }).then(()=>{}, ()=>{});
     myChannelIds.add(dmChannel.id);
+    myRealChannelIds.add(dmChannel.id);
   }
 
   // 채팅 탭으로 이동 후 DM 채널 열기
@@ -8261,14 +8354,24 @@ function toggleGoal(row) {
 let addTabMode = 'topic';
 let selectedNewChMembers = new Set();
 
+// 단체방(토픽)은 간사 이상만 만듭니다. 데이터베이스도 같은 규칙으로 막혀 있어서,
+// 학생에게 단추를 보여주면 눌러도 '실패' 만 뜹니다 — 아예 안 보여줍니다.
+function canMakeTopicChannel() { return canAccessSchool(); }
+
 function showAddChannelModal() {
-  addTabMode = 'topic';
+  const topic = canMakeTopicChannel();
+  addTabMode = topic ? 'topic' : 'dm';
   selectedNewChMembers = new Set(Object.keys(members)); // 기본: 전체 선택
+  const tabRow = document.getElementById('add-tab-topic');
+  if (tabRow) tabRow.style.display = topic ? '' : 'none';
+  const head = document.getElementById('add-modal-title');
+  if (head) head.textContent = topic ? t('새 채널 / 1:1 채팅 추가','New channel / direct message')
+                                     : t('1:1 채팅 시작','Start a direct message');
   document.getElementById('add-modal').style.display = 'flex';
   document.getElementById('new-ch-name').value = '';
   document.getElementById('new-ch-emoji').value = '';
   document.getElementById('new-ch-desc').value = '';
-  switchAddTab('topic');
+  switchAddTab(addTabMode);
 }
 function closeAddModal() { document.getElementById('add-modal').style.display = 'none'; }
 
@@ -8318,9 +8421,14 @@ function switchAddTab(tab) {
   } else {
     selectedDmMemberId = null;
     const list = document.getElementById('dm-member-list');
-    const memberList = Object.values(members).filter(m => m.id !== ME.id);
+    // 학생끼리는 1:1 을 못 합니다. 고를 수 없는 사람을 보여주고 나중에 막는 대신
+    // 아예 목록에서 뺍니다 (데이터베이스도 같은 규칙으로 막습니다).
+    const memberList = Object.values(members).filter(m => m.id !== ME.id && canDmMember(m));
     if (!memberList.length) {
-      list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--ink3);font-size:13px">다른 멤버가 없어요</div>';
+      list.innerHTML = `<div style="padding:20px;text-align:center;color:var(--ink3);font-size:13px;line-height:1.7">${
+        isStudent() ? t('선생님·간사님과 1:1 대화를 할 수 있어요.<br>지금은 대화할 수 있는 분이 없네요.',
+                        'You can message teachers and staff.<br>No one is available right now.')
+                    : t('다른 멤버가 없어요','No other members')}</div>`;
       return;
     }
     list.innerHTML = memberList.map(m => `
@@ -8360,13 +8468,22 @@ async function submitAddChannel() {
     const emoji = document.getElementById('new-ch-emoji').value.trim() || null;
     const desc = document.getElementById('new-ch-desc').value.trim() || '';
 
-    const { data, error } = await sb.from('channels').insert({ name, emoji, description: desc, pinned: false, kind: 'topic', community_id: CID() }).select().single();
+    if (!canMakeTopicChannel()) { alert(t('단체방은 선생님·간사님만 만들 수 있어요','Only staff can create group channels')); return; }
+    // created_by 를 적어 둡니다 — 방을 만든 그 한순간, 아직 멤버 줄이 없을 때
+    // 만든 사람이 제 방을 못 보게 되는 일을 막습니다.
+    const { data, error } = await sb.from('channels').insert({ name, emoji, description: desc, pinned: false, kind: 'topic', community_id: CID(), created_by: ME.id }).select().single();
     if (error) { alert('채널 생성 실패: ' + error.message); return; }
     if (data) {
+      // 만든 사람은 늘 들어간다. 안 그러면 만들자마자 남의 방이 된다.
+      selectedNewChMembers.add(ME.id);
       const memberInserts = Array.from(selectedNewChMembers).map(mid => ({ channel_id: data.id, member_id: mid }));
-      if (memberInserts.length > 0) await sb.from('channel_members').insert(memberInserts);
+      if (memberInserts.length > 0) {
+        const { error: me2 } = await sb.from('channel_members').insert(memberInserts);
+        if (me2) alert(t('멤버를 넣지 못했어요 — ','Could not add members — ') + me2.message);
+      }
       channels.push(data);
-      if (selectedNewChMembers.has(ME.id)) myChannelIds.add(data.id);
+      myChannelIds.add(data.id);
+      myRealChannelIds.add(data.id);
       renderPanel();
       closeAddModal();
       openChannel(data.id);
@@ -8378,23 +8495,9 @@ async function submitAddChannel() {
     }
     const target = members[selectedDmMemberId];
     if (!target) return;
-    if (isStudent() && isStudentMember(target)) { alert('학생끼리는 1:1 대화를 할 수 없어요'); return; }
-    const dmName = `${ME.name} · ${target.name}`;
-    const existing = channels.find(c => c.kind === 'dm' && c.name.includes(ME.name) && c.name.includes(target.name));
-    if (existing) { closeAddModal(); openChannel(existing.id); return; }
-    const { data, error } = await sb.from('channels').insert({ name: dmName, emoji: '💬', description: '1:1 대화', pinned: false, kind: 'dm', community_id: CID() }).select().single();
-    if (error) { alert('DM 생성 실패: ' + error.message); return; }
-    if (data) {
-      await sb.from('channel_members').insert([
-        { channel_id: data.id, member_id: ME.id },
-        { channel_id: data.id, member_id: selectedDmMemberId },
-      ]);
-      myChannelIds.add(data.id);
-      channels.push(data);
-      renderPanel();
-      closeAddModal();
-      openChannel(data.id);
-    }
+    if (!canDmMember(target)) { alert(t('이 분과는 1:1 대화를 할 수 없어요','You cannot message this person')); return; }
+    closeAddModal();
+    await openDMwith(selectedDmMemberId);   // 중복방이 생기지 않게 한 군데로 모은다
   }
 }
 
@@ -15428,16 +15531,28 @@ async function saveChMembers(chId) {
   // 제거할 멤버
   const toRemove = [...currentIds].filter(id => !newMemberIds.has(id));
 
+  // 넣고 빼고가 '됐다' 고 말하기 전에, 정말 됐는지 본다.
+  // 권한에 막히면 오류 없이 0줄이 돌아오기도 한다 — 그때 '저장됨' 이라고
+  // 적으면 화면이 거짓말을 한다.
+  const failed = [];
   if (toAdd.length) {
-    await sb.from('channel_members').upsert(toAdd.map(id => ({ channel_id: chId, member_id: id })), { onConflict: 'channel_id,member_id' });
+    const { data, error } = await sb.from('channel_members')
+      .upsert(toAdd.map(id => ({ channel_id: chId, member_id: id })), { onConflict: 'channel_id,member_id' })
+      .select();
+    if (error) failed.push(error.message);
+    else if (!data || data.length < toAdd.length) failed.push(t('넣을 권한이 없어요','Not allowed to add'));
   }
   for (const id of toRemove) {
-    await sb.from('channel_members').delete().eq('channel_id', chId).eq('member_id', id);
+    const { data, error } = await sb.from('channel_members').delete()
+      .eq('channel_id', chId).eq('member_id', id).select();
+    if (error) failed.push(error.message);
+    else if (!data || !data.length) failed.push(t('뺄 권한이 없어요','Not allowed to remove'));
   }
+  if (failed.length) showUploadToast(t('일부를 저장하지 못했어요 — ','Some changes failed — ') + failed[0]);
 
   // 내가 추가/제거됐으면 업데이트
-  if (toAdd.includes(ME.id)) myChannelIds.add(chId);
-  if (toRemove.includes(ME.id)) myChannelIds.delete(chId);
+  if (toAdd.includes(ME.id)) { myChannelIds.add(chId); myRealChannelIds.add(chId); }
+  if (toRemove.includes(ME.id)) { myChannelIds.delete(chId); myRealChannelIds.delete(chId); }
 
   document.getElementById('ch-member-mgmt').style.display = 'none';
   await renderAdminChannels();
