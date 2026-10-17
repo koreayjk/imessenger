@@ -18926,6 +18926,7 @@ function renderSchoolMain() {
 let memItems = [];
 let memChecks = {};          // item_id → 체크 줄
 let memKind = 'verse';       // 'verse' | 'catechism'
+let memLang = 'ko';          // 'ko' | 'en' — 한글로 외운 것과 영어로 외운 것은 다른 일이다
 let memMode = 'me';          // 'me'(내 암송) | 'class'(학생 현황) | 'manage'(항목 관리)
 let memStudent = null;       // 교사가 고른 학생
 let memStudents = [];
@@ -18986,27 +18987,54 @@ async function memLoadClass() {
   } catch (_) { memAllChecks = []; }
 }
 
-function memList(kind) {
+function memLangOf(i) { return i.lang || 'ko'; }
+// 이 갈래에 영어판이 들어와 있나 (없으면 말 고르는 단추를 안 띄운다)
+function memHasEn(kind) {
   const k = kind || memKind;
+  return memItems.some(i => i.kind === k && memLangOf(i) === 'en');
+}
+function memList(kind, lang) {
+  const k = kind || memKind;
+  const L = lang || memLang;
   const q = (memQ || '').trim().toLowerCase();
-  return memItems.filter(i => i.kind === k)
+  return memItems.filter(i => i.kind === k && memLangOf(i) === L)
     .filter(i => !q || (i.title || '').toLowerCase().includes(q)
                     || (i.body || '').toLowerCase().includes(q)
+                    || (i.topic || '').toLowerCase().includes(q)
+                    || (i.series || '').toLowerCase().includes(q)
                     || String(i.no).includes(q));
+}
+// 묶음 → 주제 차례로 쌓는다. 네비게이토 TMS 는 묶음이 곧 공부 순서다.
+function memGrouped(list) {
+  const out = [];
+  let s = null, t = null;
+  list.forEach(i => {
+    if ((i.series || '') !== s) { s = i.series || ''; t = null; out.push({ series: s, topics: [] }); }
+    const g = out[out.length - 1];
+    if ((i.topic || '') !== t) { t = i.topic || ''; g.topics.push({ topic: t, items: [] }); }
+    g.topics[g.topics.length - 1].items.push(i);
+  });
+  return out;
 }
 function memState(item) {
   const c = memChecks[item.id];
   if (!c || !c.checked_at) return 'none';
   return c.confirmed_at ? 'confirmed' : 'checked';
 }
-function memCounts(kind) {
-  const list = memItems.filter(i => i.kind === (kind || memKind));
+function memCounts(kind, lang) {
+  const L = lang || memLang;
+  const list = memItems.filter(i => i.kind === (kind || memKind) && memLangOf(i) === L);
   let checked = 0, confirmed = 0;
   list.forEach(i => { const s = memState(i); if (s !== 'none') checked++; if (s === 'confirmed') confirmed++; });
   return { total: list.length, checked, confirmed };
 }
 
-function memSetKind(k) { memKind = k; memRender(); }
+function memSetKind(k) {
+  memKind = k;
+  if (!memHasEn(k)) memLang = 'ko';   // 영어판이 없는 갈래로 옮기면 한글로
+  memRender();
+}
+function memSetLang(l) { memLang = l; memRender(); }
 function memSetMode(m) { memMode = m; memStudent = null; renderMemoryHub(); }
 function memToggleHide() { memHide = !memHide; memRender(); }
 function memSearch(v) { memQ = v || ''; memRender(); }
@@ -19062,7 +19090,15 @@ function memRender() {
         font:700 13px var(--font);color:${on?'var(--adeep)':'var(--ink2)'}">${g.icon} ${APP_LANG==='en'?g.en:g.ko} <span style="font-weight:600;font-size:11px;color:var(--ink3)">${n}</span></button>`;
     }).join('')}</div>`;
 
-  if (memMode === 'manage') { main.innerHTML = `<div style="max-width:760px">${modes}${kindTabs}${memManageHtml()}</div>`; return; }
+  const langTabs = memHasEn() ? `<div style="display:inline-flex;gap:2px;background:var(--s2);border-radius:10px;padding:3px;margin-bottom:12px">
+    ${[['ko','🇰🇷 한글','Korean'],['en','🇺🇸 영어','English']].map(([k,ko,en]) => {
+      const on = memLang === k;
+      const c = memCounts(memKind, k);
+      return `<button onclick="memSetLang('${k}')" style="height:32px;padding:0 13px;border:none;border-radius:8px;cursor:pointer;font:700 12.5px var(--font);${on?'background:#1d3a5f;color:#fff':'background:transparent;color:var(--ink2)'}">
+        ${APP_LANG==='en'?en:ko} <span style="font-weight:600;font-size:11px;opacity:.75">${c.confirmed}/${c.total}</span></button>`;
+    }).join('')}</div>` : '';
+
+  if (memMode === 'manage') { main.innerHTML = `<div style="max-width:760px">${modes}${kindTabs}${langTabs}${memManageHtml()}</div>`; return; }
   if (memMode === 'class' && !memStudent) { main.innerHTML = `<div style="max-width:760px">${modes}${kindTabs}${memClassHtml()}</div>`; return; }
 
   const who = memMode === 'class' ? memStudent : ME;
@@ -19078,9 +19114,10 @@ function memRender() {
       <div style="font-size:15px;font-weight:700;color:var(--ink)">${escHtml(who ? who.name : '')}</div>
     </div>` : ''}
     ${kindTabs}
+    ${langTabs}
     <div style="background:linear-gradient(135deg,#1d3a5f,#2a5298);border-radius:16px;padding:16px 20px;margin-bottom:12px;color:white">
       <div style="display:flex;justify-content:space-between;align-items:baseline">
-        <div style="font-size:13px;opacity:.8">${memKindName()}</div>
+        <div style="font-size:13px;opacity:.8">${memKindName()}${memHasEn() ? ' · ' + (memLang === 'en' ? t('영어','English') : t('한글','Korean')) : ''}</div>
         <div style="font-size:22px;font-weight:800">${c.confirmed} / ${c.total}</div>
       </div>
       <div style="background:rgba(255,255,255,.25);border-radius:99px;height:8px;margin-top:10px;overflow:hidden;display:flex">
@@ -19096,7 +19133,11 @@ function memRender() {
         border:1.5px solid ${memHide?'#1d3a5f':'var(--border)'};background:${memHide?'var(--asoft)':'var(--surface)'};
         color:var(--ink2);font:700 12.5px var(--font)">${memHide ? t('👁 본문 보기','👁 Show') : t('🙈 가리고 외우기','🙈 Hide')}</button>
     </div>
-    ${items.length ? items.map(i => memRowHtml(i, who)).join('')
+    ${items.length ? memGrouped(items).map(g => `
+        ${g.series ? `<div style="font:800 13.5px var(--font);color:var(--adeep);margin:18px 0 6px;padding-bottom:6px;border-bottom:2px solid var(--adeep)">${escHtml(g.series)}</div>` : ''}
+        ${g.topics.map(tp => `
+          ${tp.topic ? `<div style="font:700 11.5px var(--font);color:var(--ink3);margin:11px 0 5px;letter-spacing:.02em">${escHtml(tp.topic)}</div>` : ''}
+          ${tp.items.map(i => memRowHtml(i, who)).join('')}`).join('')}`).join('')
       : `<div style="text-align:center;color:var(--ink3);font-size:13px;padding:40px 10px;line-height:1.8">
           ${memQ ? t('찾는 항목이 없어요','No matching items')
                  : t('아직 등록된 항목이 없어요.<br>선생님이 [성구암송 → 항목 관리] 에서 넣어주시면 여기에 나와요.',
@@ -19154,7 +19195,7 @@ function memWhen(iso) {
 
 // ── 교사: 학생 현황 ─────────────────────────────────────────────
 function memClassHtml() {
-  const list = memItems.filter(i => i.kind === memKind);
+  const list = memItems.filter(i => i.kind === memKind && memLangOf(i) === memLang);
   const total = list.length;
   const ids = new Set(list.map(i => i.id));
   const by = {};
@@ -19210,7 +19251,7 @@ function memManageHtml() {
       </label>
       <button onclick="memBulkSave()" style="height:38px;padding:0 16px;border-radius:10px;border:none;background:#1d3a5f;color:#fff;font:700 13px var(--font);cursor:pointer">${t('넣기','Add')}</button>
     </div>
-    <div style="font-size:13.5px;font-weight:800;color:var(--adeep);margin:0 0 9px">${memKindName()} · ${list.length}${t('개','')}</div>
+    <div style="font-size:13.5px;font-weight:800;color:var(--adeep);margin:0 0 9px">${memKindName()}${memHasEn() ? ' · ' + (memLang === 'en' ? t('영어','English') : t('한글','Korean')) : ''} · ${list.length}${t('개','')}</div>
     <div class="adm-card">
       ${list.length ? list.map(i => `<div style="display:flex;align-items:flex-start;gap:9px;padding:8px 0;border-bottom:1px solid var(--border)">
         <div style="width:28px;flex-shrink:0;font:800 12px var(--font);color:var(--ink3);padding-top:2px">${i.no}</div>
@@ -19254,14 +19295,14 @@ async function memBulkSave() {
   const rows = memParseBulk(ta ? ta.value : '');
   if (!rows.length) { showUploadToast(t('넣을 줄이 없어요','Nothing to add')); return; }
   const replace = !!(document.getElementById('mem-bulk-replace') || {}).checked;
-  if (replace && !confirm(t(`지금 있는 ${memKindName()} 항목을 모두 지우고 ${rows.length}개를 새로 넣을까요?`,
+  if (replace && !confirm(t(`지금 있는 ${memKindName()}(${memLang === 'en' ? '영어' : '한글'}) 항목을 모두 지우고 ${rows.length}개를 새로 넣을까요?`,
                            `Delete all existing items and add ${rows.length}?`))) return;
   if (replace) {
-    const { error } = await sb.from('memory_items').delete().eq('kind', memKind);
+    const { error } = await sb.from('memory_items').delete().eq('kind', memKind).eq('lang', memLang);
     if (error) { showUploadToast(t('지우지 못했어요 — ','Could not clear — ') + (error.message||'')); return; }
   }
   const payload = rows.map((r, idx) => ({
-    kind: memKind, no: r.no, title: r.title, body: r.body, answer: r.answer,
+    kind: memKind, lang: memLang, no: r.no, title: r.title, body: r.body, answer: r.answer,
     community_id: CID(), sort: idx,
   }));
   const { error } = await sb.from('memory_items').insert(payload);

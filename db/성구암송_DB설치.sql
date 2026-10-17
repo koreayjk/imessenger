@@ -32,8 +32,19 @@ create table if not exists public.memory_items (
   active       boolean not null default true,
   created_at   timestamptz not null default now()
 );
-create unique index if not exists memory_items_uq
-  on public.memory_items (kind, no, coalesce(community_id, '00000000-0000-0000-0000-000000000000'::uuid));
+-- 한글·영어를 따로 담기 전의 색인. 언어 칸이 생긴 뒤에는
+-- db/성구암송_분류언어_DB설치.sql 이 lang 을 넣은 색인으로 바꿔 둔다.
+-- 그 뒤에 이 파일을 다시 돌려도 멈추지 않게, 언어 칸이 있으면 건너뛴다.
+-- (안 그러면 같은 번호의 한글·영어가 겹쳐 색인을 못 만든다)
+do $$
+begin
+  if not exists (select 1 from information_schema.columns
+                  where table_schema = 'public' and table_name = 'memory_items'
+                    and column_name = 'lang') then
+    create unique index if not exists memory_items_uq
+      on public.memory_items (kind, no, coalesce(community_id, '00000000-0000-0000-0000-000000000000'::uuid));
+  end if;
+end $$;
 create index if not exists memory_items_kind_idx on public.memory_items (kind, sort, no);
 
 comment on table public.memory_items is

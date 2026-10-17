@@ -1,5 +1,5 @@
 -- =====================================================================
---  TCS — 아직 설치 안 된 것 한꺼번에 (2026-10)
+--  TCS — 아직 설치 안 된 것 한꺼번에
 --  순서대로 한 번에 돕니다. 재실행해도 안전합니다.
 -- =====================================================================
 
@@ -57,6 +57,7 @@ select
   count(*) filter (where prior_read)          as "예전에 읽음 체크",
   count(*) filter (where not prior_read)      as "독후감 쓴 것"
 from public.reading_logs;
+
 
 -- ══════ db/기도제목_댓글_DB설치.sql ══════
 -- =====================================================================
@@ -133,6 +134,7 @@ notify pgrst, 'reload schema';
 select policyname as "정책", cmd as "대상"
   from pg_policies where schemaname='public' and tablename='prayer_comments'
  order by 2, 1;
+
 
 -- ══════ db/채팅_공지_누적_DB설치.sql ══════
 -- =====================================================================
@@ -228,6 +230,7 @@ select count(*) filter (where removed_at is null) as "지금 걸린 공지",
        count(*) as "전체"
   from public.channel_notices;
 
+
 -- ══════ db/성구암송_DB설치.sql ══════
 -- =====================================================================
 --  📜 성구암송 — 60구절 · 소교리문답
@@ -263,8 +266,19 @@ create table if not exists public.memory_items (
   active       boolean not null default true,
   created_at   timestamptz not null default now()
 );
-create unique index if not exists memory_items_uq
-  on public.memory_items (kind, no, coalesce(community_id, '00000000-0000-0000-0000-000000000000'::uuid));
+-- 한글·영어를 따로 담기 전의 색인. 언어 칸이 생긴 뒤에는
+-- db/성구암송_분류언어_DB설치.sql 이 lang 을 넣은 색인으로 바꿔 둔다.
+-- 그 뒤에 이 파일을 다시 돌려도 멈추지 않게, 언어 칸이 있으면 건너뛴다.
+-- (안 그러면 같은 번호의 한글·영어가 겹쳐 색인을 못 만든다)
+do $$
+begin
+  if not exists (select 1 from information_schema.columns
+                  where table_schema = 'public' and table_name = 'memory_items'
+                    and column_name = 'lang') then
+    create unique index if not exists memory_items_uq
+      on public.memory_items (kind, no, coalesce(community_id, '00000000-0000-0000-0000-000000000000'::uuid));
+  end if;
+end $$;
 create index if not exists memory_items_kind_idx on public.memory_items (kind, sort, no);
 
 comment on table public.memory_items is
@@ -370,91 +384,242 @@ select kind as "갈래", count(*) as "항목 수" from public.memory_items group
 --  다르면 학사 → 성구암송 → 항목 관리 에서 통째로 바꿀 수 있습니다.
 -- =====================================================================
 
--- ══════ db/성구암송_내용_60구절.sql ══════
+
+-- ══════ db/성구암송_분류언어_DB설치.sql ══════
 -- =====================================================================
---  📜 성구암송 내용 ① — 성경 60구절
+--  📜 성구암송 — 분류(A~E · 주제)와 언어(한글 · 영어)
 --
---  ⚠️ 중요 — 교회마다 외우는 60구절이 다릅니다.
---     이것은 한국 교회에서 널리 쓰이는 구절로 제가 고른 목록이고,
---     본문은 개역개정을 따라 적었습니다. 쓰시는 목록·역본과 다를 수
---     있으니 **반드시 한 번 훑어보시고** 다르면 통째로 바꾸세요.
+--  네비게이토 주제별 성구암송(TMS)은 다섯 묶음 × 주제 여섯 × 두 구절
+--  = 60구절입니다. 묶음과 주제를 담을 칸이 필요합니다.
 --
---     바꾸는 길 (5분이면 됩니다):
---       학사 → 성구암송 → 항목 관리 → '여러 줄 한꺼번에 넣기'
---       '지금 있는 항목을 모두 지우고 새로 넣기' 체크 →
---       한 줄에 하나씩  번호 | 구절 주소 | 본문  으로 붙여넣기
+--  그리고 한글과 영어를 '따로' 체크합니다. 한글로 외운 것과 영어로
+--  외운 것은 다른 일이니까요. 같은 구절이라도 줄을 따로 둡니다.
 --
 --  ※ db/성구암송_DB설치.sql 을 먼저 실행하세요.
 --  Supabase → SQL Editor 에 붙여넣고 실행하세요. (재실행해도 안전)
 -- =====================================================================
 
-delete from public.memory_items where kind = 'verse' and community_id is null;
+do $$
+begin
+  if to_regclass('public.memory_items') is null then
+    raise exception '먼저 db/성구암송_DB설치.sql 을 실행해주세요.';
+  end if;
+end $$;
 
-insert into public.memory_items (kind, no, title, body, community_id, sort) values
-  ('verse', 1, '창세기 1:1', '태초에 하나님이 천지를 창조하시니라', null, 1),
-  ('verse', 2, '창세기 1:27', '하나님이 자기 형상 곧 하나님의 형상대로 사람을 창조하시되 남자와 여자를 창조하시고', null, 2),
-  ('verse', 3, '출애굽기 20:3', '너는 나 외에는 다른 신들을 네게 두지 말라', null, 3),
-  ('verse', 4, '신명기 6:5', '너는 마음을 다하고 뜻을 다하고 힘을 다하여 네 하나님 여호와를 사랑하라', null, 4),
-  ('verse', 5, '여호수아 1:9', '내가 네게 명령한 것이 아니냐 강하고 담대하라 두려워하지 말며 놀라지 말라 네가 어디로 가든지 네 하나님 여호와가 너와 함께 하느니라 하시니라', null, 5),
-  ('verse', 6, '시편 1:1-2', '복 있는 사람은 악인들의 꾀를 따르지 아니하며 죄인들의 길에 서지 아니하며 오만한 자들의 자리에 앉지 아니하고 오직 여호와의 율법을 즐거워하여 그의 율법을 주야로 묵상하는도다', null, 6),
-  ('verse', 7, '시편 23:1', '여호와는 나의 목자시니 내게 부족함이 없으리로다', null, 7),
-  ('verse', 8, '시편 51:10', '하나님이여 내 속에 정한 마음을 창조하시고 내 안에 정직한 영을 새롭게 하소서', null, 8),
-  ('verse', 9, '시편 119:105', '주의 말씀은 내 발에 등이요 내 길에 빛이니이다', null, 9),
-  ('verse', 10, '시편 139:14', '내가 주께 감사하옴은 나를 지으심이 심히 기묘하심이라 주께서 하시는 일이 기이함을 내 영혼이 잘 아나이다', null, 10),
-  ('verse', 11, '잠언 1:7', '여호와를 경외하는 것이 지식의 근본이거늘 미련한 자는 지혜와 훈계를 멸시하느니라', null, 11),
-  ('verse', 12, '잠언 3:5-6', '너는 마음을 다하여 여호와를 신뢰하고 네 명철을 의지하지 말라 너는 범사에 그를 인정하라 그리하면 네 길을 지도하시리라', null, 12),
-  ('verse', 13, '잠언 16:9', '사람이 마음으로 자기의 길을 계획할지라도 그의 걸음을 인도하시는 이는 여호와시니라', null, 13),
-  ('verse', 14, '전도서 12:1', '너는 청년의 때에 너의 창조주를 기억하라', null, 14),
-  ('verse', 15, '이사야 40:31', '오직 여호와를 앙망하는 자는 새 힘을 얻으리니 독수리가 날개치며 올라감 같을 것이요 달음박질하여도 곤비하지 아니하겠고 걸어가도 피곤하지 아니하리로다', null, 15),
-  ('verse', 16, '이사야 41:10', '두려워하지 말라 내가 너와 함께 함이라 놀라지 말라 나는 네 하나님이 됨이라 내가 너를 굳세게 하리라 참으로 너를 도와 주리라 참으로 나의 의로운 오른손으로 너를 붙들리라', null, 16),
-  ('verse', 17, '이사야 53:5', '그가 찔림은 우리의 허물 때문이요 그가 상함은 우리의 죄악 때문이라 그가 징계를 받으므로 우리는 평화를 누리고 그가 채찍에 맞으므로 우리는 나음을 받았도다', null, 17),
-  ('verse', 18, '예레미야 29:11', '여호와의 말씀이니라 너희를 향한 나의 생각을 내가 아나니 평안이요 재앙이 아니니라 너희에게 미래와 희망을 주는 것이니라', null, 18),
-  ('verse', 19, '미가 6:8', '사람아 주께서 선한 것이 무엇임을 네게 보이셨나니 여호와께서 네게 구하시는 것은 오직 정의를 행하며 인자를 사랑하며 겸손하게 네 하나님과 함께 행하는 것이 아니냐', null, 19),
-  ('verse', 20, '마태복음 5:16', '이같이 너희 빛이 사람 앞에 비치게 하여 그들로 너희 착한 행실을 보고 하늘에 계신 너희 아버지께 영광을 돌리게 하라', null, 20),
-  ('verse', 21, '마태복음 6:33', '그런즉 너희는 먼저 그의 나라와 그의 의를 구하라 그리하면 이 모든 것을 너희에게 더하시리라', null, 21),
-  ('verse', 22, '마태복음 7:12', '그러므로 무엇이든지 남에게 대접을 받고자 하는 대로 너희도 남을 대접하라 이것이 율법이요 선지자니라', null, 22),
-  ('verse', 23, '마태복음 11:28', '수고하고 무거운 짐 진 자들아 다 내게로 오라 내가 너희를 쉬게 하리라', null, 23),
-  ('verse', 24, '마태복음 22:37-39', '예수께서 이르시되 네 마음을 다하고 목숨을 다하고 뜻을 다하여 주 너의 하나님을 사랑하라 하셨으니 이것이 크고 첫째 되는 계명이요 둘째도 그와 같으니 네 이웃을 네 자신 같이 사랑하라 하셨으니', null, 24),
-  ('verse', 25, '마태복음 28:19-20', '그러므로 너희는 가서 모든 민족을 제자로 삼아 아버지와 아들과 성령의 이름으로 세례를 베풀고 내가 너희에게 분부한 모든 것을 가르쳐 지키게 하라 볼지어다 내가 세상 끝날까지 너희와 항상 함께 있으리라 하시니라', null, 25),
-  ('verse', 26, '누가복음 2:52', '예수는 지혜와 키가 자라가며 하나님과 사람에게 더욱 사랑스러워 가시더라', null, 26),
-  ('verse', 27, '요한복음 1:1', '태초에 말씀이 계시니라 이 말씀이 하나님과 함께 계셨으니 이 말씀은 곧 하나님이시니라', null, 27),
-  ('verse', 28, '요한복음 1:12', '영접하는 자 곧 그 이름을 믿는 자들에게는 하나님의 자녀가 되는 권세를 주셨으니', null, 28),
-  ('verse', 29, '요한복음 3:16', '하나님이 세상을 이처럼 사랑하사 독생자를 주셨으니 이는 그를 믿는 자마다 멸망하지 않고 영생을 얻게 하려 하심이라', null, 29),
-  ('verse', 30, '요한복음 14:6', '예수께서 이르시되 내가 곧 길이요 진리요 생명이니 나로 말미암지 않고는 아버지께로 올 자가 없느니라', null, 30),
-  ('verse', 31, '요한복음 15:5', '나는 포도나무요 너희는 가지라 그가 내 안에, 내가 그 안에 거하면 사람이 열매를 많이 맺나니 나를 떠나서는 너희가 아무 것도 할 수 없음이라', null, 31),
-  ('verse', 32, '요한복음 15:13', '사람이 친구를 위하여 자기 목숨을 버리면 이보다 더 큰 사랑이 없나니', null, 32),
-  ('verse', 33, '사도행전 1:8', '오직 성령이 너희에게 임하시면 너희가 권능을 받고 예루살렘과 온 유대와 사마리아와 땅 끝까지 이르러 내 증인이 되리라 하시니라', null, 33),
-  ('verse', 34, '사도행전 4:12', '다른 이로써는 구원을 받을 수 없나니 천하 사람 중에 구원을 받을 만한 다른 이름을 우리에게 주신 일이 없음이라 하였더라', null, 34),
-  ('verse', 35, '로마서 1:16', '내가 복음을 부끄러워하지 아니하노니 이 복음은 모든 믿는 자에게 구원을 주시는 하나님의 능력이 됨이라', null, 35),
-  ('verse', 36, '로마서 3:23', '모든 사람이 죄를 범하였으매 하나님의 영광에 이르지 못하더니', null, 36),
-  ('verse', 37, '로마서 5:8', '우리가 아직 죄인 되었을 때에 그리스도께서 우리를 위하여 죽으심으로 하나님께서 우리에 대한 자기의 사랑을 확증하셨느니라', null, 37),
-  ('verse', 38, '로마서 6:23', '죄의 삯은 사망이요 하나님의 은사는 그리스도 예수 우리 주 안에 있는 영생이니라', null, 38),
-  ('verse', 39, '로마서 8:28', '우리가 알거니와 하나님을 사랑하는 자 곧 그의 뜻대로 부르심을 입은 자들에게는 모든 것이 합력하여 선을 이루느니라', null, 39),
-  ('verse', 40, '로마서 10:9', '네가 만일 네 입으로 예수를 주로 시인하며 또 하나님께서 그를 죽은 자 가운데서 살리신 것을 네 마음에 믿으면 구원을 받으리라', null, 40),
-  ('verse', 41, '로마서 12:1-2', '그러므로 형제들아 내가 하나님의 모든 자비하심으로 너희를 권하노니 너희 몸을 하나님이 기뻐하시는 거룩한 산 제물로 드리라 이는 너희가 드릴 영적 예배니라 너희는 이 세대를 본받지 말고 오직 마음을 새롭게 함으로 변화를 받아', null, 41),
-  ('verse', 42, '고린도전서 10:13', '사람이 감당할 시험 밖에는 너희가 당한 것이 없나니 오직 하나님은 미쁘사 너희가 감당하지 못할 시험 당함을 허락하지 아니하시고 시험 당할 즈음에 또한 피할 길을 내사 너희로 능히 감당하게 하시느니라', null, 42),
-  ('verse', 43, '고린도전서 10:31', '그런즉 너희가 먹든지 마시든지 무엇을 하든지 다 하나님의 영광을 위하여 하라', null, 43),
-  ('verse', 44, '고린도전서 13:4-5', '사랑은 오래 참고 사랑은 온유하며 시기하지 아니하며 사랑은 자랑하지 아니하며 교만하지 아니하며 무례히 행하지 아니하며 자기의 유익을 구하지 아니하며 성내지 아니하며 악한 것을 생각하지 아니하며', null, 44),
-  ('verse', 45, '고린도후서 5:17', '그런즉 누구든지 그리스도 안에 있으면 새로운 피조물이라 이전 것은 지나갔으니 보라 새 것이 되었도다', null, 45),
-  ('verse', 46, '갈라디아서 2:20', '내가 그리스도와 함께 십자가에 못 박혔나니 그런즉 이제는 내가 사는 것이 아니요 오직 내 안에 그리스도께서 사시는 것이라', null, 46),
-  ('verse', 47, '갈라디아서 5:22-23', '오직 성령의 열매는 사랑과 희락과 화평과 오래 참음과 자비와 양선과 충성과 온유와 절제니 이같은 것을 금지할 법이 없느니라', null, 47),
-  ('verse', 48, '에베소서 2:8-9', '너희는 그 은혜에 의하여 믿음으로 말미암아 구원을 받았으니 이것은 너희에게서 난 것이 아니요 하나님의 선물이라 행위에서 난 것이 아니니 이는 누구든지 자랑하지 못하게 함이라', null, 48),
-  ('verse', 49, '에베소서 6:1-3', '자녀들아 주 안에서 너희 부모에게 순종하라 이것이 옳으니라 네 아버지와 어머니를 공경하라 이것은 약속이 있는 첫 계명이니 이로써 네가 잘되고 땅에서 장수하리라', null, 49),
-  ('verse', 50, '빌립보서 2:5-7', '너희 안에 이 마음을 품으라 곧 그리스도 예수의 마음이니 그는 근본 하나님의 본체시나 하나님과 동등됨을 취할 것으로 여기지 아니하시고 오히려 자기를 비워 종의 형체를 가지사 사람들과 같이 되셨고', null, 50),
-  ('verse', 51, '빌립보서 4:6-7', '아무 것도 염려하지 말고 다만 모든 일에 기도와 간구로 너희 구할 것을 감사함으로 하나님께 아뢰라 그리하면 모든 지각에 뛰어난 하나님의 평강이 그리스도 예수 안에서 너희 마음과 생각을 지키시리라', null, 51),
-  ('verse', 52, '빌립보서 4:13', '내게 능력 주시는 자 안에서 내가 모든 것을 할 수 있느니라', null, 52),
-  ('verse', 53, '골로새서 3:23', '무슨 일을 하든지 마음을 다하여 주께 하듯 하고 사람에게 하듯 하지 말라', null, 53),
-  ('verse', 54, '데살로니가전서 5:16-18', '항상 기뻐하라 쉬지 말고 기도하라 범사에 감사하라 이것이 그리스도 예수 안에서 너희를 향하신 하나님의 뜻이니라', null, 54),
-  ('verse', 55, '디모데전서 4:12', '누구든지 네 연소함을 업신여기지 못하게 하고 오직 말과 행실과 사랑과 믿음과 정절에 있어서 믿는 자에게 본이 되어', null, 55),
-  ('verse', 56, '디모데후서 3:16-17', '모든 성경은 하나님의 감동으로 된 것으로 교훈과 책망과 바르게 함과 의로 교육하기에 유익하니 이는 하나님의 사람으로 온전하게 하며 모든 선한 일을 행할 능력을 갖추게 하려 함이라', null, 56),
-  ('verse', 57, '히브리서 11:1', '믿음은 바라는 것들의 실상이요 보이지 않는 것들의 증거니', null, 57),
-  ('verse', 58, '히브리서 12:1-2', '이러므로 우리에게 구름 같이 둘러싼 허다한 증인들이 있으니 모든 무거운 것과 얽매이기 쉬운 죄를 벗어 버리고 인내로써 우리 앞에 당한 경주를 하며 믿음의 주요 또 온전하게 하시는 이인 예수를 바라보자', null, 58),
-  ('verse', 59, '야고보서 1:22', '너희는 말씀을 행하는 자가 되고 듣기만 하여 자신을 속이는 자가 되지 말라', null, 59),
-  ('verse', 60, '요한일서 1:9', '만일 우리가 우리 죄를 자백하면 그는 미쁘시고 의로우사 우리 죄를 사하시며 우리를 모든 불의에서 깨끗하게 하실 것이요', null, 60);
+alter table public.memory_items
+  add column if not exists lang   text not null default 'ko',
+  add column if not exists series text,          -- 'A. 새로운 삶'
+  add column if not exists topic  text;          -- '중심되신 그리스도'
+
+alter table public.memory_items drop constraint if exists memory_items_lang_ok;
+alter table public.memory_items add constraint memory_items_lang_ok
+  check (lang in ('ko','en'));
+
+-- 같은 번호라도 언어가 다르면 다른 줄이다
+drop index if exists public.memory_items_uq;
+create unique index if not exists memory_items_uq2
+  on public.memory_items (kind, lang, no, coalesce(community_id, '00000000-0000-0000-0000-000000000000'::uuid));
+
+create index if not exists memory_items_kind_lang_idx
+  on public.memory_items (kind, lang, sort, no);
+
+comment on column public.memory_items.lang is
+  'ko = 한글 · en = 영어. 같은 구절이라도 줄을 따로 두어 각각 체크한다.';
+comment on column public.memory_items.series is '큰 묶음 (예: A. 새로운 삶)';
+comment on column public.memory_items.topic  is '주제 (예: 중심되신 그리스도)';
 
 notify pgrst, 'reload schema';
 
-select count(*) as "성경 구절" from public.memory_items where kind='verse';
+-- ── 확인 ─────────────────────────────────────────────────────────
+select kind as "갈래", lang as "말", count(*) as "항목 수"
+  from public.memory_items group by 1,2 order by 1,2;
+
+
+-- ══════ db/성구암송_내용_60구절.sql ══════
+-- =====================================================================
+--  📜 성구암송 내용 ① — 네비게이토 주제별 성구암송 (TMS) 60구절
+--
+--  다섯 묶음(A~E) × 주제 여섯 × 두 구절 = 60구절.
+--  한글(개역개정)과 영어(NIV)를 따로 담습니다. 같은 구절이라도 줄을
+--  따로 두어, 학생이 한글로 외운 것과 영어로 외운 것을 각각 체크합니다.
+--
+--  한글 본문은 보내주신 그대로 넣었습니다.
+--
+--  ⚠️ 영어(NIV) 본문은 제가 적은 것입니다. 아이들이 이 글로 외우게
+--     되니 한 번 훑어봐 주세요. 다르면 학사 → 성구암송 → 항목 관리
+--     에서 고칠 수 있습니다.
+--
+--  ※ db/성구암송_DB설치.sql 과 db/성구암송_분류언어_DB설치.sql 을
+--    먼저 실행하세요.
+--  Supabase → SQL Editor 에 붙여넣고 실행하세요. (재실행해도 안전)
+--
+--  Scripture quotations marked NIV are taken from the Holy Bible,
+--  New International Version®, NIV®. Copyright © 1973, 1978, 1984,
+--  2011 by Biblica, Inc.® Used by permission. All rights reserved
+--  worldwide.
+-- =====================================================================
+
+delete from public.memory_items where kind = 'verse' and community_id is null;
+
+insert into public.memory_items (kind, lang, no, title, body, series, topic, community_id, sort) values
+  ('verse', 'ko', 1, '고린도후서 5:17', '그런즉 누구든지 그리스도 안에 있으면 새로운 피조물이라 이전 것은 지나갔으니 보라 새 것이 되었도다', 'A. 새로운 삶', '중심되신 그리스도', null, 1),
+  ('verse', 'en', 1, '2 Corinthians 5:17', 'Therefore, if anyone is in Christ, the new creation has come: The old has gone, the new is here!', 'A. The New Life', 'Christ the Center', null, 1),
+  ('verse', 'ko', 2, '갈라디아서 2:20', '내가 그리스도와 함께 십자가에 못 박혔나니 그런즉 이제는 내가 사는 것이 아니요 오직 내 안에 그리스도께서 사시는 것이라 이제 내가 육체 가운데 사는 것은 나를 사랑하사 나를 위하여 자기 자신을 버리신 하나님의 아들을 믿는 믿음 안에서 사는 것이라', 'A. 새로운 삶', '중심되신 그리스도', null, 2),
+  ('verse', 'en', 2, 'Galatians 2:20', 'I have been crucified with Christ and I no longer live, but Christ lives in me. The life I now live in the body, I live by faith in the Son of God, who loved me and gave himself for me.', 'A. The New Life', 'Christ the Center', null, 2),
+  ('verse', 'ko', 3, '로마서 12:1', '그러므로 형제들아 내가 하나님의 모든 자비하심으로 너희를 권하노니 너희 몸을 하나님이 기뻐하시는 거룩한 산 제물로 드리라 이는 너희가 드릴 영적 예배니라', 'A. 새로운 삶', '그리스도께 순종', null, 3),
+  ('verse', 'en', 3, 'Romans 12:1', 'Therefore, I urge you, brothers and sisters, in view of God''s mercy, to offer your bodies as a living sacrifice, holy and pleasing to God—this is your true and proper worship.', 'A. The New Life', 'Obedience to Christ', null, 3),
+  ('verse', 'ko', 4, '요한복음 14:21', '나의 계명을 지키는 자라야 나를 사랑하는 자니 나를 사랑하는 자는 내 아버지께 사랑을 받을 것이요 나도 그를 사랑하여 그에게 나를 나타내리라', 'A. 새로운 삶', '그리스도께 순종', null, 4),
+  ('verse', 'en', 4, 'John 14:21', 'Whoever has my commands and keeps them is the one who loves me. The one who loves me will be loved by my Father, and I too will love them and show myself to them.', 'A. The New Life', 'Obedience to Christ', null, 4),
+  ('verse', 'ko', 5, '디모데후서 3:16', '모든 성경은 하나님의 감동으로 된 것으로 교훈과 책망과 바르게 함과 의로 교육하기에 유익하니', 'A. 새로운 삶', '말씀', null, 5),
+  ('verse', 'en', 5, '2 Timothy 3:16', 'All Scripture is God-breathed and is useful for teaching, rebuking, correcting and training in righteousness,', 'A. The New Life', 'The Word', null, 5),
+  ('verse', 'ko', 6, '여호수아 1:8', '이 율법책을 네 입에서 떠나지 말게 하며 주야로 그것을 묵상하여 그 안에 기록된 대로 다 지켜 행하라 그리하면 네 길이 평탄하게 될 것이며 네가 형통하리라', 'A. 새로운 삶', '말씀', null, 6),
+  ('verse', 'en', 6, 'Joshua 1:8', 'Keep this Book of the Law always on your lips; meditate on it day and night, so that you may be careful to do everything written in it. Then you will be prosperous and successful.', 'A. The New Life', 'The Word', null, 6),
+  ('verse', 'ko', 7, '요한복음 15:7', '너희가 내 안에 거하고 내 말이 너희 안에 거하면 무엇이든지 원하는 대로 구하라 그리하면 이루리라', 'A. 새로운 삶', '기도', null, 7),
+  ('verse', 'en', 7, 'John 15:7', 'If you remain in me and my words remain in you, ask whatever you wish, and it will be done for you.', 'A. The New Life', 'Prayer', null, 7),
+  ('verse', 'ko', 8, '빌립보서 4:6-7', '아무 것도 염려하지 말고 다만 모든 일에 기도와 간구로, 너희 구할 것을 감사함으로 하나님께 아뢰라
+그리하면 모든 지각에 뛰어난 하나님의 평강이 그리스도 예수 안에서 너희 마음과 생각을 지키시리라', 'A. 새로운 삶', '기도', null, 8),
+  ('verse', 'en', 8, 'Philippians 4:6-7', 'Do not be anxious about anything, but in every situation, by prayer and petition, with thanksgiving, present your requests to God.
+And the peace of God, which transcends all understanding, will guard your hearts and your minds in Christ Jesus.', 'A. The New Life', 'Prayer', null, 8),
+  ('verse', 'ko', 9, '마태복음 18:20', '두세 사람이 내 이름으로 모인 곳에는 나도 그들 중에 있느니라', 'A. 새로운 삶', '교제', null, 9),
+  ('verse', 'en', 9, 'Matthew 18:20', 'For where two or three gather in my name, there am I with them.', 'A. The New Life', 'Fellowship', null, 9),
+  ('verse', 'ko', 10, '히브리서 10:24-25', '서로 돌아보아 사랑과 선행을 격려하며
+모이기를 폐하는 어떤 사람들의 습관과 같이 하지 말고 오직 권하여 그 날이 가까움을 볼수록 더욱 그리하자', 'A. 새로운 삶', '교제', null, 10),
+  ('verse', 'en', 10, 'Hebrews 10:24-25', 'And let us consider how we may spur one another on toward love and good deeds,
+not giving up meeting together, as some are in the habit of doing, but encouraging one another—and all the more as you see the Day approaching.', 'A. The New Life', 'Fellowship', null, 10),
+  ('verse', 'ko', 11, '마태복음 4:19', '말씀하시되 나를 따라오라 내가 너희를 사람을 낚는 어부가 되게 하리라 하시니', 'A. 새로운 삶', '증거', null, 11),
+  ('verse', 'en', 11, 'Matthew 4:19', '"Come, follow me," Jesus said, "and I will send you out to fish for people."', 'A. The New Life', 'Witnessing', null, 11),
+  ('verse', 'ko', 12, '로마서 1:16', '내가 복음을 부끄러워하지 아니하노니 이 복음은 모든 믿는 자에게 구원을 주시는 하나님의 능력이 됨이라 먼저는 유대인에게요 그리고 헬라인에게로다', 'A. 새로운 삶', '증거', null, 12),
+  ('verse', 'en', 12, 'Romans 1:16', 'For I am not ashamed of the gospel, because it is the power of God that brings salvation to everyone who believes: first to the Jew, then to the Gentile.', 'A. The New Life', 'Witnessing', null, 12),
+  ('verse', 'ko', 13, '로마서 3:23', '모든 사람이 죄를 범하였으매 하나님의 영광에 이르지 못하더니', 'B. 그리스도를 전파함', '모든 사람이 죄를 범함', null, 13),
+  ('verse', 'en', 13, 'Romans 3:23', 'for all have sinned and fall short of the glory of God,', 'B. Proclaim Christ', 'All Have Sinned', null, 13),
+  ('verse', 'ko', 14, '이사야 53:6', '우리는 다 양 같아서 그릇 행하여 각기 제 길로 갔거늘 여호와께서는 우리 모두의 죄악을 그에게 담당시키셨도다', 'B. 그리스도를 전파함', '모든 사람이 죄를 범함', null, 14),
+  ('verse', 'en', 14, 'Isaiah 53:6', 'We all, like sheep, have gone astray, each of us has turned to our own way; and the LORD has laid on him the iniquity of us all.', 'B. Proclaim Christ', 'All Have Sinned', null, 14),
+  ('verse', 'ko', 15, '로마서 6:23', '죄의 삯은 사망이요 하나님의 은사는 그리스도 예수 우리 주 안에 있는 영생이니라', 'B. 그리스도를 전파함', '죄의 형벌', null, 15),
+  ('verse', 'en', 15, 'Romans 6:23', 'For the wages of sin is death, but the gift of God is eternal life in Christ Jesus our Lord.', 'B. Proclaim Christ', 'Sin''s Penalty', null, 15),
+  ('verse', 'ko', 16, '히브리서 9:27', '한번 죽는 것은 사람에게 정해진 것이요 그 후에는 심판이 있으리니', 'B. 그리스도를 전파함', '죄의 형벌', null, 16),
+  ('verse', 'en', 16, 'Hebrews 9:27', 'Just as people are destined to die once, and after that to face judgment,', 'B. Proclaim Christ', 'Sin''s Penalty', null, 16),
+  ('verse', 'ko', 17, '로마서 5:8', '우리가 아직 죄인 되었을 때에 그리스도께서 우리를 위하여 죽으심으로 하나님께서 우리에 대한 자기의 사랑을 확증하셨느니라', 'B. 그리스도를 전파함', '그리스도가 형벌을 받음', null, 17),
+  ('verse', 'en', 17, 'Romans 5:8', 'But God demonstrates his own love for us in this: While we were still sinners, Christ died for us.', 'B. Proclaim Christ', 'Christ Paid the Penalty', null, 17),
+  ('verse', 'ko', 18, '베드로전서 3:18', '그리스도께서도 단번에 죄를 위하여 죽으사 의인으로서 불의한 자를 대신하셨으니 이는 우리를 하나님 앞으로 인도하려 하심이라 육체로는 죽임을 당하시고 영으로는 살리심을 받으셨으니', 'B. 그리스도를 전파함', '그리스도가 형벌을 받음', null, 18),
+  ('verse', 'en', 18, '1 Peter 3:18', 'For Christ also suffered once for sins, the righteous for the unrighteous, to bring you to God. He was put to death in the body but made alive in the Spirit.', 'B. Proclaim Christ', 'Christ Paid the Penalty', null, 18),
+  ('verse', 'ko', 19, '에베소서 2:8-9', '너희는 그 은혜에 의하여 믿음으로 말미암아 구원을 받았으니 이것은 너희에게서 난 것이 아니요 하나님의 선물이라
+행위에서 난 것이 아니니 이는 누구든지 자랑하지 못하게 함이라', 'B. 그리스도를 전파함', '선행으로 구원받지 못함', null, 19),
+  ('verse', 'en', 19, 'Ephesians 2:8-9', 'For it is by grace you have been saved, through faith—and this is not from yourselves, it is the gift of God—
+not by works, so that no one can boast.', 'B. Proclaim Christ', 'Salvation Not by Works', null, 19),
+  ('verse', 'ko', 20, '디도서 3:5', '우리를 구원하시되 우리가 행한 바 의로운 행위로 말미암지 아니하고 오직 그의 긍휼하심을 따라 중생의 씻음과 성령의 새롭게 하심으로 하셨나니', 'B. 그리스도를 전파함', '선행으로 구원받지 못함', null, 20),
+  ('verse', 'en', 20, 'Titus 3:5', 'he saved us, not because of righteous things we had done, but because of his mercy. He saved us through the washing of rebirth and renewal by the Holy Spirit,', 'B. Proclaim Christ', 'Salvation Not by Works', null, 20),
+  ('verse', 'ko', 21, '요한복음 1:12', '영접하는 자 곧 그 이름을 믿는 자들에게는 하나님의 자녀가 되는 권세를 주셨으니', 'B. 그리스도를 전파함', '그리스도를 모셔야 함', null, 21),
+  ('verse', 'en', 21, 'John 1:12', 'Yet to all who did receive him, to those who believed in his name, he gave the right to become children of God—', 'B. Proclaim Christ', 'Must Receive Christ', null, 21),
+  ('verse', 'ko', 22, '요한계시록 3:20', '볼지어다 내가 문 밖에 서서 두드리노니 누구든지 내 음성을 듣고 문을 열면 내가 그에게로 들어가 그와 더불어 먹고 그는 나와 더불어 먹으리라', 'B. 그리스도를 전파함', '그리스도를 모셔야 함', null, 22),
+  ('verse', 'en', 22, 'Revelation 3:20', 'Here I am! I stand at the door and knock. If anyone hears my voice and opens the door, I will come in and eat with that person, and they with me.', 'B. Proclaim Christ', 'Must Receive Christ', null, 22),
+  ('verse', 'ko', 23, '요한일서 5:13', '내가 하나님의 아들의 이름을 믿는 너희에게 이것을 쓰는 것은 너희로 하여금 너희에게 영생이 있음을 알게 하려 함이라', 'B. 그리스도를 전파함', '구원의 확신', null, 23),
+  ('verse', 'en', 23, '1 John 5:13', 'I write these things to you who believe in the name of the Son of God so that you may know that you have eternal life.', 'B. Proclaim Christ', 'Assurance of Salvation', null, 23),
+  ('verse', 'ko', 24, '요한복음 5:24', '내가 진실로 진실로 너희에게 이르노니 내 말을 듣고 또 나 보내신 이를 믿는 자는 영생을 얻었고 심판에 이르지 아니하나니 사망에서 생명으로 옮겼느니라', 'B. 그리스도를 전파함', '구원의 확신', null, 24),
+  ('verse', 'en', 24, 'John 5:24', 'Very truly I tell you, whoever hears my word and believes him who sent me has eternal life and will not be judged but has crossed over from death to life.', 'B. Proclaim Christ', 'Assurance of Salvation', null, 24),
+  ('verse', 'ko', 25, '고린도전서 3:16', '너희는 너희가 하나님의 성전인 것과 하나님의 성령이 너희 안에 계시는 것을 알지 못하느냐', 'C. 하나님을 의뢰함', '성령', null, 25),
+  ('verse', 'en', 25, '1 Corinthians 3:16', 'Don''t you know that you yourselves are God''s temple and that God''s Spirit dwells in your midst?', 'C. Rely on God''s Resources', 'His Spirit', null, 25),
+  ('verse', 'ko', 26, '고린도전서 2:12', '우리가 세상의 영을 받지 아니하고 오직 하나님으로부터 온 영을 받았으니 이는 우리로 하여금 하나님께서 우리에게 은혜로 주신 것들을 알게 하려 하심이라', 'C. 하나님을 의뢰함', '성령', null, 26),
+  ('verse', 'en', 26, '1 Corinthians 2:12', 'What we have received is not the spirit of the world, but the Spirit who is from God, so that we may understand what God has freely given us.', 'C. Rely on God''s Resources', 'His Spirit', null, 26),
+  ('verse', 'ko', 27, '이사야 41:10', '두려워하지 말라 내가 너와 함께 함이라 놀라지 말라 나는 네 하나님이 됨이라 내가 너를 굳세게 하리라 참으로 너를 도와 주리라 참으로 나의 의로운 오른손으로 너를 붙들리라', 'C. 하나님을 의뢰함', '능력', null, 27),
+  ('verse', 'en', 27, 'Isaiah 41:10', 'So do not fear, for I am with you; do not be dismayed, for I am your God. I will strengthen you and help you; I will uphold you with my righteous right hand.', 'C. Rely on God''s Resources', 'His Strength', null, 27),
+  ('verse', 'ko', 28, '빌립보서 4:13', '내게 능력 주시는 자 안에서 내가 모든 것을 할 수 있느니라', 'C. 하나님을 의뢰함', '능력', null, 28),
+  ('verse', 'en', 28, 'Philippians 4:13', 'I can do all this through him who gives me strength.', 'C. Rely on God''s Resources', 'His Strength', null, 28),
+  ('verse', 'ko', 29, '예레미야애가 3:22-23', '여호와의 인자와 긍휼이 무궁하시므로 우리가 진멸되지 아니함이니이다
+이것들이 아침마다 새로우니 주의 성실하심이 크시도소이다', 'C. 하나님을 의뢰함', '성실', null, 29),
+  ('verse', 'en', 29, 'Lamentations 3:22-23', 'Because of the LORD''s great love we are not consumed, for his compassions never fail.
+They are new every morning; great is your faithfulness.', 'C. Rely on God''s Resources', 'His Faithfulness', null, 29),
+  ('verse', 'ko', 30, '민수기 23:19', '하나님은 사람이 아니시니 거짓말을 하지 않으시고 인생이 아니시니 후회가 없으시도다 어찌 그 말씀하신 바를 행하지 않으시며 하신 말씀을 실행하지 않으시랴', 'C. 하나님을 의뢰함', '성실', null, 30),
+  ('verse', 'en', 30, 'Numbers 23:19', 'God is not human, that he should lie, not a human being, that he should change his mind. Does he speak and then not act? Does he promise and not fulfill?', 'C. Rely on God''s Resources', 'His Faithfulness', null, 30),
+  ('verse', 'ko', 31, '이사야 26:3', '주께서 심지가 견고한 자를 평강하고 평강하도록 지키시리니 이는 그가 주를 신뢰함이니이다', 'C. 하나님을 의뢰함', '평안', null, 31),
+  ('verse', 'en', 31, 'Isaiah 26:3', 'You will keep in perfect peace those whose minds are steadfast, because they trust in you.', 'C. Rely on God''s Resources', 'His Peace', null, 31),
+  ('verse', 'ko', 32, '베드로전서 5:7', '너희 염려를 다 주께 맡기라 이는 그가 너희를 돌보심이라', 'C. 하나님을 의뢰함', '평안', null, 32),
+  ('verse', 'en', 32, '1 Peter 5:7', 'Cast all your anxiety on him because he cares for you.', 'C. Rely on God''s Resources', 'His Peace', null, 32),
+  ('verse', 'ko', 33, '로마서 8:32', '자기 아들을 아끼지 아니하시고 우리 모든 사람을 위하여 내주신 이가 어찌 그 아들과 함께 모든 것을 우리에게 주시지 아니하겠느냐', 'C. 하나님을 의뢰함', '공급', null, 33),
+  ('verse', 'en', 33, 'Romans 8:32', 'He who did not spare his own Son, but gave him up for us all—how will he not also, along with him, graciously give us all things?', 'C. Rely on God''s Resources', 'His Provision', null, 33),
+  ('verse', 'ko', 34, '빌립보서 4:19', '나의 하나님이 그리스도 예수 안에서 영광 가운데 그 풍성한 대로 너희 모든 쓸 것을 채우시리라', 'C. 하나님을 의뢰함', '공급', null, 34),
+  ('verse', 'en', 34, 'Philippians 4:19', 'And my God will meet all your needs according to the riches of his glory in Christ Jesus.', 'C. Rely on God''s Resources', 'His Provision', null, 34),
+  ('verse', 'ko', 35, '히브리서 2:18', '그가 시험을 받아 고난을 당하셨은즉 시험 받는 자들을 능히 도우실 수 있느니라', 'C. 하나님을 의뢰함', '유혹에서 도우심', null, 35),
+  ('verse', 'en', 35, 'Hebrews 2:18', 'Because he himself suffered when he was tempted, he is able to help those who are being tempted.', 'C. Rely on God''s Resources', 'His Help in Temptation', null, 35),
+  ('verse', 'ko', 36, '시편 119:9,11', '청년이 무엇으로 그의 행실을 깨끗하게 하리이까 주의 말씀만 지킬 따름이니이다
+내가 주께 범죄하지 아니하려 하여 주의 말씀을 내 마음에 두었나이다', 'C. 하나님을 의뢰함', '유혹에서 도우심', null, 36),
+  ('verse', 'en', 36, 'Psalm 119:9,11', 'How can a young person stay on the path of purity? By living according to your word.
+I have hidden your word in my heart that I might not sin against you.', 'C. Rely on God''s Resources', 'His Help in Temptation', null, 36),
+  ('verse', 'ko', 37, '마태복음 6:33', '그런즉 너희는 먼저 그의 나라와 그의 의를 구하라 그리하면 이 모든 것을 너희에게 더하시리라', 'D. 그리스도 제자의 자격', '그리스도를 첫자리에 모심', null, 37),
+  ('verse', 'en', 37, 'Matthew 6:33', 'But seek first his kingdom and his righteousness, and all these things will be given to you as well.', 'D. Be Christ''s Disciple', 'Put Christ First', null, 37),
+  ('verse', 'ko', 38, '누가복음 9:23', '또 무리에게 이르시되 아무든지 나를 따라오려거든 자기를 부인하고 날마다 제 십자가를 지고 나를 따를 것이니라', 'D. 그리스도 제자의 자격', '그리스도를 첫자리에 모심', null, 38),
+  ('verse', 'en', 38, 'Luke 9:23', 'Then he said to them all: "Whoever wants to be my disciple must deny themselves and take up their cross daily and follow me."', 'D. Be Christ''s Disciple', 'Put Christ First', null, 38),
+  ('verse', 'ko', 39, '요한일서 2:15-16', '이 세상이나 세상에 있는 것들을 사랑하지 말라 누구든지 세상을 사랑하면 아버지의 사랑이 그 안에 있지 아니하니
+이는 세상에 있는 모든 것이 육신의 정욕과 안목의 정욕과 이생의 자랑이니 다 아버지께로부터 온 것이 아니요 세상으로부터 온 것이라', 'D. 그리스도 제자의 자격', '죄에서 떠남', null, 39),
+  ('verse', 'en', 39, '1 John 2:15-16', 'Do not love the world or anything in the world. If anyone loves the world, love for the Father is not in them.
+For everything in the world—the lust of the flesh, the lust of the eyes, and the pride of life—comes not from the Father but from the world.', 'D. Be Christ''s Disciple', 'Separate from the World', null, 39),
+  ('verse', 'ko', 40, '로마서 12:2', '너희는 이 세대를 본받지 말고 오직 마음을 새롭게 함으로 변화를 받아 하나님의 선하시고 기뻐하시고 온전하신 뜻이 무엇인지 분별하도록 하라', 'D. 그리스도 제자의 자격', '죄에서 떠남', null, 40),
+  ('verse', 'en', 40, 'Romans 12:2', 'Do not conform to the pattern of this world, but be transformed by the renewing of your mind. Then you will be able to test and approve what God''s will is—his good, pleasing and perfect will.', 'D. Be Christ''s Disciple', 'Separate from the World', null, 40),
+  ('verse', 'ko', 41, '고린도전서 15:58', '그러므로 내 사랑하는 형제들아 견실하며 흔들리지 말고 항상 주의 일에 더욱 힘쓰는 자들이 되라 이는 너희 수고가 주 안에서 헛되지 않은 줄 앎이라', 'D. 그리스도 제자의 자격', '견고함', null, 41),
+  ('verse', 'en', 41, '1 Corinthians 15:58', 'Therefore, my dear brothers and sisters, stand firm. Let nothing move you. Always give yourselves fully to the work of the Lord, because you know that your labor in the Lord is not in vain.', 'D. Be Christ''s Disciple', 'Steadfast', null, 41),
+  ('verse', 'ko', 42, '히브리서 12:3', '너희가 피곤하여 낙심하지 않기 위하여 죄인들이 이같이 자기에게 거역한 일을 참으신 이를 생각하라', 'D. 그리스도 제자의 자격', '견고함', null, 42),
+  ('verse', 'en', 42, 'Hebrews 12:3', 'Consider him who endured such opposition from sinners, so that you will not grow weary and lose heart.', 'D. Be Christ''s Disciple', 'Steadfast', null, 42),
+  ('verse', 'ko', 43, '마가복음 10:45', '인자가 온 것은 섬김을 받으려 함이 아니라 도리어 섬기려 하고 자기 목숨을 많은 사람의 대속물로 주려 함이니라', 'D. 그리스도 제자의 자격', '다른 사람을 섬김', null, 43),
+  ('verse', 'en', 43, 'Mark 10:45', 'For even the Son of Man did not come to be served, but to serve, and to give his life as a ransom for many.', 'D. Be Christ''s Disciple', 'Serve Others', null, 43),
+  ('verse', 'ko', 44, '고린도후서 4:5', '우리는 우리를 전파하는 것이 아니라 오직 그리스도 예수의 주 되신 것과 또 예수를 위하여 우리가 너희의 종 된 것을 전파함이라', 'D. 그리스도 제자의 자격', '다른 사람을 섬김', null, 44),
+  ('verse', 'en', 44, '2 Corinthians 4:5', 'For what we preach is not ourselves, but Jesus Christ as Lord, and ourselves as your servants for Jesus'' sake.', 'D. Be Christ''s Disciple', 'Serve Others', null, 44),
+  ('verse', 'ko', 45, '잠언 3:9-10', '네 재물과 네 소산물의 처음 익은 열매로 여호와를 공경하라
+그리하면 네 창고가 가득히 차고 네 포도즙 틀에 새 포도즙이 넘치리라', 'D. 그리스도 제자의 자격', '후히 드릴 것', null, 45),
+  ('verse', 'en', 45, 'Proverbs 3:9-10', 'Honor the LORD with your wealth, with the firstfruits of all your crops;
+then your barns will be filled to overflowing, and your vats will brim over with new wine.', 'D. Be Christ''s Disciple', 'Give Generously', null, 45),
+  ('verse', 'ko', 46, '고린도후서 9:6-7', '이것이 곧 적게 심는 자는 적게 거두고 많이 심는 자는 많이 거둔다 하는 말이로다
+각각 그 마음에 정한 대로 할 것이요 인색함으로나 억지로 하지 말지니 하나님은 즐겨 내는 자를 사랑하시느니라', 'D. 그리스도 제자의 자격', '후히 드릴 것', null, 46),
+  ('verse', 'en', 46, '2 Corinthians 9:6-7', 'Remember this: Whoever sows sparingly will also reap sparingly, and whoever sows generously will also reap generously.
+Each of you should give what you have decided in your heart to give, not reluctantly or under compulsion, for God loves a cheerful giver.', 'D. Be Christ''s Disciple', 'Give Generously', null, 46),
+  ('verse', 'ko', 47, '사도행전 1:8', '오직 성령이 너희에게 임하시면 너희가 권능을 받고 예루살렘과 온 유대와 사마리아와 땅 끝까지 이르러 내 증인이 되리라 하시니라', 'D. 그리스도 제자의 자격', '세계 비전', null, 47),
+  ('verse', 'en', 47, 'Acts 1:8', 'But you will receive power when the Holy Spirit comes on you; and you will be my witnesses in Jerusalem, and in all Judea and Samaria, and to the ends of the earth.', 'D. Be Christ''s Disciple', 'Develop World Vision', null, 47),
+  ('verse', 'ko', 48, '마태복음 28:19-20', '그러므로 너희는 가서 모든 민족을 제자로 삼아 아버지와 아들과 성령의 이름으로 세례를 베풀고
+내가 너희에게 분부한 모든 것을 가르쳐 지키게 하라 볼지어다 내가 세상 끝날까지 너희와 항상 함께 있으리라 하시니라', 'D. 그리스도 제자의 자격', '세계 비전', null, 48),
+  ('verse', 'en', 48, 'Matthew 28:19-20', 'Therefore go and make disciples of all nations, baptizing them in the name of the Father and of the Son and of the Holy Spirit,
+and teaching them to obey everything I have commanded you. And surely I am with you always, to the very end of the age.', 'D. Be Christ''s Disciple', 'Develop World Vision', null, 48),
+  ('verse', 'ko', 49, '요한복음 13:34-35', '새 계명을 너희에게 주노니 서로 사랑하라 내가 너희를 사랑한 것 같이 너희도 서로 사랑하라
+너희가 서로 사랑하면 이로써 모든 사람이 너희가 내 제자인 줄 알리라', 'E. 그리스도를 닮아감', '사랑', null, 49),
+  ('verse', 'en', 49, 'John 13:34-35', 'A new command I give you: Love one another. As I have loved you, so you must love one another.
+By this everyone will know that you are my disciples, if you love one another.', 'E. Grow in Christlikeness', 'Love', null, 49),
+  ('verse', 'ko', 50, '요한일서 3:18', '자녀들아 우리가 말과 혀로만 사랑하지 말고 행함과 진실함으로 하자', 'E. 그리스도를 닮아감', '사랑', null, 50),
+  ('verse', 'en', 50, '1 John 3:18', 'Dear children, let us not love with words or speech but with actions and in truth.', 'E. Grow in Christlikeness', 'Love', null, 50),
+  ('verse', 'ko', 51, '빌립보서 2:3-4', '아무 일에든지 다툼이나 허영으로 하지 말고 오직 겸손한 마음으로 각각 자기보다 남을 낫게 여기고
+각각 자기 일을 돌볼뿐더러 또한 각각 다른 사람들의 일을 돌보아 나의 기쁨을 충만하게 하라', 'E. 그리스도를 닮아감', '겸손', null, 51),
+  ('verse', 'en', 51, 'Philippians 2:3-4', 'Do nothing out of selfish ambition or vain conceit. Rather, in humility value others above yourselves,
+not looking to your own interests but each of you to the interests of the others.', 'E. Grow in Christlikeness', 'Humility', null, 51),
+  ('verse', 'ko', 52, '베드로전서 5:5-6', '젊은 자들아 이와 같이 장로들에게 순종하고 다 서로 겸손으로 허리를 동이라 하나님은 교만한 자를 대적하시되 겸손한 자들에게는 은혜를 주시느니라
+그러므로 하나님의 능하신 손 아래에서 겸손하라 때가 되면 너희를 높이시리라', 'E. 그리스도를 닮아감', '겸손', null, 52),
+  ('verse', 'en', 52, '1 Peter 5:5-6', 'In the same way, you who are younger, submit yourselves to your elders. All of you, clothe yourselves with humility toward one another, because, "God opposes the proud but shows favor to the humble."
+Humble yourselves, therefore, under God''s mighty hand, that he may lift you up in due time.', 'E. Grow in Christlikeness', 'Humility', null, 52),
+  ('verse', 'ko', 53, '에베소서 5:3', '음행과 온갖 더러운 것과 탐욕은 너희 중에서 그 이름조차도 부르지 말라 이는 성도에게 마땅한 바니라', 'E. 그리스도를 닮아감', '순결', null, 53),
+  ('verse', 'en', 53, 'Ephesians 5:3', 'But among you there must not be even a hint of sexual immorality, or of any kind of impurity, or of greed, because these are improper for God''s holy people.', 'E. Grow in Christlikeness', 'Purity', null, 53),
+  ('verse', 'ko', 54, '베드로전서 2:11', '사랑하는 자들아 거류민과 나그네 같은 너희를 권하노니 영혼을 거슬러 싸우는 육체의 정욕을 제어하라', 'E. 그리스도를 닮아감', '순결', null, 54),
+  ('verse', 'en', 54, '1 Peter 2:11', 'Dear friends, I urge you, as foreigners and exiles, to abstain from sinful desires, which wage war against your soul.', 'E. Grow in Christlikeness', 'Purity', null, 54),
+  ('verse', 'ko', 55, '레위기 19:11', '너희는 도둑질하지 말며 속이지 말며 서로 거짓말하지 말며', 'E. 그리스도를 닮아감', '정직', null, 55),
+  ('verse', 'en', 55, 'Leviticus 19:11', 'Do not steal. Do not lie. Do not deceive one another.', 'E. Grow in Christlikeness', 'Honesty', null, 55),
+  ('verse', 'ko', 56, '사도행전 24:16', '이것으로 말미암아 나도 하나님과 사람에 대하여 항상 양심에 거리낌이 없기를 힘쓰나이다', 'E. 그리스도를 닮아감', '정직', null, 56),
+  ('verse', 'en', 56, 'Acts 24:16', 'So I strive always to keep my conscience clear before God and man.', 'E. Grow in Christlikeness', 'Honesty', null, 56),
+  ('verse', 'ko', 57, '히브리서 11:6', '믿음이 없이는 하나님을 기쁘시게 하지 못하나니 하나님께 나아가는 자는 반드시 그가 계신 것과 또한 그가 자기를 찾는 자들에게 상 주시는 이심을 믿어야 할지니라', 'E. 그리스도를 닮아감', '믿음', null, 57),
+  ('verse', 'en', 57, 'Hebrews 11:6', 'And without faith it is impossible to please God, because anyone who comes to him must believe that he exists and that he rewards those who earnestly seek him.', 'E. Grow in Christlikeness', 'Faith', null, 57),
+  ('verse', 'ko', 58, '로마서 4:20-21', '믿음이 없어 하나님의 약속을 의심하지 않고 믿음으로 견고하여져서 하나님께 영광을 돌리며
+약속하신 그것을 또한 능히 이루실 줄을 확신하였으니', 'E. 그리스도를 닮아감', '믿음', null, 58),
+  ('verse', 'en', 58, 'Romans 4:20-21', 'Yet he did not waver through unbelief regarding the promise of God, but was strengthened in his faith and gave glory to God,
+being fully persuaded that God had power to do what he had promised.', 'E. Grow in Christlikeness', 'Faith', null, 58),
+  ('verse', 'ko', 59, '갈라디아서 6:9-10', '우리가 선을 행하되 낙심하지 말지니 포기하지 아니하면 때가 이르매 거두리라
+그러므로 우리는 기회 있는 대로 모든 이에게 착한 일을 하되 더욱 믿음의 가정들에게 할지니라', 'E. 그리스도를 닮아감', '선행', null, 59),
+  ('verse', 'en', 59, 'Galatians 6:9-10', 'Let us not become weary in doing good, for at the proper time we will reap a harvest if we do not give up.
+Therefore, as we have opportunity, let us do good to all people, especially to those who belong to the family of believers.', 'E. Grow in Christlikeness', 'Good Works', null, 59),
+  ('verse', 'ko', 60, '마태복음 5:16', '이같이 너희 빛이 사람 앞에 비치게 하여 그들로 너희 착한 행실을 보고 하늘에 계신 너희 아버지께 영광을 돌리게 하라', 'E. 그리스도를 닮아감', '선행', null, 60),
+  ('verse', 'en', 60, 'Matthew 5:16', 'In the same way, let your light shine before others, that they may see your good deeds and glorify your Father in heaven.', 'E. Grow in Christlikeness', 'Good Works', null, 60);
+
+notify pgrst, 'reload schema';
+
+-- ── 확인 ─────────────────────────────────────────────────────────
+select lang as "말", count(*) as "구절", count(distinct series) as "묶음", count(distinct topic) as "주제"
+  from public.memory_items where kind='verse' group by 1 order by 1;
+
+select series as "묶음", count(*) filter (where lang='ko') as "한글", count(*) filter (where lang='en') as "영어"
+  from public.memory_items where kind='verse' group by 1 order by 1;
+
 
 -- ══════ db/성구암송_내용_소교리문답.sql ══════
 -- =====================================================================
@@ -584,3 +749,99 @@ insert into public.memory_items (kind, no, title, body, answer, community_id, so
 notify pgrst, 'reload schema';
 
 select count(*) as "소교리문답 문항" from public.memory_items where kind='catechism';
+
+
+-- ══════ db/트리플스쿨_AI분석_댓글_DB설치.sql ══════
+-- =====================================================================
+--  Triple School 최종 독후감 : ① AI 분석 결과 저장  ② 교직원 댓글(피드백)
+--  · AI 분석은 한 번 돌리면 저장되어 다시 들어와도 그대로 보입니다.
+--  · 댓글은 간사 이상(학생 제외)만 작성, 학생은 자기 것만 읽습니다.
+--  Supabase → SQL Editor 에 붙여넣고 실행하세요. (재실행 안전)
+-- =====================================================================
+
+-- 교직원(간사 이상) 판별 헬퍼 — 이미 있으면 갱신
+create or replace function public.is_school_staff()
+returns boolean language sql security definer stable set search_path = public as $$
+  select exists (
+    select 1 from public.members me
+    where me.id = auth.uid()
+      and (
+        me.community_role in ('super_admin','vice_admin','community_admin','admin_officer','teacher','staff')
+        or me.role in ('총관리자','부총관리자','관리자','행정담당자','교사','간사')
+      )
+  ) or coalesce(auth.jwt() ->> 'email','') = 'koreayjk@gmail.com';
+$$;
+
+-- ─────────────────────────────────────────────────────────────
+-- ① AI 분석 결과 (책 × 학생 당 1개, 다시 분석하면 덮어씀)
+-- ─────────────────────────────────────────────────────────────
+create table if not exists public.reading_ai_reviews (
+  id               uuid primary key default gen_random_uuid(),
+  book_id          uuid not null references public.reading_books(id) on delete cascade,
+  student_id       uuid not null references public.members(id) on delete cascade,
+  community_id     uuid,
+  result           jsonb not null,            -- {likelihood,score,summary,signals,excerpts,questions}
+  word_count       int,                       -- 분석 당시 독후감 단어 수(재제출 감지용)
+  analyzed_by      uuid,
+  analyzed_by_name text,
+  created_at       timestamptz not null default now()
+);
+create unique index if not exists uq_reading_ai_reviews on public.reading_ai_reviews (book_id, student_id);
+
+alter table public.reading_ai_reviews enable row level security;
+drop policy if exists rair_select on public.reading_ai_reviews;
+drop policy if exists rair_insert on public.reading_ai_reviews;
+drop policy if exists rair_update on public.reading_ai_reviews;
+drop policy if exists rair_delete on public.reading_ai_reviews;
+
+-- 조회: 교직원만 (AI 판정은 학생에게 노출하지 않음)
+create policy rair_select on public.reading_ai_reviews for select to authenticated
+  using (public.is_school_staff());
+create policy rair_insert on public.reading_ai_reviews for insert to authenticated
+  with check (public.is_school_staff());
+create policy rair_update on public.reading_ai_reviews for update to authenticated
+  using (public.is_school_staff()) with check (public.is_school_staff());
+create policy rair_delete on public.reading_ai_reviews for delete to authenticated
+  using (public.is_school_staff());
+
+-- ─────────────────────────────────────────────────────────────
+-- ② 최종 독후감 댓글 (간사 이상 작성 · 학생은 자기 것 열람)
+-- ─────────────────────────────────────────────────────────────
+create table if not exists public.reading_report_comments (
+  id            uuid primary key default gen_random_uuid(),
+  book_id       uuid not null references public.reading_books(id) on delete cascade,
+  student_id    uuid not null references public.members(id) on delete cascade,
+  community_id  uuid,
+  author_id     uuid not null,
+  author_name   text,
+  content       text not null,
+  created_at    timestamptz not null default now(),
+  updated_at    timestamptz
+);
+create index if not exists idx_rrc_book_student
+  on public.reading_report_comments (book_id, student_id, created_at);
+
+alter table public.reading_report_comments enable row level security;
+drop policy if exists rrc_select on public.reading_report_comments;
+drop policy if exists rrc_insert on public.reading_report_comments;
+drop policy if exists rrc_update on public.reading_report_comments;
+drop policy if exists rrc_delete on public.reading_report_comments;
+
+-- 조회: 교직원 + 해당 학생 본인(자기가 받은 피드백은 볼 수 있어야 함)
+create policy rrc_select on public.reading_report_comments for select to authenticated
+  using (public.is_school_staff() or student_id = auth.uid());
+-- 작성: 간사 이상만, 작성자는 본인으로 고정
+create policy rrc_insert on public.reading_report_comments for insert to authenticated
+  with check (public.is_school_staff() and author_id = auth.uid());
+-- 수정/삭제: 본인이 쓴 댓글만 (단, 관리자는 모두 가능)
+create policy rrc_update on public.reading_report_comments for update to authenticated
+  using (author_id = auth.uid() and public.is_school_staff())
+  with check (author_id = auth.uid() and public.is_school_staff());
+create policy rrc_delete on public.reading_report_comments for delete to authenticated
+  using (
+    (author_id = auth.uid() and public.is_school_staff())
+    or exists (select 1 from public.members me where me.id = auth.uid()
+               and me.community_role in ('super_admin','vice_admin','community_admin'))
+  );
+
+NOTIFY pgrst, 'reload schema';
