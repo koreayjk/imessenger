@@ -18,6 +18,14 @@
     --shadow:0 18px 48px -20px rgba(22,48,79,.28);
     --shadow-sm:0 8px 24px -14px rgba(22,48,79,.30);
     --r:20px;
+    /* 움직임: ease / ease-in-out 은 기계처럼 느껴진다. 무게가 있는 것이
+       천천히 서는 곡선을 쓴다 (iOS 시트와 같은 계열). */
+    --e:cubic-bezier(.32,.72,0,1);
+    --e-soft:cubic-bezier(.22,1,.36,1);
+    /* 겹테두리 — 알루미늄 받침에 유리판을 끼운 것처럼.
+       바깥 껍데기와 안쪽 알맹이의 모서리가 같은 중심을 돌아야 한다. */
+    --bez-pad:6px;
+    --bez-r:28px;
     --serif:"Iowan Old Style","Apple Garamond",Georgia,"Times New Roman",serif;
     --sans:"Pretendard","Apple SD Gothic Neo","Malgun Gothic","Noto Sans KR",system-ui,-apple-system,sans-serif;
   }
@@ -46,6 +54,33 @@
     --shadow:0 18px 48px -20px rgba(22,48,79,.28); --shadow-sm:0 8px 24px -14px rgba(22,48,79,.30);
   }
 
+  /* 종이 결. 학교 기록부가 뿌리인 제품이라 화면도 종이 쪽으로 기울인다.
+     스크롤하는 칸에 붙이면 GPU 가 계속 다시 그린다 — 화면에 고정해 둔다. */
+  body::after{
+    content:"";position:fixed;inset:0;z-index:60;pointer-events:none;opacity:.035;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+    mix-blend-mode:multiply;
+  }
+  @media (prefers-color-scheme:dark){ body::after{mix-blend-mode:screen;opacity:.05} }
+
+  /* 겹테두리: 바깥 껍데기 + 안쪽 알맹이 */
+  .bezel{
+    padding:var(--bez-pad); border-radius:var(--bez-r);
+    background:color-mix(in srgb,var(--ink) 4%,transparent);
+    box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--ink) 7%,transparent),
+               0 28px 70px -34px rgba(22,48,79,.42);
+  }
+  .bezel > *{ border-radius:calc(var(--bez-r) - var(--bez-pad)) !important; }
+
+  /* 들어오는 움직임 — 그냥 떠 있지 않고, 아래에서 초점이 맞으며 올라온다 */
+  .rise{opacity:0;transform:translate3d(0,26px,0);filter:blur(7px);
+    transition:opacity .85s var(--e-soft),transform .85s var(--e-soft),filter .85s var(--e-soft);
+    will-change:transform,opacity}
+  .rise.in{opacity:1;transform:none;filter:none}
+  @media (prefers-reduced-motion:reduce){
+    .rise{opacity:1;transform:none;filter:none;transition:none}
+  }
+
   *{box-sizing:border-box}
   body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);
     font-size:17px;line-height:1.65;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;}
@@ -60,10 +95,31 @@
   p{margin:0}
   .tnum{font-variant-numeric:tabular-nums}
 
-  /* nav */
-  .nav{position:sticky;top:0;z-index:50;backdrop-filter:blur(12px);
-    background:color-mix(in srgb,var(--paper) 82%,transparent);border-bottom:1px solid var(--line)}
-  .nav .wrap{display:flex;align-items:center;gap:18px;height:64px}
+  /* nav — 화면 위에 붙여놓지 않고 띄운다. 가장자리까지 꽉 찬 띠는
+     '브라우저 창' 처럼 보이고, 떠 있는 알약은 '물건' 처럼 보인다. */
+  .nav{position:sticky;top:0;z-index:50;padding:18px 16px 0;pointer-events:none}
+  .nav .wrap{
+    pointer-events:auto;
+    display:flex;align-items:center;gap:18px;height:60px;width:max-content;max-width:100%;
+    margin:0 auto;padding:0 10px 0 16px;border-radius:999px;
+    background:color-mix(in srgb,var(--card) 72%,transparent);
+    backdrop-filter:blur(18px) saturate(170%);
+    -webkit-backdrop-filter:blur(18px) saturate(170%);
+    box-shadow:inset 0 1px 0 color-mix(in srgb,#fff 55%,transparent),
+               0 1px 0 color-mix(in srgb,var(--ink) 6%,transparent),
+               0 18px 44px -22px rgba(22,48,79,.45);
+    transition:box-shadow .5s var(--e),background .5s var(--e);
+  }
+  .nav.stuck .wrap{ box-shadow:inset 0 1px 0 color-mix(in srgb,#fff 55%,transparent),
+                               0 1px 0 color-mix(in srgb,var(--ink) 8%,transparent),
+                               0 26px 60px -26px rgba(22,48,79,.55); }
+  @media (prefers-reduced-transparency:reduce){
+    .nav .wrap{background:var(--card);backdrop-filter:none;-webkit-backdrop-filter:none}
+  }
+  @media(max-width:760px){
+    .nav .wrap{padding:0 8px 0 12px;gap:10px}
+    .brand > div:not(.logo){display:none}   /* 글자만 숨긴다. 로고는 남는다 */
+  }
   .brand{display:flex;align-items:center;gap:10px;font-weight:800;letter-spacing:-.01em}
   .logo{width:34px;height:34px;border-radius:10px;flex-shrink:0;
     background:linear-gradient(145deg,var(--blue),var(--navy));color:#fff;
@@ -71,13 +127,49 @@
   .brand small{display:block;font-size:10.5px;font-weight:700;color:var(--ink-3);letter-spacing:.14em;margin-top:1px}
   .nav-links{margin-left:auto;display:flex;gap:26px;align-items:center;font-size:14.5px;font-weight:600;color:var(--ink-2)}
   .nav-links a:hover{color:var(--blue)}
-  .btn{display:inline-flex;align-items:center;gap:8px;height:44px;padding:0 22px;border-radius:12px;
-    font-weight:800;font-size:15px;cursor:pointer;border:1px solid transparent;transition:transform .12s ease, box-shadow .2s ease;white-space:nowrap}
-  .btn:hover{transform:translateY(-1px)}
+  .btn{display:inline-flex;align-items:center;gap:10px;height:52px;padding:0 10px 0 24px;border-radius:999px;
+    font-weight:800;font-size:15px;cursor:pointer;border:1px solid transparent;white-space:nowrap;
+    transition:transform .45s var(--e),box-shadow .45s var(--e),background .3s var(--e)}
+  .btn:not(:has(.ico)){padding:0 24px}
+  .btn:hover{transform:translateY(-2px)}
+  .btn:active{transform:scale(.978) translateY(0)}
+  /* 화살표는 글자 옆에 맨몸으로 서지 않는다 — 제 동그라미를 입고,
+     단추 안쪽 오른쪽 끝에 딱 맞춰 선다. */
+  .ico{width:34px;height:34px;border-radius:999px;display:grid;place-items:center;flex-shrink:0;
+    background:color-mix(in srgb,#fff 18%,transparent);
+    transition:transform .45s var(--e),background .3s var(--e)}
+  .btn-ghost .ico{background:color-mix(in srgb,var(--ink) 7%,transparent)}
+  .btn:hover .ico{transform:translate3d(3px,-1px,0) scale(1.06)}
+  .ico svg{width:15px;height:15px}
   .btn-primary{background:linear-gradient(145deg,var(--blue),var(--navy));color:#fff;box-shadow:var(--shadow-sm)}
   .btn-ghost{background:var(--card);color:var(--ink);border-color:var(--line)}
   .btn-sm{height:40px;padding:0 18px;font-size:14px}
   @media(max-width:760px){.nav-links a:not(.btn){display:none}}
+
+  /* 햄버거 — 두 줄이 돌아서 X 가 된다. 사라졌다 나타나면 기계 같다. */
+  .burger{display:none;width:44px;height:44px;border:0;background:transparent;cursor:pointer;
+    position:relative;flex-shrink:0;border-radius:999px}
+  .burger i{position:absolute;left:13px;width:18px;height:1.8px;border-radius:2px;background:var(--ink);
+    transition:transform .5s var(--e),opacity .3s var(--e)}
+  .burger i:nth-child(1){top:19px}
+  .burger i:nth-child(2){top:25px}
+  .burger[aria-expanded="true"] i:nth-child(1){transform:translateY(3px) rotate(45deg)}
+  .burger[aria-expanded="true"] i:nth-child(2){transform:translateY(-3px) rotate(-45deg)}
+  @media(max-width:760px){ .burger{display:block} .nav-links{display:none} }
+
+  .menu{position:fixed;inset:0;z-index:49;display:grid;place-items:center;
+    background:color-mix(in srgb,var(--paper) 80%,transparent);
+    backdrop-filter:blur(30px) saturate(160%);-webkit-backdrop-filter:blur(30px) saturate(160%);
+    opacity:0;transition:opacity .45s var(--e)}
+  .menu.open{opacity:1}
+  .menu[hidden]{display:none}
+  .menu nav{display:flex;flex-direction:column;gap:6px;text-align:center}
+  .menu a{font-size:clamp(28px,8vw,40px);font-weight:800;letter-spacing:-.03em;color:var(--ink);
+    padding:10px 24px;opacity:0;transform:translateY(34px);
+    transition:opacity .6s var(--e-soft),transform .6s var(--e-soft);
+    transition-delay:calc(var(--i) * 70ms)}
+  .menu.open a{opacity:1;transform:none}
+  @media (prefers-reduced-motion:reduce){ .menu a{transform:none;transition:opacity .2s linear} }
 
   /* hero */
   .hero{position:relative;overflow:hidden}
@@ -160,7 +252,8 @@
   .band b{color:var(--ink)}
 
   /* sections */
-  section{padding:84px 0}
+  section{padding:112px 0}
+  @media(max-width:760px){ section{padding:76px 0} }
   .sec-head{max-width:640px;margin:0 auto 46px;text-align:center}
   .sec-head p{color:var(--ink-2);margin-top:14px;font-size:17.5px}
 
@@ -168,8 +261,9 @@
   .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
   @media(max-width:900px){.grid{grid-template-columns:repeat(2,1fr)}}
   @media(max-width:600px){.grid{grid-template-columns:1fr}}
-  .feat{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:24px;transition:transform .14s ease,box-shadow .2s ease}
-  .feat:hover{transform:translateY(-3px);box-shadow:var(--shadow)}
+  .feat{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:26px;
+    transition:transform .5s var(--e),box-shadow .5s var(--e)}
+  .feat:hover{transform:translateY(-5px);box-shadow:var(--shadow)}
   .fi{width:44px;height:44px;border-radius:13px;display:grid;place-items:center;font-size:21px;margin-bottom:16px}
   .feat h3{margin-bottom:7px}
   .feat p{font-size:14.5px;color:var(--ink-2);line-height:1.6}
@@ -229,26 +323,39 @@
 </style>
 </head>
 <body>
-<div class="nav">
+<div class="nav" id="nav">
   <div class="wrap">
-    <div class="brand"><div class="logo">TCS</div><div>Total Care System<small>작은 학교의 모든 것</small></div></div>
+    <a class="brand" href="#top"><div class="logo">TCS</div><div>Total Care System<small>작은 학교의 모든 것</small></div></a>
     <nav class="nav-links">
       <a href="#features">기능</a>
       <a href="#ai">AI 생기부</a>
       <a href="#day">학교의 하루</a>
       <a href="#start" class="btn btn-primary btn-sm">시작하기</a>
     </nav>
+    <button class="burger" id="burger" aria-label="메뉴 열기" aria-expanded="false" aria-controls="menu">
+      <i></i><i></i>
+    </button>
   </div>
+</div>
+
+<!-- 작은 화면 메뉴: 유리판이 화면을 덮고, 줄이 하나씩 올라온다 -->
+<div class="menu" id="menu" hidden>
+  <nav>
+    <a href="#features" style="--i:0">기능</a>
+    <a href="#ai"       style="--i:1">AI 생기부</a>
+    <a href="#day"      style="--i:2">학교의 하루</a>
+    <a href="#start"    style="--i:3">시작하기</a>
+  </nav>
 </div>
 
 <header class="hero">
   <div class="wrap">
-    <div class="hero-copy">
+    <div class="hero-copy rise" style="--d:0ms">
       <div class="eyebrow">소규모 학교를 위한 올인원 학교 운영 플랫폼</div>
       <h1 style="margin-top:16px">한 아이의 <span>모든 것</span>을,<br>한 페이지에.</h1>
       <p class="lead">생활기록부·출결·상담·소통을 따로 관리하지 마세요. TCS는 학생 한 명을 누르면 그 아이의 학교생활 전부가 한 화면에 모이는, 작은 학교를 위한 토탈 케어 시스템입니다.</p>
       <div class="cta-row">
-        <a href="#start" class="btn btn-primary">무료로 시작하기 →</a>
+        <a href="#start" class="btn btn-primary">무료로 시작하기<span class="ico" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 13L13 3M6 3h7v7"/></svg></span></a>
         <a href="#features" class="btn btn-ghost">기능 둘러보기</a>
       </div>
       <div class="trust">
@@ -257,8 +364,8 @@
         <span><span class="dot"></span>학생·교사 <b>모바일 지원</b></span>
       </div>
     </div>
-    <div class="hero-media">
-      <div class="browser">
+    <div class="hero-media rise" style="--d:120ms">
+      <div class="bezel"><div class="browser">
         <div class="bbar"><i></i><i></i><i></i><div class="url">tcs · 학생 &nbsp;›&nbsp; 김하은</div></div>
         <div class="bwin">
           <div class="s360-head">
@@ -282,7 +389,7 @@
           <div class="mini-row"><span class="tag tag-g">📝 관찰</span><p>발표에 적극적이고 친구를 잘 도움</p></div>
           <div class="mini-row"><span class="tag tag-b">📖 독후감</span><p>『마당을 나온 암탉』 — 자유와 용기…</p></div>
         </div>
-      </div>
+      </div></div>
       <div class="float-card fc-chat">
         <div class="mini-label">3학년 학급방</div>
         <div class="bubble">내일 현장학습 준비물 챙겨오세요 🙂</div>
@@ -302,38 +409,38 @@
 
 <section id="features">
   <div class="wrap">
-    <div class="sec-head">
+    <div class="sec-head rise">
       <div class="eyebrow">Features</div>
       <h2 style="margin-top:12px">작은 학교가 필요한 전부, 딱 여기까지.</h2>
       <p>크고 복잡한 행정 시스템 대신, 선생님이 실제로 매일 쓰는 것만 담았습니다.</p>
     </div>
     <div class="grid">
-      <div class="feat">
+      <div class="feat rise">
         <div class="fi" style="background:color-mix(in srgb,var(--blue) 14%,transparent);color:var(--blue)">🗂️</div>
         <h3>학생 360° 생활기록부</h3>
         <p>학생을 누르면 출결·성적·상담·독서·활동이 한 페이지에. 항목을 골라 종합기록부로 바로 출력합니다.</p>
       </div>
-      <div class="feat">
+      <div class="feat rise">
         <div class="fi" style="background:color-mix(in srgb,var(--green) 16%,transparent);color:var(--green)">💬</div>
         <h3>학교 메신저</h3>
         <p>학급방·개별 대화·기도제목까지. 실시간 채팅으로 선생님과 학생이 자연스럽게 연결됩니다.</p>
       </div>
-      <div class="feat">
+      <div class="feat rise">
         <div class="fi" style="background:color-mix(in srgb,var(--gold) 22%,transparent);color:var(--gold)">🖊️</div>
         <h3>출결 전자결재</h3>
         <p>학생이 결석·체험학습을 신청하면 담임이 승인, 출석부에 자동 반영. 종이 결석계는 이제 그만.</p>
       </div>
-      <div class="feat">
+      <div class="feat rise">
         <div class="fi" style="background:color-mix(in srgb,var(--blue) 14%,transparent);color:var(--blue)">📅</div>
         <h3>학사력 캘린더</h3>
         <p>예배·시험·행사·방학을 분류별 색으로 공유. 학교 전체 일정이 한눈에 정리됩니다.</p>
       </div>
-      <div class="feat">
+      <div class="feat rise">
         <div class="fi" style="background:color-mix(in srgb,var(--green) 16%,transparent);color:var(--green)">📖</div>
         <h3>독서·활동 기록</h3>
         <p>독후감과 활동 후기를 학생이 직접 쌓고, 책 표지·권수 통계까지. 트리플스쿨 독서와 자동 연동됩니다.</p>
       </div>
-      <div class="feat">
+      <div class="feat rise">
         <div class="fi" style="background:color-mix(in srgb,var(--gold) 22%,transparent);color:var(--gold)">🐷</div>
         <h3>용돈기입장</h3>
         <p>학생이 스스로 용돈을 기록하고, 담당 선생님이 함께 지도. 날짜별·카테고리별로 정리되는 가계부.</p>
@@ -344,7 +451,7 @@
 
 <section id="ai" style="padding-top:20px">
   <div class="wrap">
-    <div class="spot">
+    <div class="spot rise">
       <div class="spot-in">
         <div>
           <div class="eyebrow">AI Assist</div>
@@ -403,28 +510,28 @@
 
 <section id="day" style="background:var(--band);border-top:1px solid var(--line);border-bottom:1px solid var(--line)">
   <div class="wrap">
-    <div class="sec-head">
+    <div class="sec-head rise">
       <div class="eyebrow">A Day with TCS</div>
       <h2 style="margin-top:12px">학교의 하루가 흐르는 방식</h2>
       <p>아침 출석부터 저녁 기록까지, 하나의 흐름으로 이어집니다.</p>
     </div>
     <div class="flow">
-      <div class="step"><div class="n tnum">1</div><h3>아침 · 출석 체크</h3><p>전자출석부로 반 전체를 한 번에. 결석 신청은 담임 승인으로 자동 반영됩니다.</p></div>
-      <div class="step"><div class="n tnum">2</div><h3>수업 중 · 관찰 한 줄</h3><p>“발표에 적극적” 같은 관찰을 그때그때 한 줄씩 남겨 둡니다.</p></div>
-      <div class="step"><div class="n tnum">3</div><h3>방과 후 · 소통과 상담</h3><p>학급방으로 안내하고, 필요한 학생과 상담 기록을 남깁니다.</p></div>
-      <div class="step"><div class="n tnum">4</div><h3>학기 말 · 생기부 완성</h3><p>쌓인 기록으로 AI가 종합의견 초안을. 확인하고 출력하면 끝.</p></div>
+      <div class="step rise"><div class="n tnum">1</div><h3>아침 · 출석 체크</h3><p>전자출석부로 반 전체를 한 번에. 결석 신청은 담임 승인으로 자동 반영됩니다.</p></div>
+      <div class="step rise"><div class="n tnum">2</div><h3>수업 중 · 관찰 한 줄</h3><p>“발표에 적극적” 같은 관찰을 그때그때 한 줄씩 남겨 둡니다.</p></div>
+      <div class="step rise"><div class="n tnum">3</div><h3>방과 후 · 소통과 상담</h3><p>학급방으로 안내하고, 필요한 학생과 상담 기록을 남깁니다.</p></div>
+      <div class="step rise"><div class="n tnum">4</div><h3>학기 말 · 생기부 완성</h3><p>쌓인 기록으로 AI가 종합의견 초안을. 확인하고 출력하면 끝.</p></div>
     </div>
   </div>
 </section>
 
 <section id="start">
   <div class="wrap">
-    <div class="cta">
+    <div class="cta rise">
       <div class="eyebrow" style="color:#bcd0ea">Get Started</div>
       <h2 style="margin-top:12px">작은 학교일수록, 더 촘촘하게 돌볼 수 있습니다.</h2>
       <p>복잡한 설치도, 비싼 도입 비용도 없습니다. 오늘 바로 우리 학교의 토탈 케어를 시작해 보세요.</p>
       <div class="cta-row" style="justify-content:center">
-        <a href="./index.html" class="btn btn-primary">TCS 시작하기 →</a>
+        <a href="./index.html" class="btn btn-primary">TCS 시작하기<span class="ico" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 13L13 3M6 3h7v7"/></svg></span></a>
         <a href="#features" class="btn btn-ghost">기능 다시 보기</a>
       </div>
     </div>
@@ -437,5 +544,76 @@
     <div>© 2026 TCS · 소규모 미션스쿨을 위한 학생 케어 플랫폼</div>
   </div>
 </footer>
+<script>
+(() => {
+  'use strict';
+  const calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // ── 떠 있는 머리글: 조금 내려가면 그림자가 깊어진다 ──
+  const nav = document.getElementById('nav');
+  if (nav) {
+    const onScroll = () => nav.classList.toggle('stuck', scrollY > 12);
+    addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+  }
+
+  // ── 작은 화면 메뉴 ──
+  const burger = document.getElementById('burger');
+  const menu   = document.getElementById('menu');
+  const setMenu = (on) => {
+    if (!menu || !burger) return;
+    burger.setAttribute('aria-expanded', on ? 'true' : 'false');
+    burger.setAttribute('aria-label', on ? '메뉴 닫기' : '메뉴 열기');
+    if (on) {
+      menu.hidden = false;
+      // 숨김을 푼 바로 그 프레임에 켜면 '시작 모습' 이 없던 일이 된다
+      void menu.offsetHeight;
+      menu.classList.add('open');
+      document.body.style.overflow = 'hidden';
+    } else {
+      menu.classList.remove('open');
+      document.body.style.overflow = '';
+      setTimeout(() => { if (!menu.classList.contains('open')) menu.hidden = true; }, calm ? 0 : 460);
+    }
+  };
+  burger && burger.addEventListener('click', () =>
+    setMenu(burger.getAttribute('aria-expanded') !== 'true'));
+  menu && menu.addEventListener('click', (e) => { if (e.target.tagName === 'A' || e.target === menu) setMenu(false); });
+  addEventListener('keydown', (e) => { if (e.key === 'Escape') setMenu(false); });
+
+  // ── 화면에 들어올 때 올라오기 ──
+  //  스크롤마다 재지 않는다 — 계속 다시 재면 휴대폰에서 끊긴다.
+  const rise = [...document.querySelectorAll('.rise')];
+  if (calm || !('IntersectionObserver' in window)) {
+    rise.forEach(el => el.classList.add('in'));
+  } else {
+    // 같은 묶음 안에서는 차례로 조금씩 늦게 — 한꺼번에 뜨면 아무 일도 안 난 것 같다
+    const seen = new Map();
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach(en => {
+        // 화면에 들어온 것만 보면, 링크로 아래쪽에 바로 내려갔을 때
+        // 지나쳐 버린 묶음이 영영 안 보이는 채로 남는다 —
+        // 움직임이 없는 것보다 안 보이는 게 훨씬 나쁘다.
+        const passed = en.boundingClientRect.bottom < 0;
+        if (!en.isIntersecting && !passed) return;
+        const el = en.target;
+        const row = el.parentElement;
+        const n = seen.get(row) || 0;
+        seen.set(row, n + 1);
+        el.style.transitionDelay = (el.style.getPropertyValue('--d') || (n * 70) + 'ms');
+        el.classList.add('in');
+        io.unobserve(el);
+      });
+    }, {
+      // 위쪽을 아주 넓게 잡는다. 안 그러면 '아래에 있었다 → 위로 지나갔다' 는
+      // 한 번도 겹친 적이 없어서 알림이 아예 안 온다 — 링크로 바로 내려가면
+      // 중간 묶음이 영영 안 보이는 채로 남는다.
+      // 아래쪽은 -12% 그대로라 아직 안 온 것이 미리 뜨지는 않는다.
+      rootMargin: '99999px 0px -12% 0px', threshold: 0.08
+    });
+    rise.forEach(el => io.observe(el));
+  }
+})();
+</script>
 </body>
 </html>
