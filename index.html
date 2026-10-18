@@ -25,7 +25,11 @@
   --s3: #e8eef6;
   --ink: #1a2336;
   --ink2: #4a5670;
-  --ink3: #8a96aa;
+  /* 흐린 글씨. 예전 #8a96aa 는 연한 바탕에서 2.56:1 밖에 안 나왔다 —
+     보조 설명·시각·안내문이 사실상 안 읽히는 밝기였다. 우리 바탕 네 가지
+     (#fff · #f4f7fc · #eef2f8 · #e8eef6) 모두에서 4.5:1 을 넘기는 가장
+     밝은 값으로 내린다 (가장 어두운 바탕에서도 4.62:1). */
+  --ink3: #5d6b82;
   --border: #d4dce8;
   --bs: #dde4ef;
   --accent: #1d3a5f;
@@ -35,6 +39,9 @@
   --sagsoft: #c8e6d8;
   --gold: #2a5298;
   --rose: #c0392b;
+  /* 연한 빨강 바탕 위에 올리는 빨간 글씨. 원래 쓰던 --rose 는 그 위에서
+     4.45:1 이라 기준(4.5)에 턱걸이로 모자랐다. 한 단계만 내린다. */
+  --rose-ink: #a32a1e;
   --sidebar-w: 68px;
   --panel-w: 280px;
   --font: 'Pretendard Variable', Pretendard, -apple-system, system-ui, sans-serif;
@@ -43,9 +50,50 @@
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);      /* 나타나기/사라지기 (기본) */
   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);  /* 화면 안에서 이동 */
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);   /* 패널/드로어 (iOS 느낌) */
+  /* 높낮이 — 카드가 '칠해진 네모' 가 아니라 '놓인 것' 으로 보이게.
+     한 겹짜리 그림자는 테두리처럼만 보인다. 가까운 곳의 또렷한 그림자와
+     멀리 번지는 그림자를 겹쳐야 물건처럼 보인다.
+     검정이 아니라 남색을 섞는다 — 바탕이 푸른 쪽이라 검정은 때처럼 뜬다. */
+  --sh-1: 0 1px 1px rgba(29,58,95,.04), 0 3px 10px -2px rgba(29,58,95,.13), 0 0 0 1px rgba(29,58,95,.045);
+  --sh-2: 0 2px 4px rgba(29,58,95,.06), 0 12px 28px -8px rgba(29,58,95,.18), 0 0 0 1px rgba(29,58,95,.05);
+  --sh-3: 0 10px 20px -8px rgba(29,58,95,.12), 0 28px 60px -14px rgba(29,58,95,.26);
+  --ring: 0 0 0 3px rgba(29,58,95,.28);            /* 키보드 초점 */
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-font-smoothing: antialiased; overflow: hidden; }
+
+/* ── 브라우저가 대신 그려주는 자리 ──
+   글 선택 색, 글자 커서, 초점 테두리, 스크롤바, 체크박스.
+   손대지 않으면 전부 브라우저 기본값이고, 그 기본값은 어느 디자인에도
+   속하지 않는다. 여기서 한 번에 우리 색으로 맞춘다. */
+::selection { background: rgba(29,58,95,.16); color: var(--ink); }
+input, textarea, [contenteditable] { caret-color: var(--accent); }
+input, textarea, select, button { accent-color: var(--accent); }
+a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
+
+/* 키보드로 다닐 때 지금 어디인지 — 마우스로 누를 때는 안 뜬다.
+   테두리 모양은 건드리지 않는다. box-shadow 는 그 요소의 모서리를 그대로
+   따라가므로, 초점이 갈 때 네모가 튀지 않는다. */
+:focus { outline: none; }
+:focus-visible { outline: none; box-shadow: var(--ring); position: relative; z-index: 1; }
+
+/* 스크롤바 — 예전에는 채널 목록 하나만 손봐서, 다른 칸은 전부
+   브라우저 기본 회색 막대였다 */
+* { scrollbar-width: thin; scrollbar-color: rgba(29,58,95,.22) transparent; }
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgba(29,58,95,.18); border-radius: 99px;
+  border: 2px solid transparent; background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(29,58,95,.32); background-clip: content-box; }
+::-webkit-scrollbar-corner { background: transparent; }
+
+/* 숫자는 자리가 흔들리지 않게 — 안읽음 배지, 시각, 진도(1/60)가
+   1 과 8 사이를 오갈 때마다 칸 너비가 바뀌면 눈에 거슬린다 */
+.badge, .sb-btn .badge, time, .tnum,
+#panel-body, #sidebar, #school-main, .adm-card, #memory-page,
+#s360-list, .hw-row { font-variant-numeric: tabular-nums; }
 
 /* ── 레이아웃 ── */
 #app { display: flex; height: 100vh; height: 100dvh; box-sizing: border-box; }
@@ -69,7 +117,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
   letter-spacing: -.01em;
 }
 .sb-btn {
-  width: 44px; height: 44px; border-radius: 14px;
+  width: 52px; height: 48px; border-radius: 14px;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 3px; cursor: pointer; margin-bottom: 4px;
   transition: background .15s;
@@ -78,8 +126,12 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
 .sb-btn:hover { background: rgba(255,255,255,.1); }
 .sb-btn.active { background: rgba(255,255,255,.18); }
 .sb-btn svg { flex-shrink: 0; }
-.sb-btn span { font-size: 9.5px; color: rgba(255,255,255,.5); font-weight: 500; }
-.sb-btn.active span { color: #c5d9ef; }
+.sb-btn span {
+  font-size: 11px; color: rgba(255,255,255,.68); font-weight: 500;
+  letter-spacing: -.02em; line-height: 1.1; max-width: 100%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.sb-btn.active span { color: #dce8f6; }
 .sb-btn .badge {
   position: absolute; top: 6px; right: 6px;
   min-width: 16px; height: 16px; border-radius: 8px; padding: 0 4px;
@@ -180,7 +232,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
 /* ── 사역자 교육 ── */
 .trprog { display:flex; flex-wrap:wrap; gap:7px; margin-bottom:12px; }
 .trprog-i { font:700 12px var(--font); border:1.5px solid var(--border); border-radius:9px; padding:4px 10px; background:var(--surface); color:var(--ink2); }
-.trprog-i.warn { border-color:#c0392b; color:#c0392b; background:#fdeeea; }
+.trprog-i.warn { border-color:var(--rose-ink,#a32a1e); color:var(--rose-ink,#a32a1e); background:#fdeeea; }
 .trprog-i.good { border-color:#2a7a5a; color:#2a7a5a; background:#e8f5ee; }
 .trgrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(216px,1fr)); gap:14px; }
 .trcard { background:var(--surface); border:1px solid var(--border); border-radius:14px; overflow:hidden; cursor:pointer;
@@ -375,7 +427,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
 
 /* 우측 멤버 패널 */
 #right-panel {
-  width: 240px; background: #FEFAF3;
+  width: 240px; background: var(--s2);   /* 예전 크림색(#FEFAF3) — 혼자 따뜻했다 */
   border-left: 1px solid var(--border);
   display: flex; flex-direction: column;
   flex-shrink: 0; overflow: hidden;
@@ -490,7 +542,24 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
 @media (min-width: 761px) { #adm-tabpick { display: none !important; } }
 .adm-tab:hover { color:var(--ink); }
 .adm-tab.active-adm { border-bottom-color:var(--accent);color:var(--adeep);font-weight:600; }
-.adm-card { background:var(--surface);border-radius:16px;padding:18px 20px;margin-bottom:12px;box-shadow:0 1px 4px rgba(29,58,95,.07); }
+.adm-card { background:var(--surface);border-radius:16px;padding:18px 20px;margin-bottom:12px;box-shadow:var(--sh-1); }
+
+/* 홈 위젯 속 한 줄.
+   예전에는 흰 카드 안에 회색 네모를 또 넣었다 — 테두리 두 겹, 여백 두 겹이라
+   정작 글 자리가 좁고, 카드 안에 카드가 든 것처럼 보였다.
+   쉬고 있을 때는 선 하나로만 가르고, 누를 수 있는 줄만 손을 올렸을 때 칠한다. */
+.hw-row {
+  padding: 10px 2px;
+  border-radius: 10px;
+  border-bottom: 1px solid var(--border);
+  transition: background .14s var(--ease-out), padding-left .14s var(--ease-out);
+}
+.hw-row:last-child { border-bottom: 0; }
+.hw-tap { cursor: pointer; }
+@media (hover: hover) and (pointer: fine) {
+  .hw-tap:hover { background: var(--s2); padding-left: 8px; padding-right: 8px; }
+}
+.hw-tap:active { background: var(--s3); }
 /* 내 프로필 카드 — 칸을 세로로 채운다.
    격자로 두면 한 카드가 길어질 때 그 옆이 통째로 비어 버린다.
    (알림 카드가 길어지면서 왼쪽이 화면 반쯤 텅 비었다) */
@@ -578,7 +647,8 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
     display: flex !important;
     position: fixed; bottom: 0; left: 0; right: 0;
     height: 72px; z-index: 30;
-    background: rgba(248,243,234,.96);
+    /* 예전엔 크림색(248,243,234)이라 푸른 앱 위에 혼자 따뜻했다 */
+    background: rgba(248,250,253,.92);
     backdrop-filter: blur(14px);
     -webkit-backdrop-filter: blur(14px);
     border-top: 1px solid var(--border);
@@ -590,7 +660,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
     align-items: center; justify-content: center;
     gap: 3px; cursor: pointer; padding: 6px 0;
   }
-  .mn-btn span { font-size: 10px; font-weight: 500; color: var(--ink3); }
+  .mn-btn span { font-size: 11px; font-weight: 600; color: var(--ink3); letter-spacing: -.02em; }
   .mn-btn.active span { color: var(--accent); font-weight: 600; }
 
   /* 채팅방 열릴 때 패널 숨기기 */
@@ -821,6 +891,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
   #panel { transition: none; }
   .fade { animation: none; }
   .auth-btn:active { transform: none; }
+  .hw-row { transition: none; }
   #splash .ring { animation-duration: 1.6s; }   /* 로딩 표시는 유지하되 회전을 늦춘다 */
 }
 </style>
@@ -1096,7 +1167,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
         ondragleave="if(!event.relatedTarget||!event.currentTarget.contains(event.relatedTarget))document.getElementById('drop-overlay').style.display='none'"
         ondrop="event.preventDefault();document.getElementById('drop-overlay').style.display='none';handleDropFile(event)">
         <div id="drop-overlay" style="display:none;position:absolute;inset:0;z-index:50;background:rgba(29,58,95,.15);border:3px dashed var(--accent);border-radius:16px;align-items:center;justify-content:center;pointer-events:none">
-          <div style="background:white;border-radius:16px;padding:24px 40px;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,.15)">
+          <div style="background:white;border-radius:16px;padding:24px 40px;text-align:center;box-shadow:var(--sh-3)">
             <div style="font-size:40px;margin-bottom:8px">📎</div>
             <div style="font-size:16px;font-weight:700;color:var(--accent)">파일을 놓으세요</div>
           </div>
@@ -1254,7 +1325,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
           <div style="text-align:center;font-size:12px;font-weight:600;color:var(--ink3);padding:6px 0">수</div>
           <div style="text-align:center;font-size:12px;font-weight:600;color:var(--ink3);padding:6px 0">목</div>
           <div style="text-align:center;font-size:12px;font-weight:600;color:var(--ink3);padding:6px 0">금</div>
-          <div style="text-align:center;font-size:12px;font-weight:600;color:#5A7C8B;padding:6px 0">토</div>
+          <div style="text-align:center;font-size:12px;font-weight:600;color:#2a5298;padding:6px 0">토</div>
         </div>
         <!-- 달력 그리드 -->
         <div id="cal-grid" style="padding:0 16px 16px;flex:1;display:flex;flex-direction:column"></div>
@@ -1607,7 +1678,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
 
   <!-- 채널/DM 추가 모달 -->
   <div id="add-modal" style="display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.45);align-items:center;justify-content:center">
-    <div style="background:var(--surface);border-radius:20px;padding:28px;width:460px;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.2)">
+    <div style="background:var(--surface);border-radius:20px;padding:28px;width:460px;max-height:90vh;overflow-y:auto;box-shadow:var(--sh-3)">
       <div id="add-modal-title" style="font-size:17px;font-weight:700;margin-bottom:20px">새 채널 / 1:1 채팅 추가</div>
       <div style="display:flex;gap:10px;margin-bottom:20px">
         <div id="add-tab-topic" onclick="switchAddTab('topic')" style="flex:1;padding:10px;border-radius:12px;background:var(--accent);color:white;text-align:center;cursor:pointer;font-size:14px;font-weight:600">📢 토픽 채널</div>
@@ -1640,7 +1711,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
 
   <!-- 메시지 삭제 확인 모달 -->
   <div id="delete-modal" style="display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.45);align-items:center;justify-content:center">
-    <div style="background:var(--surface);border-radius:20px;padding:28px;width:340px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.2)">
+    <div style="background:var(--surface);border-radius:20px;padding:28px;width:340px;text-align:center;box-shadow:var(--sh-3)">
       <div style="font-size:32px;margin-bottom:12px">🗑️</div>
       <div style="font-size:16px;font-weight:700;margin-bottom:8px">메시지를 삭제할까요?</div>
       <div style="font-size:13px;color:var(--ink3);margin-bottom:24px">삭제된 메시지는 복구할 수 없어요</div>
@@ -1653,7 +1724,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
 
   <!-- 꾸며서 쓰기 (굵게·밑줄·색·형광펜) -->
   <div id="rich-modal" style="display:none;position:fixed;inset:0;z-index:210;background:rgba(0,0,0,.45);align-items:center;justify-content:center;padding:16px">
-    <div class="rich-card" style="background:var(--surface);border-radius:20px;width:100%;max-width:560px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.2)">
+    <div class="rich-card" style="background:var(--surface);border-radius:20px;width:100%;max-width:560px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:var(--sh-3)">
       <div style="padding:16px 20px 10px;flex-shrink:0">
         <div id="rich-title" style="font-size:17px;font-weight:700" data-ko="🎨 꾸며서 쓰기" data-en="🎨 Write with formatting">🎨 꾸며서 쓰기</div>
         <div style="font-size:12.5px;color:var(--ink3);margin-top:3px" data-ko="글자를 고른 다음 단추를 누르세요" data-en="Select text, then press a button">글자를 고른 다음 단추를 누르세요</div>
@@ -1671,7 +1742,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
 
   <!-- 메시지 신고 모달 -->
   <div id="report-modal" style="display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.45);align-items:center;justify-content:center">
-    <div style="background:var(--surface);border-radius:20px;padding:24px;width:420px;max-width:94vw;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.2)">
+    <div style="background:var(--surface);border-radius:20px;padding:24px;width:420px;max-width:94vw;max-height:90vh;overflow-y:auto;box-shadow:var(--sh-3)">
       <div style="font-size:17px;font-weight:700;margin-bottom:4px" data-ko="🚩 메시지 신고" data-en="🚩 Report message">🚩 메시지 신고</div>
       <div style="font-size:12.5px;color:var(--ink3);margin-bottom:16px" data-ko="관리자에게 전달됩니다. 신고한 사람이 누구인지는 상대에게 알려지지 않아요." data-en="This goes to your community admins. The other person is never told who reported them.">관리자에게 전달됩니다. 신고한 사람이 누구인지는 상대에게 알려지지 않아요.</div>
       <div id="report-preview" style="font-size:12.5px;color:var(--ink2);background:var(--s2);border-radius:11px;padding:11px 13px;margin-bottom:16px;line-height:1.55;max-height:110px;overflow-y:auto"></div>
@@ -1692,7 +1763,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
 
   <!-- 투표 만들기 모달 -->
   <div id="poll-modal" style="display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.45);align-items:center;justify-content:center">
-    <div style="background:var(--surface);border-radius:20px;padding:26px;width:440px;max-width:94vw;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.2)">
+    <div style="background:var(--surface);border-radius:20px;padding:26px;width:440px;max-width:94vw;max-height:90vh;overflow-y:auto;box-shadow:var(--sh-3)">
       <div style="font-size:17px;font-weight:700;margin-bottom:4px" data-ko="📊 투표 만들기" data-en="📊 Create Poll">📊 투표 만들기</div>
       <div style="font-size:12.5px;color:var(--ink3);margin-bottom:18px" data-ko="질문과 항목을 입력하세요" data-en="Enter a question and options">질문과 항목을 입력하세요</div>
 
@@ -1728,7 +1799,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
 
   <!-- 채널 수정 모달 -->
   <div id="edit-channel-modal" style="display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.45);align-items:center;justify-content:center">
-    <div style="background:var(--surface);border-radius:20px;padding:28px;width:400px;box-shadow:0 20px 60px rgba(0,0,0,.2)">
+    <div style="background:var(--surface);border-radius:20px;padding:28px;width:400px;box-shadow:var(--sh-3)">
       <div style="font-size:17px;font-weight:700;margin-bottom:20px">✏️ 채널 수정</div>
       <div style="font-size:11.5px;color:var(--ink3);margin-bottom:5px">채널 이름</div>
       <input id="edit-ch-name" placeholder="채널 이름" style="width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none;margin-bottom:10px"/>
@@ -1750,7 +1821,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
 
   <!-- 오늘의 묵상 등록 모달 -->
   <div id="daily-word-modal" style="display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.45);align-items:center;justify-content:center">
-    <div style="background:var(--surface);border-radius:20px;padding:28px;width:480px;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.2)">
+    <div style="background:var(--surface);border-radius:20px;padding:28px;width:480px;max-height:90vh;overflow-y:auto;box-shadow:var(--sh-3)">
       <div style="font-size:17px;font-weight:700;margin-bottom:6px">✦ 오늘의 묵상 등록</div>
       <div style="font-size:13px;color:var(--ink3);margin-bottom:20px">Tabletalk 링크와 말씀을 입력해주세요</div>
       <div style="font-size:11.5px;color:var(--ink3);margin-bottom:5px">Tabletalk URL</div>
@@ -1770,7 +1841,7 @@ html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-
     </div>
   </div>
   <div id="event-modal" style="display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.45);align-items:center;justify-content:center">
-    <div style="background:var(--surface);border-radius:20px;padding:28px;width:440px;box-shadow:0 20px 60px rgba(0,0,0,.2)">
+    <div style="background:var(--surface);border-radius:20px;padding:28px;width:440px;box-shadow:var(--sh-3)">
       <div style="font-size:17px;font-weight:700;margin-bottom:20px" id="event-modal-title">📅 일정 추가</div>
       <input id="ev-title" placeholder="일정 제목 (예: 주일예배)" data-ko-ph="일정 제목 (예: 주일예배)" data-en-ph="Event title (e.g. Sunday service)" style="width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none;margin-bottom:10px"/>
       <textarea id="ev-desc" placeholder="설명 (선택사항)" data-ko-ph="설명 (선택사항)" data-en-ph="Description (optional)" rows="2" style="width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none;resize:none;margin-bottom:10px"></textarea>
@@ -2868,7 +2939,9 @@ async function doSignUp() {
     const uid = authData.user?.id;
     if (!uid) throw new Error('가입 처리 중 오류가 발생했어요');
 
-    const colors = ['#1d3a5f','#2a5298','#6F8A5C','#5A7C8B','#7B6BA0','#2a7ab8','#B05865','#4C7363'];
+    // 아바타에는 흰 글자를 얹는다. 예전 #6F8A5C(3.84:1) · #5A7C8B(4.48:1) 은
+    // 흰 글자가 안 읽히는 밝기였다 — 같은 계열에서 4.5:1 넘는 값으로.
+    const colors = ['#1d3a5f','#2a5298','#60794E','#52707E','#7B6BA0','#2a7ab8','#B05865','#4C7363'];
     const color = colors[Math.floor(Math.random()*colors.length)];
     // 넣고 나서 다시 읽지 않는다. 읽기 권한(RLS)은 '로그인한 사람'에게만 열려 있는데,
     // 이메일 확인을 켜 두면 가입 시점엔 아직 로그인 전이라 방금 넣은 행도 못 읽는다.
@@ -3057,6 +3130,14 @@ function isAdminOfficer() {
   return ME && ME.community_role === 'admin_officer';
 }
 // 특정 멤버가 학생인지 (members 맵의 객체 기준)
+// 예전 팔레트의 두 색은 흰 글자를 얹으면 안 읽힌다 (#6F8A5C 3.84:1 · #5A7C8B 4.48:1).
+// 표에 적힌 값은 건드리지 않고 — 지우면 되돌릴 수 없으니 — 보여줄 때만 바꾼다.
+const AV_FIX = { '#6f8a5c': '#60794E', '#5a7c8b': '#52707E' };
+function avColor(c) {
+  const k = String(c || '').toLowerCase();
+  return AV_FIX[k] || c || '#1d3a5f';
+}
+
 function isStudentMember(m) {
   return !!m && (m.community_role === 'student' || m.role === '학생');
 }
@@ -3511,7 +3592,7 @@ function showMobileProfile() {
   const area = document.getElementById('content-area');
   if (area) area.innerHTML = `
     <div style="padding:20px 0">
-      <div style="display:flex;align-items:center;gap:14px;padding:18px;border-radius:18px;background:var(--surface);box-shadow:0 1px 4px rgba(29,58,95,.07);margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:14px;padding:18px;border-radius:18px;background:var(--surface);box-shadow:var(--sh-1);margin-bottom:16px">
         <div style="width:52px;height:52px;border-radius:16px;background:${ME.color};color:white;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:600">${ME.initials||ME.name[0]}</div>
         <div>
           <div style="font-size:17px;font-weight:700">${ME.name}</div>
@@ -3519,7 +3600,7 @@ function showMobileProfile() {
         </div>
       </div>
 
-      <div style="border-radius:16px;background:var(--surface);overflow:hidden;box-shadow:0 1px 4px rgba(29,58,95,.07);margin-bottom:12px">
+      <div style="border-radius:16px;background:var(--surface);overflow:hidden;box-shadow:var(--sh-1);margin-bottom:12px">
         ${[{icon:'👥',label:'교우 명부'},{icon:'📅',label:'교회 일정'},{icon:'📁',label:'드라이브'}].map((r,i,a)=>`
         <div style="display:flex;align-items:center;gap:12px;padding:15px 16px;border-bottom:${i<a.length-1?'1px solid var(--bs)':'none'}">
           <div style="width:32px;height:32px;border-radius:10px;background:var(--s3);display:flex;align-items:center;justify-content:center;font-size:16px">${r.icon}</div>
@@ -3528,7 +3609,7 @@ function showMobileProfile() {
         </div>`).join('')}
       </div>
 
-      <div onclick="doLogout()" style="display:flex;align-items:center;gap:12px;padding:16px;border-radius:16px;background:#FFF0F0;box-shadow:0 1px 4px rgba(29,58,95,.07);cursor:pointer;border:1px solid #FFD6D6">
+      <div onclick="doLogout()" style="display:flex;align-items:center;gap:12px;padding:16px;border-radius:16px;background:#FFF0F0;box-shadow:var(--sh-1);cursor:pointer;border:1px solid #FFD6D6">
         <div style="width:36px;height:36px;border-radius:11px;background:#FEE2E2;color:var(--rose);display:flex;align-items:center;justify-content:center;font-size:18px">🚪</div>
         <div style="font-size:15px;font-weight:600;color:var(--rose)">로그아웃</div>
       </div>
@@ -3611,7 +3692,7 @@ async function init() {
 
   channels = sortChannels(chRes.data || []);
   members = {};
-  (memRes.data || []).filter(m => m.status !== 'removed').forEach(m => { members[m.id] = m; });
+  (memRes.data || []).filter(m => m.status !== 'removed').forEach(m => { m.color = avColor(m.color); members[m.id] = m; });
 
   const myCh = myChRes.data || [];
   dmFavorites = new Set(myCh.filter(r => r.favorite).map(r => r.channel_id));
@@ -5665,7 +5746,7 @@ async function showReactionDetails(msgId) {
   const seen = reacted.size;
   const pop = document.createElement('div');
   pop.className = 'reaction-detail-pop';
-  pop.style.cssText = 'position:fixed;z-index:300;background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:0 8px 30px rgba(0,0,0,.18);padding:8px;min-width:210px;max-width:290px;max-height:60vh;overflow-y:auto';
+  pop.style.cssText = 'position:fixed;z-index:300;background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:var(--sh-3);padding:8px;min-width:210px;max-width:290px;max-height:60vh;overflow-y:auto';
   pop.innerHTML = `
     <div style="font-size:12px;font-weight:700;color:var(--ink3);padding:4px 8px 8px">
       ${t('누른 사람','Who reacted')} · ${seen}${pending.length ? ` / ${seen + pending.length}` : ''}
@@ -6850,7 +6931,7 @@ async function openAddMemberModal() {
       <div style="width:30px;height:30px;border-radius:9px;background:${m.color||'#999'};color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0">${m.initials||(m.name||'?')[0]}</div>
       <div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(m.name||'')}</div><div style="font-size:11px;color:var(--ink3)">${escHtml(m.role||'')}</div></div>
     </label>`).join('') : `<div style="text-align:center;color:var(--ink3);font-size:13px;padding:24px">${t('추가할 수 있는 멤버가 없어요','No members available to add')}</div>`;
-  modal.innerHTML = `<div style="background:var(--surface);border-radius:18px;width:420px;max-width:94vw;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.25)">
+  modal.innerHTML = `<div style="background:var(--surface);border-radius:18px;width:420px;max-width:94vw;max-height:80vh;display:flex;flex-direction:column;box-shadow:var(--sh-3)">
     <div style="padding:16px 18px;border-bottom:1px solid var(--border);font-size:15px;font-weight:700">＋ ${t('채팅방에 멤버 추가','Add members to chat')}</div>
     <div style="padding:8px 12px;overflow-y:auto;flex:1">${rows}</div>
     <div style="padding:12px 16px;border-top:1px solid var(--border);display:flex;gap:8px">
@@ -7098,7 +7179,7 @@ function prayerCmtHtml(pid) {
 }
 
 function renderPrayerPanel() {
-  const colors = ['#2a5298','#6F8A5C','#5A7C8B','#7B6BA0','#2a7ab8'];
+  const colors = ['#2a5298','#60794E','#52707E','#7B6BA0','#2a7ab8'];
   let html = '';
   document.getElementById('panel-body').innerHTML = prayers.length
     ? prayers.map((p,i) => `<div class="ch-row${false?' active':''}" onclick="scrollToPrayer('${p.id}')">
@@ -7109,7 +7190,7 @@ function renderPrayerPanel() {
 }
 
 function renderPrayerContent() {
-  const colors = ['#2a5298','#6F8A5C','#5A7C8B','#7B6BA0','#2a7ab8'];
+  const colors = ['#2a5298','#60794E','#52707E','#7B6BA0','#2a7ab8'];
   const area = document.getElementById('prayer-list');
   if (!area) return;
   if (!prayers.length) {
@@ -7276,7 +7357,7 @@ function normalizeHomeLayout(raw) {
 function hwCard(inner, opt) {
   const o = opt || {};
   const pad = o.flush ? '0' : '18px 20px';
-  return `<div style="background:var(--surface);border-radius:18px;padding:${pad};box-shadow:0 1px 4px rgba(29,58,95,.07);width:100%;height:100%;min-width:0;box-sizing:border-box;display:flex;flex-direction:column;overflow:hidden">${inner}</div>`;
+  return `<div style="background:var(--surface);border-radius:18px;padding:${pad};box-shadow:var(--sh-1);width:100%;height:100%;min-width:0;box-sizing:border-box;display:flex;flex-direction:column;overflow:hidden">${inner}</div>`;
 }
 function hwHead(icon, title, right) {
   return `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px">
@@ -7284,10 +7365,10 @@ function hwHead(icon, title, right) {
     ${right || ''}</div>`;
 }
 function hwEmpty(msg) {
-  return `<div style="flex:1;display:flex;align-items:center;justify-content:center;color:var(--ink3);font-size:12.5px;text-align:center;padding:18px 0;line-height:1.6">${msg}</div>`;
+  return `<div style="flex:1;min-height:76px;display:flex;align-items:center;justify-content:center;color:var(--ink3);font-size:12.5px;text-align:center;padding:14px 0;line-height:1.6">${msg}</div>`;
 }
 function hwRow(inner) {
-  return `<div style="border:1px solid var(--border);border-radius:11px;padding:10px 12px;background:var(--bg)">${inner}</div>`;
+  return `<div class="hw-row">${inner}</div>`;
 }
 
 // ── D-DAY: 공동체마다 행사 이름과 날짜를 직접 정한다 ──
@@ -7521,7 +7602,7 @@ const HOME_WIDGETS = {
         <a href="${getMcCheyneUrl(r)}" target="_blank"
           style="display:flex;align-items:center;gap:9px;padding:9px 12px;border-radius:10px;background:var(--bg);text-decoration:none;transition:background .12s"
           onmouseover="this.style.background='var(--asoft)'" onmouseout="this.style.background='var(--bg)'">
-          <div style="width:22px;height:22px;border-radius:6px;background:${['#2a5298','#6F8A5C','#5A7C8B','#7B6BA0'][i]};color:white;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">${i+1}</div>
+          <div style="width:22px;height:22px;border-radius:6px;background:${['#2a5298','#60794E','#52707E','#7B6BA0'][i]};color:white;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">${i+1}</div>
           <div style="font-size:13px;font-weight:600;color:var(--ink)">${r}</div>
         </a>`).join('')}
       </div>`)
@@ -7590,7 +7671,7 @@ const HOME_WIDGETS = {
   },
 
   schedule: {
-    icon:'🖼️', ko:'주간 일정표 사진', en:'Weekly Schedule Photo',
+    icon:'📋', ko:'주간 일정표 사진', en:'Weekly Schedule Photo',
     dko:'사진으로 올린 주간 일정표를 크게 보여줘요', den:'Shows the uploaded weekly schedule image', w:4, fullOnly:true,
     render: async (ctx) => {
       let img = null;
@@ -7600,7 +7681,7 @@ const HOME_WIDGETS = {
         img = (data && data[0]) || null;
       } catch(_) {}
       const isAdmin = ctx.isAdmin;
-      return `<div style="background:var(--surface);border-radius:18px;overflow:hidden;box-shadow:0 1px 4px rgba(29,58,95,.07)">
+      return `<div style="background:var(--surface);border-radius:18px;overflow:hidden;box-shadow:var(--sh-1)">
         <div style="padding:14px 18px 12px;display:flex;align-items:center;justify-content:space-between;gap:8px">
           <div style="font-size:14px;font-weight:700">📅 ${escHtml(img && img.title ? img.title : t('주간 일정표','Weekly Schedule'))}</div>
           ${isAdmin ? `<button onclick="showScheduleImageForm()" style="height:28px;padding:0 12px;border-radius:8px;border:1px solid var(--border);background:white;color:var(--ink2);font:500 12px var(--font);cursor:pointer;white-space:nowrap">+ ${t('새 일정 등록','Add Schedule')}</button>` : ''}
@@ -7649,7 +7730,7 @@ const HOME_WIDGETS = {
       return hwCard(
         hwHead('📅', t('다가오는 일정','Upcoming'),
           `<span onclick="setMode('calendar')" style="font-size:11px;color:var(--accent);font-weight:600;cursor:pointer;white-space:nowrap">${t('달력','Calendar')} →</span>`) +
-        (rows.length ? `<div style="display:flex;flex-direction:column;gap:7px">
+        (rows.length ? `<div>
           ${rows.map(e => {
             const sd = e.start_date, ed = e.end_date;
             const multi = ed && ed !== sd;
@@ -7662,8 +7743,8 @@ const HOME_WIDGETS = {
               : isToday
               ? `<span style="font-size:10px;font-weight:800;color:white;background:var(--rose);padding:2px 7px;border-radius:6px;flex-shrink:0;white-space:nowrap">${t('오늘','TODAY')}</span>`
               : '';
-            return `<div onclick="setMode('calendar')" style="display:flex;align-items:center;gap:9px;padding:8px 11px;border-radius:10px;background:var(--bg);cursor:pointer">
-              <div style="width:4px;align-self:stretch;min-height:26px;border-radius:3px;background:${e.color||'var(--accent)'};flex-shrink:0"></div>
+            return `<div onclick="setMode('calendar')" class="hw-row hw-tap" style="display:flex;align-items:center;gap:10px">
+              <div style="width:7px;height:7px;border-radius:50%;background:${e.color||'var(--accent)'};flex-shrink:0;box-shadow:0 0 0 3px ${e.color||'var(--accent)'}1f"></div>
               <div style="min-width:0;flex:1">
                 <div style="font-size:13px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(e.title||'')}</div>
                 <div style="font-size:11px;color:var(--ink3);margin-top:1px;word-break:keep-all">${when}${multi ? ` · ${t(days + '일간', days + ' days')}` : (e.start_time ? ' · ' + String(e.start_time).slice(0,5) : '')}</div>
@@ -7720,7 +7801,7 @@ const HOME_WIDGETS = {
         hwHead('🙏', t('최근 기도제목','Recent Prayers'),
           `<span onclick="setMode('prayer')" style="font-size:11px;color:var(--accent);font-weight:600;cursor:pointer;white-space:nowrap">${t('전체','All')} →</span>`) +
         (rows.length ? `<div style="display:flex;flex-direction:column;gap:7px">
-          ${rows.map((p,i) => `<div onclick="setMode('prayer')" style="display:flex;align-items:center;gap:9px;padding:8px 11px;border-radius:10px;background:var(--bg);cursor:pointer">
+          ${rows.map((p,i) => `<div onclick="setMode('prayer')" class="hw-row hw-tap" style="display:flex;align-items:center;gap:9px">
             <div style="width:24px;height:24px;border-radius:8px;background:${colors[i%colors.length]};color:white;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">${escHtml((p.member_name||'?')[0])}</div>
             <div style="min-width:0;flex:1">
               <div style="font-size:13px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(p.title||'')}</div>
@@ -7785,15 +7866,15 @@ const HOME_WIDGETS = {
         const who = (!mineOnly && r.assigned_name)
           ? `<span style="font-size:11px;color:var(--ink3);flex-shrink:0">${escHtml(r.assigned_name)}</span>` : '';
         const ch = channels.find(c => c.id === r.channel_id);
-        const go = ch ? `onclick="setMode('chat');openChannel('${r.channel_id}')" style="cursor:pointer;"` : 'style="';
-        return `<div ${go}display:flex;align-items:center;gap:9px;padding:9px 11px;border-radius:10px;background:var(--bg)">
+        const go = ch ? `onclick="setMode('chat');openChannel('${r.channel_id}')"` : '';
+        return `<div ${go} class="hw-row${ch ? ' hw-tap' : ''}" style="display:flex;align-items:center;gap:9px">
           <span style="flex-shrink:0;color:${late ? '#b91c1c' : 'var(--ink3)'};font-size:13px">▢</span>
           <span style="flex:1;min-width:0;font-size:13px;font-weight:600;color:var(--ink);word-break:keep-all">${escHtml(r.title || '')}</span>
           ${who}${chip}
         </div>`;
       }).join('');
 
-      return hwCard(head + `<div style="display:flex;flex-direction:column;gap:7px">${list}</div>`
+      return hwCard(head + `<div>${list}</div>`
         + (more ? `<div style="margin-top:8px;font-size:11px;color:var(--ink3);text-align:right">${t('채팅방에서 더 보기','More in chat rooms')}</div>` : ''));
     }
   },
@@ -7813,7 +7894,7 @@ const HOME_WIDGETS = {
       return hwCard(
         hwHead('🎯', t(`${now.getMonth()+1}월의 목표`,'Monthly Goals')) +
         (goals.length ? `<div style="display:flex;flex-direction:column;gap:7px">
-          ${goals.map((g,i) => `<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:10px;background:var(--bg)">
+          ${goals.map((g,i) => `<div class="hw-row" style="display:flex;align-items:center;gap:10px">
             <div style="width:20px;height:20px;border-radius:7px;background:var(--asoft);color:var(--adeep);font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0">${i+1}</div>
             <div style="font-size:13px;font-weight:600;color:var(--ink);word-break:keep-all">${escHtml(String(g))}</div>
           </div>`).join('')}
@@ -7871,7 +7952,7 @@ const HOME_WIDGETS = {
   },
 
   approval: {
-    icon:'✅', ko:'내 결재 차례', en:'Waiting on Me',
+    icon:'✍️', ko:'내 결재 차례', en:'Waiting on Me',
     dko:'지금 내가 결재해야 할 문서만 모아요', den:'Documents waiting for your approval', w:2,
     can: () => canAccessSchool(),
     render: async () => {
@@ -7890,11 +7971,11 @@ const HOME_WIDGETS = {
         }).slice(0, 4);
       } catch(_) {}
       return hwCard(
-        hwHead('✅', t('내 결재 차례','Waiting on Me'),
+        hwHead('✍️', t('내 결재 차례','Waiting on Me'),
           mine.length ? `<span style="font-size:11px;font-weight:800;color:white;background:var(--rose);padding:2px 8px;border-radius:999px">${mine.length}</span>` : '') +
         (mine.length ? `<div style="display:flex;flex-direction:column;gap:7px">
-          ${mine.map(d => `<div onclick="setMode('approval')" style="display:flex;align-items:center;gap:9px;padding:9px 12px;border-radius:10px;background:var(--bg);cursor:pointer">
-            <div style="width:4px;align-self:stretch;min-height:26px;border-radius:3px;background:var(--gold, #B89146);flex-shrink:0"></div>
+          ${mine.map(d => `<div onclick="setMode('approval')" class="hw-row hw-tap" style="display:flex;align-items:center;gap:9px">
+            <div style="width:7px;height:7px;border-radius:50%;background:var(--gold,#2a5298);flex-shrink:0;box-shadow:0 0 0 3px rgba(42,82,152,.14)"></div>
             <div style="min-width:0;flex:1">
               <div style="font-size:13px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(d.title||'')}</div>
               <div style="font-size:11px;color:var(--ink3);margin-top:1px">${escHtml(d.submitter_name||'')}${d.template_name ? ' · ' + escHtml(d.template_name) : ''}${d.created_at ? ' · ' + fmtTsDay(d.created_at) : ''}</div>
@@ -8007,7 +8088,7 @@ const HOME_WIDGETS = {
       const color = (c && c.color) || '#1d3a5f';
       const name  = (c && c.name) || '';
       const desc  = (c && c.description) || '';
-      return `<div style="border-radius:18px;background:linear-gradient(135deg,${color},${color}cc);padding:clamp(20px,3vw,28px) clamp(20px,3vw,30px);display:flex;align-items:center;gap:clamp(14px,2vw,20px);flex-wrap:wrap;box-shadow:0 1px 4px rgba(29,58,95,.07)">
+      return `<div style="border-radius:18px;background:linear-gradient(135deg,${color},${color}cc);padding:clamp(20px,3vw,28px) clamp(20px,3vw,30px);display:flex;align-items:center;gap:clamp(14px,2vw,20px);flex-wrap:wrap;box-shadow:var(--sh-1)">
         <div style="width:64px;height:64px;border-radius:17px;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:27px;font-weight:800;color:white;overflow:hidden;flex-shrink:0">
           ${c && c.logo_url ? `<img src="${escHtml(c.logo_url)}" onerror="this.remove()" style="width:64px;height:64px;object-fit:cover"/>` : escHtml((name || '?')[0])}
         </div>
@@ -8034,7 +8115,7 @@ function pollCardHtml(rows) {
     hwHead('🗳️', t('진행 중인 투표','Open Polls'),
       `<span onclick="setMode('chat')" style="font-size:11px;color:var(--accent);font-weight:600;cursor:pointer;white-space:nowrap">${t('채팅','Chat')} →</span>`) +
     (rows.length ? `<div style="display:flex;flex-direction:column;gap:7px">
-      ${rows.map(r => `<div onclick="goToChannel('${r.channelId}')" style="padding:10px 12px;border-radius:10px;background:var(--bg);cursor:pointer">
+      ${rows.map(r => `<div onclick="goToChannel('${r.channelId}')" class="hw-row hw-tap">
         <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
           <span style="font-size:13px;font-weight:700;color:var(--ink);word-break:keep-all">${escHtml(r.q)}</span>
           ${r.voted
@@ -8066,14 +8147,14 @@ function homeSetupGuideHtml(isAdmin) {
     .join('');
 
   if (!isAdmin) {
-    return `<div style="background:var(--surface);border-radius:18px;padding:48px 24px;text-align:center;box-shadow:0 1px 4px rgba(29,58,95,.07)">
+    return `<div style="background:var(--surface);border-radius:18px;padding:48px 24px;text-align:center;box-shadow:var(--sh-1)">
       <div style="font-size:42px;margin-bottom:14px">🧩</div>
       <div style="font-size:16px;font-weight:700;color:var(--ink)">${t('홈을 준비하고 있어요','Home is being set up')}</div>
       <div style="font-size:13.5px;color:var(--ink3);margin-top:8px;line-height:1.7;word-break:keep-all">${t('관리자가 홈을 꾸미면 공지·일정·생일 같은 것들이 여기에 나타나요.','Once an admin sets it up, notices, events and birthdays will show up here.')}</div>
     </div>`;
   }
 
-  return `<div style="background:var(--surface);border-radius:20px;padding:clamp(26px,4vw,40px) clamp(22px,4vw,38px);box-shadow:0 1px 4px rgba(29,58,95,.07)">
+  return `<div style="background:var(--surface);border-radius:20px;padding:clamp(26px,4vw,40px) clamp(22px,4vw,38px);box-shadow:var(--sh-1)">
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px;flex-wrap:wrap">
       <div style="font-size:30px;line-height:1">🧩</div>
       <div style="font-size:clamp(17px,2vw,21px);font-weight:700;color:var(--ink);letter-spacing:-.01em">${t('우리 공동체 홈을 꾸며보세요','Set up your community home')}</div>
@@ -8284,7 +8365,7 @@ function showScheduleImageForm() {
   modal.id = 'sched-title-modal';
   modal.style.cssText = 'position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center';
   modal.innerHTML = `
-    <div style="background:var(--surface);border-radius:20px;padding:28px;width:360px;box-shadow:0 20px 60px rgba(0,0,0,.2)">
+    <div style="background:var(--surface);border-radius:20px;padding:28px;width:360px;box-shadow:var(--sh-3)">
       <div style="font-size:16px;font-weight:700;margin-bottom:16px">📷 일정 사진 등록</div>
       <div style="font-size:12px;color:var(--ink3);margin-bottom:6px">사진 제목</div>
       <input id="sched-title-input" placeholder="예: 이번주 일정, 5월 4주차 일정..."
@@ -8687,7 +8768,7 @@ function hwOpenCfg(i) {
   m.id = 'hw-cfg-modal';
   m.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:20px';
   m.innerHTML = `
-    <div style="background:var(--surface);border-radius:20px;width:100%;max-width:400px;box-shadow:0 24px 60px rgba(29,58,95,.2);overflow:hidden">
+    <div style="background:var(--surface);border-radius:20px;width:100%;max-width:400px;box-shadow:var(--sh-3);overflow:hidden">
       <div style="padding:20px 24px;border-bottom:1px solid var(--border);font-size:16px;font-weight:700">${s.icon} ${t(s.ko,s.en)}</div>
       <div style="padding:18px 24px">
         ${(s.cfg||[]).map(f => f.type === 'driveFolder' ? `
@@ -9292,7 +9373,7 @@ async function renderProfilePage() {
 
       <!-- 저장 버튼 -->
       <button onclick="saveProfile()"
-        style="width:100%;height:46px;border-radius:13px;border:none;background:linear-gradient(135deg,#1d3a5f,#2a5298);color:white;font:600 15px var(--font);cursor:pointer;box-shadow:0 4px 14px rgba(29,58,95,.3);margin-bottom:12px">
+        style="width:100%;height:46px;border-radius:13px;border:none;background:linear-gradient(135deg,#1d3a5f,#2a5298);color:white;font:600 15px var(--font);cursor:pointer;box-shadow:var(--sh-2);margin-bottom:12px">
         ✅ ${t('저장하기','Save')}
       </button>
       <!-- 로그아웃 (특히 모바일에서 사이드바가 없어 여기서 접근) -->
@@ -13032,7 +13113,7 @@ async function showCommunitySwitcher() {
   overlay.id = 'community-switcher-overlay';
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
   overlay.innerHTML = `
-    <div style="background:var(--surface);border-radius:20px;width:100%;max-width:420px;box-shadow:0 24px 60px rgba(29,58,95,.2);overflow:hidden">
+    <div style="background:var(--surface);border-radius:20px;width:100%;max-width:420px;box-shadow:var(--sh-3);overflow:hidden">
       <div style="padding:20px 24px;border-bottom:1px solid var(--border)">
         <div style="font-size:16px;font-weight:700;color:var(--ink)">🏛️ 공동체 전환</div>
         <div style="font-size:12px;color:var(--ink3);margin-top:3px">${isViceAdmin()
@@ -13395,7 +13476,7 @@ async function renderCommunitySettings() {
 
         <!-- 저장 버튼 -->
         <button onclick="saveCommSettings('${comm.id}')"
-          style="width:100%;height:44px;border-radius:12px;border:none;background:linear-gradient(135deg,#1d3a5f,#2a5298);color:white;font:600 15px var(--font);cursor:pointer;box-shadow:0 4px 14px rgba(29,58,95,.3)">
+          style="width:100%;height:44px;border-radius:12px;border:none;background:linear-gradient(135deg,#1d3a5f,#2a5298);color:white;font:600 15px var(--font);cursor:pointer;box-shadow:var(--sh-2)">
           ✅ 설정 저장하기
         </button>
       </div>
@@ -14670,7 +14751,7 @@ async function showMoveCommunityModal(memberId) {
   modal.id = 'move-comm-modal';
   modal.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:20px';
   modal.innerHTML = `
-    <div style="background:var(--surface);border-radius:20px;width:100%;max-width:420px;box-shadow:0 24px 60px rgba(29,58,95,.2);overflow:hidden">
+    <div style="background:var(--surface);border-radius:20px;width:100%;max-width:420px;box-shadow:var(--sh-3);overflow:hidden">
       <div style="padding:20px 24px;border-bottom:1px solid var(--border)">
         <div style="font-size:16px;font-weight:700;color:var(--ink)">🏛️ ${t('공동체 이동','Move Community')}</div>
         <div style="font-size:12.5px;color:var(--ink3);margin-top:4px;line-height:1.6">
@@ -15373,7 +15454,7 @@ async function approveMember(id) {
   // 공동체 멤버 목록 새로고침
   const { data: mems } = await sb.from('members').select('*').eq('community_id', CID());
   members = {};
-  (mems||[]).forEach(m => { members[m.id] = m; });
+  (mems||[]).forEach(m => { m.color = avColor(m.color); members[m.id] = m; });
   renderMembers();
 }
 
@@ -17596,7 +17677,7 @@ function renderShareModal() {
   m.id = 'im-share-modal';
   m.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px';
   m.innerHTML = `
-    <div style="background:var(--surface);border-radius:20px;width:100%;max-width:460px;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 24px 60px rgba(29,58,95,.22);overflow:hidden">
+    <div style="background:var(--surface);border-radius:20px;width:100%;max-width:460px;max-height:88vh;display:flex;flex-direction:column;box-shadow:var(--sh-3);overflow:hidden">
       <div style="padding:19px 22px;border-bottom:1px solid var(--border)">
         <div style="font-size:16px;font-weight:700">🔗 ${t('노트 공유','Share note')}</div>
         <div style="font-size:12px;color:var(--ink3);margin-top:3px">${t('누가 이 노트를 볼 수 있는지 정해요','Choose who can see this note')}</div>
@@ -23994,7 +24075,7 @@ function finStatementPicker(studentId, ev) {
   const inp = 'flex:1;min-width:0;height:38px;padding:0 10px;border:1.5px solid var(--border);border-radius:9px;font:600 13px var(--font);background:var(--s2);color:var(--ink);outline:none';
   const chip = (k, label) => `<button onclick="finStmtQuick('${k}')" style="height:30px;padding:0 11px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:99px;cursor:pointer;font:700 12px var(--font);white-space:nowrap">${label}</button>`;
   ov.innerHTML = `
-    <div style="background:var(--surface);border-radius:18px;width:100%;max-width:400px;box-shadow:0 24px 60px rgba(29,58,95,.22);overflow:hidden">
+    <div style="background:var(--surface);border-radius:18px;width:100%;max-width:400px;box-shadow:var(--sh-3);overflow:hidden">
       <div style="padding:17px 20px;border-bottom:1px solid var(--border)">
         <div style="font-size:15px;font-weight:800;color:var(--ink)">🧾 ${escHtml(s.name)} — ${isAllow ? t('용돈 사용내역서','Allowance statement') : t('예치금 거래내역서','Deposit statement')}</div>
         <div style="font-size:11.5px;color:var(--ink3);margin-top:3px">${t('뽑을 기간을 정해주세요','Choose the period to print')}</div>
@@ -25287,7 +25368,7 @@ function ledgerShowImportPreview(rows) {
   modal.style.cssText = 'position:fixed;inset:0;z-index:260;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px';
   modal.onclick = (e)=>{ if(e.target===modal) modal.remove(); };
   const sample = rows.slice(0,6).map(r => `<div style="display:flex;gap:8px;font-size:11.5px;padding:4px 0;border-bottom:1px solid var(--bs)"><span style="color:var(--ink3);white-space:nowrap">${r.tx_date||r.month}</span><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(r.description.slice(0,50))}</span><span style="font-weight:700;color:${r.amount>=0?'#15803d':'#dc2626'};white-space:nowrap">${fmtUsd(r.amount)}</span><span style="color:#6d28d9;white-space:nowrap">${escHtml(r.category)}</span></div>`).join('');
-  modal.innerHTML = `<div style="background:var(--surface);border-radius:18px;width:520px;max-width:94vw;max-height:84vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.25)">
+  modal.innerHTML = `<div style="background:var(--surface);border-radius:18px;width:520px;max-width:94vw;max-height:84vh;display:flex;flex-direction:column;box-shadow:var(--sh-3)">
     <div style="padding:16px 18px;border-bottom:1px solid var(--border);font-size:15px;font-weight:800">📥 ${t('가져오기 미리보기','Import preview')}</div>
     <div style="padding:16px 18px;overflow-y:auto;flex:1">
       <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
@@ -25380,7 +25461,7 @@ function ledgerShowImportResult(results, grandOk, grandFail, firstErr) {
       <span style="color:var(--ink3);margin-left:auto">${t('파일','file')} ${r.total}</span>
     </div>`;
   }).join('');
-  modal.innerHTML = `<div style="background:var(--surface);border-radius:18px;width:460px;max-width:94vw;max-height:84vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.25)">
+  modal.innerHTML = `<div style="background:var(--surface);border-radius:18px;width:460px;max-width:94vw;max-height:84vh;display:flex;flex-direction:column;box-shadow:var(--sh-3)">
     <div style="padding:16px 18px;border-bottom:1px solid var(--border);font-size:15px;font-weight:800">${grandFail?'⚠️':'✅'} ${t('가져오기 결과','Import result')}</div>
     <div style="padding:14px 18px;overflow-y:auto;flex:1">
       <div style="font-size:13px;font-weight:700;margin-bottom:10px">${t('총','Total')} <span style="color:#15803d">${grandOk}${t('건 저장','saved')}</span>${grandFail?` · <span style="color:#dc2626">${grandFail}${t('건 실패','failed')}</span>`:''}</div>
@@ -28280,7 +28361,7 @@ function renderAllowance() {
     const outAll = allowEntries.filter(e=>e.type==='expense' && (e.currency||'원')===cur).reduce((a,e)=>a+(Number(e.amount)||0),0);
     const inP  = list.filter(e=>e.type==='income'  && (e.currency||'원')===cur).reduce((a,e)=>a+(Number(e.amount)||0),0);
     const outP = list.filter(e=>e.type==='expense' && (e.currency||'원')===cur).reduce((a,e)=>a+(Number(e.amount)||0),0);
-    return `<div style="flex:1;min-width:230px;background:linear-gradient(135deg,#2a7a5a,#2a5298);border-radius:18px;padding:18px 20px;color:#fff;box-shadow:0 6px 18px rgba(42,82,152,.22)">
+    return `<div style="flex:1;min-width:230px;background:linear-gradient(135deg,#2a7a5a,#2a5298);border-radius:18px;padding:18px 20px;color:#fff;box-shadow:var(--sh-2)">
       <div style="font-size:12px;opacity:.85">${t('현재 잔액','Current balance')} (${curSign(cur)})</div>
       <div style="font-size:28px;font-weight:800;letter-spacing:-.02em;margin-top:2px">${allowMoney(inAll-outAll, cur)}</div>
       <div style="display:flex;gap:9px;margin-top:12px">
