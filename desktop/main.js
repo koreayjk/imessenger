@@ -64,8 +64,9 @@ function createWindow() {
     minWidth: 380, minHeight: 520,
     title: 'TCS',
     backgroundColor: '#eef2f8',
-    titleBarStyle: 'hiddenInset',   // 맥다운 창 — 신호등만 남기고 띠를 없앤다
-    trafficLightPosition: { x: 14, y: 18 },
+    // 맥 기본 띠를 쓴다. hiddenInset 으로 띠를 없애면 신호등이 앱의
+    // 왼쪽 줄(TCS 로고) 위에 얹히고, 창이 좁아져 그 줄이 사라지면
+    // 본문 위로 올라앉는다. 28px 을 아끼려다 겹치는 것보다 낫다.
     show: false,
     webPreferences: {
       // 받아온 화면에 컴퓨터를 건드릴 힘을 주지 않는다
@@ -76,6 +77,12 @@ function createWindow() {
       spellcheck: true,
     },
   });
+  // 화면 코드가 '여기는 맥 앱이다' 를 알아볼 수 있게 표시를 남긴다.
+  // 맥 앱에는 백그라운드 푸시가 없어서, 될 수 없는 것을 단추로 내밀면 안 된다.
+  try {
+    const ua = win.webContents.getUserAgent();
+    if (!ua.includes('TCSDesktop')) win.webContents.setUserAgent(ua + ' TCSDesktop/' + app.getVersion());
+  } catch (_) {}
   if (s.max) win.maximize();
 
   win.once('ready-to-show', () => win.show());

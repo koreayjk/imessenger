@@ -2305,8 +2305,11 @@ function notiCardHtml() {
               ${nat
                 ? t('애플 알림으로 받습니다. 이 기기에서 한 번만 켜면 돼요.',
                     'Delivered by Apple. Turn it on once on this device.')
+                : isDesktopShell()
+                ? t('맥 앱은 <b>창이 열려 있는 동안만</b> 알림이 옵니다.<br>닫아 두고도 받으시려면 아이폰 앱을 쓰시거나, 사파리에서 TCS 를 열고 <b>공유 → 독에 추가</b> 를 하세요.',
+                    'The Mac app only alerts while its window is open.<br>For alerts when closed, use the iPhone app, or open TCS in Safari and choose <b>Share → Add to Dock</b>.')
                 : pushSupported()
-                ? t('휴대폰에서 TCS 를 닫아 두어도 알림이 옵니다. 이 기기에서 한 번만 켜면 돼요.',
+                ? t('이 기기에서 TCS 를 닫아 두어도 알림이 옵니다. 한 번만 켜면 돼요.',
                     'Alerts arrive even with TCS closed. Turn it on once per device.')
                 : t('이 기기에서는 안 돼요. 아이폰 앱은 애플 푸시가 따로 필요합니다.',
                     'Not supported here. The iPhone app needs Apple push.')}
@@ -2474,8 +2477,19 @@ let _pushSaved = false;       // 그 구독이 '서버 줄에 실제로 적혔�
 let _pushMissing = false;     // 표나 함수가 아직 없다
 let _pushTaken = false;       // 이 기기 줄을 다른 계정이 쥐고 있다
 
+// 맥 앱(desktop/) 안에서 도는 중인가. 그 껍데기가 표시를 남겨 둡니다.
+// 맥 앱은 '앱을 닫아도 오는 알림' 을 할 수 없습니다 — 일렉트론 안의
+// 크로미움에는 푸시 서비스가 붙어 있지 않아서, 켜려고 하면
+// 'push service not available' 로 떨어집니다. 될 수 없는 것을
+// 단추로 내밀면 눌러보고 실패만 봅니다.
+function isDesktopShell() {
+  try { return typeof navigator !== 'undefined' && /TCSDesktop\//.test(navigator.userAgent || ''); }
+  catch (_) { return false; }
+}
+
 function pushSupported() {
   if (nativePush()) return true;          // 아이폰 앱은 애플 길로 간다
+  if (isDesktopShell()) return false;     // 맥 앱은 이 길이 아예 없다
   // 'serviceWorker' in navigator 로만 보면, 열쇠만 있고 값이 비어 있는
   // 일부 웹뷰(아이폰 앱 등)에서 '된다' 고 잘못 읽는다. 실제로 있는지 본다.
   return typeof navigator !== 'undefined' && !!navigator.serviceWorker
