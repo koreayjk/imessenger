@@ -62,6 +62,48 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-font-smoothing: antialiased; overflow: hidden; }
 
+/* ── 아이폰에서 '웹페이지를 씌운 것' 처럼 보이게 하던 것들 ──
+   ① 누를 때마다 번쩍이던 회색 네모 (WKWebView 기본값).
+      우리가 직접 누름 표시를 하므로 이건 방해만 된다.
+   ② 꾹 누르면 뜨던 시스템 쪽지창과 글자 선택 돋보기.
+      글을 읽는 자리(메시지·노트·입력칸)에서는 그대로 둔다 — 복사해야 하니까. */
+* { -webkit-tap-highlight-color: transparent; }
+body { -webkit-touch-callout: none; }
+
+/* 아이폰에서 아무 데나 당기면 화면 전체가 고무줄처럼 늘어났다 돌아옵니다.
+   웹페이지에서는 당연하지만 앱에서는 '어, 이거 웹이네' 하는 자리입니다.
+   안쪽에서 굴러가는 칸들은 자기 안에서만 멈추게 합니다(contain) — 창 안을
+   끝까지 굴리다가 뒤쪽 목록이 같이 움직이는 일이 없습니다. */
+html, body { overscroll-behavior: none; }
+.panel-body, #msg-area, #more-menu > div, #sn-sheet > div,
+#school-main, #home-view, #profile-content, #memory-page, #reading-page,
+[data-scroll] { overscroll-behavior: contain; }
+.msg-text, .msg-row, #note-editor, input, textarea, [contenteditable],
+.prayer-body, .sel-ok, pre, code {
+  -webkit-touch-callout: default;
+  -webkit-user-select: text; user-select: text;
+}
+
+/* 누름 표시 — 손을 떼기 전에, 손을 댄 그 순간에.
+   애플 규칙의 첫째다: 떼고 나서 반응하면 죽은 것처럼 느껴진다.
+   화면이 통째로 다시 그려지는 앱이라 CSS :active 대신 손댄 순간
+   클래스를 붙인다 (아래 pressInit). */
+.is-pressing { transition: none !important; }
+.is-pressing.press-dim { opacity: .62; }
+.is-pressing.press-fill { background: var(--s3) !important; }
+.is-pressing.press-sink { transform: scale(.975); }
+
+/* 투명도 줄이기 (아이폰 설정 → 손쉬운 사용) */
+@media (prefers-reduced-transparency: reduce) {
+  #mobile-nav { background: var(--surface) !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+  .glassy { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+}
+/* 대비 높이기 */
+@media (prefers-contrast: more) {
+  :root { --border: #94a3b8; --ink3: #475569; --ink2: #27334a; }
+  .adm-card, .hw-row { border: 1px solid var(--border); }
+}
+
 /* ── 브라우저가 대신 그려주는 자리 ──
    글 선택 색, 글자 커서, 초점 테두리, 스크롤바, 체크박스.
    손대지 않으면 전부 브라우저 기본값이고, 그 기본값은 어느 디자인에도
@@ -333,6 +375,11 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
   cursor: pointer; transition: background .12s;
 }
 .header-action:hover { background: var(--s3); }
+/* 손가락으로 누를 때는 44px — 애플이 정한 최소치다.
+   마우스는 정확하므로 36px 그대로 둔다 (머리글이 헐렁해지지 않게). */
+@media (pointer: coarse) {
+  .header-action { width: 44px; height: 44px; }
+}
 
 /* 메시지 영역 */
 #msg-area {
@@ -1138,7 +1185,7 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
     <div class="panel-header">
       <h2 id="panel-title">채팅</h2>
       <div style="display:flex;align-items:center;gap:4px">
-        <div id="panel-close" onclick="closeMobilePanel()" style="display:none;width:36px;height:36px;align-items:center;justify-content:center;cursor:pointer;border-radius:10px" onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background='transparent'">
+        <div id="panel-close" onclick="closeMobilePanel()" style="display:none;width:44px;height:44px;align-items:center;justify-content:center;cursor:pointer;border-radius:10px" onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background='transparent'">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--ink3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
         </div>
         <div class="header-action" title="새 채널/DM 추가" onclick="showAddChannelModal()" style="cursor:pointer">
@@ -3138,6 +3185,181 @@ function avColor(c) {
   return AV_FIX[k] || c || '#1d3a5f';
 }
 
+// ════════════════════════════════════════════════════════════════════
+//  손댄 순간 반응하기
+//
+//  애플이 첫째로 꼽는 규칙입니다 — "반응이 늦는 순간 직접 만지는
+//  느낌이 절벽처럼 무너진다." 지금은 누를 수 있는 자리 수백 곳 가운데
+//  몇 군데만 눌린 표시가 있었습니다. 나머지는 눌러도 아무 일이 없다가
+//  화면이 갑자기 바뀝니다.
+//
+//  화면이 통째로 다시 그려지는 앱이라 요소마다 손대지 않고, 문서 하나에
+//  귀를 답니다. pointerdown 에 붙이고 pointerup/cancel 에 뗍니다.
+//  (iOS 의 :active 는 스크롤인지 누름인지 가리느라 늦게 옵니다)
+// ════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════════
+//  아래에서 올라오는 창(바텀시트) — 손으로 끌어내려 닫기
+//
+//  위쪽에 손잡이 막대를 그려놓고 끌리지는 않았습니다. 끌 수 있게 생긴
+//  것은 끌려야 합니다 — 안 그러면 거짓 약속입니다.
+//
+//  애플 방식 그대로:
+//   · 손가락에 1:1 로 붙어 따라온다 (잡은 자리를 기억해서)
+//   · 위로 끌면 점점 뻑뻑해진다 (고무줄 — 딱 멈추면 고장 난 느낌)
+//   · 놓을 때 '어디로 가고 있었는지' 를 속도로 내다보고 정한다
+//     (놓은 자리로만 판단하면 휙 던져도 안 닫힌다)
+//   · 되돌아갈 때는 튕김 없이 잦아든다
+// ════════════════════════════════════════════════════════════════════
+
+// 애플 '움직임 내다보기' 식 (Designing Fluid Interfaces 예제와 같은 꼴).
+// 교과서의 v²/2a 가 아니라 지수 감쇠다 — 스크롤이 멈추는 그 느낌.
+function projectGlide(v, decel) {
+  // 0.998 은 길게 굴러가는 스크롤용이다 — 키가 250px 쯤인 창에 그대로
+  // 쓰면 살짝만 내려도 300px 앞을 내다봐서 거의 언제나 닫힌다.
+  // 창에는 더 짧게 보는 0.99 를 쓴다.
+  const d = decel || 0.99;
+  return (v / 1000) * d / (1 - d);
+}
+
+// 고무줄: 경계를 넘어갈수록 덜 따라온다
+function rubberband(over, dim, c) {
+  const k = c || 0.55;
+  return (over * dim * k) / (dim + k * Math.abs(over));
+}
+
+// 아래에서 올라오며 열린다. 나갈 때와 같은 길이어야 한다 —
+// 한쪽으로 들어와 다른 쪽으로 나가면 어디 갔는지 알 수 없다.
+function sheetOpen(card) {
+  if (!card) return;
+  card.style.transition = 'none';
+  card.style.transform = 'translate3d(0,100%,0)';
+  void card.offsetHeight;   // 여기서 한 번 밀어넣는다. 없으면 시작 위치가 없던 일이 된다
+  card.style.transition = 'transform .36s var(--ease-drawer)';
+  card.style.transform = '';
+}
+
+function sheetDrag(card, close) {
+  if (!card || card.__drag) return;
+  card.__drag = true;
+  let id = null, startY = 0, h = 0, hist = [];
+
+  const setY = y => { card.style.transform = y ? `translate3d(0,${y}px,0)` : ''; };
+
+  card.addEventListener('pointerdown', (e) => {
+    // 안쪽에서 굴러가는 중이면 끌기가 아니라 스크롤이다
+    const sc = e.target.closest('[data-scroll],textarea');
+    if (sc && sc !== card) return;
+    if (card.scrollTop > 0) return;
+    const tag = e.target.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || e.target.isContentEditable) return;
+    id = e.pointerId; startY = e.clientY; h = card.getBoundingClientRect().height;
+    hist = [{ y: e.clientY, t: performance.now() }];
+    card.style.transition = 'none';
+    try { card.setPointerCapture(id); } catch (_) {}
+  }, { passive: true });
+
+  card.addEventListener('pointermove', (e) => {
+    if (id === null || e.pointerId !== id) return;
+    let dy = e.clientY - startY;
+    if (dy < 0) dy = -rubberband(-dy, h);   // 위로는 뻑뻑하게
+    setY(dy);
+    hist.push({ y: e.clientY, t: performance.now() });
+    if (hist.length > 6) hist.shift();
+  }, { passive: true });
+
+  const end = (e) => {
+    if (id === null || (e.pointerId !== undefined && e.pointerId !== id)) return;
+    id = null;
+    const dy = Math.max(0, e.clientY - startY);
+    // 마지막 몇 점으로 속도를 잰다 (한 점만 보면 손 떨림에 휘둘린다)
+    const a = hist[0], b = hist[hist.length - 1];
+    const dt = b && a ? (b.t - a.t) : 0;
+    const v = dt > 8 ? (b.y - a.y) / dt * 1000 : 0;     // px/초
+    const landing = dy + projectGlide(v);               // 어디로 가고 있었나
+    card.style.transition = '';
+    if (landing > h * 0.38 || v > 420) {
+      // 가던 방향 그대로 내보낸다 — 속도를 이어받아야 이음매가 안 보인다
+      const left = Math.max(60, h - dy);
+      const ms = Math.min(420, Math.max(130, left / Math.max(380, Math.abs(v)) * 1000));
+      card.style.transition = `transform ${ms}ms cubic-bezier(.32,.72,0,1)`;
+      setY(h + 20);
+      setTimeout(() => { try { close(); } catch (_) {} }, ms - 20);
+    } else {
+      card.style.transition = 'transform .34s var(--ease-drawer)';
+      setY(0);
+    }
+  };
+  card.addEventListener('pointerup', end, { passive: true });
+  card.addEventListener('pointercancel', end, { passive: true });
+}
+
+let _pressEl = null;
+
+// 무엇이 '누를 수 있는 것' 인가. 덮개나 화면 전체는 빼야 한다 —
+// 뒷배경이 통째로 흐려지면 누른 느낌이 아니라 고장 난 느낌이다.
+function pressTarget(node) {
+  let el = node, depth = 0;
+  while (el && el.nodeType === 1 && depth++ < 6) {
+    const tag = el.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable) return null;
+    const tappable = tag === 'BUTTON' || tag === 'A' || el.hasAttribute('onclick') ||
+                     el.classList.contains('sb-btn') || el.classList.contains('mn-btn') ||
+                     el.classList.contains('ch-row') || el.classList.contains('member-row');
+    if (tappable) {
+      const r = el.getBoundingClientRect();
+      // 화면을 거의 덮는 것은 덮개다. 누름 표시를 붙이면 안 된다.
+      const big = r.width > innerWidth * 0.92 && r.height > innerHeight * 0.6;
+      if (big || r.width < 6 || r.height < 6) return null;
+      return el;
+    }
+    el = el.parentElement;
+  }
+  return null;
+}
+
+function pressKind(el) {
+  // 글씨뿐인 작은 단추는 흐리게, 칸이 있는 줄은 칠하고, 또렷한 단추는 살짝 눌린다.
+  const cs = getComputedStyle(el);
+  const bg = cs.backgroundColor;
+  const solid = bg && bg !== 'rgba(0, 0, 0, 0)' && !/,\s*0\)$/.test(bg);
+  const r = el.getBoundingClientRect();
+  if (solid && r.height >= 30 && r.width >= 56) return 'press-sink';
+  if (r.height >= 34 && r.width >= 120) return 'press-fill';
+  return 'press-dim';
+}
+
+function pressOn(e) {
+  pressOff();
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  const el = pressTarget(e.target);
+  if (!el) return;
+  el.classList.add('is-pressing', pressKind(el));
+  _pressEl = el;
+}
+function pressOff() {
+  if (!_pressEl) return;
+  _pressEl.classList.remove('is-pressing', 'press-dim', 'press-fill', 'press-sink');
+  _pressEl = null;
+}
+
+function pressInit() {
+  if (typeof document === 'undefined' || document.__pressOn) return;
+  document.__pressOn = true;
+  document.addEventListener('pointerdown', pressOn, { passive: true, capture: true });
+  // 손을 떼거나, 밖으로 끌고 나가거나, 스크롤이 시작되면 푼다
+  ['pointerup','pointercancel','pointerleave','scroll','contextmenu'].forEach(ev =>
+    document.addEventListener(ev, pressOff, { passive: true, capture: true }));
+  document.addEventListener('pointermove', (e) => {
+    if (!_pressEl) return;
+    const r = _pressEl.getBoundingClientRect();
+    // 애플 규칙: 밖으로 끌어내면 취소, 다시 들어오면 살아난다.
+    // 가장자리 10px 은 봐준다 (손가락은 정확하지 않다)
+    const out = e.clientX < r.left - 10 || e.clientX > r.right + 10 ||
+                e.clientY < r.top - 10 || e.clientY > r.bottom + 10;
+    if (out) pressOff();
+  }, { passive: true, capture: true });
+}
+
 function isStudentMember(m) {
   return !!m && (m.community_role === 'student' || m.role === '학생');
 }
@@ -3407,6 +3629,7 @@ function enterApp() {
     if (myAvEl) myAvEl.title = `${ME.name} (총관리자)`;
   }
   try { pushInit(); } catch (_) {}   // 알림 받을 준비 (서비스워커)
+  try { pressInit(); } catch (_) {}  // 손댄 순간 반응하기
   applyGuestBar();       // 남의 공동체를 보는 중이면 알려준다
   restoreLastChrome();   // 보던 화면부터 띄우고 (채팅 화면이 먼저 비치지 않게)
   initPresence();
@@ -3521,9 +3744,23 @@ function openMoreMenu() {
       <span style="font-size:23px">${it.icon}</span>
       <span style="font-size:11.5px;font-weight:600;color:${it.danger?'var(--rose)':'var(--ink2)'}">${it.label}</span>
     </button>`).join('');
-  const m = document.getElementById('more-menu'); if (m) m.style.display = 'block';
+  const m = document.getElementById('more-menu');
+  if (m) {
+    m.style.display = 'block';
+    const card = m.firstElementChild;
+    if (card) {
+      // 들어올 때도 아래에서 올라오게 — 나갈 때와 같은 길이어야 한다
+      sheetOpen(card);
+      sheetDrag(card, closeMoreMenu);
+    }
+  }
 }
-function closeMoreMenu() { const m = document.getElementById('more-menu'); if (m) m.style.display = 'none'; }
+function closeMoreMenu() {
+  const m = document.getElementById('more-menu'); if (!m) return;
+  m.style.display = 'none';
+  const card = m.firstElementChild;
+  if (card) { card.style.transition = 'none'; card.style.transform = ''; }
+}
 
 function closeMobilePanel() {
   document.getElementById('panel').classList.add('hidden');
@@ -11301,6 +11538,11 @@ function snShowSheet(html){
   m.innerHTML = html;
   m.addEventListener('click', e => { if (e.target === m) m.remove(); });
   document.body.appendChild(m);
+  const card = m.firstElementChild;
+  if (card) {
+    sheetOpen(card);
+    sheetDrag(card, () => m.remove());
+  }
 }
 function snOpenSheet(barId){
   const b = _snBars[barId]; if (!b) return;
