@@ -45,27 +45,30 @@ npm run dmg:all      # 둘 다
 
 ---
 
-## ⚠️ 서명을 안 하면 받는 분이 겪는 것
+## 서명은 이미 됩니다 — 공증만 남았습니다
 
-그냥 만든 `.dmg` 는 **서명이 없습니다.** macOS 15(세쿼이아)부터는
-Control-클릭으로 넘기는 길이 막혀서, 받으신 분이 이렇게 해야 합니다:
+키체인에 **Developer ID Application** 인증서가 이미 있어서,
+`npm run dmg` 만 해도 **서명까지 자동으로 끝납니다.** 로그에 이렇게 찍힙니다:
 
-1. TCS 를 열면 **"확인되지 않은 개발자"** 라며 막힙니다
-2. **시스템 설정 → 개인정보 보호 및 보안** 으로 들어가서
-3. 아래쪽 **"확인 없이 열기"** 를 누릅니다
+```
+signing ... identityName=Developer ID Application: IM AMERICA GROUP CORP (H6B99PYZ8W)
+```
 
-선생님들께 이걸 안내하기는 번거롭습니다. 그래서 **서명을 권합니다.**
+남은 건 **공증(notarization)** 하나입니다. 서명만 하고 공증을 안 하면,
+받으신 분이 처음 열 때 이렇게 됩니다:
 
-### 서명하기 (개발자 계정이 이미 있으시니 됩니다)
+1. **"Apple이 악성 소프트웨어 여부를 확인할 수 없습니다"** 라며 막힙니다
+2. **시스템 설정 → 개인정보 보호 및 보안** 으로 들어가
+3. 아래쪽 **"확인 없이 열기"** 를 눌러야 합니다
 
-1. **Developer ID Application** 인증서를 받습니다
-   developer.apple.com → Certificates → `+` → **Developer ID Application**
-   받아서 더블클릭하면 키체인에 들어갑니다
+(macOS 15부터 Control-클릭으로 넘기는 길이 막혔습니다)
 
-2. **앱 암호**를 만듭니다 (공증용)
-   appleid.apple.com → 로그인 및 보안 → **앱 암호** → 이름 `tcs-notary`
+### 공증하기 — 설정은 안 건드립니다
 
-3. 터미널에 그 값들을 넣고 만듭니다
+**앱 암호**만 하나 만들면 됩니다:
+appleid.apple.com → 로그인 및 보안 → **앱 암호** → 이름 `tcs-notary`
+
+그 값을 넣고 만들면 끝입니다:
 
 ```bash
 cd ~/imessenger/desktop
@@ -75,14 +78,25 @@ export APPLE_TEAM_ID="H6B99PYZ8W"
 npm run dmg
 ```
 
-`package.json` 의 `"mac"` 칸에 아래 한 줄을 더하면 공증까지 자동입니다:
+이 셋이 있으면 electron-builder 가 **알아서 공증까지** 합니다.
+`package.json` 에 더 적을 것은 없습니다. (셋 중 하나라도 빠지면
+"env var needs to be set" 이라며 알려줍니다)
 
-```json
-"notarize": true
+애플 서버에 보내고 답을 기다리므로 **몇 분 더 걸립니다.**
+끝나면 로그에 `notarization successful` 이 뜹니다.
+
+🔐 **앱 암호는 git 에 올리지 마세요.** 위 `export` 는 그 터미널 창에서만 삽니다.
+
+### 제대로 됐는지 보기
+
+```bash
+codesign -dv --verbose=2 dist/mac-arm64/TCS.app 2>&1 | grep -E "Authority|TeamIdentifier"
+spctl -a -vvv -t install dist/mac-arm64/TCS.app
+xcrun stapler validate dist/TCS-1.0.0-arm64.dmg
 ```
 
-🔐 **앱 암호는 git 에 올리지 마세요.** 터미널에서만 넣습니다.
-위 `export` 는 그 창에서만 삽니다.
+`spctl` 이 **`accepted`** 와 **`source=Notarized Developer ID`** 라고 하면
+받으시는 분이 그냥 열 수 있습니다.
 
 ---
 
