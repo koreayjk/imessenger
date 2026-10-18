@@ -113,11 +113,26 @@ input, textarea, [contenteditable] { caret-color: var(--accent); }
 input, textarea, select, button { accent-color: var(--accent); }
 a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
 
-/* 키보드로 다닐 때 지금 어디인지 — 마우스로 누를 때는 안 뜬다.
+/* 키보드로 다닐 때 지금 어디인지.
    테두리 모양은 건드리지 않는다. box-shadow 는 그 요소의 모서리를 그대로
    따라가므로, 초점이 갈 때 네모가 튀지 않는다. */
 :focus { outline: none; }
 :focus-visible { outline: none; box-shadow: var(--ring); position: relative; z-index: 1; }
+
+/* 테두리가 없는 투명한 글칸만 뺀다.
+   단추는 마우스로 눌러도 :focus-visible 이 안 붙지만, input·textarea 는
+   눌러도 붙는 게 브라우저 규칙이다. 테두리가 있는 칸이면 띠가 그 테두리를
+   따라가니 평범한 초점 표시로 보인다. 그런데 테두리가 없는 칸에서는
+   띠가 '없던 네모' 를 새로 그린다 — 메시지 칸이 그랬다. 둥근 입력 상자
+   안에 네모 상자가 하나 더 든 모양이 됐다.
+   이 세 칸은 각자 제 초점 표시가 따로 있다:
+   메시지 칸은 둘레 상자 테두리(.composer-box:focus-within),
+   시간표 과목칸과 주행거리칸은 눌러서 들어간 칸 자체가 바뀐다.
+   ※ 앞으로 테두리 없는 글칸을 새로 만들면 여기에도 적어야 한다.
+     안 적으면 그 칸에도 네모가 하나 생긴다. */
+.composer-box :where(textarea, input):focus-visible,
+.tt-newsubj:focus-visible,
+#veh-odo:focus-visible { box-shadow: none; }
 
 /* 스크롤바 — 예전에는 채널 목록 하나만 손봐서, 다른 칸은 전부
    브라우저 기본 회색 막대였다 */
