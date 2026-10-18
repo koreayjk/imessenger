@@ -2175,6 +2175,56 @@ function notifyNewMessage(msg) {
 
 // 창 제목에 안읽음 수를 띄운다 — 다른 탭을 보고 있어도 눈에 띈다
 const NOTI_BASE_TITLE = (typeof document !== 'undefined' && document.title) || 'TCS';
+// ── 🔴 앱 아이콘의 빨간 숫자 ──
+//  서버는 '알림을 보낼 때' 만 숫자를 고칠 수 있습니다. 다 읽고 나서
+//  새 글이 안 오면 숫자가 그대로 남습니다 — 그래서 읽을 때마다 앱에서도
+//  같이 맞춥니다.
+//
+//  설치해서 쓰는 분(안드로이드·PWA·홈화면에 추가한 아이폰)에게만 듣습니다.
+//  캡슐로 만든 아이폰 앱은 이 길이 막혀 있어서, 숫자를 지우려면
+//  @capawesome/capacitor-badge 같은 플러그인을 넣어야 합니다.
+// 캡슐로 만든 아이폰 앱에서 숫자를 지우는 길.
+// @capawesome/capacitor-badge 를 넣어두면 저절로 잡힙니다 — nativePush() 와
+// 같은 방식입니다. 안 넣었으면 null 이고, 아래에서 그냥 넘어갑니다.
+function nativeBadge() {
+  try {
+    const C = (typeof window !== 'undefined') && window.Capacitor;
+    if (!C || typeof C.isNativePlatform !== 'function' || !C.isNativePlatform()) return null;
+    return (C.Plugins || {}).Badge || null;
+  } catch (_) { return null; }
+}
+function appBadgeOn() {
+  if (nativeBadge()) return true;
+  try { return typeof navigator !== 'undefined' && typeof navigator.setAppBadge === 'function'; }
+  catch (_) { return false; }
+}
+async function appBadge(n) {
+  if (!appBadgeOn()) return false;
+  let v = n;
+  if (typeof v !== 'number') {
+    v = 0;
+    try {
+      v = Object.keys(unreadCounts || {})
+        .filter(id => !myRealChannelIds || !myRealChannelIds.size || myRealChannelIds.has(id))
+        .reduce((a, id) => a + (unreadCounts[id] || 0), 0);
+    } catch (_) { v = 0; }
+  }
+  const nb = nativeBadge();
+  if (nb) {
+    try {
+      if (v > 0) await nb.set({ count: v });
+      else await nb.clear();
+      return true;
+    } catch (_) { /* 플러그인이 있는데 실패하면 아래 길로 */ }
+  }
+  try {
+    if (typeof navigator.setAppBadge !== 'function') return false;
+    if (v > 0) await navigator.setAppBadge(v);
+    else await navigator.clearAppBadge();
+    return true;
+  } catch (_) { return false; }
+}
+
 function notiSyncTitle() {
   if (typeof document === 'undefined') return;
   let n = 0;
@@ -4389,6 +4439,7 @@ async function loadUnreadCounts() {
 
 function updateUnreadBadges() {
   try { notiSyncTitle(); } catch (_) {}   // 다른 탭을 보고 있어도 눈에 띄게
+  try { appBadge(); } catch (_) {}   // 🔴 앱 아이콘의 빨간 숫자도 같이
   // 사이드바 채팅 아이콘 배지 — 내가 들어가 있는 방만 센다.
   // 지켜보는 방까지 세면 숫자가 늘 세 자리라 아무 뜻이 없어집니다.
   // 그 방들의 새 글은 '👁 지켜보는 방' 줄에 따로 적힙니다.

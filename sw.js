@@ -29,7 +29,18 @@ self.addEventListener('push', (event) => {
     data: { channelId: d.channelId || null, url: d.url || SCOPE_URL },
     timestamp: Date.now(),
   };
-  event.waitUntil(self.registration.showNotification(title, opts));
+  // 🔴 앱 아이콘의 빨간 숫자 (설치해서 쓰는 사람 — 안드로이드·PWA)
+  //  여기서 쓰는 badge 와 이름이 같아서 헷갈린다: 위의 opts.badge 는
+  //  '알림 옆 작은 단색 그림' 이고, 아이콘에 붙는 숫자는 setAppBadge 다.
+  const paint = (async () => {
+    try {
+      if (typeof d.count !== 'number' || !self.navigator || !self.navigator.setAppBadge) return;
+      if (d.count > 0) await self.navigator.setAppBadge(d.count);
+      else await self.navigator.clearAppBadge();
+    } catch (_) {}
+  })();
+
+  event.waitUntil(Promise.all([self.registration.showNotification(title, opts), paint]));
 });
 
 self.addEventListener('notificationclick', (event) => {

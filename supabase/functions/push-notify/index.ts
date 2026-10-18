@@ -315,6 +315,19 @@ Deno.serve(async (req) => {
     .select('id,name').in('id', targets);
   const nameOf = new Map((names ?? []).map((m) => [m.id, String(m.name ?? '')]));
 
+  // ── 🔴 앱 아이콘의 빨간 숫자 ──
+  //  애플은 보낸 payload 의 badge 칸에 적힌 수를 그대로 아이콘에 붙입니다.
+  //  안 적어 보내면 아무것도 안 붙습니다 — 지금까지 그래서 숫자가 없었습니다.
+  //  받는 사람마다 '지금 몇 개 안 읽었나' 가 다르므로 한 번에 세어 옵니다.
+  //  (db/앱아이콘_숫자_DB설치.sql — 아직 안 깔았으면 그냥 숫자 없이 갑니다)
+  const badgeOf = new Map<string, number>();
+  try {
+    const { data: cnt, error: cntErr } = await admin.rpc('unread_counts', { p_members: targets });
+    if (cntErr) console.warn('안읽음 세기 건너뜀:', cntErr.message);
+    else (cnt ?? []).forEach((r: { member_id: string; n: number }) =>
+      badgeOf.set(r.member_id, Number(r.n) || 0));
+  } catch (e) { console.warn('안읽음 세기 건너뜀:', String(e)); }
+
   if (HAS_WEB) webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC, VAPID_PRIVATE);
 
   const who   = String(msg.sender_name ?? '새 메시지');
@@ -347,11 +360,15 @@ Deno.serve(async (req) => {
     if (s.kind === 'ios') {
       if (!HAS_IOS) return;
       try {
+        const n = badgeOf.get(s.member_id);
         const r = await apnsSend(s.endpoint, {
           aps: {
             alert: { title, body: bodyText },
             sound: 'default',
             'thread-id': msg.channel_id,
+            // 세지 못했으면 아예 안 적는다. 0 을 적으면 애플이
+            // '다 읽었다' 로 알아듣고 있던 숫자까지 지운다.
+            ...(typeof n === 'number' ? { badge: n } : {}),
           },
           channelId: msg.channel_id,
         });
@@ -371,6 +388,9 @@ Deno.serve(async (req) => {
       title, body: bodyText,
       tag: 'tcs-' + msg.channel_id,
       channelId: msg.channel_id,
+      // 'badge' 라고 쓰면 안 된다 — 브라우저 알림에서 badge 는 '작은 단색
+      // 아이콘' 을 뜻해서, 숫자를 넣으면 알림 아이콘이 깨진다. count 로 보낸다.
+      count: badgeOf.get(s.member_id),   // 설치형(PWA·안드로이드)도 아이콘에 숫자를 단다
     });
     try {
       await webpush.sendNotification(

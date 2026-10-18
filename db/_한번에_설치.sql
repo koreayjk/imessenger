@@ -1231,3 +1231,48 @@ update public.channels c
  where c.created_by is null and coalesce(c.kind,'topic') = 'dm';
 
 notify pgrst, 'reload schema';
+
+
+-- ════════════════════════════════════════════════════════════════════
+--  🔴 10) 앱 아이콘의 빨간 숫자  (db/앱아이콘_숫자_DB설치.sql)
+--
+--  알림은 잘 떴는데 아이콘에 숫자가 안 붙었습니다. 보내는 쪽에서 숫자
+--  칸을 아예 비워서 보내고 있었습니다. 받는 사람마다 '지금 몇 개
+--  안 읽었나' 를 세어 같이 보내려면 이 함수가 필요합니다.
+--  자세한 내용: docs/앱아이콘_숫자_안내.md
+-- ════════════════════════════════════════════════════════════════════
+
+create or replace function public.unread_counts(p_members uuid[])
+returns table (member_id uuid, n integer)
+language sql stable security definer parallel safe
+set search_path = public as $$
+  select cm.member_id,
+         count(m.id)::int as n
+    from public.channel_members cm
+    left join public.channel_reads cr
+           on cr.channel_id = cm.channel_id
+          and cr.member_id  = cm.member_id
+    left join public.messages m
+           on m.channel_id = cm.channel_id
+          and m.sender_id <> cm.member_id
+          and m.hidden_at is null
+          -- 창을 45일로 묶는다. 안 그러면 몇 해치 글을 다 세느라
+          -- 알림 한 번 보낼 때마다 데이터베이스가 한참 걸린다.
+          and m.created_at > now() - interval '45 days'
+          and m.created_at > coalesce(cr.last_read_at, now() - interval '45 days')
+   where cm.member_id = any(p_members)
+   group by cm.member_id;
+$$;
+
+-- 남의 안읽음 수는 남의 사정이다. 알림 보내는 서버(service_role)만
+-- 부를 수 있게 한다 — 로그인한 사람에게는 열지 않는다.
+revoke all on function public.unread_counts(uuid[]) from public, anon, authenticated;
+grant execute on function public.unread_counts(uuid[]) to service_role;
+
+-- 세는 길을 빠르게
+create index if not exists messages_ch_created_idx
+  on public.messages (channel_id, created_at desc);
+create index if not exists channel_reads_mem_ch_idx
+  on public.channel_reads (member_id, channel_id);
+
+notify pgrst, 'reload schema';
