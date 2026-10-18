@@ -1364,16 +1364,8 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
         </div>
         <!-- 학사력 분류 필터 -->
         <div id="cal-legend" style="padding:2px 16px 8px;display:flex;gap:6px;flex-wrap:wrap;overflow-x:auto"></div>
-        <!-- 요일 헤더 -->
-        <div style="display:grid;grid-template-columns:repeat(7,1fr);padding:0 16px;margin-bottom:4px">
-          <div style="text-align:center;font-size:12px;font-weight:600;color:var(--rose);padding:6px 0">일</div>
-          <div style="text-align:center;font-size:12px;font-weight:600;color:var(--ink3);padding:6px 0">월</div>
-          <div style="text-align:center;font-size:12px;font-weight:600;color:var(--ink3);padding:6px 0">화</div>
-          <div style="text-align:center;font-size:12px;font-weight:600;color:var(--ink3);padding:6px 0">수</div>
-          <div style="text-align:center;font-size:12px;font-weight:600;color:var(--ink3);padding:6px 0">목</div>
-          <div style="text-align:center;font-size:12px;font-weight:600;color:var(--ink3);padding:6px 0">금</div>
-          <div style="text-align:center;font-size:12px;font-weight:600;color:#2a5298;padding:6px 0">토</div>
-        </div>
+        <!-- 요일 줄은 달력 안(cal-grid)에서 칸에 맞춰 그립니다.
+             여기에 또 박아두면 두 줄이 겹쳐 보입니다 — 그래서 뺐습니다. -->
         <!-- 달력 그리드 -->
         <div id="cal-grid" style="padding:0 16px 16px;flex:1;display:flex;flex-direction:column"></div>
         <!-- 선택한 날짜 일정 -->
@@ -19020,7 +19012,11 @@ function renderCalendar() {
         if (!rowOccupied[c]) rowOccupied[c] = [];
         rowOccupied[c].push(row);
       }
-      multiLayout.push({ event: e, startCell: segStart, endCell: segEnd, row });
+      multiLayout.push({
+        event: e, startCell: segStart, endCell: segEnd, row,
+        // 이 토막이 덮는 날짜. 둥근 모서리를 어디에 줄지 여기서 정한다.
+        segStart: ymdStr(cur), segEnd: ymdStr(segEndDate),
+      });
 
       cur = new Date(segEndDate);
       cur.setDate(cur.getDate() + 1);
@@ -19094,22 +19090,29 @@ function renderCalendar() {
       const startCol = m.startCell % 7;
       const endCol = m.endCell % 7;
       const spanCols = endCol - startCol + 1;
-      const isFirstSeg = m.event.start_date >= `${calYear}-${String(calMonth+1).padStart(2,'0')}-01`;
+      // 진짜 시작·끝인 토막에만 모서리를 둥글게. 가운데 토막은 각지게 두어
+      // '이어진다' 는 게 보이게 한다.
+      const isHead = m.segStart === m.event.start_date;
+      const isTail = m.segEnd === (m.event.end_date || m.event.start_date);
       const topPx = 28 + m.row * 22;
       const leftPct = (startCol / 7 * 100).toFixed(2);
       const widthPct = (spanCols / 7 * 100 - 0.5).toFixed(2);
       const color = m.event.color || 'var(--accent)';
 
+      // 예전에는 모서리를 여섯 값으로 적고 있었다. border-radius 는 네 개까지라
+      // 통째로 버려져서 막대가 전부 각졌다.
+      const rl = isHead ? '6px' : '0', rr = isTail ? '6px' : '0';
+      // 이름은 토막마다 적는다. 한 번만 적으면 다음 주로 넘어간 칸이,
+      // 또 지난 달부터 이어진 일정이 '이름 없는 막대' 가 된다.
+      const label = (isHead ? '' : '‹ ') + escHtml(m.event.title || '') + (isTail ? '' : ' ›');
       html += `<div onclick="event.stopPropagation();editEvent('${m.event.id}')"
         style="position:absolute;top:${topPx}px;left:calc(${leftPct}% + 2px);width:calc(${widthPct}% - 4px);
-        height:20px;border-radius:${isFirstSeg?'5px 0 0 5px':'0'} ${m.endCell%7===6||m.event.end_date<=`${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(daysInMonth).padStart(2,'0')}`?'5px 5px':'0 0'};
+        height:20px;border-radius:${rl} ${rr} ${rr} ${rl};
         background:${color};color:white;
         font-size:11px;font-weight:600;padding:2px 6px;
         white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
         cursor:pointer;z-index:5;line-height:16px"
-        title="${m.event.title}">
-        ${isFirstSeg ? m.event.title : ''}
-      </div>`;
+        title="${escAttr(m.event.title || '')}">${label}</div>`;
     });
 
     html += '</div>'; // 주 행 끝
