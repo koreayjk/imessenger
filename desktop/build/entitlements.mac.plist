@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- 일렉트론은 JIT 를 쓰므로 hardened runtime 에서 이 둘이 필요합니다.
+       없으면 서명한 앱이 켜지다가 바로 죽습니다. -->
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+  <!-- 사진·파일을 올릴 때 고르는 창 -->
+  <key>com.apple.security.files.user-selected.read-write</key>
+  <true/>
+  <!-- 화면을 인터넷에서 받아옵니다 -->
+  <key>com.apple.security.network.client</key>
+  <true/>
+</dict>
+</plist>
