@@ -237,6 +237,18 @@ Deno.serve(async (req) => {
       rep.애플키 = k;
     }
 
+    // 🔴 아이콘 숫자도 같이 확인한다. 시험 알림에 숫자가 안 붙으면
+    //  '숫자가 되는지' 를 알 길이 없다 — 여기서 실제 안읽음 수를 붙여 본다.
+    let myBadge: number | null = null;
+    try {
+      const { data: c, error: ce } = await admin.rpc('unread_counts', { p_members: [user.id] });
+      if (ce) rep.아이콘숫자 = '못 셈 — ' + ce.message + ' (db/앱아이콘_숫자_DB설치.sql 을 돌렸나요?)';
+      else {
+        myBadge = Number((c ?? [])[0]?.n ?? 0);
+        rep.아이콘숫자 = myBadge;
+      }
+    } catch (e) { rep.아이콘숫자 = '못 셈 — ' + String(e); }
+
     const { data: mine } = await admin.from('push_subscriptions')
       .select('*').eq('member_id', user.id);
     rep.내_기기수 = (mine ?? []).length;
@@ -252,7 +264,10 @@ Deno.serve(async (req) => {
           const jwt = await apnsJwt();
           for (const host of apnsHosts()) {
             const r = await apnsPost(host, s.endpoint, jwt, {
-              aps: { alert: { title: 'TCS', body: '시험 알림입니다 🔔' }, sound: 'default' },
+              aps: {
+                alert: { title: 'TCS', body: '시험 알림입니다 🔔' }, sound: 'default',
+                ...(typeof myBadge === 'number' ? { badge: myBadge } : {}),
+              },
             });
             out.push({ 길: 'ios', 어디: host.includes('sandbox') ? 'sandbox' : 'production',
                        상태: r.status, 까닭: r.reason || (r.status === 200 ? '보냈습니다' : '') });

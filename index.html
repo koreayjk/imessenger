@@ -2795,6 +2795,13 @@ async function pushSelfTest() {
     if (!nIos) head.push(t('⚠️ 이 계정에 아이폰이 안 붙어 있어요. 아이폰에서 TCS 를 껐다 켜고, 내 프로필 → 알림 을 보세요. 노트북과 같은 계정인지도 확인하세요.',
                            'No iPhone is linked to this account. Reopen TCS on the iPhone, and check it is the same account.'));
     if (!rows.length) head.push(t('이 계정에 켜 둔 기기가 없어요','No devices turned on for this account'));
+    // 🔴 아이콘 숫자 — 시험 알림에 이 수가 붙어 나갑니다
+    const bg = data['아이콘숫자'];
+    if (bg != null) {
+      head.push(typeof bg === 'number'
+        ? `${t('아이콘 숫자','App badge')}: ${bg}${t('개 안읽음 — 시험 알림에 이 수가 붙어요',' unread — the test push carries it')}`
+        : `${t('아이콘 숫자','App badge')}: ${bg}`);
+    }
     const body = rows.map((r) => {
       const where = r['어디'] ? `(${r['어디']})` : '';
       const why = r['까닭'] || r['오류'] || r['건너뜀'] || '';
