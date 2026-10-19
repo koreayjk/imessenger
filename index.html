@@ -4150,6 +4150,14 @@ async function init() {
       }
       renderPanel();
     })
+    // 다른 기기에서 읽었다 — 여기 숫자도 같이 내려야 한다.
+    //  아이폰에서 먼저 읽으면 맥북 숫자가 안 내려가고 있었다. 아이폰은
+    //  닫혀 있어도 애플 알림으로 숫자를 고쳐 줄 수 있지만, 맥북·브라우저는
+    //  그 길이 없다. 대신 둘 다 실시간 줄에 붙어 있으니 거기로 알린다.
+    //  내 줄만 본다 — 남이 무엇을 읽었는지는 알 바가 아니다.
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'channel_reads', filter: `member_id=eq.${ME.id}` }, () => {
+      readSyncSoon();
+    })
     .subscribe();
 
   // 모든 채널 새 메시지 감지 → 읽지 않은 배지 업데이트
@@ -4516,6 +4524,25 @@ function watchRoomsHtml(watch) {
 
 // ── 읽지 않은 메시지 추적 ──
 let unreadCounts = {}; // channel_id → unread count
+
+// 다른 기기에서 읽었을 때 여기 숫자를 다시 맞춘다.
+//  한 방을 읽으면 줄 하나가 바뀌지만, 여러 방을 연달아 읽으면 여러 번
+//  온다. 잠깐 모았다 한 번만 센다.
+let _readSyncTimer = null;
+function readSyncSoon() {
+  if (_readSyncTimer) clearTimeout(_readSyncTimer);
+  _readSyncTimer = setTimeout(async () => {
+    _readSyncTimer = null;
+    try {
+      await loadUnreadCounts();
+      // 지금 보고 있는 방은 읽은 것으로 친다. 안 그러면 보고 있는 방에
+      // 숫자가 도로 붙는다.
+      if (currentChannel) unreadCounts[currentChannel.id] = 0;
+      updateUnreadBadges();
+      renderPanel();          // 방 줄의 숫자는 다시 그려야 바뀐다
+    } catch (_) {}
+  }, 600);
+}
 
 // 안읽음을 어느 길로 셌나. 'db' = 서버 함수가 세 줬다(정확).
 //  'old' = 화면이 글을 받아다 셌다(많으면 잘린다). '?' = 아직 안 셌다.

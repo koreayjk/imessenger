@@ -52,6 +52,26 @@ create index if not exists messages_ch_created_idx
 create index if not exists channel_reads_mem_ch_idx
   on public.channel_reads (member_id, channel_id);
 
+
+-- ────────────────────────────────────────────────────────────────────
+--  다른 기기에서 읽으면 이쪽 숫자도 같이 내려가게 한다.
+--
+--  "아이폰에서 먼저 채팅을 확인하면 맥북에서는 숫자가 안 사라지네"
+--
+--  아이폰은 닫혀 있어도 애플 알림으로 아이콘 숫자를 고쳐 줄 수 있지만,
+--  맥북과 브라우저에는 그 길이 없습니다. 대신 둘 다 실시간 줄에 붙어
+--  있으니, '읽음' 줄이 바뀌면 그쪽에서 다시 세게 합니다.
+--  내 줄만 보냅니다 — channel_reads 의 RLS 가 member_id = auth.uid()
+--  이므로, 남이 무엇을 읽었는지는 애초에 안 보입니다.
+-- ────────────────────────────────────────────────────────────────────
+do $$
+begin
+  alter publication supabase_realtime add table public.channel_reads;
+exception
+  when duplicate_object then null;   -- 이미 들어 있으면 그냥 넘어갑니다
+  when others then null;
+end $$;
+
 notify pgrst, 'reload schema';
 
 select '설치 끝 — unread_by_channel() 준비됨' as "결과";
