@@ -94,6 +94,18 @@ html, body { overscroll-behavior: none; }
 .panel-body, #msg-area, #more-menu > div, #sn-sheet > div,
 #school-main, #home-view, #profile-content, #memory-page, #reading-page,
 [data-scroll] { overscroll-behavior: contain; }
+/* 마우스가 지나갈 때만 옅게 깔린다.
+   인라인 onmouseout 으로 this.style.background='' 를 주면, style 속성에
+   적어 둔 background:none 까지 같이 지워진다. <button> 은 기본 배경이
+   회색이라 그 회색이 드러나고, 지나가기만 한 이모지가 '고른 것' 처럼
+   보인다. (<div> 은 기본 배경이 없어서 안 드러났다 — 그래서 단추만
+   그랬다.) 손으로 넣었다 뺐다 하지 말고 CSS 에 맡긴다. */
+.hov-soft { background: none; border: none; cursor: pointer; }
+@media (hover: hover) and (pointer: fine) {
+  .hov-soft:hover { background: var(--s3); }
+  .hov-rose:hover { background: #FEE2E2; color: #dc2626; }
+}
+
 /* 손가락으로 쓰는 기기에서는 말풍선을 길게 눌러도 아이폰 제 메뉴가
    안 뜨게 한다. 안 막으면 우리 메뉴와 둘이 같이 뜬다. 대신 메뉴에
    '골라서 복사' 를 뒀다 — 거기서 .sel-ok 를 붙여 그때만 고를 수 있게 한다. */
@@ -955,8 +967,6 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
   #panel-close { display: none; }
   #panel { transform: none !important; }
 }
-.msg-row:hover .msg-actions { display: flex !important; }
-.msg-actions { display: none; }
 .msg-row:hover { background: rgba(0,0,0,.025); border-radius: 8px; }
 [data-tap] { cursor: pointer; }
 [data-tap]:active { opacity: .7; }
@@ -5403,10 +5413,9 @@ function openMsgMenu(id, x, y) {
   //  ＋ 가 칸 밖으로 밀린다 — 그러면 '더 있다' 는 걸 알 길이 없다.
   const quick = `<div style="display:flex;flex-wrap:wrap;gap:2px;padding:${narrow ? '6px 8px' : '4px 6px'};
       border-bottom:1px solid var(--border);margin-bottom:4px">
-      ${reactionQuick().slice(0, narrow ? 7 : 4).map(e => `<button onclick="msgMenuReact('${escJs(e)}')"
-        style="flex-shrink:0;width:${narrow ? 42 : 34}px;height:${narrow ? 42 : 34}px;border:none;background:none;
-               border-radius:10px;font-size:${narrow ? 23 : 19}px;line-height:1;cursor:pointer"
-        onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background=''">${e}</button>`).join('')}
+      ${reactionQuick().slice(0, narrow ? 7 : 4).map(e => `<button class="hov-soft" onclick="msgMenuReact('${escJs(e)}')"
+        style="flex-shrink:0;width:${narrow ? 42 : 34}px;height:${narrow ? 42 : 34}px;
+               border-radius:10px;font-size:${narrow ? 23 : 19}px;line-height:1">${e}</button>`).join('')}
       <button onclick="msgMenuRun('react')" title="${t('더 보기','More')}"
         style="flex-shrink:0;width:${narrow ? 42 : 34}px;height:${narrow ? 42 : 34}px;border:none;background:var(--s2);
                border-radius:10px;font-size:${narrow ? 19 : 16}px;line-height:1;cursor:pointer;color:var(--ink2)">＋</button>
@@ -5574,18 +5583,10 @@ function msgHtml(m, prev, readMap={}) {
 
   // 액션 버튼 - msg-body 안에 포함, hover시 표시
   // 액션 버튼 — 메시지 오른쪽 옆에 플로팅, 호버시만 표시
-  // 호버 줄 — 넓은 화면에서 메시지 옆에 뜨는 빠른 줄.
-  //  오른쪽 단추 메뉴와 같은 목록(msgActions)을 본다. 두 군데에 따로
-  //  적으면 한쪽에만 새 기능이 붙고 다른 쪽은 늙는다.
-  const actionBtns = `
-    <div class="msg-actions" style="
-      position:absolute;right:${isMine?'52px':'auto'};left:${isMine?'auto':'52px'};top:-2px;transform:translateY(-100%);
-      background:var(--surface);border:1px solid var(--border);border-radius:12px;
-      padding:3px;gap:2px;box-shadow:0 2px 10px rgba(0,0,0,.1);align-items:center">
-      ${msgActions(m).map(a => `<div onclick="${a.call}" title="${escAttr(a.label)}"
-        style="width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:${a.k==='react'?'15px':'13px'}${a.danger?';color:var(--rose)':''}"
-        onmouseover="this.style.background='${a.danger?'#FEE2E2':'var(--s3)'}'" onmouseout="this.style.background=''">${a.icon}</div>`).join('')}
-    </div>`;
+  // 호버 줄은 없앴습니다. 오른쪽 단추(넓은 화면)·길게 누르기(휴대폰)
+  //  메뉴가 같은 일을 다 하는데, 둘이 같이 뜨면 화면이 어수선하고
+  //  어느 쪽을 눌러야 할지 헷갈립니다. 카톡 PC 도 오른쪽 단추 하나입니다.
+  //  할 수 있는 일 목록은 msgActions(m) 에 그대로 있습니다.
 
   // 답장 인용
   const replyQuote = m.reply_to_id ? `
@@ -5664,7 +5665,6 @@ function msgHtml(m, prev, readMap={}) {
 
   if (isMine) {
     return `<div class="msg-row mine${sameAsPrev?' same-sender':''}" data-sender="${m.sender_id}" data-id="${m.id}" data-date="${m.created_at ? new Date(m.created_at).toDateString() : ''}" style="position:relative">
-      ${actionBtns}
       <div class="msg-avatar" style="${avStyle}">${sender.initials}</div>
       <div class="msg-body">
         ${!sameAsPrev ? `<div class="msg-meta"><span class="name">${sender.name}</span><span class="time">${fmtTime(m.created_at)}</span></div>` : ''}
@@ -5676,7 +5676,6 @@ function msgHtml(m, prev, readMap={}) {
     </div>`;
   }
   return `<div class="msg-row${sameAsPrev?' same-sender':''}" data-sender="${m.sender_id}" data-id="${m.id}" data-date="${m.created_at ? new Date(m.created_at).toDateString() : ''}" style="position:relative">
-    ${actionBtns}
     <div class="msg-avatar" onclick="openMemberCard('${m.sender_id}')" title="${escAttr(t('눌러서 보기','Tap to view'))}" style="${avStyle};cursor:pointer">${sender.initials}</div>
     <div class="msg-body">
       ${!sameAsPrev ? `<div class="msg-meta"><span class="name" onclick="openMemberCard('${m.sender_id}')" style="cursor:pointer">${sender.name}</span><span class="time">${fmtTime(m.created_at)}</span></div>` : ''}
@@ -6610,9 +6609,8 @@ function emojiGridHtml() {
     const g = EMOJI_GROUPS.find(x => x.key === _emojiTab) || EMOJI_GROUPS[0];
     list = g.list.map(x => x[0]);
   }
-  return list.map(e => `<button onclick="emojiChoose('${e}')"
-    style="height:38px;border:none;background:none;border-radius:8px;font-size:21px;line-height:1;cursor:pointer"
-    onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background=''">${e}</button>`).join('');
+  return list.map(e => `<button class="hov-soft" onclick="emojiChoose('${e}')"
+    style="height:38px;border-radius:8px;font-size:21px;line-height:1">${e}</button>`).join('');
 }
 
 function emojiRedrawGrid() {
@@ -26189,7 +26187,7 @@ function ledgerRenderInto() {
           ${catOpts(x.category)}
         </select>
       </td>
-      <td style="padding:7px 4px;text-align:center"><button onclick="ledgerDeleteTx('${x.id}')" title="${t('삭제','Delete')}" style="width:26px;height:26px;border:none;background:transparent;color:var(--ink3);cursor:pointer;font-size:13px;border-radius:6px" onmouseover="this.style.background='#FEE2E2';this.style.color='#dc2626'" onmouseout="this.style.background='';this.style.color='var(--ink3)'">✕</button></td>
+      <td style="padding:7px 4px;text-align:center"><button onclick="ledgerDeleteTx('${x.id}')" title="${t('삭제','Delete')}" class="hov-soft hov-rose" style="width:26px;height:26px;color:var(--ink3);font-size:13px;border-radius:6px">✕</button></td>
     </tr>`;
   }).join('') : `<tr><td colspan="5" style="padding:26px;text-align:center;color:var(--ink3);font-size:13px">${(filtered || ledgerSearch.trim()) ? t('조건에 맞는 거래가 없어요.','No transactions match your filter/search.') : t('이 달의 거래내역이 없어요. 은행 엑셀을 올리거나 직접 추가하세요.','No transactions this month. Upload a bank Excel or add one manually.')}</td></tr>`;
 
@@ -26296,7 +26294,7 @@ function ledgerRenderDay() {
           ${catOpts(x.category)}
         </select>
       </td>
-      <td style="padding:7px 4px;text-align:center"><button onclick="ledgerDeleteTx('${x.id}')" title="${t('삭제','Delete')}" style="width:26px;height:26px;border:none;background:transparent;color:var(--ink3);cursor:pointer;font-size:13px;border-radius:6px" onmouseover="this.style.background='#FEE2E2';this.style.color='#dc2626'" onmouseout="this.style.background='';this.style.color='var(--ink3)'">✕</button></td>
+      <td style="padding:7px 4px;text-align:center"><button onclick="ledgerDeleteTx('${x.id}')" title="${t('삭제','Delete')}" class="hov-soft hov-rose" style="width:26px;height:26px;color:var(--ink3);font-size:13px;border-radius:6px">✕</button></td>
     </tr>`;
   }).join('') : `<tr><td colspan="4" style="padding:26px;text-align:center;color:var(--ink3);font-size:13px">${(filtered || ledgerSearch.trim()) ? t('조건에 맞는 거래가 없어요.','No transactions match your filter/search.') : t('이 날의 거래내역이 없어요.','No transactions on this day.')}</td></tr>`;
 
