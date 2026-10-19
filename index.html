@@ -94,6 +94,22 @@ html, body { overscroll-behavior: none; }
 .panel-body, #msg-area, #more-menu > div, #sn-sheet > div,
 #school-main, #home-view, #profile-content, #memory-page, #reading-page,
 [data-scroll] { overscroll-behavior: contain; }
+/* 메뉴는 글자를 고를 수 없게 둔다.
+   길게 눌러 여는 메뉴는 '손가락이 아직 닿아 있는 자리' 에 뜬다.
+   그대로 누르고 있으면 아이폰이 그 자리에서 글자 고르기를 시작해서,
+   메뉴 항목 하나가 파랗게 칠해진 채로 나온다 — 고른 것도 아닌데
+   고른 것처럼 보인다. 메뉴·덮개는 읽는 것이지 고르는 것이 아니다. */
+#msg-menu, #msg-menu *, #msg-menu-bd {
+  -webkit-user-select: none !important; user-select: none !important;
+  -webkit-touch-callout: none !important;
+}
+/* 이모지 판·빠른 리액션 줄도 같은 꼴이다 — 단추를 꾹 누르면 그 글자가
+   잡힌다. 다만 찾기 칸은 글자를 쳐야 하므로 빼 둔다. */
+#emoji-panel button, .reaction-picker, .reaction-picker * {
+  -webkit-user-select: none !important; user-select: none !important;
+  -webkit-touch-callout: none !important;
+}
+
 /* 마우스가 지나갈 때만 옅게 깔린다.
    인라인 onmouseout 으로 this.style.background='' 를 주면, style 속성에
    적어 둔 background:none 까지 같이 지워진다. <button> 은 기본 배경이
@@ -5441,6 +5457,10 @@ function openMsgMenu(id, x, y) {
     document.body.appendChild(bd);
   }
   document.body.appendChild(box);
+  // 메뉴가 뜨기 직전에 아이폰이 말풍선에서 글자를 잡아 놓았을 수 있다.
+  //  그대로 두면 메뉴 뒤에 파란 덩어리가 남는다. 털어 낸다.
+  try { const sel = window.getSelection(); if (sel) sel.removeAllRanges(); } catch (_) {}
+  document.querySelectorAll('.msg-row .sel-ok').forEach(el => el.classList.remove('sel-ok'));
 
   if (!narrow) {
     const w = 224, h = Math.min(box.offsetHeight || 300, Math.round(window.innerHeight * 0.7));
