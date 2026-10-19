@@ -2865,6 +2865,22 @@ async function pushSelfTest() {
         ? `${t('아이콘 숫자','App badge')}: ${bg}${t('개 안읽음 — 시험 알림에 이 수가 붙어요',' unread — the test push carries it')}`
         : `${t('아이콘 숫자','App badge')}: ${bg}`);
     }
+    // 그 수가 어느 방에서 왔는지. '왜 7 이지' 를 방마다 열어 보며
+    //  찾지 않게 한다. 안읽음은 방마다 쌓인 것을 전부 더한 수다.
+    const parts = data['숫자_내역'];
+    if (Array.isArray(parts) && parts.length) {
+      head.push(t('└ 어느 방인가 (이 방들을 열면 숫자가 줄어요)','└ Where it comes from'));
+      parts.slice(0, 12).forEach((p) => head.push(`   · ${p['방']} — ${p['수']}`));
+      if (parts.length > 12) head.push(`   · … ${t('외','and')} ${parts.length - 12}${t('개 방','more rooms')}`);
+    } else if (typeof parts === 'string') {
+      head.push(t('└ 내역을 못 셌어요 — ','└ Breakdown failed — ') + parts);
+    }
+    // 읽음 표시가 안 써지고 있으면 숫자는 영영 안 줄어든다. 가장 먼저 말한다.
+    if (_readFail) {
+      head.unshift(t('⚠️ 읽음 표시가 서버에 안 적히고 있어요 — ','⚠️ Read receipts are not being saved — ') + _readFail);
+      head.unshift(t('   (그래서 방을 열어도 숫자가 안 줄어듭니다. db/채널읽음_DB설치.sql 을 돌렸나요?)',
+                     '   (so the count never drops. Did you run db/채널읽음_DB설치.sql?)'));
+    }
     const body = rows.map((r) => {
       const where = r['어디'] ? `(${r['어디']})` : '';
       const why = r['까닭'] || r['오류'] || r['건너뜀'] || '';
@@ -4785,13 +4801,46 @@ async function markRead(messageId) {
   );
 }
 // 채널별 '마지막 읽은 시각' 기록 — 안읽음 배지 정확화(메시지 수 무관)
+//  예전엔 try{...}catch(_){} 로 감싸 두기만 했습니다. 그런데 수파베이스는
+//  막히면 던지는 게 아니라 { error } 를 돌려줍니다. 그래서 권한에 막혀
+//  한 글자도 안 써져도 조용히 넘어갔고, 안읽음 수는 영영 안 줄었습니다.
+//  이제는 적힌 걸 확인하고, 안 적히면 말합니다.
 async function markChannelRead(channelId) {
+  let error = null;
   try {
-    await sb.from('channel_reads').upsert(
+    ({ error } = await sb.from('channel_reads').upsert(
       { member_id: ME.id, channel_id: channelId, last_read_at: new Date().toISOString() },
       { onConflict: 'member_id,channel_id' }
-    );
-  } catch(_) {}
+    ));
+  } catch (e) { error = e; }
+  if (error) {
+    console.warn('읽음 표시 실패', error.message || error);
+    _readFail = (error.message || String(error)).slice(0, 120);
+    return false;
+  }
+  _readFail = '';
+  pushSyncBadge();          // 내 다른 기기의 아이콘 숫자도 같이 고친다
+  return true;
+}
+let _readFail = '';
+
+// 다른 기기(아이폰)의 아이콘 숫자 맞추기.
+//  맥북에서 읽어도 아이폰 아이콘의 숫자는 그대로 남아 있었습니다.
+//  그 숫자는 알림이 올 때 애플이 붙이는 것이라, 다른 데서 읽었다는
+//  사실을 아이폰에 알려 줄 길이 없었기 때문입니다. 서버가 '자기'
+//  기기들에만 글자 없는 알림을 보내 숫자만 고쳐 씁니다.
+//  방을 여러 개 연달아 열 때 매번 부르지 않게 잠깐 모았다 보냅니다.
+let _syncTimer = null;
+function pushSyncBadge() {
+  if (!ME || typeof sb === 'undefined' || !sb || !sb.functions) return;
+  if (_syncTimer) clearTimeout(_syncTimer);
+  _syncTimer = setTimeout(() => {
+    _syncTimer = null;
+    try {
+      sb.functions.invoke('push-notify', { body: { sync: true } })
+        .then(() => {}, () => {});     // 실패해도 읽기를 막지 않는다
+    } catch (_) {}
+  }, 1500);
 }
 
 // 읽음 숫자 새로고침 (내 메시지들만)

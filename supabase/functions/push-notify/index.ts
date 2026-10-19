@@ -113,7 +113,9 @@ async function apnsJwt(): Promise<string> {
     } catch (e) {
       throw new Error(
         `APNS_PRIVATE_KEY 가 애플 키 모양이 아닙니다 (${der.length}바이트). ` +
-        `애플 .p8 의 알맹이는 138바이트 안팎입니다. ${how} 원인: ${String(e)}`,
+        `애플 .p8 의 알맹이는 138바이트 안팎입니다. 파일을 메모장으로 열어 ` +
+        `-----BEGIN PRIVATE KEY----- 줄부터 끝까지 통째로 넣으셨는지 보세요. ` +
+        `원인: ${String(e)}`,
       );
     }
   }
@@ -128,14 +130,19 @@ async function apnsJwt(): Promise<string> {
   return tok;
 }
 
-async function apnsPost(host: string, device: string, jwt: string, payload: unknown) {
+async function apnsPost(host: string, device: string, jwt: string, payload: unknown,
+                        opts?: { priority?: string }) {
   const r = await fetch(`${host}/3/device/${device}`, {
     method: 'POST',
     headers: {
       'authorization': 'bearer ' + jwt,
       'apns-topic': APNS_BUNDLE_ID,
+      // 숫자만 바꾸는 알림도 종류는 'alert' 입니다. 'background' 로 보내면
+      // 애플이 badge 를 거부합니다 — 배경 알림에는 alert·sound·badge 를
+      // 넣을 수 없다고 못 박아 뒀습니다. 글자가 없으면 아무것도 안 뜨고
+      // 아이콘 숫자만 바뀝니다. 그게 우리가 바라는 것입니다.
       'apns-push-type': 'alert',
-      'apns-priority': '10',
+      'apns-priority': opts?.priority ?? '10',
       'apns-expiration': String(Math.floor(Date.now() / 1000) + 3600),
       'content-type': 'application/json',
     },
@@ -148,11 +155,12 @@ async function apnsPost(host: string, device: string, jwt: string, payload: unkn
 }
 
 // 보냈으면 true, 그 기기가 죽었으면 'dead', 아니면 false
-async function apnsSend(device: string, payload: unknown): Promise<true | 'dead' | false> {
+async function apnsSend(device: string, payload: unknown,
+                        opts?: { priority?: string }): Promise<true | 'dead' | false> {
   const jwt = await apnsJwt();
   let last = { status: 0, reason: '' };
   for (const host of apnsHosts()) {
-    last = await apnsPost(host, device, jwt, payload);
+    last = await apnsPost(host, device, jwt, payload, opts);
     if (last.status === 200) return true;
     // 환경이 어긋났을 때만 다른 쪽을 더 본다. 나머지는 더 봐도 같다.
     if (!(last.status === 400 && last.reason === 'BadDeviceToken')) break;
@@ -198,10 +206,10 @@ Deno.serve(async (req) => {
   const auth = req.headers.get('Authorization') ?? '';
   if (!auth) return json({ error: '로그인이 필요합니다' }, 401);
 
-  let body: { message_id?: string; check?: boolean };
+  let body: { message_id?: string; check?: boolean; sync?: boolean };
   try { body = await req.json(); } catch { return json({ error: '잘못된 요청' }, 400); }
   const messageId = String(body.message_id ?? '');
-  if (!messageId && !body.check) return json({ error: 'message_id 가 없습니다' }, 400);
+  if (!messageId && !body.check && !body.sync) return json({ error: 'message_id 가 없습니다' }, 400);
 
   const url = Deno.env.get('SUPABASE_URL')!;
   // 부른 사람이 누구인지는 그 사람의 토큰으로 확인한다
@@ -210,9 +218,80 @@ Deno.serve(async (req) => {
   });
   const { data: { user }, error: uErr } = await asUser.auth.getUser();
   if (uErr || !user) return json({ error: '로그인이 필요합니다' }, 401);
+  // 아래 작은 함수들 안에서도 쓰므로 여기서 한 번 꺼내 둔다.
+  // user 를 그대로 쓰면 타입스크립트가 함수 안에서는 '없을 수도 있다' 고 본다.
+  const uid = user.id;
 
   // 보낼 대상은 RLS 너머라서 service_role 로 읽는다
   const admin = createClient(url, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+
+  // 지금 이 사람이 몇 개를 안 읽었는지. 못 세면 null 을 돌려준다 —
+  // 0 으로 돌려주면 '다 읽었다' 는 거짓말이 되어 아이콘 숫자가 꺼진다.
+  async function myUnread(): Promise<number | null> {
+    try {
+      const { data, error } = await admin.rpc('unread_counts', { p_members: [uid] });
+      if (error) return null;
+      return Number((data ?? [])[0]?.n ?? 0);
+    } catch { return null; }
+  }
+
+  // 그 수가 '어느 방에서' 왔는지. 숫자가 뜻밖일 때 어디를 열어야 할지
+  // 바로 알 수 있게 한다. 세는 규칙은 unread_counts 와 같다.
+  async function myUnreadByRoom(): Promise<Array<{ 방: string; 수: number }>> {
+    const since = new Date(Date.now() - 45 * 86400000).toISOString();
+    const { data: mems } = await admin.from('channel_members')
+      .select('channel_id').eq('member_id', uid);
+    const ids = (mems ?? []).map((m) => m.channel_id as string);
+    if (!ids.length) return [];
+    const { data: reads } = await admin.from('channel_reads')
+      .select('channel_id,last_read_at').eq('member_id', uid);
+    const lastRead: Record<string, string> = {};
+    (reads ?? []).forEach((r) => { lastRead[r.channel_id as string] = r.last_read_at as string; });
+    const { data: msgs } = await admin.from('messages')
+      .select('channel_id,created_at')
+      .in('channel_id', ids).neq('sender_id', uid)
+      .is('hidden_at', null).gte('created_at', since);
+    const n: Record<string, number> = {};
+    (msgs ?? []).forEach((m) => {
+      const lr = lastRead[m.channel_id as string] ?? since;
+      if (String(m.created_at) > lr) n[m.channel_id as string] = (n[m.channel_id as string] ?? 0) + 1;
+    });
+    const hot = Object.keys(n);
+    if (!hot.length) return [];
+    const { data: chs } = await admin.from('channels').select('id,name').in('id', hot);
+    const nameOf: Record<string, string> = {};
+    (chs ?? []).forEach((c) => { nameOf[c.id as string] = String(c.name ?? ''); });
+    return hot.map((id) => ({ 방: nameOf[id] || '(이름 없는 방)', 수: n[id] }))
+              .sort((a, b) => b.수 - a.수);
+  }
+
+  // ── 🔕 읽었다 ({ sync: true }) ────────────────────────────────────
+  //  "맥북에서 문자 확인하면 아이폰에서도 알람이 없어져야 하는데 남아 있다"
+  //
+  //  남아 있었습니다. 아이콘 숫자는 알림이 올 때 애플이 붙여 주는 것이라,
+  //  다른 기기에서 읽었다는 사실을 아이폰에 알려 주는 길이 아예 없었습니다.
+  //  여기서 '자기' 기기들에만 글자 없는 알림을 보내 숫자만 고쳐 씁니다.
+  //  글자가 없으니 배너도 소리도 없습니다.
+  //
+  //  남의 기기로는 절대 안 보냅니다. 부른 사람의 토큰으로 확인한
+  //  user.id 의 기기만 봅니다.
+  if (body.sync) {
+    if (!HAS_IOS) return json({ 아이콘숫자: null, 보낸기기: 0, 까닭: 'APNS 비밀값이 없습니다' });
+    const n = await myUnread();
+    if (n === null) return json({ 아이콘숫자: null, 보낸기기: 0, 까닭: '안읽음 수를 못 셌습니다' });
+    const { data: mine } = await admin.from('push_subscriptions')
+      .select('id,endpoint,kind').eq('member_id', uid).eq('kind', 'ios');
+    let sent = 0;
+    const dead: string[] = [];
+    for (const s2 of mine ?? []) {
+      // 우선순위 5 — 급한 알림이 아니라 숫자 고치기다. 배터리를 아낀다.
+      const r = await apnsSend(String(s2.endpoint), { aps: { badge: n } }, { priority: '5' });
+      if (r === true) sent++;
+      else if (r === 'dead') dead.push(String(s2.id));
+    }
+    if (dead.length) await admin.from('push_subscriptions').delete().in('id', dead);
+    return json({ 아이콘숫자: n, 보낸기기: sent, 지운기기: dead.length });
+  }
 
   // ── 🔎 시험 ({ check: true }) ──────────────────────────────────────
   //  '왜 안 오지' 를 로그를 뒤지며 찾지 않게 한다. 부른 사람 '자기'
@@ -241,16 +320,20 @@ Deno.serve(async (req) => {
     //  '숫자가 되는지' 를 알 길이 없다 — 여기서 실제 안읽음 수를 붙여 본다.
     let myBadge: number | null = null;
     try {
-      const { data: c, error: ce } = await admin.rpc('unread_counts', { p_members: [user.id] });
+      const { data: c, error: ce } = await admin.rpc('unread_counts', { p_members: [uid] });
       if (ce) rep.아이콘숫자 = '못 셈 — ' + ce.message + ' (db/앱아이콘_숫자_DB설치.sql 을 돌렸나요?)';
       else {
         myBadge = Number((c ?? [])[0]?.n ?? 0);
         rep.아이콘숫자 = myBadge;
+        // 숫자가 뜻밖이면 '어느 방인지' 를 알아야 한다. 안 그러면
+        //  '7 이 왜 7 이지' 를 사람이 방마다 열어 보며 찾아야 한다.
+        try { rep.숫자_내역 = await myUnreadByRoom(); }
+        catch (e) { rep.숫자_내역 = '못 셈 — ' + String(e); }
       }
     } catch (e) { rep.아이콘숫자 = '못 셈 — ' + String(e); }
 
     const { data: mine } = await admin.from('push_subscriptions')
-      .select('*').eq('member_id', user.id);
+      .select('*').eq('member_id', uid);
     rep.내_기기수 = (mine ?? []).length;
     // 기기 수는 여기서 센다. 보낸 결과로 세면 한 기기에 두 번
     // 넣어 본 것(production·sandbox)을 두 대로 잘못 센다.
