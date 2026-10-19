@@ -4511,14 +4511,30 @@ async function loadUnreadCounts() {
   // 최근 45일 메시지만 대상으로(대역폭 절약) — 안읽음 배지는 최근 것만 필요
   const since = new Date(Date.now() - 45*86400000).toISOString();
 
-  // '마지막 읽은 시각' 과 '최근 메시지' 를 같이 물어본다.
-  //  메시지 쪽은 읽은 시각을 몰라도 되는 질문이라, 받아놓고 나중에 세면 된다.
-  //  예전에는 읽은 시각이 올 때까지 기다렸다가 메시지를 물어봤다 — 공짜로
-  //  왕복 한 번을 더 쓰고 있었다.
+  // 세는 일은 데이터베이스에 맡긴다. 수만 받으면 잘릴 것이 없다.
+  //  예전에는 45일치 글을 통째로 받아다 여기서 셌는데, 서버는 한 번에
+  //  1000줄까지만 돌려준다. 순서를 안 정해 줬으니 '오래된 1000개' 가 왔고,
+  //  정작 안 읽은 최근 글은 한 줄도 안 왔다. 그래서 방이 많은 계정에서는
+  //  모든 방이 '다 읽음' 으로 보였다 — 아이콘 숫자는 7 인데 목록엔 아무
+  //  표시가 없는 상태. 설치: db/안읽음_방별_DB설치.sql
+  {
+    const { data: rows, error } = await sb.rpc('unread_by_channel');
+    if (!error && Array.isArray(rows)) {
+      unreadCounts = {};
+      rows.forEach(r => { if (r && r.n > 0) unreadCounts[r.channel_id] = r.n; });
+      updateUnreadBadges();
+      return;
+    }
+    // 함수가 아직 없으면 예전 방식으로 돈다. 다만 '최근 것부터' 받는다 —
+    // 잘리더라도 안 읽은 글(= 최근 글)은 그 안에 들어온다.
+    if (error) console.warn('unread_by_channel 없음 — 예전 방식으로 셉니다', error.message || error);
+  }
+
   const [creadsRes, msgsRes] = await Promise.all([
     sb.from('channel_reads').select('channel_id, last_read_at').eq('member_id', ME.id),
     sb.from('messages').select('channel_id, created_at')
-      .in('channel_id', visibleIds).neq('sender_id', ME.id).gte('created_at', since),
+      .in('channel_id', visibleIds).neq('sender_id', ME.id).gte('created_at', since)
+      .order('created_at', { ascending: false }).limit(1000),
   ]);
 
   let lastRead = null;
