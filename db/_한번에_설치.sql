@@ -1426,3 +1426,103 @@ create policy channel_members_delete on public.channel_members for delete to aut
 
 notify pgrst, 'reload schema';
 
+-- ════════════════════════════════════════════════════════════════════
+--  🗂 15) 채팅 순서·그룹을 사람마다  (db/내순서_내그룹_DB설치.sql)
+--
+--  예전에는 순서를 channels.sort 에 적어서, 한 사람이 옮기면 그 방을
+--  보는 모두의 순서가 바뀌었습니다. 게다가 관리자만 옮길 수 있었습니다.
+--  개인 덧층을 둡니다 — 공동체 기본값은 그대로, 내가 옮긴 것만 얹습니다.
+-- ════════════════════════════════════════════════════════════════════
+
+-- ── 내 그룹 ──
+create table if not exists public.my_channel_groups (
+  id         uuid primary key default gen_random_uuid(),
+  member_id  uuid not null,
+  name       text not null,
+  sort       int,
+  created_at timestamptz default now()
+);
+alter table public.my_channel_groups enable row level security;
+drop policy if exists my_channel_groups_own on public.my_channel_groups;
+create policy my_channel_groups_own on public.my_channel_groups
+  for all to authenticated
+  using ( member_id = auth.uid() ) with check ( member_id = auth.uid() );
+create index if not exists my_channel_groups_mem_idx
+  on public.my_channel_groups (member_id, sort);
+
+-- ── 내가 옮긴 자리 ──
+--  group_id 는 공동체 그룹(channel_groups)일 수도 내 그룹일 수도 있다.
+--  그래서 외래키를 걸지 않는다. 가리키던 그룹이 사라지면 '그룹 없음'
+--  으로 떨어지게 화면에서 다룬다.
+create table if not exists public.my_channel_prefs (
+  member_id  uuid not null,
+  channel_id uuid not null,
+  sort       int,
+  group_id   uuid,
+  updated_at timestamptz default now(),
+  primary key (member_id, channel_id)
+);
+alter table public.my_channel_prefs enable row level security;
+drop policy if exists my_channel_prefs_own on public.my_channel_prefs;
+create policy my_channel_prefs_own on public.my_channel_prefs
+  for all to authenticated
+  using ( member_id = auth.uid() ) with check ( member_id = auth.uid() );
+create index if not exists my_channel_prefs_mem_idx
+  on public.my_channel_prefs (member_id);
+
+grant select, insert, update, delete on public.my_channel_groups to authenticated;
+grant select, insert, update, delete on public.my_channel_prefs  to authenticated;
+
+notify pgrst, 'reload schema';
+
+-- ════════════════════════════════════════════════════════════════════
+--  🗓 16) 개인 일정  (db/개인일정_DB설치.sql)
+--
+--  events.owner_id — 비어 있으면 공동체 일정(예전 것 전부), 내 id 면
+--  나만 보는 일정. 개인 일정은 '남이 못 보는' 것이 요점이라
+--  화면이 아니라 서버에서 막습니다.
+-- ════════════════════════════════════════════════════════════════════
+
+alter table public.events
+  add column if not exists owner_id uuid;
+
+create index if not exists events_owner_idx on public.events (owner_id);
+
+-- ── 보기 ──
+--  공동체 일정은 그 공동체 사람에게, 개인 일정은 본인에게만.
+drop policy if exists events_select on public.events;
+create policy events_select on public.events
+  for select to authenticated
+  using (
+    ( owner_id is null and public.mine_comm(community_id) )
+    or owner_id = auth.uid()
+  );
+
+-- ── 만들기 ──
+--  내 일정은 누구나. 공동체 일정은 예전 규칙(교직원) 그대로.
+drop policy if exists events_insert on public.events;
+create policy events_insert on public.events
+  for insert to authenticated
+  with check (
+    ( owner_id = auth.uid() and public.mine_comm(community_id) )
+    or ( owner_id is null and public.staff_of(community_id) )
+  );
+
+-- ── 고치기·지우기 ──
+--  내 일정은 나만. 공동체 일정은 교직원.
+drop policy if exists events_update on public.events;
+create policy events_update on public.events
+  for update to authenticated
+  using      ( owner_id = auth.uid() or ( owner_id is null and public.staff_of(community_id) ) )
+  with check ( owner_id = auth.uid() or ( owner_id is null and public.staff_of(community_id) ) );
+
+drop policy if exists events_delete on public.events;
+create policy events_delete on public.events
+  for delete to authenticated
+  using ( owner_id = auth.uid() or ( owner_id is null and public.staff_of(community_id) ) );
+
+alter table public.events enable row level security;
+grant select, insert, update, delete on public.events to authenticated;
+
+notify pgrst, 'reload schema';
+
