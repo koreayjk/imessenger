@@ -237,25 +237,28 @@ Deno.serve(async (req) => {
 
   // 그 수가 '어느 방에서' 왔는지. 숫자가 뜻밖일 때 어디를 열어야 할지
   // 바로 알 수 있게 한다. 세는 규칙은 unread_counts 와 같다.
-  // 방마다 네 가지를 같이 낸다:
+  // 방마다 세 가지를 같이 낸다:
   //   안읽음 — 마지막 읽은 시각 뒤에 온 글
   //   전체   — 45일 안에 온 글 (읽음을 안 뺀 수)
   //   읽음   — 마지막 읽은 시각. '없음' 이면 그 방은 한 번도 안 읽은 것
-  // 서버 함수(unread_counts)가 낸 수와 안 맞을 때, 어느 단계가
-  // 틀렸는지는 이 세 수를 나란히 놔야 보인다. 안읽음만 내면
-  // '0 인데 6 이라네' 에서 더 못 간다.
+  //
+  //  ⚠️ 글을 가져와서 세면 안 된다. PostgREST 는 한 번에 1000줄까지만
+  //  돌려주고, 그 상한은 .limit() 으로 못 넘는다. 처음 쓴 판이 그래서
+  //  1000줄만 받아 놓고 '다 읽었다' 고 셌다 — 안 가져온 새 글이 바로
+  //  안 읽은 글이었는데도. 이제는 행을 안 받고 수만 센다(head).
   async function myUnreadByRoom(): Promise<
     { rooms: Array<{ 방: string; 안읽음: number; 전체: number; 읽음: string }>;
-      안읽음합: number; 전체합: number } | string
+      안읽음합: number; 전체합: number; 방수: number; 다봤나: boolean } | string
   > {
     const since = new Date(Date.now() - 45 * 86400000).toISOString();
-    const CAP = 5000;
+    const ROOM_CAP = 80;        // 방이 이보다 많으면 큰 방부터 본다
 
     const { data: mems, error: e1 } = await admin.from('channel_members')
       .select('channel_id').eq('member_id', uid);
     if (e1) return '방 목록을 못 읽었어요 — ' + e1.message;
-    const ids = [...new Set((mems ?? []).map((m) => m.channel_id as string))];
-    if (!ids.length) return '이 계정이 들어가 있는 방이 없어요';
+    const allIds = [...new Set((mems ?? []).map((m) => m.channel_id as string))];
+    if (!allIds.length) return '이 계정이 들어가 있는 방이 없어요';
+    const ids = allIds.slice(0, ROOM_CAP);
 
     const { data: reads, error: e2 } = await admin.from('channel_reads')
       .select('channel_id,last_read_at').eq('member_id', uid);
@@ -263,40 +266,52 @@ Deno.serve(async (req) => {
     const lastRead: Record<string, string> = {};
     (reads ?? []).forEach((r) => { lastRead[r.channel_id as string] = r.last_read_at as string; });
 
-    const { data: msgs, error: e3 } = await admin.from('messages')
-      .select('channel_id,created_at')
-      .in('channel_id', ids).neq('sender_id', uid)
-      .is('hidden_at', null).gte('created_at', since).limit(CAP);
-    if (e3) return '글을 못 읽었어요 — ' + e3.message;
-    if ((msgs ?? []).length >= CAP) return '글이 너무 많아 내역을 못 냈어요 (45일 안에 ' + CAP + '개 이상)';
+    // 한 방의 두 수를 센다. 행은 안 받고 수만 받는다(head: true).
+    //  기준 시각은 '마지막 읽음' 과 '45일 전' 중 나중 것 — 문자로 견주면
+    //  +00:00 과 Z 가 섞여 틀릴 수 있어 시각으로 바꿔 견준다.
+    const countsFor = async (id: string) => {
+      const lr = lastRead[id];
+      const base = (lr && Date.parse(lr) > Date.parse(since)) ? lr : since;
+      const q = () => admin.from('messages').select('id', { count: 'exact', head: true })
+        .eq('channel_id', id).neq('sender_id', uid).is('hidden_at', null);
+      const [un, all] = await Promise.all([
+        q().gt('created_at', base),
+        q().gt('created_at', since),
+      ]);
+      if (un.error) throw new Error(un.error.message);
+      if (all.error) throw new Error(all.error.message);
+      return { id, 안읽음: un.count ?? 0, 전체: all.count ?? 0 };
+    };
 
-    const un: Record<string, number> = {};
-    const all: Record<string, number> = {};
-    (msgs ?? []).forEach((m) => {
-      const ch = m.channel_id as string;
-      all[ch] = (all[ch] ?? 0) + 1;
-      const lr = lastRead[ch];
-      if (!lr || String(m.created_at) > lr) un[ch] = (un[ch] ?? 0) + 1;
-    });
-    const hot = Object.keys(all);
-    if (!hot.length) return '45일 안에 남이 쓴 글이 아예 없어요 (방 ' + ids.length + '개)';
+    let got: Array<{ id: string; 안읽음: number; 전체: number }> = [];
+    try {
+      for (let k = 0; k < ids.length; k += 10) {        // 한 번에 10방씩
+        got = got.concat(await Promise.all(ids.slice(k, k + 10).map(countsFor)));
+      }
+    } catch (e) { return '수를 못 셌어요 — ' + String((e as Error).message ?? e); }
 
-    const { data: chs, error: e4 } = await admin.from('channels').select('id,name').in('id', hot);
+    const hot = got.filter((r) => r.전체 > 0);
+    if (!hot.length) return '45일 안에 남이 쓴 글이 아예 없어요 (방 ' + allIds.length + '개)';
+
+    const { data: chs, error: e4 } = await admin.from('channels')
+      .select('id,name').in('id', hot.map((r) => r.id));
     if (e4) return '방 이름을 못 읽었어요 — ' + e4.message;
     const nameOf: Record<string, string> = {};
     (chs ?? []).forEach((c) => { nameOf[c.id as string] = String(c.name ?? ''); });
 
-    const rooms = hot.map((id) => ({
-      방: nameOf[id] || '(이름 없는 방)',
-      안읽음: un[id] ?? 0,
-      전체: all[id],
-      읽음: lastRead[id] ? String(lastRead[id]).slice(0, 16).replace('T', ' ') : '없음',
+    const rooms = hot.map((r) => ({
+      방: nameOf[r.id] || '(이름 없는 방)',
+      안읽음: r.안읽음,
+      전체: r.전체,
+      읽음: lastRead[r.id] ? String(lastRead[r.id]).slice(0, 16).replace('T', ' ') : '없음',
     })).sort((a, b) => (b.안읽음 - a.안읽음) || (b.전체 - a.전체));
 
     return {
       rooms,
       안읽음합: rooms.reduce((a, r) => a + r.안읽음, 0),
       전체합: rooms.reduce((a, r) => a + r.전체, 0),
+      방수: allIds.length,
+      다봤나: ids.length === allIds.length,
     };
   }
 
@@ -369,6 +384,8 @@ Deno.serve(async (req) => {
             rep.숫자_내역 = parts.rooms;
             rep.읽음뺀_합 = parts.안읽음합;
             rep.읽음안뺀_합 = parts.전체합;
+            rep.방수 = parts.방수;
+            if (!parts.다봤나) rep.방을_다_못봄 = true;
             // 서버 함수가 낸 수와 내가 다시 센 수가 다르면 그 사실을 적는다.
             //  같으면 굳이 적지 않는다 — 평소에 숫자를 늘어놓지 않는다.
             if (parts.안읽음합 !== myBadge) rep.안맞음 = true;
