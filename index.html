@@ -772,13 +772,21 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
 
   /* 대화방 열림: 하단 탭바 숨기고 채팅이 전체 높이를 쓰게 */
   body.in-chat #mobile-nav { display: none !important; }
-  /* 키보드가 올라오면 그만큼 더 띄운다.
-     아이폰 앱은 껍데기(@capacitor/keyboard, resize:native)가 웹뷰 자체를
-     줄여 주므로 --kb 는 0 이고, 이 식은 저절로 예전과 같아진다.
-     사파리·독에 추가로 쓸 때는 웹뷰가 안 줄어들어서 입력칸이 키보드
-     뒤로 숨는다. 그때 --kb 가 실제 키보드 높이로 채워진다. */
-  body.in-chat #chat-view { padding-bottom: calc(var(--sab) + var(--kb, 0px)); }
-  body.in-chat #composer { bottom: calc(max(var(--sab), 8px) + var(--kb, 0px)); }
+  /* 키보드가 올라오면 그만큼 띄운다. --kb 는 지금 올라와 있는 키보드의
+     높이다. 창 줄이는 일을 껍데기에 맡기면(resize:native) 키보드
+     애니메이션이 끝난 뒤에야 한 번에 툭 바뀐다 — 늦게 튀어서 어색했다.
+     그래서 우리가 직접 맞추고, 키보드와 같은 속도로 같이 움직인다. */
+  body.in-chat #chat-view { padding-bottom: var(--sab); }
+  body.in-chat #composer { bottom: max(var(--sab), 8px); }
+  /* 키보드가 덮고 있으면 홈 바 자리는 셈에서 뺀다 — 키보드가 이미 그
+     자리를 덮고 있어서, 같이 더하면 한 뼘 더 떠 보인다. */
+  body.in-chat.kb-open #chat-view { padding-bottom: var(--kb, 0px); }
+  body.in-chat.kb-open #composer { bottom: calc(8px + var(--kb, 0px)); }
+  @media (prefers-reduced-motion: no-preference) {
+    /* 아이폰 키보드와 같은 길이·같은 곡선으로 따라 오른다 */
+    #composer { transition: bottom .25s cubic-bezier(.17,.59,.4,1); }
+    body.in-chat #chat-view { transition: padding-bottom .25s cubic-bezier(.17,.59,.4,1); }
+  }
 
   /* 메시지 말풍선 넓게 */
   .msg-body { max-width: 80%; }
@@ -2072,23 +2080,80 @@ function nativeKeyboard() {
   } catch (_) { return null; }
 }
 
+// 지금 키보드가 덮고 있는 높이를 적어 둔다. CSS 가 이 값을 보고
+//  입력칸과 대화 내용을 그만큼 띄운다.
+function kbSet(px) {
+  const v = Math.max(0, Math.round(Number(px) || 0));
+  const area = document.getElementById('msg-area');
+  // 자리를 바꾸기 '전에' 맨 아래였는지 봐 둔다. 바꾼 뒤에 재면 늦다.
+  const atBottom = area ? (area.scrollHeight - area.scrollTop - area.clientHeight < 120) : false;
+  const root = document.documentElement;
+  if (root.style.getPropertyValue('--kb') === v + 'px') return;
+  root.style.setProperty('--kb', v + 'px');
+  document.body.classList.toggle('kb-open', v > 0);
+  // 맨 아래를 보고 있었으면 계속 맨 아래를 보게 한다. 안 그러면
+  // 키보드가 올라오는 동안 마지막 글이 위로 밀려 사라진다.
+  if (atBottom && area) {
+    const until = Date.now() + 360;          // 키보드 애니메이션이 끝날 때까지
+    const tick = () => {
+      area.scrollTop = area.scrollHeight;
+      if (Date.now() < until) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }
+}
+
+// 대화 내용을 아래로 쓸면 키보드를 내린다. 아이폰에서 당연한 몸짓인데
+//  웹으로 만든 화면에는 그 길이 없어서, 한 번 올라온 키보드가 박제된
+//  것처럼 남아 있었다.
+function kbSwipeToDismiss() {
+  const area = document.getElementById('msg-area');
+  if (!area || area._kbSwipe) return;
+  area._kbSwipe = true;
+  let y0 = null;
+  area.addEventListener('touchstart', (e) => {
+    y0 = (e.touches && e.touches[0]) ? e.touches[0].clientY : null;
+  }, { passive: true });
+  area.addEventListener('touchmove', (e) => {
+    if (y0 === null || !document.body.classList.contains('kb-open')) return;
+    const y = (e.touches && e.touches[0]) ? e.touches[0].clientY : null;
+    if (y === null) return;
+    if (y - y0 > 24) {                       // 아래로 그만큼 끌었다
+      y0 = null;
+      const el = document.activeElement;
+      if (el && typeof el.blur === 'function') el.blur();
+    }
+  }, { passive: true });
+  const end = () => { y0 = null; };
+  area.addEventListener('touchend', end, { passive: true });
+  area.addEventListener('touchcancel', end, { passive: true });
+}
+
 function kbInit() {
+  kbSwipeToDismiss();
   const kb = nativeKeyboard();
   if (kb) {
     // 글자 위를 덮던 '∧ ∨ ✓' 막대를 없앤다. 대화창에는 쓸 일이 없고,
     // 그 막대 때문에 입력칸이 키보드에서 한 뼘 떠 보인다.
     try { kb.setAccessoryBarVisible({ isVisible: false }); } catch (_) {}
-    return;   // 높이 맞추기는 껍데기가 한다
+    // willShow 는 키보드가 '올라오기 시작할 때' 높이와 함께 온다.
+    //  거기서 바로 맞춰야 키보드와 같이 움직인다. didShow 로 한 번 더
+    //  맞추는 건, 중간에 키보드 모양이 바뀌는 경우(이모지·받아쓰기) 때문이다.
+    try {
+      kb.addListener('keyboardWillShow', (i) => kbSet(i && i.keyboardHeight));
+      kb.addListener('keyboardDidShow',  (i) => kbSet(i && i.keyboardHeight));
+      kb.addListener('keyboardWillHide', () => kbSet(0));
+      kb.addListener('keyboardDidHide',  () => kbSet(0));
+    } catch (_) {}
+    return;
   }
+  // 사파리·독에 추가 — 플러그인이 없다. 보이는 높이로 가늠한다.
   const vv = (typeof window !== 'undefined') && window.visualViewport;
   if (!vv) return;
   const apply = () => {
-    // 창 높이에서 '실제로 보이는 높이' 를 빼면 키보드가 덮은 만큼이다.
     const h = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
     // 작은 값은 주소창이 줄었다 늘었다 하는 것이다. 키보드로 치지 않는다.
-    const kbh = h > 80 ? h : 0;
-    document.documentElement.style.setProperty('--kb', kbh + 'px');
-    document.body.classList.toggle('kb-open', kbh > 0);
+    kbSet(h > 80 ? h : 0);
   };
   vv.addEventListener('resize', apply);
   vv.addEventListener('scroll', apply);
