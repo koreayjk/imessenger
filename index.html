@@ -170,6 +170,15 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
 #app {
   display: flex; height: 100vh; height: 100dvh; box-sizing: border-box;
   padding-top: var(--sat); padding-left: var(--sal); padding-right: var(--sar);
+  /* 키보드가 덮은 만큼 앱 전체를 줄인다. 껍데기(resize:native)가 하던 일을
+     여기서 한다 — 그쪽은 키보드가 다 올라온 뒤에야 한 번에 바꿔서 늦게
+     툭 튀었다.
+     ⚠️ 반드시 '한 군데' 에서만 빼야 한다. 대화창이나 입력칸에서 또 빼면
+     두 번 밀려 입력칸이 화면 한가운데에 뜬다. */
+  padding-bottom: var(--kb, 0px);
+}
+@media (prefers-reduced-motion: no-preference) {
+  #app { transition: padding-bottom .25s cubic-bezier(.17,.59,.4,1); }
 }
 
 /* 아이콘 사이드바 */
@@ -763,11 +772,19 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
     padding-bottom: calc(var(--navh) + 12px) !important;
   }
   #composer {
+    /* bottom 으로 띄우지 않는다. 자리는 #chat-view 의 아래 여백 하나로만
+       잡는다. #main 이 overflow:hidden 이라 sticky 가 살아 있어서,
+       여기서 또 띄우면 두 번 밀린다 (키보드 없이도 34+34=68px 떠 있었다). */
     position: sticky;
-    bottom: var(--navh);
-    background: var(--surface);
+    bottom: 0;
+    /* 휴대폰에서는 입력칸 둘레의 흰 띠를 없앤다. 카톡처럼 대화 배경 위에
+       둥근 칸 하나만 떠 있는 모양이 된다. 띠가 있으면 화면이 거기서
+       한 번 잘려 보인다. (넓은 화면은 양옆에 사이드바가 있어 띠가
+       자리를 잡아 주므로 그대로 둔다) */
+    background: transparent;
+    border-top: 0;
     z-index: 10;
-    padding-bottom: 12px;
+    padding: 8px 12px 12px;
   }
 
   /* 대화방 열림: 하단 탭바 숨기고 채팅이 전체 높이를 쓰게 */
@@ -776,17 +793,11 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
      높이다. 창 줄이는 일을 껍데기에 맡기면(resize:native) 키보드
      애니메이션이 끝난 뒤에야 한 번에 툭 바뀐다 — 늦게 튀어서 어색했다.
      그래서 우리가 직접 맞추고, 키보드와 같은 속도로 같이 움직인다. */
+  /* 키보드 자리는 #app 이 뺀다. 여기서는 홈 바 자리만 본다. */
   body.in-chat #chat-view { padding-bottom: var(--sab); }
-  body.in-chat #composer { bottom: max(var(--sab), 8px); }
-  /* 키보드가 덮고 있으면 홈 바 자리는 셈에서 뺀다 — 키보드가 이미 그
-     자리를 덮고 있어서, 같이 더하면 한 뼘 더 떠 보인다. */
-  body.in-chat.kb-open #chat-view { padding-bottom: var(--kb, 0px); }
-  body.in-chat.kb-open #composer { bottom: calc(8px + var(--kb, 0px)); }
-  @media (prefers-reduced-motion: no-preference) {
-    /* 아이폰 키보드와 같은 길이·같은 곡선으로 따라 오른다 */
-    #composer { transition: bottom .25s cubic-bezier(.17,.59,.4,1); }
-    body.in-chat #chat-view { transition: padding-bottom .25s cubic-bezier(.17,.59,.4,1); }
-  }
+  /* 키보드가 올라와 있으면 홈 바 자리도 필요 없다 — 키보드가 덮고 있다.
+     입력칸이 키보드에 딱 붙는다. */
+  body.in-chat.kb-open #chat-view { padding-bottom: 0; }
 
   /* 메시지 말풍선 넓게 */
   .msg-body { max-width: 80%; }
