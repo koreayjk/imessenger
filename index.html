@@ -2869,19 +2869,25 @@ async function pushSelfTest() {
     //  찾지 않게 한다. 안읽음은 방마다 쌓인 것을 전부 더한 수다.
     const parts = data['숫자_내역'];
     if (Array.isArray(parts) && parts.length) {
-      head.push(t('└ 어느 방인가 (이 방들을 열면 숫자가 줄어요)','└ Where it comes from'));
-      parts.slice(0, 12).forEach((p) => head.push(`   · ${p['방']} — ${p['수']}`));
+      if (data['안맞음']) {
+        head.push(t(`└ ⚠️ 서버 함수는 ${bg} 라는데, 같은 규칙으로 다시 세면 ${data['읽음뺀_합']} 입니다`,
+                    `└ ⚠️ The DB function says ${bg}, recounting the same way gives ${data['읽음뺀_합']}`));
+        head.push(t(`   읽음을 안 빼고 세면 ${data['읽음안뺀_합']} 입니다`,
+                    `   Ignoring read receipts gives ${data['읽음안뺀_합']}`));
+        if (data['읽음안뺀_합'] === bg) {
+          head.push(t('   ⇒ 서버 함수가 읽음을 안 빼고 있어요. db/앱아이콘_숫자_DB설치.sql 을 한 번 더 돌려주세요.',
+                      '   ⇒ The DB function ignores read receipts. Re-run db/앱아이콘_숫자_DB설치.sql.'));
+        }
+      }
+      head.push(t('└ 방마다 (안읽음 / 45일 전체 / 마지막 읽음)','└ Per room (unread / 45d total / last read)'));
+      parts.slice(0, 12).forEach((p) =>
+        head.push(`   · ${p['방']} — ${p['안읽음']} / ${p['전체']} / ${p['읽음']}`));
       if (parts.length > 12) head.push(`   · … ${t('외','and')} ${parts.length - 12}${t('개 방','more rooms')}`);
     } else if (typeof parts === 'string') {
       head.push('└ ' + parts);
     } else if (typeof bg === 'number' && bg > 0) {
       head.push(t('└ 내역이 비었어요 — 숫자와 안 맞습니다. 이 화면을 알려주세요.',
                   '└ Breakdown is empty but the count is not. Please report this screen.'));
-    }
-    // 내역의 합이 아이콘 숫자와 다르면 둘 중 하나가 틀린 것이다.
-    if (data['내역_합'] != null) {
-      head.push(t(`└ ⚠️ 내역 합은 ${data['내역_합']} 인데 아이콘 숫자는 ${bg} 입니다 — 둘이 안 맞아요`,
-                  `└ ⚠️ Breakdown sums to ${data['내역_합']} but the badge says ${bg}`));
     }
     // 읽음 표시가 안 써지고 있으면 숫자는 영영 안 줄어든다. 가장 먼저 말한다.
     if (_readFail) {
