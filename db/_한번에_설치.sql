@@ -1361,3 +1361,29 @@ end $$;
 
 notify pgrst, 'reload schema';
 
+-- ════════════════════════════════════════════════════════════════════
+--  ✏️ 13) 이름은 본인과 관리자만  (db/이름_바꾸기_권한.sql)
+--
+--  members_update 가 '역할·상태만 안 건드리면 통과' 로 열려 있어서,
+--  같은 공동체면 누구나 남의 이름을 바꿀 수 있었습니다. 이름만
+--  따로 잠급니다. 교사가 학생 기록을 저장하는 길은 그대로입니다.
+-- ════════════════════════════════════════════════════════════════════
+
+create or replace function public.member_name_of(target uuid)
+returns text language sql security definer stable set search_path = public as $$
+  select name from public.members where id = target;
+$$;
+grant execute on function public.member_name_of(uuid) to authenticated;
+
+drop policy if exists members_name_guard on public.members;
+create policy members_name_guard on public.members
+  as restrictive for update to authenticated
+  using ( true )
+  with check (
+    name is not distinct from public.member_name_of(id)   -- 이름을 안 건드렸거나
+    or id = auth.uid()                                    -- 내 이름이거나
+    or public.can_admin_members()                         -- 관리자이거나
+  );
+
+notify pgrst, 'reload schema';
+

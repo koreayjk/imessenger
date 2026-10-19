@@ -15385,6 +15385,38 @@ async function rejectInCommunity(id, cid, cname) {
   viewCommunityMembers(cid, cname);
 }
 
+// ── 멤버 이름 고치기 (관리자) ────────────────────────────────────
+//  채팅과 목록에 보이는 이름입니다. 생활기록부 인적사항의 이름은
+//  따로 적는 칸이라 여기서 바꿔도 안 따라갑니다 (일부러 그렇습니다 —
+//  거기는 서류에 나가는 정식 이름입니다).
+async function renameMember(memberId) {
+  const m = members[memberId];
+  const was = (m && m.name) || '';
+  const next = prompt(t('이 사람의 이름을 무엇으로 바꿀까요?\n(채팅과 목록에 보이는 이름입니다)',
+                        'New name?\n(the name shown in chat and lists)'), was);
+  if (next === null) return;                       // 취소
+  const name = String(next).trim();
+  if (!name) { showUploadToast(t('이름을 비울 수는 없어요','A name cannot be empty')); return; }
+  if (name === was) return;
+  if (name.length > 40) { showUploadToast(t('이름이 너무 길어요 (40자까지)','Name is too long (40 max)')); return; }
+
+  // 머리글자도 같이 맞춘다. 안 맞추면 동그라미에는 옛 글자가 남는다.
+  const { data, error } = await sb.from('members')
+    .update({ name, initials: name[0] }).eq('id', memberId).select('id');
+  if (error) { showUploadToast(t('바꾸지 못했어요 — ','Could not rename — ') + error.message); return; }
+  if (!data || !data.length) {
+    // 권한에 막히면 수파베이스는 오류 대신 '0줄 고침' 을 돌려준다.
+    showUploadToast(t('바꿀 권한이 없어요 (관리자만 가능합니다)','You do not have permission to rename'));
+    return;
+  }
+  if (members[memberId]) { members[memberId].name = name; members[memberId].initials = name[0]; }
+  if (ME && ME.id === memberId) { ME.name = name; ME.initials = name[0]; }
+  showUploadToast(t(`✅ '${was}' → '${name}' 으로 바꿨어요`, `✅ Renamed to '${name}'`));
+  try { renderMembers(); } catch (_) {}
+  try { renderPanel(); } catch (_) {}
+  try { if (mode === 'admin') switchAdminTab('members'); } catch (_) {}
+}
+
 async function changeMemberCommunityRole(memberId, role) {
   // 총관리자 권한은 총관리자만 부여 가능 (UI 우회·실수 방지)
   if ((role === 'super_admin' || role === 'vice_admin') && !isSuperAdmin()) {
@@ -15859,7 +15891,10 @@ async function renderAdminMembers() {
       <div style="width:38px;height:38px;border-radius:12px;background:${m.color||'#999'};color:white;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;flex-shrink:0">${m.initials||m.name[0]}</div>
       <div style="flex:1;min-width:0">
         <div style="display:flex;align-items:center;gap:8px">
-          <span style="font-size:14px;font-weight:600">${m.name}</span>
+          <span style="font-size:14px;font-weight:600">${escHtml(m.name || '')}</span>
+          ${isCommunityAdmin() ? `<button class="adm-btn ghost" title="${t('이름 고치기','Rename')}"
+            onclick="renameMember('${escJs(m.id)}')"
+            style="height:24px;padding:0 7px;font-size:12px;line-height:1">✏️</button>` : ''}
           <span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:99px;background:${roleColor[m.community_role]||'#6b728022'}22;color:${roleColor[m.community_role]||'#6b7280'}">${roleLabel[m.community_role]||m.community_role||t('멤버','Member')}</span>
         </div>
         <div style="font-size:12px;color:var(--ink3);margin-top:2px">${m.email||''} ${m.birth_date?'· '+m.birth_date:''}</div>
@@ -15889,7 +15924,7 @@ async function renderAdminMembers() {
             ${(tcsGroups||[]).map(g => `<option value="${g.id}" ${m.group_id===g.id?'selected':''}>${escHtml(g.name)}</option>`).join('')}
           </select>` : ''}
           ${(isSuperAdmin() && m.community_role !== 'super_admin') ? `<button class="adm-btn ghost" title="${t('다른 공동체로 옮기기','Move to another community')}" onclick="showMoveCommunityModal('${m.id}')">🏛️</button>` : ''}
-          ${m.community_role !== 'super_admin' ? `<button class="adm-btn danger" onclick="deleteMember('${m.id}','${m.name}')">${t('탈퇴','Remove')}</button>` : `<span style="font-size:11px;color:var(--ink3)">${t('총관리자','Super Admin')}</span>`}
+          ${m.community_role !== 'super_admin' ? `<button class="adm-btn danger" onclick="deleteMember('${escJs(m.id)}','${escJs(m.name || '')}')">${t('탈퇴','Remove')}</button>` : `<span style="font-size:11px;color:var(--ink3)">${t('총관리자','Super Admin')}</span>`}
         `}
       </div>
     </div>`;
@@ -15942,7 +15977,7 @@ async function renderAdminMembers() {
           <div style="font-size:12px;color:var(--ink3)">${m.email||''}</div>
         </div>
         <button class="adm-btn sage" onclick="approveMember('${m.id}')">${t('재승인','Re-approve')}</button>
-        <button class="adm-btn danger" onclick="deleteMember('${m.id}','${m.name}')">${t('삭제','Delete')}</button>
+        <button class="adm-btn danger" onclick="deleteMember('${escJs(m.id)}','${escJs(m.name || '')}')">${t('삭제','Delete')}</button>
       </div>`).join('')}
     </div>` : ''}`;
 
