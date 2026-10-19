@@ -237,28 +237,40 @@ Deno.serve(async (req) => {
 
   // 그 수가 '어느 방에서' 왔는지. 숫자가 뜻밖일 때 어디를 열어야 할지
   // 바로 알 수 있게 한다. 세는 규칙은 unread_counts 와 같다.
-  async function myUnreadByRoom(): Promise<Array<{ 방: string; 수: number }>> {
+  async function myUnreadByRoom(): Promise<Array<{ 방: string; 수: number }> | string> {
     const since = new Date(Date.now() - 45 * 86400000).toISOString();
-    const { data: mems } = await admin.from('channel_members')
+    const CAP = 5000;   // 한 번에 가져올 글 수 상한
+
+    const { data: mems, error: e1 } = await admin.from('channel_members')
       .select('channel_id').eq('member_id', uid);
+    if (e1) return '방 목록을 못 읽었어요 — ' + e1.message;
     const ids = (mems ?? []).map((m) => m.channel_id as string);
-    if (!ids.length) return [];
-    const { data: reads } = await admin.from('channel_reads')
+    if (!ids.length) return '이 계정이 들어가 있는 방이 없어요';
+
+    const { data: reads, error: e2 } = await admin.from('channel_reads')
       .select('channel_id,last_read_at').eq('member_id', uid);
+    if (e2) return '읽은 시각을 못 읽었어요 — ' + e2.message;
     const lastRead: Record<string, string> = {};
     (reads ?? []).forEach((r) => { lastRead[r.channel_id as string] = r.last_read_at as string; });
-    const { data: msgs } = await admin.from('messages')
+
+    const { data: msgs, error: e3 } = await admin.from('messages')
       .select('channel_id,created_at')
       .in('channel_id', ids).neq('sender_id', uid)
-      .is('hidden_at', null).gte('created_at', since);
+      .is('hidden_at', null).gte('created_at', since).limit(CAP);
+    if (e3) return '글을 못 읽었어요 — ' + e3.message;
+    // 상한에 닿으면 센 수가 모자란다. 모자란 걸 맞는 척하면 안 된다.
+    if ((msgs ?? []).length >= CAP) return '글이 너무 많아 내역을 못 냈어요 (45일 안에 ' + CAP + '개 이상)';
+
     const n: Record<string, number> = {};
     (msgs ?? []).forEach((m) => {
       const lr = lastRead[m.channel_id as string] ?? since;
       if (String(m.created_at) > lr) n[m.channel_id as string] = (n[m.channel_id as string] ?? 0) + 1;
     });
     const hot = Object.keys(n);
-    if (!hot.length) return [];
-    const { data: chs } = await admin.from('channels').select('id,name').in('id', hot);
+    if (!hot.length) return '안 읽은 글이 있는 방이 없어요';
+
+    const { data: chs, error: e4 } = await admin.from('channels').select('id,name').in('id', hot);
+    if (e4) return '방 이름을 못 읽었어요 — ' + e4.message;
     const nameOf: Record<string, string> = {};
     (chs ?? []).forEach((c) => { nameOf[c.id as string] = String(c.name ?? ''); });
     return hot.map((id) => ({ 방: nameOf[id] || '(이름 없는 방)', 수: n[id] }))
@@ -327,8 +339,16 @@ Deno.serve(async (req) => {
         rep.아이콘숫자 = myBadge;
         // 숫자가 뜻밖이면 '어느 방인지' 를 알아야 한다. 안 그러면
         //  '7 이 왜 7 이지' 를 사람이 방마다 열어 보며 찾아야 한다.
-        try { rep.숫자_내역 = await myUnreadByRoom(); }
-        catch (e) { rep.숫자_내역 = '못 셈 — ' + String(e); }
+        try {
+          const parts = await myUnreadByRoom();
+          rep.숫자_내역 = parts;
+          // 내역의 합과 아이콘 숫자가 다르면 둘 중 하나가 틀린 것이다.
+          // 다르다는 사실 자체가 단서라, 숨기지 않고 적는다.
+          if (Array.isArray(parts)) {
+            const sum = parts.reduce((a, x) => a + x.수, 0);
+            if (sum !== myBadge) rep.내역_합 = sum;
+          }
+        } catch (e) { rep.숫자_내역 = '못 셈 — ' + String(e); }
       }
     } catch (e) { rep.아이콘숫자 = '못 셈 — ' + String(e); }
 

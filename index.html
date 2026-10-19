@@ -2873,7 +2873,15 @@ async function pushSelfTest() {
       parts.slice(0, 12).forEach((p) => head.push(`   · ${p['방']} — ${p['수']}`));
       if (parts.length > 12) head.push(`   · … ${t('외','and')} ${parts.length - 12}${t('개 방','more rooms')}`);
     } else if (typeof parts === 'string') {
-      head.push(t('└ 내역을 못 셌어요 — ','└ Breakdown failed — ') + parts);
+      head.push('└ ' + parts);
+    } else if (typeof bg === 'number' && bg > 0) {
+      head.push(t('└ 내역이 비었어요 — 숫자와 안 맞습니다. 이 화면을 알려주세요.',
+                  '└ Breakdown is empty but the count is not. Please report this screen.'));
+    }
+    // 내역의 합이 아이콘 숫자와 다르면 둘 중 하나가 틀린 것이다.
+    if (data['내역_합'] != null) {
+      head.push(t(`└ ⚠️ 내역 합은 ${data['내역_합']} 인데 아이콘 숫자는 ${bg} 입니다 — 둘이 안 맞아요`,
+                  `└ ⚠️ Breakdown sums to ${data['내역_합']} but the badge says ${bg}`));
     }
     // 읽음 표시가 안 써지고 있으면 숫자는 영영 안 줄어든다. 가장 먼저 말한다.
     if (_readFail) {
