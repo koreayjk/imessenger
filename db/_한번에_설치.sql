@@ -1387,3 +1387,42 @@ create policy members_name_guard on public.members
 
 notify pgrst, 'reload schema';
 
+-- ════════════════════════════════════════════════════════════════════
+--  👑 14) 방을 만든 사람이 방장  (db/방장_권한.sql)
+--
+--  지금은 교직원만 방 이름을 바꿀 수 있어서, 학생이 만든 토픽방은
+--  정작 만든 본인이 이름도 못 고쳤습니다. 방장에게 '이름 바꾸기' 와
+--  '내보내기' 만 줍니다. 방 지우기는 교직원만 그대로입니다.
+-- ════════════════════════════════════════════════════════════════════
+
+create or replace function public.is_channel_owner(ch uuid)
+returns boolean language sql stable security definer parallel safe
+set search_path = public as $$
+  select exists (
+    select 1 from public.channels c
+     where c.id = ch
+       and c.created_by = auth.uid()
+       and coalesce(c.kind, 'topic') <> 'dm'   -- 1:1 에는 방장이 없다
+  );
+$$;
+grant execute on function public.is_channel_owner(uuid) to authenticated;
+
+-- ── 방 이름 바꾸기 ──
+drop policy if exists channels_update on public.channels;
+create policy channels_update on public.channels for update to authenticated
+  using      ( public.staff_of(community_id) or public.is_channel_owner(id) )
+  with check ( public.staff_of(community_id) or public.is_channel_owner(id) );
+
+-- ── 내보내기 ──
+--  나가기(본인)·교직원은 그대로. 방장이 더해집니다.
+drop policy if exists channel_members_delete on public.channel_members;
+create policy channel_members_delete on public.channel_members for delete to authenticated
+  using (
+    member_id = auth.uid()                       -- 내가 나가는 건 늘 된다
+    or public.can_moderate_channel(channel_id)   -- 교직원
+    or ( public.is_channel_owner(channel_id)     -- 방장
+         and member_id <> auth.uid() )           -- (자기를 내보내는 건 '나가기' 로)
+  );
+
+notify pgrst, 'reload schema';
+

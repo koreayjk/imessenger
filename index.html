@@ -94,6 +94,19 @@ html, body { overscroll-behavior: none; }
 .panel-body, #msg-area, #more-menu > div, #sn-sheet > div,
 #school-main, #home-view, #profile-content, #memory-page, #reading-page,
 [data-scroll] { overscroll-behavior: contain; }
+/* 손가락으로 쓰는 기기에서는 말풍선을 길게 눌러도 아이폰 제 메뉴가
+   안 뜨게 한다. 안 막으면 우리 메뉴와 둘이 같이 뜬다. 대신 메뉴에
+   '골라서 복사' 를 뒀다 — 거기서 .sel-ok 를 붙여 그때만 고를 수 있게 한다. */
+@media (pointer: coarse) {
+  .msg-row .msg-body, .msg-row .msg-text {
+    -webkit-touch-callout: none !important;
+    -webkit-user-select: none !important; user-select: none !important;
+  }
+  .msg-row .sel-ok, .msg-row .sel-ok * {
+    -webkit-touch-callout: default !important;
+    -webkit-user-select: text !important; user-select: text !important;
+  }
+}
 .msg-text, .msg-row, #note-editor, input, textarea, [contenteditable],
 .prayer-body, .sel-ok, pre, code {
   -webkit-touch-callout: default;
@@ -4935,6 +4948,8 @@ async function openChannel(id) {
   // 멤버 패널 업데이트 (DM이면 해당 멤버만)
   renderMembers();
 
+  try { msgMenuInit(); } catch (_) {}   // 오른쪽 단추·길게 누르기 메뉴
+
   // 채널 열면 읽지 않은 카운트 초기화 + 채널별 '읽은 시각' 기록(안읽음 배지 정확화)
   unreadCounts[id] = 0;
   updateUnreadBadges();
@@ -5207,6 +5222,208 @@ function appendMessage(m, readMap={}) {
   area.scrollTop = area.scrollHeight;
 }
 
+// ── 메시지에 할 수 있는 일 ────────────────────────────────────────
+//  호버 줄(넓은 화면)과 오른쪽 단추·길게 누르기 메뉴가 같은 목록을 본다.
+//  두 군데에 따로 적으면 한쪽에만 새 기능이 붙고 다른 쪽은 늙는다.
+function msgActions(m) {
+  if (!m) return [];
+  const isMine = m.sender_id === ME.id;
+  const sender = members[m.sender_id] || { name: m.sender_name || '알 수 없음' };
+  const plain = (m.kind !== 'file' && m.kind !== 'poll');   // 글이 있는 메시지
+  const id = escJs(m.id);
+  const a = [];
+  a.push({ k:'react', icon:'😊', label:t('리액션','React'), call:`showReactionPicker('${id}',this)` });
+  if (m.kind !== 'poll')
+    a.push({ k:'reply', icon:'↩️', label:t('답장','Reply'),
+             call:`startReply('${id}','${escJs(msgTextOf(m).slice(0,100))}','${escJs(sender.name)}')` });
+  if (plain) a.push({ k:'copy',   icon:'📋', label:t('복사','Copy'),            call:`copyMsgText('${id}')` });
+  if (plain) a.push({ k:'select', icon:'🔤', label:t('골라서 복사','Select & copy'), call:`selectMsgText('${id}')` });
+  if (plain) a.push({ k:'share',  icon:'📤', label:t('공유','Share'),           call:`shareMsg('${id}')` });
+  if (m.kind !== 'poll')
+    a.push({ k:'note', icon:'📝', label:t('IM노트에 저장','Save to IM Notes'), call:`saveMsgAsNote('${id}')` });
+  if (canManageAnnounce() && plain)
+    a.push({ k:'announce', icon:'📢', label:t('공지로 등록','Pin as notice'), call:`setAnnouncement('${id}')` });
+  if (m.reactions && m.reactions.length)
+    a.push({ k:'who', icon:'👀', label:t('누가 눌렀는지','Who reacted'), call:`showReactionDetails('${id}')` });
+  if (isMine && !m.hidden_at && plain)
+    a.push({ k:'edit', icon:'✏️', label:t('고치기','Edit'), call:`startEditMsg('${id}')` });
+  if (!isMine)
+    a.push({ k:'report', icon:'🚩', label:t('신고','Report'), call:`openReportModal('${id}')` });
+  if (!isMine && canModerateChat())
+    a.push({ k:'hide', icon: m.hidden_at ? '👁' : '🙈',
+             label: m.hidden_at ? t('가린 것 되돌리기','Unhide') : t('이 메시지 가리기','Hide this message'),
+             call:`toggleHideMsg('${id}')` });
+  if (isMine)
+    a.push({ k:'del', icon:'🗑', label:t('삭제','Delete'), danger:true, call:`askDeleteMsg('${id}')` });
+  return a;
+}
+
+// ── 오른쪽 단추(넓은 화면) · 길게 누르기(휴대폰) 메뉴 ─────────────
+let _msgMenuId = null;
+function closeMsgMenu() {
+  const el = document.getElementById('msg-menu');
+  if (el) el.remove();
+  const bd = document.getElementById('msg-menu-bd');
+  if (bd) bd.remove();
+  document.removeEventListener('keydown', msgMenuEsc);
+  _msgMenuId = null;
+}
+function msgMenuEsc(e) { if (e.key === 'Escape') closeMsgMenu(); }
+
+function openMsgMenu(id, x, y) {
+  closeMsgMenu();
+  const m = _msgById[id];
+  if (!m) return;
+  _msgMenuId = id;
+  const acts = msgActions(m);
+  const narrow = window.innerWidth < 560;
+
+  const row = (a) => `<div onclick="msgMenuRun('${a.k}')"
+      style="display:flex;align-items:center;gap:11px;padding:${narrow ? '13px 16px' : '9px 12px'};
+             border-radius:10px;cursor:pointer;font:${narrow ? '600 15.5px' : '500 13.5px'} var(--font);
+             color:${a.danger ? 'var(--rose-ink)' : 'var(--ink)'}"
+      onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background=''">
+      <span style="width:20px;text-align:center;font-size:15px;flex-shrink:0">${a.icon}</span>
+      <span style="flex:1">${escHtml(a.label)}</span></div>`;
+
+  // 카톡처럼 리액션 줄을 먼저 내민다. 가장 자주 쓰는 일이다.
+  // 줄 끝의 ＋ 가 밀려 나가면 안 된다. 그게 밀리면 '더 있는 줄' 을 모른다.
+  //  칸 너비에 맞춰 몇 개만 내민다 — 넓은 화면 5 + ＋, 휴대폰 7 + ＋.
+  //  줄을 넘기게 둔다(wrap). 개수를 손으로 맞추면 글꼴이 조금만 달라져도
+  //  ＋ 가 칸 밖으로 밀린다 — 그러면 '더 있다' 는 걸 알 길이 없다.
+  const quick = `<div style="display:flex;flex-wrap:wrap;gap:2px;padding:${narrow ? '6px 8px' : '4px 6px'};
+      border-bottom:1px solid var(--border);margin-bottom:4px">
+      ${reactionQuick().slice(0, narrow ? 7 : 4).map(e => `<button onclick="msgMenuReact('${escJs(e)}')"
+        style="flex-shrink:0;width:${narrow ? 42 : 34}px;height:${narrow ? 42 : 34}px;border:none;background:none;
+               border-radius:10px;font-size:${narrow ? 23 : 19}px;line-height:1;cursor:pointer"
+        onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background=''">${e}</button>`).join('')}
+      <button onclick="msgMenuRun('react')" title="${t('더 보기','More')}"
+        style="flex-shrink:0;width:${narrow ? 42 : 34}px;height:${narrow ? 42 : 34}px;border:none;background:var(--s2);
+               border-radius:10px;font-size:${narrow ? 19 : 16}px;line-height:1;cursor:pointer;color:var(--ink2)">＋</button>
+    </div>`;
+
+  const box = document.createElement('div');
+  box.id = 'msg-menu';
+  box.style.cssText = narrow
+    ? 'position:fixed;left:10px;right:10px;bottom:calc(10px + max(var(--sab), 8px));z-index:10050;'
+      + 'background:var(--surface);border-radius:18px;box-shadow:0 -6px 34px rgba(29,58,95,.26);'
+      + 'padding:6px;max-height:70vh;overflow-y:auto'
+    : 'position:fixed;z-index:10050;width:224px;background:var(--surface);border:1px solid var(--border);'
+      + 'border-radius:14px;box-shadow:0 10px 34px rgba(29,58,95,.22);padding:6px;max-height:70vh;overflow-y:auto';
+  box.innerHTML = quick + acts.filter(a => a.k !== 'react').map(row).join('');
+  box.addEventListener('click', (e) => e.stopPropagation());
+
+  if (narrow) {
+    // 뒤를 덮어 둔다. 메뉴가 떠 있는데 뒤가 눌리면 엉뚱한 방이 열린다.
+    const bd = document.createElement('div');
+    bd.id = 'msg-menu-bd';
+    bd.style.cssText = 'position:fixed;inset:0;z-index:10040;background:rgba(15,23,42,.28)';
+    bd.addEventListener('click', closeMsgMenu);
+    document.body.appendChild(bd);
+  }
+  document.body.appendChild(box);
+
+  if (!narrow) {
+    const w = 224, h = Math.min(box.offsetHeight || 300, Math.round(window.innerHeight * 0.7));
+    box.style.left = Math.min(Math.max(8, x), window.innerWidth - w - 8) + 'px';
+    box.style.top  = Math.min(Math.max(8, y), window.innerHeight - h - 8) + 'px';
+    setTimeout(() => {
+      document.addEventListener('click', function once() {
+        closeMsgMenu(); document.removeEventListener('click', once);
+      }, { once: true });
+    }, 40);
+  }
+  document.addEventListener('keydown', msgMenuEsc);
+}
+
+// 메뉴에서 고른 일을 한다. 고른 뒤에는 닫는다 — 리액션 고르기만 빼고
+//  (그건 다시 판을 열어야 해서, 그 판이 닫는 몫을 가져간다)
+function msgMenuRun(key) {
+  const id = _msgMenuId;
+  const m = id && _msgById[id];
+  if (!m) { closeMsgMenu(); return; }
+  const a = msgActions(m).find(x => x.k === key);
+  closeMsgMenu();
+  if (!a) return;
+  try { new Function(a.call).call(document.body); } catch (e) { console.warn('메뉴 실행 실패', key, e); }
+}
+function msgMenuReact(emoji) {
+  const id = _msgMenuId;
+  closeMsgMenu();
+  if (id) { try { emojiRemember(emoji); toggleReaction(id, emoji); } catch (_) {} }
+}
+
+// 글자를 골라 둔다 — 일부만 복사하고 싶을 때. 휴대폰에서는 길게 눌러도
+//  고를 수 없게 막아 뒀기 때문에(안 막으면 아이폰 제 메뉴가 뜬다),
+//  여기서 골라 준다.
+function selectMsgText(id) {
+  const row = document.querySelector('.msg-row[data-id="' + cssEsc(id) + '"]');
+  const el = row && (row.querySelector('.msg-text') || row.querySelector('.msg-bubble') || row);
+  if (!el) return;
+  try {
+    el.classList.add('sel-ok');
+    const r = document.createRange(); r.selectNodeContents(el);
+    const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+    showUploadToast(t('글자를 골랐어요 — 원하는 만큼 줄여서 복사하세요',
+                      'Text selected — trim it and copy'));
+  } catch (_) {}
+}
+function cssEsc(v) {
+  try { return (window.CSS && CSS.escape) ? CSS.escape(String(v)) : String(v).replace(/["\\]/g, '\\$&'); }
+  catch (_) { return String(v); }
+}
+
+// 공유 — 휴대폰은 기기의 공유 창을, 그 길이 없으면 복사로 떨어진다.
+async function shareMsg(id) {
+  const m = _msgById[id];
+  if (!m) return;
+  const text = msgPlainText ? msgPlainText(m) : msgTextOf(m);
+  try {
+    if (navigator.share) { await navigator.share({ text }); return; }
+  } catch (_) { return; }      // 사람이 닫은 것 — 복사까지 하면 참견이다
+  try { await navigator.clipboard.writeText(text); showUploadToast(t('복사했어요','Copied')); }
+  catch (_) { showUploadToast(t('공유할 수 없어요','Cannot share here')); }
+}
+
+// 메시지 칸에 손을 건다. 오른쪽 단추와 길게 누르기 둘 다 같은 메뉴를 연다.
+function msgMenuInit() {
+  const area = document.getElementById('msg-area');
+  if (!area || area._menuBound) return;
+  area._menuBound = true;
+
+  const rowOf = (el) => (el && el.closest) ? el.closest('.msg-row[data-id]') : null;
+
+  area.addEventListener('contextmenu', (e) => {
+    const row = rowOf(e.target);
+    if (!row) return;
+    e.preventDefault();
+    openMsgMenu(row.dataset.id, e.clientX, e.clientY);
+  });
+
+  // 길게 누르기 — 손가락이 움직이면(굴리는 중이면) 취소한다
+  let timer = null, sx = 0, sy = 0, pid = null;
+  const cancel = () => { if (timer) clearTimeout(timer); timer = null; pid = null; };
+  area.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse') return;           // 마우스는 오른쪽 단추로
+    const row = rowOf(e.target);
+    if (!row) return;
+    pid = e.pointerId; sx = e.clientX; sy = e.clientY;
+    const id = row.dataset.id;
+    timer = setTimeout(() => {
+      timer = null;
+      try { if (navigator.vibrate) navigator.vibrate(12); } catch (_) {}
+      openMsgMenu(id, e.clientX, e.clientY);
+    }, 450);
+  }, { passive: true });
+  area.addEventListener('pointermove', (e) => {
+    if (pid === null || e.pointerId !== pid) return;
+    if (Math.abs(e.clientX - sx) > 10 || Math.abs(e.clientY - sy) > 10) cancel();
+  }, { passive: true });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(t2 =>
+    area.addEventListener(t2, cancel, { passive: true }));
+  area.addEventListener('scroll', cancel, { passive: true });
+}
+
 function msgHtml(m, prev, readMap={}) {
   _msgById[m.id] = m;
   const isMine = m.sender_id === ME.id;
@@ -5247,41 +5464,17 @@ function msgHtml(m, prev, readMap={}) {
 
   // 액션 버튼 - msg-body 안에 포함, hover시 표시
   // 액션 버튼 — 메시지 오른쪽 옆에 플로팅, 호버시만 표시
+  // 호버 줄 — 넓은 화면에서 메시지 옆에 뜨는 빠른 줄.
+  //  오른쪽 단추 메뉴와 같은 목록(msgActions)을 본다. 두 군데에 따로
+  //  적으면 한쪽에만 새 기능이 붙고 다른 쪽은 늙는다.
   const actionBtns = `
     <div class="msg-actions" style="
       position:absolute;right:${isMine?'52px':'auto'};left:${isMine?'auto':'52px'};top:-2px;transform:translateY(-100%);
       background:var(--surface);border:1px solid var(--border);border-radius:12px;
       padding:3px;gap:2px;box-shadow:0 2px 10px rgba(0,0,0,.1);align-items:center">
-      <div onclick="showReactionPicker('${m.id}',this)" title="리액션"
-        style="width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:15px"
-        onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background=''">😊</div>
-      ${(m.kind !== 'file' && m.kind !== 'poll') ? `<div onclick="copyMsgText('${m.id}')" title="전체 복사"
-        style="width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:13px"
-        onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background=''">📋</div>` : ''}
-      ${m.kind !== 'poll' ? `<div onclick="saveMsgAsNote('${m.id}')" title="${t('IM노트에 저장','Save to IM Notes')}"
-        style="width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:13px"
-        onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background=''">📝</div>` : ''}
-      ${(canManageAnnounce() && m.kind !== 'file' && m.kind !== 'poll') ? `<div onclick="setAnnouncement('${m.id}')" title="${t('공지로 등록','Pin as notice')}"
-        style="width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:13px"
-        onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background=''">📢</div>` : ''}
-      ${m.kind !== 'poll' ? `<div onclick="startReply('${m.id}','${escJs(msgTextOf(m).slice(0,100))}','${escJs(sender.name)}')" title="답장"
-        style="width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px"
-        onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background=''">↩️</div>` : ''}
-      ${(m.reactions && m.reactions.length) ? `<div onclick="showReactionDetails('${m.id}')" title="${t('누가 눌렀는지 보기','See who reacted')}"
-        style="width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:13px"
-        onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background=''">👀</div>` : ''}
-      ${(isMine && !m.hidden_at && m.kind !== 'file' && m.kind !== 'poll') ? `<div onclick="startEditMsg('${m.id}')" title="${t('고치기','Edit')}"
-        style="width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:13px"
-        onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background=''">✏️</div>` : ''}
-      ${!isMine ? `<div onclick="openReportModal('${m.id}')" title="${t('신고','Report')}"
-        style="width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:13px"
-        onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background=''">🚩</div>` : ''}
-      ${(!isMine && canModerateChat()) ? `<div onclick="toggleHideMsg('${m.id}')" title="${m.hidden_at ? t('가린 것 되돌리기','Unhide') : t('이 메시지 가리기','Hide this message')}"
-        style="width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:13px"
-        onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background=''">${m.hidden_at ? '👁' : '🙈'}</div>` : ''}
-      ${isMine ? `<div onclick="askDeleteMsg('${m.id}')" title="삭제"
-        style="width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:11px;color:var(--rose)"
-        onmouseover="this.style.background='#FEE2E2'" onmouseout="this.style.background=''">✕</div>` : ''}
+      ${msgActions(m).map(a => `<div onclick="${a.call}" title="${escAttr(a.label)}"
+        style="width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:${a.k==='react'?'15px':'13px'}${a.danger?';color:var(--rose)':''}"
+        onmouseover="this.style.background='${a.danger?'#FEE2E2':'var(--s3)'}'" onmouseout="this.style.background=''">${a.icon}</div>`).join('')}
     </div>`;
 
   // 답장 인용
@@ -7530,6 +7723,69 @@ function initPresence() {
 // 채널별 멤버 캐시
 let currentChannelMemberIds = new Set();
 
+// ── 방장 ───────────────────────────────────────────────────────────
+//  방을 만든 사람입니다. channels.created_by 를 그대로 씁니다.
+//  1:1 에는 방장이 없습니다 — 둘뿐인 자리에서 한쪽이 다른 쪽을
+//  내보낼 수 있으면 그건 대화가 아닙니다.
+//  서버(db/방장_권한.sql)와 같은 규칙입니다. 화면에서만 열어 두면
+//  눌러도 아무 일이 안 일어납니다.
+function isChannelOwner(ch) {
+  if (!ch || !ME) return false;
+  if ((ch.kind || 'topic') === 'dm') return false;
+  return ch.created_by === ME.id;
+}
+// 방 이름·설명을 고칠 수 있나 (교직원이거나 방장)
+function canEditChannel(ch) { return !!ch && (canAccessSchool() || isChannelOwner(ch)); }
+// 사람을 내보낼 수 있나
+function canKickFrom(ch) { return canEditChannel(ch); }
+
+// 방장이 사람 내보내기
+async function kickFromChannel(memberId) {
+  const ch = currentChannel;
+  if (!ch || !canKickFrom(ch)) return;
+  if (memberId === ME.id) { showUploadToast(t('자기 자신은 나가기로 나가세요','Use Leave to exit yourself')); return; }
+  const m = members[memberId];
+  const nm = (m && m.name) || t('이 사람','this person');
+  if (!confirm(t(`${nm} 님을 '${ch.name}' 에서 내보낼까요?\n쓴 글은 그대로 남습니다.`,
+                 `Remove ${nm} from '${ch.name}'?\nTheir messages stay.`))) return;
+  const { data, error } = await sb.from('channel_members')
+    .delete().eq('channel_id', ch.id).eq('member_id', memberId).select('member_id');
+  if (error) { showUploadToast(t('내보내지 못했어요 — ','Could not remove — ') + error.message); return; }
+  if (!data || !data.length) {
+    // 권한에 막히면 오류가 아니라 '0줄 지움' 이 돌아온다
+    showUploadToast(t('내보낼 권한이 없어요 (db/방장_권한.sql 을 돌렸나요?)',
+                      'No permission to remove (did you run db/방장_권한.sql?)'));
+    return;
+  }
+  showUploadToast(t(`✅ ${nm} 님을 내보냈어요`, `✅ Removed ${nm}`));
+  try { await renderMembers(); } catch (_) {}
+}
+
+// 방장이 방 이름 바꾸기
+async function renameChannel() {
+  const ch = currentChannel;
+  if (!ch || !canEditChannel(ch)) return;
+  const next = prompt(t('방 이름을 무엇으로 바꿀까요?','New room name?'), ch.name || '');
+  if (next === null) return;
+  const name = String(next).trim();
+  if (!name) { showUploadToast(t('이름을 비울 수는 없어요','A name cannot be empty')); return; }
+  if (name === ch.name) return;
+  if (name.length > 60) { showUploadToast(t('이름이 너무 길어요 (60자까지)','Name is too long (60 max)')); return; }
+  const { data, error } = await sb.from('channels').update({ name }).eq('id', ch.id).select('id');
+  if (error) { showUploadToast(t('바꾸지 못했어요 — ','Could not rename — ') + error.message); return; }
+  if (!data || !data.length) {
+    showUploadToast(t('바꿀 권한이 없어요 (db/방장_권한.sql 을 돌렸나요?)',
+                      'No permission (did you run db/방장_권한.sql?)'));
+    return;
+  }
+  ch.name = name;
+  const c2 = channels.find(c => c.id === ch.id); if (c2) c2.name = name;
+  showUploadToast(t('✅ 방 이름을 바꿨어요','✅ Room renamed'));
+  try { renderPanel(); } catch (_) {}
+  try { const el = document.getElementById('chat-title'); if (el) el.textContent = name; } catch (_) {}
+  try { await renderMembers(); } catch (_) {}
+}
+
 async function renderMembers() {
   const memberList = document.getElementById('member-list');
   if (!memberList) return;
@@ -7552,12 +7808,24 @@ async function renderMembers() {
   });
 
   // 채팅방에 멤버 추가 버튼 (1:1 제외 · 간사 이상 — 데이터베이스와 같은 규칙)
-  const canAddMembers = currentChannel && currentChannel.kind !== 'dm' && canAccessSchool();
+  //  방장도 멤버를 부를 수 있어야 한다 — 자기가 만든 방이다
+  const canAddMembers = currentChannel && currentChannel.kind !== 'dm'
+                     && (canAccessSchool() || isChannelOwner(currentChannel));
   const addBtn = canAddMembers
     ? `<div onclick="openAddMemberModal()" style="display:flex;align-items:center;justify-content:center;gap:6px;margin:0 0 10px;padding:9px;border:1.5px dashed var(--accent);border-radius:10px;color:var(--accent);font:700 12.5px var(--font);cursor:pointer">＋ ${t('멤버 추가','Add member')}</div>`
     : '';
+  //  방장 줄 — 내가 만든 방이면 여기서 이름을 고친다. 관리 화면까지
+  //  가지 않아도 되고, 학생이 만든 방은 애초에 그 화면이 안 보인다.
+  const ownerBar = (currentChannel && canEditChannel(currentChannel) && currentChannel.kind !== 'dm')
+    ? `<div style="display:flex;align-items:center;gap:6px;margin:0 0 10px;padding:8px 10px;border-radius:10px;background:var(--s2);font:600 12px var(--font);color:var(--ink3)">
+         <span>${isChannelOwner(currentChannel) ? '👑' : '🛠'}</span>
+         <span style="flex:1">${isChannelOwner(currentChannel) ? t('내가 만든 방','Your room') : t('관리','Manage')}</span>
+         <button onclick="renameChannel()" style="height:26px;padding:0 9px;border-radius:8px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);font:700 11.5px var(--font);cursor:pointer">✏️ ${t('이름','Rename')}</button>
+       </div>`
+    : '';
 
-  memberList.innerHTML = addBtn + list.map(m => {
+  const canKick = currentChannel && canKickFrom(currentChannel) && currentChannel.kind !== 'dm';
+  memberList.innerHTML = ownerBar + addBtn + list.map(m => {
     const isOnline = onlineUsers.has(m.id);
     const isSelf = m.id === ME.id;
     return `<div class="member-row" onclick="openMemberCard('${m.id}')" title="${escAttr(t('눌러서 보기','Tap to view'))}" style="cursor:pointer">
@@ -7569,7 +7837,12 @@ async function renderMembers() {
         <div class="member-name" style="color:${isOnline?'var(--ink)':'var(--ink3)'}">${m.name}</div>
         <div class="member-role" style="color:${isOnline?'var(--sage)':'var(--ink3)'}">${isOnline?'● 온라인':m.role||'멤버'}</div>
       </div>
-      ${!isSelf ? `<div style="font-size:10px;color:var(--ink3);margin-left:auto">💬</div>` : ''}
+      <div style="margin-left:auto;display:flex;align-items:center;gap:4px">
+        ${(canKick && !isSelf) ? `<button onclick="event.stopPropagation();kickFromChannel('${escJs(m.id)}')"
+          title="${escAttr(t('이 방에서 내보내기','Remove from this room'))}"
+          style="width:24px;height:24px;border-radius:7px;border:1px solid var(--border);background:var(--surface);color:var(--ink3);font:700 11px var(--font);cursor:pointer;line-height:1">✕</button>` : ''}
+        ${!isSelf ? `<div style="font-size:10px;color:var(--ink3)">💬</div>` : ''}
+      </div>
     </div>`;
   }).join('');
 }
@@ -16315,8 +16588,8 @@ async function renderAdminChannels() {
         <div style="display:flex;align-items:center;gap:10px;width:100%">
           <div style="width:38px;height:38px;border-radius:12px;background:var(--s3);display:flex;align-items:center;justify-content:center;font-size:19px;flex-shrink:0">${ch.emoji||'#'}</div>
           <div style="flex:1;min-width:0">
-            <div style="font-size:14px;font-weight:600">${ch.name}</div>
-            <div style="font-size:12px;color:var(--ink3);margin-top:2px">${ch.description||'설명 없음'} · 멤버 ${chMems.length}명</div>
+            <div style="font-size:14px;font-weight:600">${escHtml(ch.name||'')}</div>
+            <div style="font-size:12px;color:var(--ink3);margin-top:2px">${escHtml(ch.description||'설명 없음')} · 멤버 ${chMems.length}명</div>
           </div>
           <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
             <button class="adm-btn ${ch.pinned?'sage':'ghost'}" onclick="toggleChannelPin('${ch.id}',${ch.pinned})">${ch.pinned?'📌 고정됨':'📌 고정'}</button>
