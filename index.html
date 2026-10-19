@@ -28,6 +28,9 @@
   --sab: env(safe-area-inset-bottom);
   --sal: env(safe-area-inset-left);
   --sar: env(safe-area-inset-right);
+  /* 지금 올라와 있는 키보드의 높이. 네이티브 앱에서는 껍데기가 웹뷰를
+     줄여 주므로 늘 0 이고, 웹에서만 실제 값이 들어온다. */
+  --kb: 0px;
   --bg: #eef2f8;
   --surface: #FFFFFF;
   --s2: #f4f7fc;
@@ -769,8 +772,13 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
 
   /* 대화방 열림: 하단 탭바 숨기고 채팅이 전체 높이를 쓰게 */
   body.in-chat #mobile-nav { display: none !important; }
-  body.in-chat #chat-view { padding-bottom: var(--sab); }
-  body.in-chat #composer { bottom: max(var(--sab), 8px); }
+  /* 키보드가 올라오면 그만큼 더 띄운다.
+     아이폰 앱은 껍데기(@capacitor/keyboard, resize:native)가 웹뷰 자체를
+     줄여 주므로 --kb 는 0 이고, 이 식은 저절로 예전과 같아진다.
+     사파리·독에 추가로 쓸 때는 웹뷰가 안 줄어들어서 입력칸이 키보드
+     뒤로 숨는다. 그때 --kb 가 실제 키보드 높이로 채워진다. */
+  body.in-chat #chat-view { padding-bottom: calc(var(--sab) + var(--kb, 0px)); }
+  body.in-chat #composer { bottom: calc(max(var(--sab), 8px) + var(--kb, 0px)); }
 
   /* 메시지 말풍선 넓게 */
   .msg-body { max-width: 80%; }
@@ -2043,6 +2051,49 @@ let globalMsgSub = null;
 //  설정은 이 기기에만 둔다(localStorage). 알림은 '이 기기에서 받을지'
 //  의 문제라, 공용 컴퓨터에서 켠 것이 내 휴대폰까지 따라가면 곤란하다.
 // ══════════════════════════════════════════════════════════════════
+
+// ── 키보드가 올라올 때 글 쓰는 칸 ────────────────────────────────
+//  "글씨 쓰는 곳이 이렇게 되는데" — 키보드가 올라오면 입력칸이 허공에
+//  뜨고 아래로 흰 자리가 남았습니다. 웹뷰가 안 줄어들기 때문입니다.
+//  화면은 그대로 가득 차 있는데 아래쪽을 키보드가 덮으니, 바닥에
+//  붙여 둔 입력칸이 그 뒤로 숨거나 어정쩡한 데 걸립니다.
+//
+//  아이폰 앱은 껍데기가 해결합니다 — @capacitor/keyboard 를 넣고
+//  resize:native 로 두면 키보드가 올라올 때 웹뷰 자체가 줄어듭니다.
+//  그러면 '바닥' 이 키보드 바로 위가 되어 저절로 맞습니다.
+//
+//  사파리·독에 추가로 쓸 때는 그 껍데기가 없습니다. 거기서는
+//  visualViewport 로 키보드 높이를 재서 --kb 에 담습니다.
+function nativeKeyboard() {
+  try {
+    const C = (typeof window !== 'undefined') && window.Capacitor;
+    if (!C || typeof C.isNativePlatform !== 'function' || !C.isNativePlatform()) return null;
+    return (C.Plugins || {}).Keyboard || null;
+  } catch (_) { return null; }
+}
+
+function kbInit() {
+  const kb = nativeKeyboard();
+  if (kb) {
+    // 글자 위를 덮던 '∧ ∨ ✓' 막대를 없앤다. 대화창에는 쓸 일이 없고,
+    // 그 막대 때문에 입력칸이 키보드에서 한 뼘 떠 보인다.
+    try { kb.setAccessoryBarVisible({ isVisible: false }); } catch (_) {}
+    return;   // 높이 맞추기는 껍데기가 한다
+  }
+  const vv = (typeof window !== 'undefined') && window.visualViewport;
+  if (!vv) return;
+  const apply = () => {
+    // 창 높이에서 '실제로 보이는 높이' 를 빼면 키보드가 덮은 만큼이다.
+    const h = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+    // 작은 값은 주소창이 줄었다 늘었다 하는 것이다. 키보드로 치지 않는다.
+    const kbh = h > 80 ? h : 0;
+    document.documentElement.style.setProperty('--kb', kbh + 'px');
+    document.body.classList.toggle('kb-open', kbh > 0);
+  };
+  vv.addEventListener('resize', apply);
+  vv.addEventListener('scroll', apply);
+  apply();
+}
 
 // ── 아이폰 앱(Capacitor)은 알림이 다른 길로 온다 ──────────────────
 //  WKWebView 에는 Notification 도 서비스워커 푸시도 없다. 애플 APNs 로
@@ -4167,6 +4218,7 @@ async function init() {
   renderMembers();
   restoreLastState();          // 화면부터 띄운다
   try { notiAutoStart(); } catch (_) {}   // 허락돼 있으면 조용히, 아니면 여쭤본다
+  try { kbInit(); } catch (_) {}          // 키보드가 올라올 때 입력칸 자리
 
   // 1:1 목록 정렬과 안읽음 배지는 화면이 뜬 뒤에 채운다.
   //  둘 다 messages 를 훑는 무거운 질문인데(한쪽은 800줄), 화면을 그리는
