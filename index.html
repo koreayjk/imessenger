@@ -31,6 +31,8 @@
   /* 지금 올라와 있는 키보드의 높이. 네이티브 앱에서는 껍데기가 웹뷰를
      줄여 주므로 늘 0 이고, 웹에서만 실제 값이 들어온다. */
   --kb: 0px;
+  /* 아래에서 올라온 창(이모지 판)이 덮은 높이. 자판과 같은 자리를 쓴다. */
+  --sheet: 0px;
   --bg: #eef2f8;
   --surface: #FFFFFF;
   --s2: #f4f7fc;
@@ -175,7 +177,7 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
      툭 튀었다.
      ⚠️ 반드시 '한 군데' 에서만 빼야 한다. 대화창이나 입력칸에서 또 빼면
      두 번 밀려 입력칸이 화면 한가운데에 뜬다. */
-  padding-bottom: var(--kb, 0px);
+  padding-bottom: max(var(--kb, 0px), var(--sheet, 0px));
 }
 @media (prefers-reduced-motion: no-preference) {
   #app { transition: padding-bottom .25s cubic-bezier(.17,.59,.4,1); }
@@ -1361,13 +1363,18 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
             </div>
             <textarea id="msgInput" placeholder="메시지 보내기 (Enter · @로 멤버 언급 · 이미지 붙여넣기 가능)" rows="1"
               onkeydown="onComposerKeydown(event)"
-              oninput="updateSendBtn();autoResizeInput(this);handleMentionInput(this)"
+              oninput="updateSendBtn();autoResizeInput(this);handleMentionInput(this);composerCaret()"
+              onclick="composerCaret()" onkeyup="composerCaret()"
+              onfocus="composerFocus()"
               onpaste="handlePasteImage(event)"
               style="flex:1;border:0;outline:0;background:transparent;font:14px var(--font);color:var(--ink);resize:none;line-height:1.5;max-height:120px;overflow-y:auto;padding:0"></textarea>
             <!-- 클립은 왼쪽 ＋ 와 똑같이 사진·파일 올리기였다. 둘 다 두면
                  서로 다른 일을 하는 줄 알고 헤맨다. ＋ 하나만 남긴다. -->
             <input type="file" id="fileInput" style="display:none" accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt" onchange="handleFileUpload(this)" multiple/>
             <input type="file" id="schedFileInput" style="display:none" accept="image/*" onchange="handleScheduleFile(this)"/>
+            <div class="icon-btn" id="emoji-btn" onclick="composerEmoji(this)" title="이모지 넣기">
+              <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="var(--ink3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8.5 14.5a4.5 4.5 0 007 0"/><path d="M9 9.5h.01M15 9.5h.01"/></svg>
+            </div>
             <div class="icon-btn" id="rich-btn" onclick="openRichCompose()" title="꾸며서 쓰기 (굵게·색·형광펜)">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--ink3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>
             </div>
@@ -2089,6 +2096,13 @@ function nativeKeyboard() {
     if (!C || typeof C.isNativePlatform !== 'function' || !C.isNativePlatform()) return null;
     return (C.Plugins || {}).Keyboard || null;
   } catch (_) { return null; }
+}
+
+// 아래에서 올라온 창(이모지 판 등)이 덮고 있는 높이. 자판과 같은
+//  자리를 쓰므로 #app 은 둘 중 큰 쪽만큼 줄인다.
+function sheetLift(px) {
+  const v = Math.max(0, Math.round(Number(px) || 0));
+  document.documentElement.style.setProperty('--sheet', v + 'px');
 }
 
 // 지금 키보드가 덮고 있는 높이를 적어 둔다. CSS 가 이 값을 보고
@@ -6159,20 +6173,27 @@ function emojiAll() {
 let _emojiPick = null;      // 고르면 부를 함수
 let _emojiTab = 'recent';
 let _emojiQuery = '';
+let _emojiKeep = false;     // 고른 뒤에도 판을 열어 둘까 (글 쓸 때)
+let _emojiOnClose = null;
 
 function closeEmojiPanel() {
   const el = document.getElementById('emoji-panel');
   if (el) el.remove();
   document.removeEventListener('keydown', emojiPanelEsc);
   _emojiPick = null;
+  _emojiKeep = false;
+  const c = _emojiOnClose; _emojiOnClose = null;
+  if (c) { try { c(); } catch (_) {} }
 }
 function emojiPanelEsc(e) { if (e.key === 'Escape') closeEmojiPanel(); }
 
 // anchor 가 있으면 그 옆에, 없거나 좁은 화면이면 아래에서 올라오는 창
-function openEmojiPanel(onPick, anchor) {
+function openEmojiPanel(onPick, anchor, opts) {
   closeEmojiPanel();
   document.querySelectorAll('.reaction-picker').forEach(p => p.remove());
   _emojiPick = onPick;
+  _emojiKeep = !!(opts && opts.keepOpen);
+  _emojiOnClose = (opts && opts.onClose) || null;
   _emojiTab = emojiRecent().length ? 'recent' : EMOJI_GROUPS[0].key;
   _emojiQuery = '';
 
@@ -6284,10 +6305,85 @@ function emojiSearch(v) {
 function emojiChoose(e) {
   emojiRemember(e);
   const f = _emojiPick;
+  if (_emojiKeep) {
+    // 글을 쓰는 중에는 닫지 않는다. 😀😀😀 처럼 몇 개씩 넣는 일이 흔하다.
+    if (f) { try { f(e); } catch (_) {} }
+    emojiRedrawGrid();          // '최근' 칸에 방금 고른 것이 올라오게
+    return;
+  }
   closeEmojiPanel();
   if (f) { try { f(e); } catch (_) {} }
 }
 
+
+// ── 글 쓰는 칸에 이모지 넣기 ──────────────────────────────────────
+//  리액션에 쓰던 이모지 판(검색·분류·최근)을 그대로 쓴다. 새로 만들면
+//  '최근 고른 것' 이 두 벌로 갈려서, 한쪽에서 고른 게 다른 쪽에 안 뜬다.
+//
+//  휴대폰에서는 판이 아래에서 올라와 화면 아래를 덮는다. 그러면 자기가
+//  쓰는 글이 안 보인다. 그래서 판을 자판처럼 다룬다 — 자판을 내리고,
+//  판 높이만큼 앱을 줄여 입력칸이 판 바로 위에 서게 한다.
+let _msgCaret = null;        // 자판을 내리기 전의 글자 자리
+let _emojiSelfFocus = false; // 우리가 초점을 되돌려 준 것인가
+
+// 사람이 글칸을 누르면 자판이 올라온다. 그때 이모지 판은 자리를 비켜야
+//  한다 — 안 비키면 자판 뒤에 깔려 보이지도 않는 채로 남는다.
+//  다만 '고른 뒤 초점을 되돌려 준 것' 까지 사람이 누른 걸로 치면,
+//  넓은 화면에서 하나 고르자마자 판이 닫혀 버린다.
+function composerFocus() {
+  if (_emojiSelfFocus) return;
+  if (document.getElementById('emoji-panel')) closeEmojiPanel();
+}
+
+function composerCaret() {
+  const ta = document.getElementById('msgInput');
+  if (!ta) return;
+  _msgCaret = { s: ta.selectionStart, e: ta.selectionEnd };
+}
+
+function composerInsert(text) {
+  const ta = document.getElementById('msgInput');
+  if (!ta) return;
+  const v = ta.value || '';
+  let s = (_msgCaret && typeof _msgCaret.s === 'number') ? _msgCaret.s : v.length;
+  let e = (_msgCaret && typeof _msgCaret.e === 'number') ? _msgCaret.e : s;
+  if (s > v.length) s = v.length;
+  if (e > v.length) e = v.length;
+  ta.value = v.slice(0, s) + text + v.slice(e);
+  const p = s + text.length;
+  _msgCaret = { s: p, e: p };
+  try { ta.setSelectionRange(p, p); } catch (_) {}
+  // 보내기 단추와 칸 높이는 손으로 친 것과 똑같이 다시 맞춰야 한다
+  try { updateSendBtn(); } catch (_) {}
+  try { autoResizeInput(ta); } catch (_) {}
+  try { handleMentionInput(ta); } catch (_) {}
+}
+
+function composerEmoji(btn) {
+  // 열려 있으면 닫는다. 같은 단추를 다시 누르는 건 '그만' 이라는 뜻이다.
+  if (document.getElementById('emoji-panel')) { closeEmojiPanel(); return; }
+  const ta = document.getElementById('msgInput');
+  const narrow = window.innerWidth < 560;
+  composerCaret();
+  if (narrow) {
+    // 자판을 내린다. 안 내리면 판이 자판 뒤로 숨는다.
+    if (ta) ta.blur();
+    openEmojiPanel((e) => composerInsert(e), null, {
+      keepOpen: true,
+      onClose: () => sheetLift(0),
+    });
+    // 판 높이만큼 앱을 줄여, 입력칸이 판 바로 위에 서게 한다
+    requestAnimationFrame(() => {
+      const box = document.getElementById('emoji-panel');
+      sheetLift(box ? box.offsetHeight : 0);
+    });
+  } else {
+    openEmojiPanel((e) => {
+      composerInsert(e);
+      if (ta) { _emojiSelfFocus = true; try { ta.focus(); } finally { setTimeout(() => { _emojiSelfFocus = false; }, 0); } }
+    }, btn, { keepOpen: true });
+  }
+}
 
 // ── 리액션 ──
 //  빠른 줄은 '최근 쓴 것' 을 앞세운다. 쓰는 이모지는 사람마다 다르다.
