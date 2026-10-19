@@ -3,9 +3,9 @@
   "appName": "TCS",
   "webDir": "www",
   "ios": {
-    "contentInset": "always",
+    "contentInset": "never",
     "limitsNavigationsToAppBoundDomains": false,
-    "backgroundColor": "#F8F3EA"
+    "backgroundColor": "#eef2f8"
   },
   "server": {
     "iosScheme": "capacitor"

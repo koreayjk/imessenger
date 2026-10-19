@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-title" content="TCS"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
 <meta name="theme-color" content="#1d3a5f"/>
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"/>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css"/>
@@ -19,6 +19,15 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 :root {
+  /* 아이폰의 가려지는 자리 — 위는 노치·다이내믹 아일랜드, 아래는 홈 바.
+     viewport-fit=cover 를 켜 두면 화면이 끝까지 그려지므로, 가려지는
+     만큼만 안쪽으로 띄운다. 그런 자리가 없는 기기에서는 전부 0 이다.
+     값을 변수로 둔 건 시험 때문이다 — :root 에 숫자를 넣어 두면
+     진짜 규칙 그대로 아이폰 모양을 흉내 내서 재 볼 수 있다. */
+  --sat: env(safe-area-inset-top);
+  --sab: env(safe-area-inset-bottom);
+  --sal: env(safe-area-inset-left);
+  --sar: env(safe-area-inset-right);
   --bg: #eef2f8;
   --surface: #FFFFFF;
   --s2: #f4f7fc;
@@ -60,7 +69,9 @@
   --ring: 0 0 0 3px rgba(29,58,95,.28);            /* 키보드 초점 */
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
-html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-font-smoothing: antialiased; overflow: hidden; }
+/* 바탕색을 깔아 둔다. 노치·홈 바 자리는 #app 바깥이라, 여기가 비어 있으면
+   그 띠만 흰색으로 남아 앱과 색이 어긋난다. */
+html, body { height: 100%; font-family: var(--font); color: var(--ink); -webkit-font-smoothing: antialiased; overflow: hidden; background: var(--bg); }
 
 /* ── 아이폰에서 '웹페이지를 씌운 것' 처럼 보이게 하던 것들 ──
    ① 누를 때마다 번쩍이던 회색 네모 (WKWebView 기본값).
@@ -153,14 +164,17 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
 #s360-list, .hw-row { font-variant-numeric: tabular-nums; }
 
 /* ── 레이아웃 ── */
-#app { display: flex; height: 100vh; height: 100dvh; box-sizing: border-box; }
+#app {
+  display: flex; height: 100vh; height: 100dvh; box-sizing: border-box;
+  padding-top: var(--sat); padding-left: var(--sal); padding-right: var(--sar);
+}
 
 /* 아이콘 사이드바 */
 #sidebar {
   width: var(--sidebar-w);
   background: linear-gradient(180deg, #1d3a5f 0%, #152d4a 100%);
   display: flex; flex-direction: column; align-items: center;
-  padding: 0 0 calc(14px + env(safe-area-inset-bottom));
+  padding: 0 0 calc(14px + var(--sab));
   flex-shrink: 0;
   z-index: 10;
   overflow-y: auto;
@@ -540,6 +554,7 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
      자식의 margin:auto 로 한다. (넘칠 땐 자동으로 가운데 맞춤이 풀린다) */
   display: flex; align-items: flex-start; justify-content: center;
   overflow-y: auto; -webkit-overflow-scrolling: touch;
+  padding: var(--sat) var(--sar) var(--sab) var(--sal);
 }
 .auth-wrap {
   display: flex; gap: 0;
@@ -678,7 +693,7 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
   #right-panel { display: none !important; }
   #right-panel.rp-open {
     display: flex !important;
-    position: fixed; top: 0; right: 0; bottom: 0;
+    position: fixed; top: var(--sat); right: var(--sar); bottom: 0;
     width: min(330px, 86vw);
     z-index: 240;
     box-shadow: -10px 0 34px rgba(29,58,95,.22);
@@ -694,7 +709,7 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
   /* 패널을 전체화면으로 */
   #panel {
     width: 100%;
-    position: fixed; inset: 0;
+    position: fixed; inset: var(--sat) var(--sar) 0 var(--sal);
     z-index: 20;
     transform: translateX(0);
     transition: transform .28s var(--ease-drawer);
@@ -704,23 +719,30 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
   /* 메인도 전체화면 */
   #main { width: 100%; }
 
-  /* 하단 탭바 */
+  /* 하단 탭바 — 높이는 '속 52px + 홈 바 자리' 다.
+     예전엔 height:72px 안에 홈 바 자리를 넣어서, 홈 바가 있는 기기에서는
+     속이 38px 밖에 안 남았다. 56px 짜리 아이콘 칸이 바 밖으로 비어져
+     나오고, 글자는 홈 바 위에 올라앉았다.
+     --navh 로 묶어 둔 건 본문 아래 여백·입력칸 위치가 이 높이를 그대로
+     따라와야 하기 때문이다. 따로 적어 두면 한쪽만 고쳐지고 어긋난다. */
+  :root { --navh: calc(52px + max(var(--sab), 10px)); }
   #mobile-nav {
     display: flex !important;
     position: fixed; bottom: 0; left: 0; right: 0;
-    height: 72px; z-index: 30;
+    height: var(--navh); z-index: 30;
     /* 예전엔 크림색(248,243,234)이라 푸른 앱 위에 혼자 따뜻했다 */
     background: rgba(248,250,253,.92);
     backdrop-filter: blur(14px);
     -webkit-backdrop-filter: blur(14px);
     border-top: 1px solid var(--border);
     justify-content: space-around; align-items: center;
-    padding-bottom: max(env(safe-area-inset-bottom), 12px);
+    padding-bottom: max(var(--sab), 10px);
+    padding-left: var(--sal); padding-right: var(--sar);
   }
   .mn-btn {
     flex: 1; display: flex; flex-direction: column;
     align-items: center; justify-content: center;
-    gap: 3px; cursor: pointer; padding: 6px 0;
+    gap: 3px; cursor: pointer; padding: 4px 0;
   }
   .mn-btn span { font-size: 11px; font-weight: 600; color: var(--ink3); letter-spacing: -.02em; }
   .mn-btn.active span { color: var(--accent); font-weight: 600; }
@@ -730,16 +752,16 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
 
   /* 입력창이 하단 탭바에 가리지 않도록 */
   #chat-view, #prayer-view, #home-view, #calendar-view, #admin-view, #tcs-view, #mock-view, #reading-view {
-    padding-bottom: calc(72px + env(safe-area-inset-bottom));
+    padding-bottom: var(--navh);
   }
   /* 스크롤 영역 하단 여유 — 마지막 버튼(로그아웃 등)이 하단 탭바에 안 가리게 */
   #profile-content, #school-main, #allowance-main, #mytt-main, #leave-main, #writing-main,
   #gishome-main, #store-main, #approval-main, #panel-body, #tcs-main {
-    padding-bottom: calc(84px + env(safe-area-inset-bottom)) !important;
+    padding-bottom: calc(var(--navh) + 12px) !important;
   }
   #composer {
     position: sticky;
-    bottom: calc(72px + max(env(safe-area-inset-bottom), 12px));
+    bottom: var(--navh);
     background: var(--surface);
     z-index: 10;
     padding-bottom: 12px;
@@ -747,8 +769,8 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
 
   /* 대화방 열림: 하단 탭바 숨기고 채팅이 전체 높이를 쓰게 */
   body.in-chat #mobile-nav { display: none !important; }
-  body.in-chat #chat-view { padding-bottom: env(safe-area-inset-bottom); }
-  body.in-chat #composer { bottom: max(env(safe-area-inset-bottom), 8px); }
+  body.in-chat #chat-view { padding-bottom: var(--sab); }
+  body.in-chat #composer { bottom: max(var(--sab), 8px); }
 
   /* 메시지 말풍선 넓게 */
   .msg-body { max-width: 80%; }
@@ -774,7 +796,7 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
     min-height: auto;
   }
   .auth-left .features { display: none; }
-  .auth-right { padding: 28px 24px calc(40px + env(safe-area-inset-bottom)); }
+  .auth-right { padding: 28px 24px calc(40px + var(--sab)); }
   .auth-form h2 { font-size: 20px; }
   .field-row { flex-direction: column; }
 
@@ -855,7 +877,7 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
   /* 넷(학년·기관·PDF·닫기)을 2×2 로. 그냥 두면 [닫기] 가 혼자 한 줄을 먹는다. */
   #tcs-preview-overlay .tcspv-acts > * { flex: 1 1 calc(50% - 4px); min-width: 0; }
   #tcs-preview-overlay .tcspv-inc { padding: 8px 12px !important; gap: 7px 11px !important; }
-  #tcs-preview-content { padding: 14px 10px calc(14px + env(safe-area-inset-bottom)) !important; }
+  #tcs-preview-content { padding: 14px 10px calc(14px + var(--sab)) !important; }
 }
 
 @media (max-width: 620px) {
@@ -1087,7 +1109,7 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
 </div>
 
 <!-- 공동체 선택 화면 -->
-<div id="community-select-screen" style="display:none;position:fixed;inset:0;z-index:150;background:var(--bg);flex-direction:column;align-items:center;justify-content:flex-start;padding:24px;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain">
+<div id="community-select-screen" style="display:none;position:fixed;inset:0;z-index:150;background:var(--bg);flex-direction:column;align-items:center;justify-content:flex-start;padding:calc(24px + var(--sat)) calc(24px + var(--sar)) calc(24px + var(--sab)) calc(24px + var(--sal));overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain">
   <!-- margin:auto 0 → 짧으면 가운데, 길면 위부터 쌓이고 스크롤된다 (justify-content:center 는 넘칠 때 위가 잘린다) -->
   <div style="max-width:640px;width:100%;margin:auto 0;flex-shrink:0">
     <div style="text-align:center;margin-bottom:36px">
@@ -1108,7 +1130,7 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
   <!-- 부총관리자가 남의 공동체를 들여다보는 중 — 왜 버튼이 없는지 알려준다 -->
   <div id="guest-bar" style="display:none;position:fixed;top:0;left:0;right:0;z-index:60;
        background:#fef3c7;border-bottom:1px solid #fcd34d;color:#92400e;
-       font:700 12.5px var(--font);padding:7px 14px;text-align:center">
+       font:700 12.5px var(--font);padding:calc(7px + var(--sat)) calc(14px + var(--sar)) 7px calc(14px + var(--sal));text-align:center">
     👀 <span id="guest-bar-text">다른 공동체를 보는 중이에요 — 보기와 채팅만 가능합니다</span>
     <button onclick="backToHomeCommunity()" style="margin-left:10px;height:24px;padding:0 10px;border:1px solid #d97706;border-radius:7px;background:#fff;color:#92400e;font:700 11.5px var(--font);cursor:pointer">내 공동체로</button>
   </div>
@@ -1723,7 +1745,7 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
 
   <!-- 모바일 '더보기' 시트 -->
   <div id="more-menu" style="display:none;position:fixed;inset:0;z-index:120;background:rgba(15,23,42,.5)" onclick="if(event.target===this)closeMoreMenu()">
-    <div style="position:absolute;left:0;right:0;bottom:0;background:var(--surface);border-radius:20px 20px 0 0;padding:14px 16px calc(20px + env(safe-area-inset-bottom));max-height:80vh;overflow-y:auto">
+    <div style="position:absolute;left:0;right:0;bottom:0;background:var(--surface);border-radius:20px 20px 0 0;padding:14px 16px calc(20px + var(--sab));max-height:80vh;overflow-y:auto">
       <div style="width:40px;height:4px;border-radius:99px;background:var(--border);margin:2px auto 12px"></div>
       <div style="font-size:14px;font-weight:800;color:var(--ink);margin:0 4px 10px">메뉴</div>
       <div id="more-menu-list" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px"></div>
@@ -2436,7 +2458,7 @@ function notiShowInvite() {
     const nav = document.getElementById('mobile-nav');
     if (nav && getComputedStyle(nav).display !== 'none') lift += nav.offsetHeight + 4;
   } catch (_) {}
-  d.style.cssText = `position:fixed;left:12px;right:12px;bottom:calc(${lift}px + env(safe-area-inset-bottom));`
+  d.style.cssText = `position:fixed;left:12px;right:12px;bottom:calc(${lift}px + var(--sab));`
     + 'z-index:9000;max-width:460px;margin:0 auto;background:var(--surface);border:1.5px solid var(--border);'
     + 'border-radius:16px;box-shadow:0 10px 32px rgba(29,58,95,.18);padding:15px 16px 13px';
   d.innerHTML = `
@@ -5895,7 +5917,7 @@ function openEmojiPanel(onPick, anchor) {
   box.style.cssText = narrow
     ? 'position:fixed;left:0;right:0;bottom:0;z-index:10000;background:var(--surface);'
       + 'border-top:1.5px solid var(--border);border-radius:18px 18px 0 0;'
-      + 'box-shadow:0 -8px 30px rgba(29,58,95,.2);padding:10px 12px calc(10px + env(safe-area-inset-bottom));'
+      + 'box-shadow:0 -8px 30px rgba(29,58,95,.2);padding:10px 12px calc(10px + var(--sab));'
       + 'max-height:62vh;display:flex;flex-direction:column'
     : 'position:fixed;z-index:10000;width:330px;background:var(--surface);border:1.5px solid var(--border);'
       + 'border-radius:16px;box-shadow:0 10px 34px rgba(29,58,95,.22);padding:10px 10px 8px;'
@@ -11625,7 +11647,7 @@ function snSheetHtml(items, pick){
     <span style="text-align:center;line-height:1.35;word-break:keep-all">${escHtml(x.label)}</span>
     ${x.badge ? `<span style="position:absolute;top:6px;right:7px;background:#e53935;color:#fff;font-size:10px;font-weight:700;border-radius:99px;min-width:16px;height:16px;display:flex;align-items:center;justify-content:center;padding:0 4px">${x.badge}</span>` : ''}
   </button>`;
-  return `<div style="background:var(--surface);width:100%;border-radius:20px 20px 0 0;padding:10px 14px calc(18px + env(safe-area-inset-bottom));box-shadow:0 -10px 40px rgba(15,23,42,.22);max-height:78vh;overflow-y:auto">
+  return `<div style="background:var(--surface);width:100%;border-radius:20px 20px 0 0;padding:10px 14px calc(18px + var(--sab));box-shadow:0 -10px 40px rgba(15,23,42,.22);max-height:78vh;overflow-y:auto">
     <div style="width:38px;height:4px;border-radius:99px;background:var(--border);margin:2px auto 13px"></div>
     <div class="sn-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">${items.map(cell).join('')}</div>
     <button onclick="snCloseSheet()" style="width:100%;height:42px;margin-top:12px;border:1.5px solid var(--border);background:var(--surface);border-radius:12px;font:700 13px var(--font);color:var(--ink2);cursor:pointer">${t('닫기','Close')}</button>
@@ -18156,7 +18178,7 @@ function imToast(msg) {
   if (!el) {
     el = document.createElement('div');
     el.id = 'im-toast';
-    el.style.cssText = 'position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));z-index:99998;'
+    el.style.cssText = 'position:fixed;left:50%;bottom:calc(24px + var(--sab));z-index:99998;'
       + 'background:rgba(37,32,26,.92);color:#fff;padding:10px 18px;border-radius:12px;font:500 13px var(--font);'
       + 'max-width:min(90vw,420px);text-align:center;pointer-events:none;'
       + 'transform:translateX(-50%) translateY(8px);opacity:0;'
