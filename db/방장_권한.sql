@@ -31,6 +31,7 @@ set search_path = public as $$
        and coalesce(c.kind, 'topic') <> 'dm'   -- 1:1 에는 방장이 없다
   );
 $$;
+revoke all on function public.is_channel_owner(uuid) from public, anon;
 grant execute on function public.is_channel_owner(uuid) to authenticated;
 
 -- ── 방 이름 바꾸기 ──

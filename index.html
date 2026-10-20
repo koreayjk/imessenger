@@ -1293,6 +1293,9 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
         <div id="panel-close" onclick="closeMobilePanel()" style="display:none;width:44px;height:44px;align-items:center;justify-content:center;cursor:pointer;border-radius:10px" onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background='transparent'">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--ink3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
         </div>
+        <div class="header-action" id="panel-bookmarks" title="북마크" onclick="openBookmarks()" style="cursor:pointer;display:none">
+          <span style="font-size:16px;line-height:1">🔖</span>
+        </div>
         <div class="header-action" title="새 채널/DM 추가" onclick="showAddChannelModal()" style="cursor:pointer">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--ink3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
         </div>
@@ -4376,6 +4379,7 @@ async function init() {
     sb.from('channel_members').select('channel_id,favorite').eq('member_id', ME.id),
     loadChannelGroups(),
     loadMyChannelPrefs(),   // 내 순서·내 그룹 — 공동체 기본값 위에 얹는다
+    loadMyMarks(),          // 북마크·나에게만 삭제
     loadMyBlocks(),
   ]);
 
@@ -4774,7 +4778,17 @@ async function toggleDmFavorite(id) {
   if (error && schoolTableMissing(error)) showUploadToast('DB 설치 필요: db/채널그룹_즐겨찾기_DB설치.sql');
 }
 
+// 북마크 단추 — 채팅 화면이고 담아 둔 것이 있을 때만 내민다.
+//  아무것도 없는 단추를 늘 띄워 두면 자리만 차지한다.
+function paintBookmarkBtn() {
+  const el = document.getElementById('panel-bookmarks');
+  if (!el) return;
+  el.style.display = (mode === 'chat' && myBookmarks.size) ? 'flex' : 'none';
+  el.title = t(`북마크 ${myBookmarks.size}개`, `${myBookmarks.size} bookmarks`);
+}
+
 function renderPanel() {
+  try { paintBookmarkBtn(); } catch (_) {}
   const isAdmin = canViewAllCommunities();
   const canEdit = canReorderChannels();
   const allVisible = isAdmin ? channels : channels.filter(c => myChannelIds.has(c.id));
@@ -5377,6 +5391,9 @@ function msgActions(m) {
   if (plain) a.push({ k:'share',  icon:'📤', label:t('공유','Share'),           call:`shareMsg('${id}')` });
   if (m.kind !== 'poll')
     a.push({ k:'note', icon:'📝', label:t('IM노트에 저장','Save to IM Notes'), call:`saveMsgAsNote('${id}')` });
+  a.push(myBookmarks.has(m.id)
+    ? { k:'unbook', icon:'🔖', label:t('북마크 빼기','Remove bookmark'), call:`toggleBookmark('${id}')` }
+    : { k:'book',   icon:'🔖', label:t('북마크',    'Bookmark'),        call:`toggleBookmark('${id}')` });
   if (canManageAnnounce() && plain)
     a.push({ k:'announce', icon:'📢', label:t('공지로 등록','Pin as notice'), call:`setAnnouncement('${id}')` });
   if (m.reactions && m.reactions.length)
@@ -5389,8 +5406,15 @@ function msgActions(m) {
     a.push({ k:'hide', icon: m.hidden_at ? '👁' : '🙈',
              label: m.hidden_at ? t('가린 것 되돌리기','Unhide') : t('이 메시지 가리기','Hide this message'),
              call:`toggleHideMsg('${id}')` });
+  // 내 화면에서만 치우기 — 남의 화면에는 그대로 남는다.
+  //  모두에게서 지우는 '삭제' 는 아래에 따로 있다(내 글일 때만).
+  //  아이콘이 🙈 이면 바로 아래의 '이 메시지 가리기'(관리자용)와 겹친다.
+  //  한 메뉴에 같은 그림이 둘이면 무엇이 무엇인지 알 수 없다.
+  a.push({ k:'hideme', icon:'🧹', label:t('나에게만 삭제','Delete for me'),
+           call:`hideForMe('${id}')` });
   if (isMine)
-    a.push({ k:'del', icon:'🗑', label:t('삭제','Delete'), danger:true, call:`askDeleteMsg('${id}')` });
+    a.push({ k:'del', icon:'🗑', label:t('모두에게서 삭제','Delete for everyone'), danger:true,
+             call:`askDeleteMsg('${id}')` });
   return a;
 }
 
@@ -5572,6 +5596,19 @@ function msgHtml(m, prev, readMap={}) {
   const avStyle = `background:${sender.color}`;
   const dateAttr = m.created_at ? new Date(m.created_at).toDateString() : '';
 
+  // 내가 '나에게만 삭제' 한 메시지 — 지우지 않고 접는다.
+  //  지워 버리면 앞뒤 대화가 끊겨서 무슨 얘기인지 알 수 없게 된다.
+  if (myHiddenMsgs.has(m.id) && !_myHiddenShown.has(m.id)) {
+    return `<div class="msg-row" data-sender="${m.sender_id}" data-id="${m.id}" data-date="${dateAttr}" style="position:relative">
+      <div style="flex:1;display:flex;align-items:center;gap:8px;padding:7px 12px;margin:2px 0;border-radius:11px;background:var(--s2);border:1px dashed var(--border);font-size:12.5px;color:var(--ink3)">
+        <span>🙈</span>
+        <span style="flex:1">${t('내 화면에서 치운 메시지','You removed this from your screen')}</span>
+        <span onclick="revealMyHidden('${escJs(m.id)}')" style="color:var(--accent);font-weight:600;cursor:pointer;flex-shrink:0">${t('보기','Show')}</span>
+        <span onclick="unhideForMe('${escJs(m.id)}')" style="color:var(--accent);font-weight:600;cursor:pointer;flex-shrink:0">${t('되돌리기','Undo')}</span>
+      </div>
+    </div>`;
+  }
+
   // 차단한 사람의 메시지 — 지우지 않고 접는다.
   //  지워 버리면 앞뒤 대화가 끊겨서 무슨 얘기인지 알 수 없게 된다.
   //  상대에게는 차단당한 사실을 알리지 않는다. 알리면 그게 또 다툼이 된다.
@@ -5614,6 +5651,10 @@ function msgHtml(m, prev, readMap={}) {
       <div style="font-weight:600;color:var(--adeep);margin-bottom:2px">${escHtml(m.reply_to_name||'')}</div>
       <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:240px">${escHtml(m.reply_to_text||'')}</div>
     </div>` : '';
+
+  // 북마크 표 — 담아 둔 걸 목록에서 바로 알아보게
+  const bookMark = myBookmarks.has(m.id)
+    ? `<span title="${escAttr(t('북마크','Bookmarked'))}" style="font-size:11px;margin-left:4px">🔖</span>` : '';
 
   // 리액션 표시
   const reactions = (m.reactions && m.reactions.length) ? `
@@ -5687,7 +5728,7 @@ function msgHtml(m, prev, readMap={}) {
     return `<div class="msg-row mine${sameAsPrev?' same-sender':''}" data-sender="${m.sender_id}" data-id="${m.id}" data-date="${m.created_at ? new Date(m.created_at).toDateString() : ''}" style="position:relative">
       <div class="msg-avatar" style="${avStyle}">${sender.initials}</div>
       <div class="msg-body">
-        ${!sameAsPrev ? `<div class="msg-meta"><span class="name">${sender.name}</span><span class="time">${fmtTime(m.created_at)}</span></div>` : ''}
+        ${!sameAsPrev ? `<div class="msg-meta"><span class="name">${sender.name}</span><span class="time">${fmtTime(m.created_at)}</span>${bookMark}</div>` : ''}
         ${replyQuote}
         <div class="bubble${m.kind==='poll'?' poll-bubble':''}${isRich?' rich-bubble':''}"${memHi?' style="box-shadow:inset 3px 0 0 #F0B429;background:rgba(240,180,41,.12)"':''}>${bubbleContent}</div>
         ${reactions}
@@ -5698,7 +5739,7 @@ function msgHtml(m, prev, readMap={}) {
   return `<div class="msg-row${sameAsPrev?' same-sender':''}" data-sender="${m.sender_id}" data-id="${m.id}" data-date="${m.created_at ? new Date(m.created_at).toDateString() : ''}" style="position:relative">
     <div class="msg-avatar" onclick="openMemberCard('${m.sender_id}')" title="${escAttr(t('눌러서 보기','Tap to view'))}" style="${avStyle};cursor:pointer">${sender.initials}</div>
     <div class="msg-body">
-      ${!sameAsPrev ? `<div class="msg-meta"><span class="name" onclick="openMemberCard('${m.sender_id}')" style="cursor:pointer">${sender.name}</span><span class="time">${fmtTime(m.created_at)}</span></div>` : ''}
+      ${!sameAsPrev ? `<div class="msg-meta"><span class="name" onclick="openMemberCard('${m.sender_id}')" style="cursor:pointer">${sender.name}</span><span class="time">${fmtTime(m.created_at)}</span>${bookMark}</div>` : ''}
       ${replyQuote}
       <div class="bubble${m.kind==='poll'?' poll-bubble':''}${isRich?' rich-bubble':''}"${memHi?' style="box-shadow:inset 3px 0 0 #F0B429;background:rgba(240,180,41,.12)"':''}>${bubbleContent}</div>
       ${reactions}
@@ -7191,6 +7232,132 @@ async function confirmDeleteMsg() {
 let myBlocks     = new Set();   // 내가 차단한 사람
 let _msgById     = {};          // 화면에 그린 메시지 (한 줄만 다시 그릴 때 쓴다)
 let _lastReadMap = {};
+// ── 내 표시 — 북마크 · 나에게만 삭제 ────────────────────────────
+//  둘 다 나만의 표시다. 남의 화면은 안 건드린다.
+//  '나에게만 삭제' 는 글을 지우지 않는다. 가린 표시만 남긴다 —
+//  신고가 들어왔을 때 관리자가 무엇을 신고한 건지 알 수 있어야 하고,
+//  한쪽이 치웠다고 앞뒤 대화가 끊기면 안 된다.
+let myBookmarks = new Set();    // 북마크한 메시지
+let myHiddenMsgs = new Set();   // 나에게만 지운 메시지
+let _marksMissing = false;      // 아직 표를 안 깔았다
+let _myHiddenShown = new Set(); // 내가 치웠지만 '되돌리기' 로 다시 편 것
+
+async function loadMyMarks() {
+  if (!ME) return;
+  _marksMissing = false;
+  try {
+    const { data, error } = await sb.from('my_message_marks')
+      .select('message_id,bookmarked,hidden').eq('member_id', ME.id);
+    if (error) { _marksMissing = true; myBookmarks = new Set(); myHiddenMsgs = new Set(); return; }
+    myBookmarks = new Set((data || []).filter(r => r.bookmarked).map(r => r.message_id));
+    myHiddenMsgs = new Set((data || []).filter(r => r.hidden).map(r => r.message_id));
+  } catch (_) { _marksMissing = true; }
+}
+
+function marksNeedSql() {
+  showUploadToast(t('표시를 저장하지 못했어요 — db/북마크_나만삭제_DB설치.sql 을 돌려주세요',
+                    'Could not save — run db/북마크_나만삭제_DB설치.sql'));
+}
+
+async function setMyMark(messageId, patch) {
+  if (!ME) return false;
+  const row = { member_id: ME.id, message_id: messageId,
+                bookmarked: myBookmarks.has(messageId),
+                hidden: myHiddenMsgs.has(messageId), ...patch };
+  const { error } = await sb.from('my_message_marks')
+    .upsert(row, { onConflict: 'member_id,message_id' });
+  if (error) { _marksMissing = true; marksNeedSql(); return false; }
+  return true;
+}
+
+async function toggleBookmark(id) {
+  const on = !myBookmarks.has(id);
+  if (on) myBookmarks.add(id); else myBookmarks.delete(id);
+  redrawMsgRow(id);
+  if (!await setMyMark(id, { bookmarked: on })) {
+    if (on) myBookmarks.delete(id); else myBookmarks.add(id);   // 되돌린다
+    redrawMsgRow(id);
+    return;
+  }
+  showUploadToast(on ? t('🔖 북마크에 담았어요','🔖 Bookmarked')
+                     : t('북마크에서 뺐어요','Removed from bookmarks'));
+}
+
+async function hideForMe(id) {
+  if (!confirm(t('이 메시지를 내 화면에서만 치울까요?\n다른 사람 화면에는 그대로 남습니다.',
+                 'Remove this message from your screen only?\nIt stays on everyone else\'s.'))) return;
+  myHiddenMsgs.add(id);
+  _myHiddenShown.delete(id);
+  redrawMsgRow(id);
+  if (!await setMyMark(id, { hidden: true })) { myHiddenMsgs.delete(id); redrawMsgRow(id); return; }
+  showUploadToast(t('내 화면에서만 치웠어요','Removed from your screen'));
+}
+
+async function unhideForMe(id) {
+  myHiddenMsgs.delete(id);
+  _myHiddenShown.delete(id);
+  redrawMsgRow(id);
+  await setMyMark(id, { hidden: false });
+}
+
+// 북마크함 — 내가 담아 둔 메시지를 모아 본다
+async function openBookmarks() {
+  if (!myBookmarks.size) {
+    showUploadToast(t('담아 둔 메시지가 없어요. 메시지를 길게 눌러 🔖 를 고르세요',
+                      'No bookmarks yet — long-press a message and pick 🔖'));
+    return;
+  }
+  const ids = Array.from(myBookmarks).slice(0, 200);
+  const { data: msgs, error } = await sb.from('messages')
+    .select('id,channel_id,sender_id,sender_name,text,kind,format,created_at')
+    .in('id', ids).order('created_at', { ascending: false });
+  if (error) { showUploadToast(t('불러오지 못했어요 — ','Could not load — ') + error.message); return; }
+  const chName = {};
+  channels.forEach(c => { chName[c.id] = c.name; });
+  const rows = (msgs || []).map(m => `
+    <div style="display:flex;gap:10px;padding:11px 12px;border-radius:12px;background:var(--s2);margin-bottom:8px;cursor:pointer"
+         onclick="goToBookmark('${escJs(m.id)}','${escJs(m.channel_id)}')">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:11.5px;color:var(--ink3);margin-bottom:3px">
+          ${escHtml(chName[m.channel_id] || t('(방 이름 없음)','(room)'))} · ${escHtml(m.sender_name || '')} · ${fmtTime(m.created_at)}</div>
+        <div style="font-size:13.5px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical">${escHtml(msgPlainText ? msgPlainText(m) : (m.text || ''))}</div>
+      </div>
+      <button class="hov-soft" title="${escAttr(t('북마크 빼기','Remove'))}"
+        onclick="event.stopPropagation();toggleBookmark('${escJs(m.id)}');openBookmarks()"
+        style="width:28px;height:28px;border-radius:8px;font-size:13px;flex-shrink:0;color:var(--ink3)">✕</button>
+    </div>`).join('');
+  const modal = document.createElement('div');
+  modal.id = 'bookmark-modal';
+  modal.style.cssText = 'position:fixed;inset:0;z-index:260;background:rgba(15,23,42,.5);display:flex;align-items:center;justify-content:center;padding:16px';
+  modal.innerHTML = `
+    <div style="background:var(--surface);border-radius:20px;width:100%;max-width:460px;max-height:78vh;display:flex;flex-direction:column;box-shadow:var(--sh-3);overflow:hidden">
+      <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px">
+        <div style="font-size:16px;font-weight:700;flex:1">🔖 ${t('북마크','Bookmarks')} <span style="color:var(--ink3);font-weight:500">${(msgs||[]).length}</span></div>
+        <button class="hov-soft" onclick="document.getElementById('bookmark-modal').remove()"
+          style="width:30px;height:30px;border-radius:9px;font-size:15px;color:var(--ink3)">✕</button>
+      </div>
+      <div style="flex:1;overflow-y:auto;padding:12px">${rows || `<div style="padding:28px;text-align:center;color:var(--ink3);font-size:13px">${t('담아 둔 메시지가 없어요','No bookmarks yet')}</div>`}</div>
+    </div>`;
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  document.body.appendChild(modal);
+}
+
+async function goToBookmark(msgId, chId) {
+  const el = document.getElementById('bookmark-modal'); if (el) el.remove();
+  if (!chId) return;
+  if (!currentChannel || currentChannel.id !== chId) await openChannel(chId);
+  setTimeout(() => {
+    const row = document.querySelector('.msg-row[data-id="' + cssEsc(msgId) + '"]');
+    if (row) {
+      row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      row.style.transition = 'background .2s'; row.style.background = 'rgba(240,180,41,.22)';
+      setTimeout(() => { row.style.background = ''; }, 1600);
+    } else {
+      showUploadToast(t('그 메시지는 더 거슬러 올라가야 보여요','Scroll further up to find it'));
+    }
+  }, 700);
+}
+
 let _blockShown  = new Set();   // 차단했지만 '보기' 를 눌러 펼친 메시지
 let _hiddenShown = new Set();   // 가려졌지만 교직원이 펼쳐 본 메시지
 let _reportMsgId = null;
@@ -7258,6 +7425,7 @@ function redrawAllMsgRows() {
   });
 }
 
+function revealMyHidden(id) { _myHiddenShown.add(id); redrawMsgRow(id); }
 function revealBlocked(id) { _blockShown.add(id);  redrawMsgRow(id); }
 function revealHidden(id)  { _hiddenShown.add(id); redrawMsgRow(id); }
 
@@ -10443,9 +10611,10 @@ async function renderProfilePage() {
       <div class="adm-card" style="margin-bottom:16px">
         <div style="font-size:14px;font-weight:700;color:var(--adeep);margin-bottom:16px">👤 ${t('기본 정보','Basic Info')}</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px">
-          <div>${inp('name', t('이름','Name'), ME.name)}</div>
+          <div>${inp('name', t('표시 이름','Display Name'), ME.name)}</div>
           <div>${inp('family_name', t('영문 성 (Family Name)','Family Name'), ME.family_name, 'text', t('예: Kim','e.g. Kim'))}</div>
         </div>
+        <div style="font-size:12px;color:var(--ink3);margin:-4px 0 12px;line-height:1.5">${t('채팅·명단에 보이는 이름입니다. 서류에 찍히는 정식 이름은 생활기록부 › 인적사항에서 따로 적어요.','This is the name shown in chat and lists. Your legal name for documents is kept separately in Records › Personal.')}</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px">
           <div>${sel('gender', t('성별','Gender'), ME.gender, ['남','여'])}</div>
           <div>${inp('birth_date', t('생년월일','Date of Birth'), ME.birth_date, 'date')}</div>
@@ -11276,8 +11445,8 @@ function getTcsSectionFields(sectionId) {
   const F = {
     personal: [
       {key:'photo', label:t('증명사진','ID Photo'), type:'photo'},
-      {key:'name_ko', label:t('성명 (한글)','Name (Korean)'), type:'text', placeholder:t('홍길동','Hong Gildong')},
-      {key:'name_en', label:t('성명 (영문)','Name (English)'), type:'text', placeholder:'Hong Gildong'},
+      {key:'name_ko', label:t('정식 이름 (한글, 서류용)','Legal Name (Korean, for documents)'), type:'text', placeholder:t('홍길동','Hong Gildong'), hint:t('증명서·생활기록부에 찍히는 이름입니다. 채팅에 보이는 표시 이름과 달라도 괜찮아요.','Printed on certificates and records. It may differ from your chat display name.')},
+      {key:'name_en', label:t('정식 이름 (영문, 서류용)','Legal Name (English, for documents)'), type:'text', placeholder:'Hong Gildong'},
       {key:'birth', label:t('생년월일','Date of Birth'), type:'date'},
       {key:'gender', label:t('성별','Gender'), type:'select', options:['남','여']},
       {key:'nationality', label:t('국적','Nationality'), type:'text', placeholder:t('대한민국','Republic of Korea')},
@@ -13517,6 +13686,8 @@ function renderTcsField(field, value) {
   const val = value || '';
   const labelStyle = 'font-size:12px;font-weight:600;color:var(--ink3);margin-bottom:6px;display:block;text-transform:uppercase;letter-spacing:.04em';
   const inputStyle = 'width:100%;padding:10px 13px;border-radius:10px;border:1.5px solid var(--border);background:var(--s2);font:14px var(--font);color:var(--ink);outline:none;transition:border-color .15s';
+  // 칸 밑에 붙는 한 줄 설명 (field.hint)
+  const hint = field.hint ? `<div style="font-size:11.5px;color:var(--ink3);line-height:1.6;margin-top:5px;word-break:keep-all">${escHtml(field.hint)}</div>` : '';
 
   // 증명사진 — 값은 숨은 칸에 URL 로 들고 있다가 저장할 때 같이 올라간다
   if (field.type === 'photo') {
@@ -13545,6 +13716,7 @@ function renderTcsField(field, value) {
         style="${inputStyle};resize:vertical;line-height:1.6"
         onfocus="this.style.borderColor='#1d3a5f';this.style.background='white'"
         onblur="this.style.borderColor='var(--border)';this.style.background='var(--s2)'">${val}</textarea>
+      ${hint}
     </div>`;
   }
   if (field.type === 'select') {
@@ -13554,6 +13726,7 @@ function renderTcsField(field, value) {
         <option value="">${t('선택해주세요','Please select')}</option>
         ${field.options.map(o => `<option value="${o}" ${val===o?'selected':''}>${o}</option>`).join('')}
       </select>
+      ${hint}
     </div>`;
   }
   return `<div style="margin-bottom:16px">
@@ -13562,6 +13735,7 @@ function renderTcsField(field, value) {
       style="${inputStyle}"
       onfocus="this.style.borderColor='#1d3a5f';this.style.background='white'"
       onblur="this.style.borderColor='var(--border)';this.style.background='var(--s2)'"/>
+    ${hint}
   </div>`;
 }
 
@@ -15793,8 +15967,8 @@ async function rejectInCommunity(id, cid, cname) {
 async function renameMember(memberId) {
   const m = members[memberId];
   const was = (m && m.name) || '';
-  const next = prompt(t('이 사람의 이름을 무엇으로 바꿀까요?\n(채팅과 목록에 보이는 이름입니다)',
-                        'New name?\n(the name shown in chat and lists)'), was);
+  const next = prompt(t('이 사람의 표시 이름을 무엇으로 바꿀까요?\n(채팅과 목록에 보이는 이름입니다. 서류에 찍히는 정식 이름은 생활기록부 › 인적사항에 따로 있습니다)',
+                        'New display name?\n(shown in chat and lists; the legal name for documents is kept in Records › Personal)'), was);
   if (next === null) return;                       // 취소
   const name = String(next).trim();
   if (!name) { showUploadToast(t('이름을 비울 수는 없어요','A name cannot be empty')); return; }

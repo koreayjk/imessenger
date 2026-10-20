@@ -1373,6 +1373,7 @@ create or replace function public.member_name_of(target uuid)
 returns text language sql security definer stable set search_path = public as $$
   select name from public.members where id = target;
 $$;
+revoke all on function public.member_name_of(uuid) from public, anon;
 grant execute on function public.member_name_of(uuid) to authenticated;
 
 drop policy if exists members_name_guard on public.members;
@@ -1405,6 +1406,7 @@ set search_path = public as $$
        and coalesce(c.kind, 'topic') <> 'dm'   -- 1:1 에는 방장이 없다
   );
 $$;
+revoke all on function public.is_channel_owner(uuid) from public, anon;
 grant execute on function public.is_channel_owner(uuid) to authenticated;
 
 -- ── 방 이름 바꾸기 ──
@@ -1526,3 +1528,39 @@ grant select, insert, update, delete on public.events to authenticated;
 
 notify pgrst, 'reload schema';
 
+-- ════════════════════════════════════════════════════════════════════
+--  🔖 17) 북마크 · 나에게만 삭제  (db/북마크_나만삭제_DB설치.sql)
+--
+--  카톡 메뉴에 있는데 없던 둘입니다. 둘 다 '나만의 표시' 라 한 표에
+--  담습니다. '나에게만 삭제' 는 글을 지우지 않고 가린 표시만 남깁니다 —
+--  신고를 처리하려면 원문이 있어야 하고, 한쪽이 치웠다고 대화가
+--  끊기면 안 됩니다.
+-- ════════════════════════════════════════════════════════════════════
+
+create table if not exists public.my_message_marks (
+  member_id   uuid not null,
+  message_id  uuid not null,
+  bookmarked  boolean not null default false,
+  hidden      boolean not null default false,   -- 나에게만 삭제
+  created_at  timestamptz default now(),
+  primary key (member_id, message_id)
+);
+
+alter table public.my_message_marks enable row level security;
+drop policy if exists my_message_marks_own on public.my_message_marks;
+create policy my_message_marks_own on public.my_message_marks
+  for all to authenticated
+  using ( member_id = auth.uid() ) with check ( member_id = auth.uid() );
+
+-- 북마크함을 열 때 '내 것만, 최근 것부터'
+create index if not exists my_message_marks_book_idx
+  on public.my_message_marks (member_id, bookmarked, created_at desc);
+
+grant select, insert, update, delete on public.my_message_marks to authenticated;
+
+notify pgrst, 'reload schema';
+
+
+-- ── 전체 확인 ────────────────────────────────────────────────────
+-- 이 줄이 보이면 파일 끝까지 다 돌았다는 뜻입니다.
+select '✅ 설치 끝 — 여기까지 보이면 전부 돌았어요' as "결과";

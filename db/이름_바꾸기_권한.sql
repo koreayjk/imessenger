@@ -25,6 +25,10 @@ create or replace function public.member_name_of(target uuid)
 returns text language sql security definer stable set search_path = public as $$
   select name from public.members where id = target;
 $$;
+-- 기본값은 '누구나 실행' 이다. 먼저 걷고 로그인한 사람에게만 준다.
+--  안 걷으면 익명으로도 부를 수 있고, 이 함수는 security definer 라
+--  RLS 를 넘어 이름을 돌려준다. 멤버 id 를 아는 사람이 이름을 알아낼 수 있다.
+revoke all on function public.member_name_of(uuid) from public, anon;
 grant execute on function public.member_name_of(uuid) to authenticated;
 
 drop policy if exists members_name_guard on public.members;
