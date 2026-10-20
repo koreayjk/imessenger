@@ -5542,7 +5542,7 @@ function openMsgMenu(id, x, y) {
       ${reactionQuick().slice(0, narrow ? 7 : 4).map(e => `<button class="hov-soft" onclick="msgMenuReact('${escJs(e)}')"
         style="flex-shrink:0;width:${narrow ? 42 : 34}px;height:${narrow ? 42 : 34}px;
                border-radius:10px;font-size:${narrow ? 23 : 19}px;line-height:1">${e}</button>`).join('')}
-      <button onclick="msgMenuRun('react')" title="${t('더 보기','More')}"
+      <button onclick="msgMenuMoreEmoji(this)" title="${t('이모지 더 보기','More emojis')}"
         style="flex-shrink:0;width:${narrow ? 42 : 34}px;height:${narrow ? 42 : 34}px;border:none;background:var(--s2);
                border-radius:10px;font-size:${narrow ? 19 : 16}px;line-height:1;cursor:pointer;color:var(--ink2)">＋</button>
     </div>`;
@@ -5596,6 +5596,18 @@ function msgMenuRun(key) {
   if (!a) return;
   try { new Function(a.call).call(document.body); } catch (e) { console.warn('메뉴 실행 실패', key, e); }
 }
+// 메뉴의 ＋ — 400개 넘는 이모지 판을 연다.
+//  예전엔 msgMenuRun('react') 로 돌려서 빠른 줄(8개)을 다시 띄웠다.
+//  방금 본 여덟 개가 또 나오니 '종류가 이것뿐인가' 싶을 수밖에 없다.
+//  게다가 그 길은 this 가 <body> 라 창이 화면 맨 위에 붙었다.
+function msgMenuMoreEmoji(btn) {
+  const id = _msgMenuId;
+  const at = anchorRect(btn);          // 메뉴를 닫기 전에 자리를 재 둔다
+  closeMsgMenu();
+  if (!id) return;
+  openEmojiPanel((e) => { emojiRemember(e); toggleReaction(id, e); }, at);
+}
+
 function msgMenuReact(emoji) {
   const id = _msgMenuId;
   closeMsgMenu();
@@ -6721,6 +6733,23 @@ function closeEmojiPanel() {
 function emojiPanelEsc(e) { if (e.key === 'Escape') closeEmojiPanel(); }
 
 // anchor 가 있으면 그 옆에, 없거나 좁은 화면이면 아래에서 올라오는 창
+// 창을 어디에 붙일지 잰다.
+//  화면에서 이미 떼어 낸 요소나 <body> 를 주면 getBoundingClientRect 가
+//  0,0 을 돌려준다. 그대로 쓰면 창이 왼쪽 맨 위 — 상태표시줄 자리에
+//  가서 붙고, 거기선 눌리지도 않는다. 그런 것은 '자리 없음' 으로 본다.
+function anchorRect(a) {
+  if (!a) return null;
+  if (typeof a.getBoundingClientRect === 'function') {
+    if (a === document.body || a === document.documentElement) return null;
+    if (a.isConnected === false) return null;
+    const r = a.getBoundingClientRect();
+    if (!r.width && !r.height) return null;
+    return r;
+  }
+  if (typeof a.top === 'number' && typeof a.left === 'number') return a;   // 미리 재 둔 자리
+  return null;
+}
+
 function openEmojiPanel(onPick, anchor, opts) {
   closeEmojiPanel();
   document.querySelectorAll('.reaction-picker').forEach(p => p.remove());
@@ -6746,14 +6775,20 @@ function openEmojiPanel(onPick, anchor, opts) {
   box.addEventListener('click', (e) => e.stopPropagation());
   document.body.appendChild(box);
 
-  if (!narrow && anchor) {
-    const r = anchor.getBoundingClientRect();
+  if (!narrow) {
+    const r = anchorRect(anchor);
     const w = 330, h = Math.min(380, box.offsetHeight || 380);
-    let left = Math.min(Math.max(8, r.left), window.innerWidth - w - 8);
-    let top = r.top - h - 8;
-    if (top < 8) top = Math.min(r.bottom + 8, window.innerHeight - h - 8);
-    box.style.left = left + 'px';
-    box.style.top = Math.max(8, top) + 'px';
+    if (r) {
+      let left = Math.min(Math.max(8, r.left), window.innerWidth - w - 8);
+      let top = r.top - h - 8;
+      if (top < 8) top = Math.min(r.bottom + 8, window.innerHeight - h - 8);
+      box.style.left = left + 'px';
+      box.style.top = Math.max(8, top) + 'px';
+    } else {
+      // 붙일 자리를 모를 때 — 맨 위가 아니라 화면 가운데에 띄운다
+      box.style.left = Math.max(8, (window.innerWidth - w) / 2) + 'px';
+      box.style.top = Math.max(8, (window.innerHeight - h) / 2) + 'px';
+    }
   }
 
   document.addEventListener('keydown', emojiPanelEsc);
@@ -6944,11 +6979,16 @@ function showReactionPicker(msgId, btn) {
       style="width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;
              font:700 17px var(--font);color:var(--ink3);cursor:pointer;border:1.5px dashed var(--border)"
       onmouseover="this.style.background='var(--s3)'" onmouseout="this.style.background=''">+</div>`;
-  const rect = btn.getBoundingClientRect();
+  const rect = anchorRect(btn);
   document.body.appendChild(picker);
-  const w = picker.offsetWidth || 330;
-  picker.style.top = Math.max(8, rect.top - picker.offsetHeight - 6) + 'px';
-  picker.style.left = Math.min(Math.max(8, rect.left), window.innerWidth - w - 8) + 'px';
+  const w = picker.offsetWidth || 330, h = picker.offsetHeight || 50;
+  if (rect) {
+    picker.style.top = Math.max(8, rect.top - h - 6) + 'px';
+    picker.style.left = Math.min(Math.max(8, rect.left), window.innerWidth - w - 8) + 'px';
+  } else {
+    picker.style.top = Math.max(8, (window.innerHeight - h) / 2) + 'px';
+    picker.style.left = Math.max(8, (window.innerWidth - w) / 2) + 'px';
+  }
   setTimeout(() => document.addEventListener('click', () => picker.remove(), {once:true}), 100);
 }
 
@@ -6959,9 +6999,11 @@ function reactionPick(msgId, emoji) {
 }
 
 function reactionMore(msgId, el) {
-  const anchor = el;
+  // ⚠️ 자리를 '먼저' 재 둔다. el 은 아래에서 지울 판 안에 들어 있어서,
+  //    지운 뒤에 재면 0,0 이 나오고 창이 화면 맨 위에 가서 붙는다.
+  const at = anchorRect(el);
   document.querySelectorAll('.reaction-picker').forEach(p => p.remove());
-  openEmojiPanel((e) => toggleReaction(msgId, e), anchor);
+  openEmojiPanel((e) => { emojiRemember(e); toggleReaction(msgId, e); }, at);
 }
 
 async function toggleReaction(msgId, emoji) {
