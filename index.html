@@ -347,6 +347,17 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
   overflow: hidden;
 }
 #tcs-view > div:first-child, #mock-view > div:first-child, #reading-view > div:first-child, #profile-view > div:first-child { position: relative; }
+/* 메뉴 이름은 '굵게 썼을 때의 폭' 을 늘 잡아 둔다.
+   고른 단추만 굵게(700) 그리면 글자가 넓어져서, 누를 때마다 옆
+   단추들이 통째로 밀린다. 안 보이는 굵은 사본으로 자리를 잡아 두고
+   그 위에 진짜 글자를 겹쳐 놓으면, 굵기가 바뀌어도 폭은 그대로다. */
+.sn-lb { display: inline-grid; }
+.sn-lb::after {
+  content: attr(data-lb); font-weight: 700;
+  height: 0; overflow: hidden; visibility: hidden; pointer-events: none;
+}
+.sn-lb, .sn-lb::after { grid-area: 1 / 1; }
+
 .subnav-center { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
 .subnav-center::-webkit-scrollbar { display: none; }
 .subnav-center > * { margin-left: auto; margin-right: auto; flex-shrink: 0; }
@@ -361,6 +372,13 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
    화면마다 알맞은 폭은 달라도(표는 넓게, 입력폼은 좁게) 왼쪽 끝은 언제나 같은 자리다.
    폭마다 margin:0 auto 로 따로 가운데 정렬하면 탭을 옮길 때마다 내용이 좌우로 흔들린다. */
 .spage { margin-left: max(0px, calc((100% - 1200px) / 2)); margin-right: 0; }
+
+/* 페이지 틀 — 폭과 자리는 여기 한 곳에서만 정한다.
+   예전엔 쪽마다 1120 / 920 / 760 / 640 / 1320 … 으로 제각각이었고
+   어떤 건 가운데, 어떤 건 왼쪽이었다. 그래서 위 메뉴를 누를 때마다
+   글의 왼쪽 끝이 이리저리 옮겨 다녔다. 한 줄로 묶는다. */
+:root { --page-w: 1180px; }
+.page { width: 100%; max-width: var(--page-w); margin-left: auto; margin-right: auto; }
 
 /* ── 사역자 교육 ── */
 .trprog { display:flex; flex-wrap:wrap; gap:7px; margin-bottom:12px; }
@@ -1782,6 +1800,7 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
             <div style="font-size:11px;color:var(--ink3)" data-ko="60구절과 소교리문답" data-en="60 verses and the catechism">60구절과 소교리문답</div>
           </div>
         </div>
+        <div id="subnav-memory" class="subnav-center"></div>
       </div>
       <div id="memory-page" style="flex:1;overflow-y:auto;padding:24px 28px"></div>
     </div>
@@ -10031,7 +10050,7 @@ async function renderAdminHome() {
   _hwPrevHtml = {};
   if (_seq !== _admSeq) return;   // 늦게 끝났다 — 지금 보고 있는 탭이 아니다
   area.innerHTML = `
-    <div style="max-width:1180px;margin:0 auto">
+    <div class="page">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:6px">
         <div style="font-size:18px;font-weight:700;color:var(--adeep)">🧩 ${t('홈 꾸미기','Edit Home')}</div>
         <div style="display:flex;gap:6px">
@@ -10610,7 +10629,7 @@ async function renderProfilePage() {
     </div>`;
 
   area.innerHTML = `
-    <div style="max-width:920px;margin:0 auto">
+    <div class="page">
 
       <!-- 프로필 카드 -->
       <div style="background:linear-gradient(135deg,#1d3a5f,#2a5298);border-radius:20px;padding:24px;margin-bottom:20px;display:flex;align-items:center;gap:16px">
@@ -12660,7 +12679,7 @@ function snBar(barId, fn, items){
       <span style="font-size:9px;color:var(--ink3)">▼</span>
     </button></div>`;
   }
-  const btn = (x) => `<button onclick="${fn}('${x.key}')" title="${escAttr(x.title || x.label)}" style="height:30px;padding:0 12px;border:none;border-radius:8px;font:${x.active?'700':'600'} 12px var(--font);cursor:pointer;white-space:nowrap;flex-shrink:0;display:inline-flex;align-items:center;gap:5px;background:${x.active?'#1d3a5f':'transparent'};color:${x.active?'#fff':'var(--ink2)'}">${x.icon||''} ${escHtml(x.label)}${snBadge(x.badge, x.active)}</button>`;
+  const btn = (x) => `<button onclick="${fn}('${x.key}')" title="${escAttr(x.title || x.label)}" style="height:30px;padding:0 12px;border:none;border-radius:8px;font:${x.active?'700':'600'} 12px var(--font);cursor:pointer;white-space:nowrap;flex-shrink:0;display:inline-flex;align-items:center;gap:5px;background:${x.active?'#1d3a5f':'transparent'};color:${x.active?'#fff':'var(--ink2)'}">${x.icon||''} <span class="sn-lb" data-lb="${escAttr(x.label)}">${escHtml(x.label)}</span>${snBadge(x.badge, x.active)}</button>`;
   let html = '', prev = null;
   items.forEach(x => { if (prev && x.group && x.group !== prev) html += '<span class="sn-sep"></span>'; if (x.group) prev = x.group; html += btn(x); });
   return `<div data-snbar="${barId}" style="display:inline-flex;align-items:center;gap:2px;background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:3px;white-space:nowrap">${html}</div>`;
@@ -12668,7 +12687,7 @@ function snBar(barId, fn, items){
 function snSheetHtml(items, pick){
   const cell = (x, i) => `<button onclick="${pick}(${i})" style="position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;padding:13px 6px;border:1.5px solid ${x.active?'#1d3a5f':'var(--border)'};background:${x.active?'var(--asoft)':'var(--surface)'};border-radius:13px;cursor:pointer;font:${x.active?'800':'600'} 12px var(--font);color:${x.active?'#1d3a5f':'var(--ink2)'}">
     <span style="font-size:20px;line-height:1">${x.icon || '•'}</span>
-    <span style="text-align:center;line-height:1.35;word-break:keep-all">${escHtml(x.label)}</span>
+    <span class="sn-lb" style="text-align:center;line-height:1.35;word-break:keep-all" data-lb="${escAttr(x.label)}">${escHtml(x.label)}</span>
     ${x.badge ? `<span style="position:absolute;top:6px;right:7px;background:#e53935;color:#fff;font-size:10px;font-weight:700;border-radius:99px;min-width:16px;height:16px;display:flex;align-items:center;justify-content:center;padding:0 4px">${x.badge}</span>` : ''}
   </button>`;
   return `<div style="background:var(--surface);width:100%;border-radius:20px 20px 0 0;padding:10px 14px calc(18px + var(--sab));box-shadow:0 -10px 40px rgba(15,23,42,.22);max-height:78vh;overflow-y:auto">
@@ -12791,6 +12810,7 @@ function tcsSubnavHtml(active) {
     { key:'gishome',    icon:'🏠', label:t('홈','Home'),            active: active==='gishome' },
     { key:'profile',    icon:'👤', label:t('개인정보','Profile'),    active: active==='profile' },
     { key:'reading',    icon:'📖', label:'Triple School',           active: active==='reading' },
+    { key:'memory',     icon:'📜', label:t('성구암송','Memory'),      active: active==='memory' },
     { key:'bookreport', icon:'📝', label:t('독후감','Book Report'),  active: active==='bookreport' },
     { key:'review',     icon:'✍️', label:t('활동후기','Reviews'),     active: active==='review' },
     { key:'mytt',       icon:'🗓', label:t('시간표','Timetable'),    active: active==='mytt' },
@@ -13025,11 +13045,11 @@ function renderReadingStudent() {
   const total = langBooks.length;
 
   if (!readingBooks.length) {
-    page.innerHTML = `<div style="max-width:760px">${readingModeToggle()}<div style="text-align:center;color:var(--ink3);font-size:13px;padding:40px;line-height:1.8">${t('아직 등록된 필독서가 없어요.<br>선생님(관리자)이 [TCS → Triple School → 책 관리]에서 책을 추가하면<br>여기서 읽은 책을 눌러 기록할 수 있어요.','No reading books have been registered yet.<br>Once a teacher (admin) adds books under [TCS → Triple School → Manage Books],<br>you can tap a book here to log it.')}</div></div>`;
+    page.innerHTML = `<div class="page">${readingModeToggle()}<div style="text-align:center;color:var(--ink3);font-size:13px;padding:40px;line-height:1.8">${t('아직 등록된 필독서가 없어요.<br>선생님(관리자)이 [TCS → Triple School → 책 관리]에서 책을 추가하면<br>여기서 읽은 책을 눌러 기록할 수 있어요.','No reading books have been registered yet.<br>Once a teacher (admin) adds books under [TCS → Triple School → Manage Books],<br>you can tap a book here to log it.')}</div></div>`;
     return;
   }
   if (!total) {
-    page.innerHTML = `<div style="max-width:760px">${readingModeToggle()}${readingLangTabs()}${readingLangEmptyHtml()}</div>`;
+    page.innerHTML = `<div class="page">${readingModeToggle()}${readingLangTabs()}${readingLangEmptyHtml()}</div>`;
     return;
   }
 
@@ -13050,7 +13070,7 @@ function renderReadingStudent() {
     </div>`;
   };
 
-  page.innerHTML = `<div style="max-width:760px">
+  page.innerHTML = `<div class="page">
     ${readingModeToggle()}
     ${readingLangTabs()}
     <div style="background:linear-gradient(135deg,#1d3a5f,#2a5298);border-radius:16px;padding:16px 20px;margin-bottom:12px;color:white">
@@ -13114,7 +13134,7 @@ function renderReadingLog(bookId) {
       <div style="display:flex;justify-content:flex-end;margin-top:7px"><button onclick="addReadingNote('${bookId}')" style="height:32px;padding:0 14px;border:none;background:#1d3a5f;color:#fff;border-radius:8px;cursor:pointer;font:700 12px var(--font)">${t('＋ 메모 추가','＋ Add Note')}</button></div>
     </div>`;
 
-  page.innerHTML = `<div style="max-width:640px">
+  page.innerHTML = `<div class="page">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
       <button onclick="initReadingPage()" style="height:32px;padding:0 12px;border-radius:8px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:500 12px var(--font);cursor:pointer">${t('← 목록','← List')}</button>
       <div style="font-size:16px;font-weight:700;color:var(--ink)">${book.title}</div>
@@ -13346,7 +13366,7 @@ async function renderReadingAdmin() {
       </div>`;
   }
 
-  page.innerHTML = `<div style="max-width:760px">
+  page.innerHTML = `<div class="page">
     ${readingModeToggle()}
     ${readingLangTabs()}
     ${summary}
@@ -20726,6 +20746,8 @@ async function renderS360Memory(s) {
 // ③ 학생·누구나 — 내 암송 독립 페이지 (트리플스쿨과 같은 자리)
 async function initMemoryPage() {
   const page = document.getElementById('memory-page'); if (!page) return;
+  const sn = document.getElementById('subnav-memory');
+  if (sn) sn.innerHTML = tcsSubnavHtml('memory');
   memHostId = 'memory-page';
   memMode = 'me';
   memStudent = null;
@@ -20882,9 +20904,9 @@ function memRender() {
         ${APP_LANG==='en'?en:ko} <span style="font-weight:600;font-size:11px;opacity:.75">${one ? c.confirmed + '/' + c.total : c.total}</span></button>`;
     }).join('')}</div>` : '';
 
-  if (memMode === 'manage') { main.innerHTML = `<div style="max-width:760px">${modes}${kindTabs}${langTabs}${memManageHtml()}</div>`; return; }
+  if (memMode === 'manage') { main.innerHTML = `<div class="page">${modes}${kindTabs}${langTabs}${memManageHtml()}</div>`; return; }
   if (memMode === 'all' || (memMode === 'class' && !memStudent)) {
-    main.innerHTML = `<div style="max-width:760px">${modes}${kindTabs}${langTabs}${memClassHtml()}</div>`;
+    main.innerHTML = `<div class="page">${modes}${kindTabs}${langTabs}${memClassHtml()}</div>`;
     return;
   }
 
@@ -20894,7 +20916,7 @@ function memRender() {
   const cpct = c.total ? Math.round(c.confirmed / c.total * 100) : 0;
   const items = memList();
 
-  main.innerHTML = `<div style="max-width:760px">
+  main.innerHTML = `<div class="page">
     ${modes}
     ${memMode === 'class' ? `<div style="display:flex;align-items:center;gap:9px;margin-bottom:12px">
       ${inFrame ? '' : `<button onclick="memPickStudent(null)" style="height:30px;padding:0 11px;border-radius:8px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);font:600 12px var(--font);cursor:pointer">${t('← 반 전체','← Overview')}</button>`}
@@ -21258,7 +21280,7 @@ function renderGisHome() {
     : { icon:'✍️', tag:t('활동후기','Activity Log'), color:'#b45309', bg:'#fef3c7' };
 
   main.innerHTML = `
-  <div style="max-width:1120px;margin:0 auto">
+  <div class="page">
 
     <!-- 인사 헤더 -->
     <div style="background:linear-gradient(135deg,#1d3a5f,#2a5298);border-radius:22px;padding:26px 28px;margin-bottom:20px;color:white;position:relative;overflow:hidden">
@@ -22798,7 +22820,7 @@ function renderStorePage() {
     <button onclick="openStorePassSetup()" style="height:38px;padding:0 15px;border-radius:10px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);font:700 12.5px var(--font);cursor:pointer">🔑 ${d.configured?t('비밀번호 변경','Change password'):t('매점 비밀번호 설정','Set store password')}</button>` : '';
 
   main.innerHTML = `
-  <div style="max-width:1120px;margin:0 auto">
+  <div class="page">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:20px">
       <div>
         <div style="font-size:19px;font-weight:800;color:var(--ink)">🏪 ${escHtml(d.storeName || t('매점 현황','Store overview'))}</div>
@@ -22948,7 +22970,7 @@ function renderLeaveStudent(mine) {
       ${r.reason?`<div style="font-size:12.5px;color:var(--ink2);line-height:1.6">${escHtml(r.reason)}</div>`:''}
       ${r.status!=='pending'&&r.decider_name?`<div style="font-size:10.5px;color:var(--ink3);margin-top:5px">${r.status==='approved'?'✅':'↩︎'} ${escHtml(r.decider_name)} ${t('선생님','(teacher)')}${r.decision_note?` · ${escHtml(r.decision_note)}`:''}</div>`:''}
     </div>`).join('');
-  main.innerHTML = `<div style="max-width:1180px;margin:0 auto;display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap">
+  main.innerHTML = `<div class="page" style="display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap">
     <div style="flex:1 1 360px;min-width:0">
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px">
       <div style="font-size:13px;font-weight:700;color:var(--ink);margin-bottom:10px">📝 ${t('출결 신청서','Leave request form')}</div>
@@ -23201,7 +23223,7 @@ function renderMyTimetable() {
   const seasonBtns = TT_SEASONS.map(s=>`<button onclick="setMttSeason('${s.key}')" style="height:32px;padding:0 14px;border:1px solid ${season===s.key?'#1d3a5f':'var(--border)'};border-radius:9px;cursor:pointer;font:700 12.5px var(--font);background:${season===s.key?'#1d3a5f':'var(--surface)'};color:${season===s.key?'#fff':'var(--ink2)'}">${s.label}${t('학기',' term')}</button>`).join('');
   const shown = ttEntriesForTerm(myTT, mttTerm);
   const finp = `${inp};width:100%`;
-  main.innerHTML = `<div style="max-width:1320px;margin:0 auto;display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap">
+  main.innerHTML = `<div class="page" style="display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap">
     <!-- 왼쪽 패널: 학기 + 입력/수정 폼 -->
     <div style="flex:1 1 250px;max-width:300px;min-width:240px;display:flex;flex-direction:column;gap:12px">
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:12px 13px">
@@ -29571,7 +29593,7 @@ function renderDeposit(list) {
       <div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600;color:var(--ink)">${isIn?t('입금','Deposit'):t('출금','Withdrawal')}${e.memo?` <span style="font-weight:400;color:var(--ink3)">· ${escHtml(e.memo)}</span>`:''}</div><div style="font-size:11.5px;color:var(--ink3)">${e.date||''}</div></div>
       <span style="font-size:15px;font-weight:700;color:${isIn?'#2a7a5a':'#c0392b'};white-space:nowrap">${isIn?'+':'-'}${allowMoney(e.amount,cur)}</span></div>`;
   }).join('');
-  main.innerHTML = `<div style="max-width:720px;margin:0 auto">
+  main.innerHTML = `<div class="page">
     <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px">${bal}</div>
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:18px 20px">
       <div style="font-size:14px;font-weight:800;color:var(--ink2);margin-bottom:4px">${t('내역','History')}</div>
@@ -29702,7 +29724,7 @@ function renderImprove() {
       </div>
     </div>`;
   }).join('');
-  page.innerHTML = `<div style="max-width:760px;margin:0 auto">
+  page.innerHTML = `<div class="page">
     ${form}
     ${filters}
     ${list.length ? cards : `<div style="text-align:center;color:var(--ink3);font-size:13px;padding:30px">${t('아직 올라온 제안이 없어요. 첫 아이디어를 올려보세요!','No suggestions yet. Be the first to post an idea!')}</div>`}
@@ -29926,7 +29948,7 @@ function renderAllowance() {
     </div>`;
   }).join('');
 
-  main.innerHTML = `<div style="max-width:1180px;margin:0 auto">
+  main.innerHTML = `<div class="page">
     <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px">${balCards}</div>
 
     <div style="display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap">
@@ -30243,7 +30265,7 @@ function renderWriting() {
     const bookList = (tsCards||bookMineCards)
       ? `${bookMineCards}${tsCards}`
       : '<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px;background:var(--surface);border:1px solid var(--border);border-radius:12px">'+t('아직 독후감이 없어요. Triple School에서 책을 읽고 독후감을 쓰거나, 왼쪽에서 직접 써보세요!','No book reports yet. Read a book and write a report in Triple School, or write one directly on the left!')+'</div>';
-    main.innerHTML = `<div style="max-width:1180px;margin:0 auto">
+    main.innerHTML = `<div class="page">
       <div style="display:flex;gap:8px;margin-bottom:16px;max-width:520px">
         ${statChip(t('이번 달','This month'), st.month)}
         ${statChip(st.year+t('년',''), st.yearCnt)}
@@ -30282,7 +30304,7 @@ function renderWriting() {
     </div>`;
   } else {
     const catOpts = reviewCats.map(c=>`<option value="${escAttr(c.name)}">${escHtml(c.name)}</option>`).join('') + `<option value="__custom__">＋ ${t('직접 입력','Enter manually')}</option>`;
-    main.innerHTML = `<div style="max-width:1180px;margin:0 auto;display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap">
+    main.innerHTML = `<div class="page" style="display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap">
       <div style="flex:1.35 1 440px;min-width:0">
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px">
         <div style="font-size:13px;font-weight:700;color:var(--ink);margin-bottom:8px">✍️ ${t('활동 후기 쓰기','Write an activity review')}</div>
