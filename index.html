@@ -6690,6 +6690,14 @@ const EMOJI_GROUPS = [
   { key:'sym', icon:'✅', ko:'기호', en:'Symbols', list:[['✅','체크 완료 check done'],['☑️','체크 checkbox'],['✔️','체크 check'],['❌','엑스 x no'],['❎','엑스 cross'],['⭕','동그라미 circle o'],['❗','느낌표 exclamation'],['❓','물음표 question'],['‼️','중요 double exclamation'],['⚠️','주의 warning'],['🚫','금지 forbidden'],['🔴','빨강 red'],['🟠','주황 orange'],['🟡','노랑 yellow'],['🟢','초록 green'],['🔵','파랑 blue'],['🟣','보라 purple'],['⚫','검정 black'],['⚪','하양 white'],['🔺','세모 triangle'],['🔻','역삼각 triangle down'],['🔶','주황마름모 diamond'],['💯','백점 hundred perfect'],['🆗','오케이 ok'],['🆕','새것 new'],['🔝','톱 top'],['🔜','곧 soon'],['➕','더하기 plus'],['➖','빼기 minus'],['✖️','곱하기 multiply'],['➗','나누기 divide'],['♾️','무한 infinity'],['💬','말풍선 speech'],['💭','생각 thought'],['🗯️','화남말풍선 anger'],['🔍','돋보기 search'],['📌','핀 pin'],['📍','위치 location'],['🔗','링크 link'],['📎','클립 clip'],['🎉','축하 party popper'],['🎊','축하 confetti'],['🎈','풍선 balloon'],['🎀','리본 ribbon']] },
 ];
 
+// '최근' 칸을 채울 밑감. 처음 열었을 때도, 몇 개 안 써 봤을 때도
+// 칸이 비어 보이지 않게 한다.
+const EMOJI_POPULAR = [
+  '👍','❤️','😂','🙏','🔥','👏','😮','😢','🥹','😊','🤣','😍','🥰','😭','😅','🙂',
+  '😉','😎','🤔','😴','🤗','🥳','😇','✅','💯','✨','🎉','🎊','⭐','💪','🙌','🤝',
+  '👋','👌','✌️','🫶','🌸','🌈','☀️','🍀','☕','🍰','🎁','🎵','📚','⚽','🏆','🚀',
+];
+
 const EMOJI_RECENT_KEY = 'tcs_emoji_recent';
 function emojiRecent() {
   try {
@@ -6756,7 +6764,7 @@ function openEmojiPanel(onPick, anchor, opts) {
   _emojiPick = onPick;
   _emojiKeep = !!(opts && opts.keepOpen);
   _emojiOnClose = (opts && opts.onClose) || null;
-  _emojiTab = emojiRecent().length ? 'recent' : EMOJI_GROUPS[0].key;
+  _emojiTab = 'recent';   // 이제 최근 칸은 자주 쓰는 것으로 채워져 늘 꽉 찬다
   _emojiQuery = '';
 
   const narrow = window.innerWidth < 560;
@@ -6831,10 +6839,12 @@ function emojiGridHtml() {
         ${t('찾는 이모지가 없어요','No emoji found')}</div>`;
     }
   } else if (_emojiTab === 'recent') {
+    // 쓴 것이 한둘뿐이면 칸이 휑해서 '이게 다인가' 싶다. 자주 쓰는 것으로
+    // 아래를 채운다 — 찾기를 해야만 이모지가 보이는 일이 없게.
     list = emojiRecent();
-    if (!list.length) {
-      return `<div style="grid-column:1/-1;padding:22px 8px;text-align:center;font:500 12.5px var(--font);color:var(--ink3)">
-        ${t('고른 이모지가 여기 쌓여요','Emojis you pick will appear here')}</div>`;
+    for (const e of EMOJI_POPULAR) {
+      if (list.length >= 40) break;
+      if (!list.includes(e)) list.push(e);
     }
   } else {
     const g = EMOJI_GROUPS.find(x => x.key === _emojiTab) || EMOJI_GROUPS[0];
