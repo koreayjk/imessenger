@@ -3628,14 +3628,25 @@ function avColor(c) {
 // 사진 주소가 진짜 사진 주소일 때만 쓴다.
 //  관리자는 남의 photo_url 도 쓸 수 있으므로 (신고 처리에 필요하다),
 //  거기에 엉뚱한 게 들어와도 화면이 이상해지지 않게 한 번 거른다.
+//  따옴표·괄호·공백은 주소에 그냥 들어올 수 없는 글자다. 들어 있으면
+//  주소가 아니라 무언가를 비집고 들어오려는 것이므로 쓰지 않는다.
 function avPhoto(m) {
   const u = m && m.photo_url;
   if (!u || typeof u !== 'string') return '';
-  return /^(https:\/\/|data:image\/)/.test(u.trim()) ? u.trim() : '';
+  const v = u.trim();
+  if (!/^(https:\/\/|data:image\/)/.test(v)) return '';
+  if (/["'()\\\s]/.test(v)) return '';
+  return v;
 }
+// ⚠️ url() 은 반드시 작은따옴표로 감싼다.
+//   이 글자는 style="..." 안에 들어간다. 큰따옴표를 쓰면 거기서 style
+//   이 끝나 버려서, 주소가 통째로 날아가고(url("")) 뒤에 붙은 모서리·
+//   정렬까지 같이 사라진다. 남는 건 배경색 하나뿐이라 '회색 네모'만
+//   덩그러니 보인다. (실제로 그렇게 나갔다)
+//   & 는 HTML 이 먼저 풀어 주어야 하므로 여기서는 imAttr 을 거친다.
 function avFill(m, fb) {
   const u = avPhoto(m);
-  if (u) return `background:#e9eef5 center/cover no-repeat url("${imAttr(u)}")`;
+  if (u) return `background:#e9eef5 center/cover no-repeat url('${imAttr(u)}')`;
   return `background:${(m && m.color) ? avColor(m.color) : (fb || '#1d3a5f')}`;
 }
 function avInner(m) {
@@ -3645,14 +3656,18 @@ function avInner(m) {
 }
 // 왼쪽·휴대폰의 '내 아이콘' 은 HTML 이 아니라 JS 로 칠한다. 한 곳에서.
 function paintMyAvatar() {
-  if (!window.ME) return;
+  // ⚠️ window.ME 로 보면 안 된다. ME 는 let 으로 선언돼 있어 window 에
+  //    붙지 않는다. 늘 거짓이라 아무것도 안 하고 빠져나간다.
+  if (!ME) return;
   ['my-av', 'mobile-av'].forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
     const u = avPhoto(ME);
     if (u) {
       el.textContent = '';
-      el.style.background = `#e9eef5 center/cover no-repeat url("${imAttr(u)}")`;
+      // 여기는 style 속성이 아니라 JS 로 바로 넣는 자리다. HTML 을 거치지
+      // 않으므로 imAttr 을 쓰면 &amp; 가 주소에 그대로 박힌다. 날것을 쓴다.
+      el.style.background = `#e9eef5 center/cover no-repeat url('${u}')`;
     } else {
       el.textContent = ME.initials || (ME.name || '?')[0] || '?';
       el.style.background = avColor(ME.color);
@@ -10658,13 +10673,108 @@ async function pfpCropSquare(file) {
   } finally { URL.revokeObjectURL(url); }
 }
 
+// ── 사진에서 보여줄 자리 고르기 ─────────────────────────────────
+//  올린 그대로 가운데를 자르면, 얼굴이 한쪽에 있는 사진은 귀만 나온다.
+//  네모 창을 두고 끌어서 옮기고 밀어서 키우게 한다. 창에 보이는 그
+//  부분이 그대로 잘린다 — 보이는 것이 곧 결과다.
+//  돌려주는 값: 자른 그림(Blob) 또는 null(사람이 그만둔 것)
+function pfpAdjust(file) {
+  return new Promise((done) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onerror = () => { URL.revokeObjectURL(url); showUploadToast(t('사진을 읽지 못했어요','Could not read the photo')); done(null); };
+    img.onload = () => {
+      const V = Math.min(300, Math.max(220, window.innerWidth - 90));   // 네모 창 한 변
+      const cover = V / Math.min(img.width, img.height);                // 창을 꽉 채우는 배율
+      let zoom = 1, tx = 0, ty = 0;
+
+      const back = document.createElement('div');
+      back.id = 'pfp-adjust';
+      back.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:20px';
+      back.innerHTML = `
+        <div style="background:var(--surface);border-radius:20px;padding:20px;max-width:${V + 40}px;width:100%;box-shadow:0 20px 60px rgba(15,23,42,.3)">
+          <div style="font:700 15px var(--font);color:var(--ink);margin-bottom:4px">${t('어느 부분을 보여줄까요?','Which part should show?')}</div>
+          <div style="font-size:12px;color:var(--ink3);margin-bottom:14px">${t('끌어서 옮기고, 아래 막대로 크기를 맞추세요.','Drag to move, use the slider to zoom.')}</div>
+          <div id="pfp-win" style="width:${V}px;height:${V}px;margin:0 auto;border-radius:22px;overflow:hidden;background:#111;position:relative;touch-action:none;cursor:grab">
+            <img id="pfp-img" alt="" draggable="false" style="position:absolute;left:0;top:0;transform-origin:0 0;user-select:none;-webkit-user-drag:none"/>
+          </div>
+          <input id="pfp-zoom" type="range" min="100" max="300" value="100" style="width:100%;margin:16px 0 4px;accent-color:var(--accent)"/>
+          <div style="display:flex;gap:8px;margin-top:10px">
+            <button id="pfp-no" style="flex:1;height:44px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:12px;font:700 13.5px var(--font);cursor:pointer">${t('그만두기','Cancel')}</button>
+            <button id="pfp-ok" style="flex:1.4;height:44px;border:none;background:var(--accent);color:#fff;border-radius:12px;font:700 13.5px var(--font);cursor:pointer">${t('이 모습으로','Use this')}</button>
+          </div>
+        </div>`;
+      document.body.appendChild(back);
+
+      const el = back.querySelector('#pfp-img');
+      el.src = url;
+      const paint = () => {
+        const k = cover * zoom;
+        const w = img.width * k, h = img.height * k;
+        tx = Math.min(0, Math.max(V - w, tx));       // 창 밖으로 빈틈이 생기지 않게
+        ty = Math.min(0, Math.max(V - h, ty));
+        el.style.width = w + 'px'; el.style.height = h + 'px';
+        el.style.transform = `translate(${tx}px, ${ty}px)`;
+      };
+      paint();
+      // 가운데에서 시작한다
+      tx = (V - img.width * cover) / 2; ty = (V - img.height * cover) / 2; paint();
+
+      const win = back.querySelector('#pfp-win');
+      let pid = null, px = 0, py = 0;
+      win.addEventListener('pointerdown', (e) => {
+        pid = e.pointerId; px = e.clientX; py = e.clientY;
+        // 붙잡기가 안 되는 자리도 있다 (손가락이 이미 떨어진 뒤 등).
+        // 여기서 멈추면 끌기 자체가 죽으므로 조용히 넘어간다.
+        try { win.setPointerCapture(pid); } catch (_) {}
+        win.style.cursor = 'grabbing';
+      });
+      win.addEventListener('pointermove', (e) => {
+        if (pid === null || e.pointerId !== pid) return;
+        tx += e.clientX - px; ty += e.clientY - py;
+        px = e.clientX; py = e.clientY; paint();
+      });
+      ['pointerup','pointercancel'].forEach(n => win.addEventListener(n, () => {
+        pid = null; win.style.cursor = 'grab';
+      }));
+
+      const zr = back.querySelector('#pfp-zoom');
+      zr.addEventListener('input', () => {
+        const was = zoom; zoom = Number(zr.value) / 100;
+        // 창 한가운데를 붙잡고 키운다 — 안 그러면 보던 곳이 달아난다
+        const r = zoom / was;
+        tx = V / 2 - (V / 2 - tx) * r;
+        ty = V / 2 - (V / 2 - ty) * r;
+        paint();
+      });
+
+      const close = (out) => { back.remove(); URL.revokeObjectURL(url); done(out); };
+      back.querySelector('#pfp-no').onclick = () => close(null);
+      back.addEventListener('click', (e) => { if (e.target === back) close(null); });
+      back.querySelector('#pfp-ok').onclick = async () => {
+        const S = 256, k = cover * zoom;
+        const c = document.createElement('canvas'); c.width = S; c.height = S;
+        const ctx = c.getContext('2d');
+        ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, S, S);
+        // 창에 보이는 네모를 원본 좌표로 되돌린다
+        ctx.drawImage(img, -tx / k, -ty / k, V / k, V / k, 0, 0, S, S);
+        const blob = await new Promise(r2 => c.toBlob(r2, 'image/jpeg', 0.86));
+        close(blob || file);
+      };
+    };
+    img.src = url;
+  });
+}
+
 async function pickMyPhoto(input) {
   const file = (input.files || [])[0]; input.value = '';
   if (!file || !ME) return;
   if (!/^image\//.test(file.type)) { showUploadToast(t('이미지 파일을 올려주세요','Please choose an image file')); return; }
+  const cut = await pfpAdjust(file);
+  if (!cut) return;                       // 그만두기를 눌렀다
   showUploadToast(t('사진 올리는 중...','Uploading photo...'));
   try {
-    const blob = await pfpCropSquare(file);
+    const blob = cut;
     // 주소를 알면 누구나 볼 수 있는 통이다. 아무도 못 알아맞히게 길고
     // 어지럽게 짓는다. 그리고 올릴 때마다 새 이름을 쓴다 — 같은 이름으로
     // 덮으면 옛 사진이 브라우저에 남아 바뀐 줄 모른다.
