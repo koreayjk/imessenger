@@ -257,6 +257,25 @@
   .sec-head{max-width:640px;margin:0 auto 46px;text-align:center}
   .sec-head p{color:var(--ink-2);margin-top:14px;font-size:17.5px}
 
+  /* 앱 내려받기 */
+  .dl{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:34px}
+  @media(max-width:860px){.dl{grid-template-columns:1fr}}
+  .dlc{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:24px;
+    display:flex;flex-direction:column;gap:4px;
+    transition:transform .5s var(--e),box-shadow .5s var(--e)}
+  .dlc:hover{transform:translateY(-5px);box-shadow:var(--shadow)}
+  .dlc .os{font-size:28px;line-height:1;margin-bottom:12px}
+  .dlc h3{font-size:17px;margin:0}
+  .dlc .sub{font-size:13.5px;color:var(--ink-2);line-height:1.6;margin:6px 0 16px;min-height:44px}
+  .dlc .go{margin-top:auto}
+  /* 아직 못 받는 것은 눌리지 않게 — 죽은 단추를 누르게 두지 않는다 */
+  .dlbtn{display:inline-flex;align-items:center;justify-content:center;gap:8px;width:100%;height:46px;
+    border-radius:999px;font-weight:800;font-size:14.5px;text-decoration:none;
+    background:linear-gradient(150deg,var(--blue),var(--navy));color:#fff;border:1px solid transparent}
+  .dlbtn.soon{background:transparent;color:var(--ink-3);border-color:var(--line);cursor:default}
+  .dlbtn.ghost{background:transparent;color:var(--blue);border-color:var(--line)}
+  .dlc .meta{font-size:12px;color:var(--ink-3);margin-top:9px;text-align:center;min-height:16px}
+
   /* feature grid */
   .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
   @media(max-width:900px){.grid{grid-template-columns:repeat(2,1fr)}}
@@ -329,7 +348,7 @@
     <nav class="nav-links">
       <a href="#features">기능</a>
       <a href="#ai">AI 생기부</a>
-      <a href="#day">학교의 하루</a>
+      <a href="#download">앱 받기</a>
       <a href="#start" class="btn btn-primary btn-sm">시작하기</a>
     </nav>
     <button class="burger" id="burger" aria-label="메뉴 열기" aria-expanded="false" aria-controls="menu">
@@ -343,8 +362,9 @@
   <nav>
     <a href="#features" style="--i:0">기능</a>
     <a href="#ai"       style="--i:1">AI 생기부</a>
-    <a href="#day"      style="--i:2">학교의 하루</a>
-    <a href="#start"    style="--i:3">시작하기</a>
+    <a href="#download" style="--i:2">앱 받기</a>
+    <a href="#day"      style="--i:3">학교의 하루</a>
+    <a href="#start"    style="--i:4">시작하기</a>
   </nav>
 </div>
 
@@ -406,6 +426,57 @@
     <span><b>모두 한 곳에서</b></span>
   </div>
 </div>
+
+<!-- 앱 받기 — 초반에 둔다. 글을 다 읽고 내려가야 나오면 못 찾는다. -->
+<section id="download" style="padding-top:72px;padding-bottom:16px">
+  <div class="wrap">
+    <div class="sec-head rise">
+      <div class="eyebrow">Download</div>
+      <h2 style="margin-top:12px">쓰시는 기기에 맞게 받으세요.</h2>
+      <p>설치하지 않고 웹으로 바로 써도 똑같이 동작합니다. 앱으로 받으면 알림이 오고, 홈 화면에서 바로 열립니다.</p>
+    </div>
+
+    <div class="dl">
+      <!-- 아이폰 — 애플은 바깥에서 앱을 받아 까는 길을 막아 두었다.
+           앱스토어가 열리기 전까지는 '홈 화면에 추가' 가 진짜 길이다. -->
+      <div class="dlc rise">
+        <div class="os">🍎</div>
+        <h3>아이폰 · 아이패드</h3>
+        <p class="sub">사파리로 열고 공유 → <b>홈 화면에 추가</b> 를 누르면 앱처럼 씁니다. 알림도 옵니다.</p>
+        <div class="go">
+          <a class="dlbtn" id="dl-ios" href="./index.html">웹으로 바로 쓰기</a>
+          <div class="meta" id="dl-ios-m">앱스토어는 준비 중입니다</div>
+        </div>
+      </div>
+
+      <!-- 안드로이드 -->
+      <div class="dlc rise" style="--d:80ms">
+        <div class="os">🤖</div>
+        <h3>안드로이드</h3>
+        <p class="sub">설치 파일(APK)을 받아 바로 깝니다. 크롬으로 열고 <b>홈 화면에 추가</b> 해도 됩니다.</p>
+        <div class="go">
+          <a class="dlbtn soon" id="dl-apk" aria-disabled="true">준비 중</a>
+          <div class="meta" id="dl-apk-m">플레이 스토어도 준비 중입니다</div>
+        </div>
+      </div>
+
+      <!-- 맥 -->
+      <div class="dlc rise" style="--d:160ms">
+        <div class="os">💻</div>
+        <h3>맥 (macOS)</h3>
+        <p class="sub">받아서 <b>응용 프로그램</b> 으로 끌어 놓으면 끝입니다. 애플 서명이 되어 있습니다.</p>
+        <div class="go">
+          <a class="dlbtn soon" id="dl-dmg" aria-disabled="true">준비 중</a>
+          <div class="meta" id="dl-dmg-m">.dmg 파일</div>
+        </div>
+      </div>
+    </div>
+
+    <p style="text-align:center;color:var(--ink-3);font-size:13px;margin-top:22px">
+      어느 쪽으로 들어오셔도 같은 계정, 같은 자료입니다.
+    </p>
+  </div>
+</section>
 
 <section id="features">
   <div class="wrap">
@@ -613,6 +684,48 @@
     });
     rise.forEach(el => io.observe(el));
   }
+
+  // ── 앱 내려받기 단추 ───────────────────────────────────────────
+  //  파일은 GitHub 릴리스에 올린다. 여기에 주소를 손으로 박아 두면
+  //  아직 안 올린 파일을 가리키는 죽은 단추가 되고, 나중에 올려도
+  //  이 페이지를 또 고쳐야 한다. 그래서 들어올 때 릴리스를 물어보고
+  //  '실제로 있는 것만' 단추를 켠다. 없으면 '준비 중' 그대로 둔다.
+  const REPO = 'koreayjk/imessenger';
+  const mb = (n) => (n > 1048576 ? (n / 1048576).toFixed(1) + 'MB' : Math.round(n / 1024) + 'KB');
+
+  function arm(btnId, metaId, asset, label) {
+    const b = document.getElementById(btnId), m = document.getElementById(metaId);
+    if (!b || !asset) return false;
+    b.classList.remove('soon');
+    b.removeAttribute('aria-disabled');
+    b.href = asset.browser_download_url;
+    b.textContent = label;
+    if (m) m.textContent = mb(asset.size || 0);
+    return true;
+  }
+
+  (async () => {
+    // 릴리스가 없으면 404 가 온다 — 그건 잘못된 게 아니라 '아직 없음' 이다
+    let rel;
+    try {
+      const r = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`,
+                            { headers: { Accept: 'application/vnd.github+json' } });
+      if (!r.ok) return;
+      rel = await r.json();
+    } catch (_) { return; }
+
+    const files = Array.isArray(rel && rel.assets) ? rel.assets : [];
+    const pick = (re) => files.find(a => re.test(a.name || ''));
+
+    arm('dl-dmg', 'dl-dmg-m', pick(/\.dmg$/i), '맥 앱 받기');
+    arm('dl-apk', 'dl-apk-m', pick(/\.apk$/i), '안드로이드 앱 받기');
+
+    // 버전을 적어 둔다 — 받은 게 언제 것인지 알 수 있어야 한다
+    const tag = rel && (rel.tag_name || rel.name);
+    if (tag) document.querySelectorAll('#download .meta').forEach(el => {
+      if (el.textContent && !/준비 중|앱스토어|플레이/.test(el.textContent)) el.textContent += ' · ' + tag;
+    });
+  })();
 })();
 </script>
 </body>
