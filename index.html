@@ -5453,7 +5453,7 @@ function msgActions(m) {
   a.push({ k:'react', icon:'😊', label:t('리액션','React'), call:`showReactionPicker('${id}',this)` });
   if (m.kind !== 'poll')
     a.push({ k:'reply', icon:'↩️', label:t('답장','Reply'),
-             call:`startReply('${id}','${escJs(msgTextOf(m).slice(0,100))}','${escJs(sender.name)}')` });
+             call:`startReply('${id}','${escJs(msgPlainText(m).slice(0,100))}','${escJs(sender.name)}')` });
   if (plain) a.push({ k:'copy',   icon:'📋', label:t('복사','Copy'),            call:`copyMsgText('${id}')` });
   if (plain) a.push({ k:'select', icon:'🔤', label:t('골라서 복사','Select & copy'), call:`selectMsgText('${id}')` });
   if (plain) a.push({ k:'share',  icon:'📤', label:t('공유','Share'),           call:`shareMsg('${id}')` });
@@ -5765,9 +5765,11 @@ function msgHtml(m, prev, readMap={}) {
 
   // 답장 인용
   const replyQuote = m.reply_to_id ? `
-    <div style="border-left:3px solid var(--accent);padding:5px 10px;border-radius:0 8px 8px 0;background:rgba(42,82,152,.08);margin-bottom:5px;font-size:12px;color:var(--ink2)">
+    <div class="reply-quote" onclick="goToMessage('${escJs(m.reply_to_id)}')"
+      title="${escAttr(t('눌러서 원래 글 보기','Tap to see the original'))}"
+      style="border-left:3px solid var(--accent);padding:5px 10px;border-radius:0 8px 8px 0;background:rgba(42,82,152,.08);margin-bottom:5px;font-size:12px;color:var(--ink2);cursor:pointer">
       <div style="font-weight:600;color:var(--adeep);margin-bottom:2px">${escHtml(m.reply_to_name||'')}</div>
-      <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:240px">${escHtml(m.reply_to_text||'')}</div>
+      <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:240px">${escHtml(replyQuoteText(m.reply_to_text))}</div>
     </div>` : '';
 
   // 북마크 표 — 담아 둔 걸 목록에서 바로 알아보게
@@ -7290,6 +7292,47 @@ async function saveEditMsg(id) {
 }
 
 // ── 답장 ──
+// 답장 미리보기에 들어갈 글.
+//  예전에 보낸 답장에는 파일 메시지의 속 내용(JSON)이 그대로 박혀 있다.
+//  게다가 100자에서 잘려 있어서 JSON.parse 로는 되살릴 수 없다. 그래서
+//  잘린 덩어리에서도 파일 이름만 찾아내 '[첨부] 이름' 으로 보여준다.
+//  (새로 보내는 답장은 msgPlainText 를 거치므로 애초에 이럴 일이 없다)
+function replyQuoteText(v) {
+  const raw = String(v == null ? '' : v).trim();
+  if (raw[0] !== '{' && raw[0] !== '[') return raw;
+  try {
+    const o = JSON.parse(raw);
+    if (o && o.q) return '[' + t('투표','Poll') + '] ' + o.q;
+    const nm = o && (o.name || (Array.isArray(o.items) ? o.items.map(x => x && x.name).filter(Boolean).join(', ') : ''));
+    if (nm) return '[' + t('첨부','Attachment') + '] ' + nm;
+  } catch (_) {
+    const nm = raw.match(/"name"\s*:\s*"([^"]{1,60})"/);
+    if (nm) return '[' + t('첨부','Attachment') + '] ' + nm[1];
+  }
+  if (/"type"\s*:\s*"file"|"url"\s*:|"items"\s*:/.test(raw)) return '[' + t('첨부파일','Attachment') + ']';
+  if (/"q"\s*:/.test(raw)) return '[' + t('투표','Poll') + ']';
+  return raw;
+}
+
+// 답장 미리보기를 누르면 원래 글로 데려간다.
+function goToMessage(id) {
+  const row = document.querySelector('.msg-row[data-id="' + cssEsc(id) + '"]');
+  if (!row) {
+    // 한 번에 200개만 불러오므로 그보다 위의 글은 아직 화면에 없다
+    showUploadToast(t('원래 글이 더 위에 있어요 — 위로 올려서 찾아주세요',
+                      'The original is further up — scroll up to find it'));
+    return;
+  }
+  row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  flashMsgRow(row);
+}
+function flashMsgRow(row) {
+  if (!row) return;
+  row.style.transition = 'background .2s';
+  row.style.background = 'rgba(240,180,41,.22)';
+  setTimeout(() => { row.style.background = ''; }, 1600);
+}
+
 let replyingTo = null;
 
 function startReply(msgId, text, name) {
@@ -7465,14 +7508,7 @@ async function goToBookmark(msgId, chId) {
   if (!chId) return;
   if (!currentChannel || currentChannel.id !== chId) await openChannel(chId);
   setTimeout(() => {
-    const row = document.querySelector('.msg-row[data-id="' + cssEsc(msgId) + '"]');
-    if (row) {
-      row.scrollIntoView({ block: 'center', behavior: 'smooth' });
-      row.style.transition = 'background .2s'; row.style.background = 'rgba(240,180,41,.22)';
-      setTimeout(() => { row.style.background = ''; }, 1600);
-    } else {
-      showUploadToast(t('그 메시지는 더 거슬러 올라가야 보여요','Scroll further up to find it'));
-    }
+    goToMessage(msgId);
   }, 700);
 }
 
