@@ -449,14 +449,15 @@
         </div>
       </div>
 
-      <!-- 안드로이드 -->
+      <!-- 안드로이드 — 플레이 스토어에 올라가 있다 -->
       <div class="dlc rise" style="--d:80ms">
         <div class="os">🤖</div>
         <h3>안드로이드</h3>
-        <p class="sub">설치 파일(APK)을 받아 바로 깝니다. 크롬으로 열고 <b>홈 화면에 추가</b> 해도 됩니다.</p>
+        <p class="sub">플레이 스토어에서 바로 받으세요. 알림이 오고, 홈 화면에서 앱처럼 열립니다.</p>
         <div class="go">
-          <a class="dlbtn soon" id="dl-apk" aria-disabled="true">준비 중</a>
-          <div class="meta" id="dl-apk-m">플레이 스토어도 준비 중입니다</div>
+          <a class="dlbtn" id="dl-apk" target="_blank" rel="noopener"
+             href="https://play.google.com/store/apps/details?id=io.github.koreayjk.tcs">Google Play 에서 받기</a>
+          <div class="meta" id="dl-apk-m">무료 · 안드로이드</div>
         </div>
       </div>
 
@@ -718,13 +719,11 @@
     const pick = (re) => files.find(a => re.test(a.name || ''));
 
     arm('dl-dmg', 'dl-dmg-m', pick(/\.dmg$/i), '맥 앱 받기');
-    arm('dl-apk', 'dl-apk-m', pick(/\.apk$/i), '안드로이드 앱 받기');
 
     // 버전을 적어 둔다 — 받은 게 언제 것인지 알 수 있어야 한다
     const tag = rel && (rel.tag_name || rel.name);
-    if (tag) document.querySelectorAll('#download .meta').forEach(el => {
-      if (el.textContent && !/준비 중|앱스토어|플레이/.test(el.textContent)) el.textContent += ' · ' + tag;
-    });
+    const dm = document.getElementById('dl-dmg-m');
+    if (tag && dm && !/준비 중/.test(dm.textContent)) dm.textContent += ' · ' + tag;
   })();
 })();
 </script>
