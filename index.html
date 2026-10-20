@@ -3615,6 +3615,51 @@ function avColor(c) {
   return AV_FIX[k] || c || '#1d3a5f';
 }
 
+// ── 아바타는 한 곳에서 그린다 ───────────────────────────────────
+//  채팅 말풍선 옆, 멤버 목록, 출석부, 읽은 사람 표시… 아바타를 그리는
+//  자리가 스물 몇 군데인데 저마다 '색칠한 네모 + 글자' 를 직접 적어
+//  두고 있었다. 프사(사진)를 넣으려면 먼저 한 곳으로 모아야 한다.
+//  안 그러면 어떤 화면은 사진, 어떤 화면은 이모지가 나온다.
+//
+//  avFill(m, fb) — 네모의 배경. 사진이 있으면 사진, 없으면 지금처럼 색.
+//                  fb 는 색이 없을 때 쓸 색. 자리마다 쓰던 기본색이
+//                  달라서(#999 / #1d3a5f) 그대로 넘겨받는다.
+//  avInner(m)    — 네모 안 글자. 사진이 있으면 비운다.
+// 사진 주소가 진짜 사진 주소일 때만 쓴다.
+//  관리자는 남의 photo_url 도 쓸 수 있으므로 (신고 처리에 필요하다),
+//  거기에 엉뚱한 게 들어와도 화면이 이상해지지 않게 한 번 거른다.
+function avPhoto(m) {
+  const u = m && m.photo_url;
+  if (!u || typeof u !== 'string') return '';
+  return /^(https:\/\/|data:image\/)/.test(u.trim()) ? u.trim() : '';
+}
+function avFill(m, fb) {
+  const u = avPhoto(m);
+  if (u) return `background:#e9eef5 center/cover no-repeat url("${imAttr(u)}")`;
+  return `background:${(m && m.color) ? avColor(m.color) : (fb || '#1d3a5f')}`;
+}
+function avInner(m) {
+  if (avPhoto(m)) return '';
+  const v = (m && m.initials) || ((m && m.name) || '?')[0] || '?';
+  return escHtml(v);
+}
+// 왼쪽·휴대폰의 '내 아이콘' 은 HTML 이 아니라 JS 로 칠한다. 한 곳에서.
+function paintMyAvatar() {
+  if (!window.ME) return;
+  ['my-av', 'mobile-av'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const u = avPhoto(ME);
+    if (u) {
+      el.textContent = '';
+      el.style.background = `#e9eef5 center/cover no-repeat url("${imAttr(u)}")`;
+    } else {
+      el.textContent = ME.initials || (ME.name || '?')[0] || '?';
+      el.style.background = avColor(ME.color);
+    }
+  });
+}
+
 // ════════════════════════════════════════════════════════════════════
 //  손댄 순간 반응하기
 //
@@ -4018,11 +4063,8 @@ function enterApp() {
   document.getElementById('auth-screen').style.display = 'none';
   document.getElementById('app').style.display = 'flex';
   markViewHeaders();   // 좁은 화면에서 제목/메뉴를 두 줄로 나누기 위한 표시
-  document.getElementById('my-av').textContent = ME.initials || ME.name[0];
-  document.getElementById('my-av').style.background = ME.color || '#1d3a5f';
+  paintMyAvatar();
   document.getElementById('my-av').title = ME.name;
-  const mav = document.getElementById('mobile-av');
-  if (mav) { mav.textContent = ME.initials || ME.name[0]; mav.style.background = ME.color || '#1d3a5f'; }
   // 역할에 따라 탭 표시 — 학생은 관리/TCS 탭 숨김
   document.getElementById('sb-admin').style.display = 'none';
   document.getElementById('sb-tcs').style.display = 'none';
@@ -4260,7 +4302,7 @@ function showMobileProfile() {
   if (area) area.innerHTML = `
     <div style="padding:20px 0">
       <div style="display:flex;align-items:center;gap:14px;padding:18px;border-radius:18px;background:var(--surface);box-shadow:var(--sh-1);margin-bottom:16px">
-        <div style="width:52px;height:52px;border-radius:16px;background:${ME.color};color:white;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:600">${ME.initials||ME.name[0]}</div>
+        <div style="width:52px;height:52px;border-radius:16px;${avFill(ME)};color:white;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:600">${avInner(ME)}</div>
         <div>
           <div style="font-size:17px;font-weight:700">${ME.name}</div>
           <div style="font-size:13px;color:var(--ink3);margin-top:2px">${ME.role||'멤버'}</div>
@@ -5669,7 +5711,7 @@ function msgHtml(m, prev, readMap={}) {
   const memHi = !isMine && msgMentionsMe(m);   // 나를 언급한 메시지 강조
   const sender = members[m.sender_id] || { name: m.sender_name||'알 수 없음', initials: (m.sender_name||'?')[0], color:'#999' };
   const sameAsPrev = prev && prev.sender_id === m.sender_id;
-  const avStyle = `background:${sender.color}`;
+  const avStyle = avFill(sender);
   const dateAttr = m.created_at ? new Date(m.created_at).toDateString() : '';
 
   // 내가 '나에게만 삭제' 한 메시지 — 지우지 않고 접는다.
@@ -5802,7 +5844,7 @@ function msgHtml(m, prev, readMap={}) {
 
   if (isMine) {
     return `<div class="msg-row mine${sameAsPrev?' same-sender':''}" data-sender="${m.sender_id}" data-id="${m.id}" data-date="${m.created_at ? new Date(m.created_at).toDateString() : ''}" style="position:relative">
-      <div class="msg-avatar" style="${avStyle}">${sender.initials}</div>
+      <div class="msg-avatar" style="${avStyle}">${avInner(sender)}</div>
       <div class="msg-body">
         ${!sameAsPrev ? `<div class="msg-meta"><span class="name">${sender.name}</span><span class="time">${fmtTime(m.created_at)}</span>${bookMark}</div>` : ''}
         ${replyQuote}
@@ -5813,7 +5855,7 @@ function msgHtml(m, prev, readMap={}) {
     </div>`;
   }
   return `<div class="msg-row${sameAsPrev?' same-sender':''}" data-sender="${m.sender_id}" data-id="${m.id}" data-date="${m.created_at ? new Date(m.created_at).toDateString() : ''}" style="position:relative">
-    <div class="msg-avatar" onclick="openMemberCard('${m.sender_id}')" title="${escAttr(t('눌러서 보기','Tap to view'))}" style="${avStyle};cursor:pointer">${sender.initials}</div>
+    <div class="msg-avatar" onclick="openMemberCard('${m.sender_id}')" title="${escAttr(t('눌러서 보기','Tap to view'))}" style="${avStyle};cursor:pointer">${avInner(sender)}</div>
     <div class="msg-body">
       ${!sameAsPrev ? `<div class="msg-meta"><span class="name" onclick="openMemberCard('${m.sender_id}')" style="cursor:pointer">${sender.name}</span><span class="time">${fmtTime(m.created_at)}</span>${bookMark}</div>` : ''}
       ${replyQuote}
@@ -6009,7 +6051,7 @@ function renderPollCard(m) {
     if (!meta.anon && cnt) {
       const shown = ov.slice(0, 6).map(v => {
         const mem = members[v.member_id] || { initials:(v.member_name||'?')[0], color:'#999', name:v.member_name };
-        return `<div title="${escAttr(mem.name||v.member_name||'')}" style="width:20px;height:20px;border-radius:6px;background:${mem.color||'#999'};color:#fff;display:flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:700;margin-left:-4px;border:1.5px solid var(--surface)">${escHtml(mem.initials||'?')}</div>`;
+        return `<div title="${escAttr(mem.name||v.member_name||'')}" style="width:20px;height:20px;border-radius:6px;${avFill(mem,'#999')};color:#fff;display:flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:700;margin-left:-4px;border:1.5px solid var(--surface)">${avInner(mem)}</div>`;
       }).join('');
       const more = cnt > 6 ? `<span style="font-size:10.5px;color:var(--ink3);margin-left:4px">+${cnt-6}</span>` : '';
       voterHtml = `<div style="display:flex;align-items:center;padding-left:4px;margin-top:5px">${shown}${more}</div>`;
@@ -6954,7 +6996,7 @@ async function showReactionDetails(msgId) {
             const mem = members[id] || { name: t('알 수 없음','Unknown'), initials:'?', color:'#999' };
             const meMark = id === ME.id ? ` (${t('나','You')})` : '';
             return `<div style="display:flex;align-items:center;gap:8px">
-              <div style="width:26px;height:26px;border-radius:8px;background:${mem.color||'#999'};color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${escHtml(mem.initials||(mem.name||'?')[0])}</div>
+              <div style="width:26px;height:26px;border-radius:8px;${avFill(mem,'#999')};color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${avInner(mem)}</div>
               <div style="font-size:13px;color:var(--ink)">${escHtml(mem.name||'')}${meMark}</div>
             </div>`;
           }).join('')}
@@ -6967,7 +7009,7 @@ async function showReactionDetails(msgId) {
         </div>
         <div style="display:flex;flex-direction:column;gap:7px">
           ${pending.slice(0, 40).map(x => `<div style="display:flex;align-items:center;gap:8px">
-            <div style="width:26px;height:26px;border-radius:8px;background:${x.color||'#999'};color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;opacity:.55">${escHtml(x.initials||(x.name||'?')[0])}</div>
+            <div style="width:26px;height:26px;border-radius:8px;${avFill(x,'#999')};color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;opacity:.55">${avInner(x)}</div>
             <div style="font-size:13px;color:var(--ink2)">${escHtml(x.name||'')}</div>
           </div>`).join('')}
           ${pending.length > 40 ? `<div style="font-size:11.5px;color:var(--ink3);padding-left:34px">${t(`그 밖에 ${pending.length-40}명`, `and ${pending.length-40} more`)}</div>` : ''}
@@ -7616,7 +7658,7 @@ function blockListCardHtml() {
     ${blocked.length ? `<div style="display:flex;flex-direction:column;gap:7px;margin-bottom:14px">
       ${blocked.map(x => `
       <div style="display:flex;align-items:center;gap:9px;padding:8px 11px;border:1px solid var(--border);border-radius:11px;background:var(--s2)">
-        <div style="width:28px;height:28px;border-radius:9px;background:${x.color || '#999'};color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0">${escHtml(x.initials || (x.name || '?')[0])}</div>
+        <div style="width:28px;height:28px;border-radius:9px;${avFill(x,'#999')};color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0">${avInner(x)}</div>
         <div style="flex:1;font-size:13.5px;font-weight:600">${escHtml(x.name || '')}</div>
         <button onclick="unblockMember('${x.id}')" style="height:30px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);font:600 12px var(--font);cursor:pointer">${t('차단 해제','Unblock')}</button>
       </div>`).join('')}
@@ -7939,7 +7981,7 @@ function renderMentionBox() {
   box.innerHTML = _mention.list.map((m,i) => `
     <div class="mrow ${i===_mention.sel?'mrow-active':''}" onmousedown="event.preventDefault();pickMention(${i})" onmouseover="_mention.sel=${i};highlightMentionRows()"
       style="display:flex;align-items:center;gap:9px;padding:7px 9px;border-radius:9px;cursor:pointer">
-      <div style="width:26px;height:26px;border-radius:8px;background:${m.color||'#999'};color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${m._all?'@':(m.initials||m.name[0])}</div>
+      <div style="width:26px;height:26px;border-radius:8px;${m._all?`background:${m.color}`:avFill(m,'#999')};color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${m._all?'@':avInner(m)}</div>
       <div style="font-size:13px;font-weight:600;color:var(--ink)">${escHtml(m.name)}${m._all?' <span style="font-size:11px;font-weight:400;color:var(--ink3)">(채널 전원 알림)</span>':''}</div>
     </div>`).join('');
   box.style.display = 'block';
@@ -8202,7 +8244,7 @@ async function renderMembers() {
     const isSelf = m.id === ME.id;
     return `<div class="member-row" onclick="openMemberCard('${m.id}')" title="${escAttr(t('눌러서 보기','Tap to view'))}" style="cursor:pointer">
       <div class="member-av-wrap">
-        <div class="member-av" style="background:${m.color||'#999'}">${m.initials||m.name[0]}</div>
+        <div class="member-av" style="${avFill(m,'#999')}">${avInner(m)}</div>
         ${isOnline ? '<div class="online-dot"></div>' : ''}
       </div>
       <div>
@@ -8292,7 +8334,7 @@ function openMemberCard(memberId) {
     + 'box-shadow:0 18px 50px rgba(29,58,95,.28);padding:22px 20px 16px;text-align:center';
   box.innerHTML = `
     <div style="width:64px;height:64px;border-radius:20px;margin:0 auto 11px;background:${m.color || '#1d3a5f'};
-                color:#fff;display:flex;align-items:center;justify-content:center;font:700 25px var(--font)">${escHtml(m.initials || (m.name || '?')[0])}</div>
+                color:#fff;display:flex;align-items:center;justify-content:center;font:700 25px var(--font)">${avInner(m)}</div>
     <div style="font:700 17px var(--font);color:var(--ink)">${escHtml(m.name || '')}</div>
     <div style="margin-top:6px;display:flex;gap:6px;justify-content:center;flex-wrap:wrap">
       <span style="font:700 11.5px var(--font);color:var(--adeep);background:var(--asoft);padding:4px 10px;border-radius:99px">${escHtml(memberRoleLabel(m))}</span>
@@ -8330,7 +8372,7 @@ async function openAddMemberModal() {
   const rows = cand.length ? cand.map(m => `
     <label style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:10px;cursor:pointer" onmouseover="this.style.background='var(--s2)'" onmouseout="this.style.background=''">
       <input type="checkbox" class="am-pick" value="${m.id}" style="width:17px;height:17px;flex-shrink:0"/>
-      <div style="width:30px;height:30px;border-radius:9px;background:${m.color||'#999'};color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0">${m.initials||(m.name||'?')[0]}</div>
+      <div style="width:30px;height:30px;border-radius:9px;${avFill(m, '#999')};color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0">${avInner(m)}</div>
       <div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(m.name||'')}</div><div style="font-size:11px;color:var(--ink3)">${escHtml(m.role||'')}</div></div>
     </label>`).join('') : `<div style="text-align:center;color:var(--ink3);font-size:13px;padding:24px">${t('추가할 수 있는 멤버가 없어요','No members available to add')}</div>`;
   modal.innerHTML = `<div style="background:var(--surface);border-radius:18px;width:420px;max-width:94vw;max-height:80vh;display:flex;flex-direction:column;box-shadow:var(--sh-3)">
@@ -9867,7 +9909,7 @@ function renderNewChMembers() {
       style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:9px;cursor:pointer;background:${selected?'var(--asoft)':'transparent'}"
       onmouseover="this.style.background='${selected?'var(--asoft)':'var(--bg)'}'"
       onmouseout="this.style.background='${selected?'var(--asoft)':'transparent'}'">
-      <div style="width:28px;height:28px;border-radius:8px;background:${m.color||'#999'};color:white;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;flex-shrink:0">${m.initials||m.name[0]}</div>
+      <div style="width:28px;height:28px;border-radius:8px;${avFill(m, '#999')};color:white;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;flex-shrink:0">${avInner(m)}</div>
       <div style="flex:1;font-size:13.5px;font-weight:500">${m.name}</div>
       <div style="width:20px;height:20px;border-radius:6px;border:2px solid ${selected?'var(--accent)':'var(--border)'};background:${selected?'var(--accent)':'transparent'};display:flex;align-items:center;justify-content:center;flex-shrink:0">
         ${selected?'<span style="color:white;font-size:11px">✓</span>':''}
@@ -9917,7 +9959,7 @@ function switchAddTab(tab) {
     list.innerHTML = memberList.map(m => `
       <div onclick="selectDmMember(this,'${m.id}')" data-mid="${m.id}"
         style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;cursor:pointer;transition:background .12s;border:2px solid transparent">
-        <div style="width:32px;height:32px;border-radius:10px;background:${m.color||'#999'};color:white;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex-shrink:0">${m.initials||m.name[0]}</div>
+        <div style="width:32px;height:32px;border-radius:10px;${avFill(m, '#999')};color:white;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex-shrink:0">${avInner(m)}</div>
         <div style="flex:1">
           <div style="font-size:13.5px;font-weight:600">${m.name}</div>
           <div style="font-size:11.5px;color:var(--ink3)">${m.role||'멤버'}</div>
@@ -10551,6 +10593,96 @@ function toggleAvatarPicker() {
   if (arr) arr.textContent = _avOpen ? '▲' : '▼';
 }
 
+// ── 프로필 사진(프사) ───────────────────────────────────────────
+//  생활기록부의 증명사진과는 다른 것이다.
+//   · 증명사진 — 서류에 찍히는 사진. 3:4 세로. 기록부에만 쓰인다.
+//   · 프사     — 채팅·목록에 보이는 사진. 정사각형.
+//  둘은 서로 건드리지 않는다.
+//
+//  가운데를 정사각형으로 잘라 256px 로 줄인다. 아바타는 커 봐야 64px
+//  인데 원본(보통 3~5MB)을 그대로 올리면 채팅 한 화면에 사람이 열이면
+//  수십 MB 를 내려받게 된다.
+async function pfpCropSquare(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((res, rej) => {
+      const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url;
+    });
+    const S = 256;
+    const side = Math.min(img.width, img.height);          // 가운데 정사각형
+    const sx = (img.width - side) / 2, sy = (img.height - side) / 2;
+    const c = document.createElement('canvas'); c.width = S; c.height = S;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, S, S);
+    ctx.drawImage(img, sx, sy, side, side, 0, 0, S, S);
+    const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.86));
+    return blob || file;
+  } catch (_) {
+    return file;                                            // 못 자르면 원본이라도
+  } finally { URL.revokeObjectURL(url); }
+}
+
+async function pickMyPhoto(input) {
+  const file = (input.files || [])[0]; input.value = '';
+  if (!file || !ME) return;
+  if (!/^image\//.test(file.type)) { showUploadToast(t('이미지 파일을 올려주세요','Please choose an image file')); return; }
+  showUploadToast(t('사진 올리는 중...','Uploading photo...'));
+  try {
+    const blob = await pfpCropSquare(file);
+    // 주소를 알면 누구나 볼 수 있는 통이다. 아무도 못 알아맞히게 길고
+    // 어지럽게 짓는다. 그리고 올릴 때마다 새 이름을 쓴다 — 같은 이름으로
+    // 덮으면 옛 사진이 브라우저에 남아 바뀐 줄 모른다.
+    const rnd = (crypto && crypto.randomUUID) ? crypto.randomUUID().replace(/-/g, '') : String(Date.now()) + Math.random().toString(36).slice(2);
+    const path = `avatars/${ME.id}/${rnd}.jpg`;
+    const { error: upErr } = await sb.storage.from('messenger')
+      .upload(path, blob, { cacheControl: '31536000', upsert: false, contentType: 'image/jpeg' });
+    if (upErr) throw upErr;
+    const { data: pub } = sb.storage.from('messenger').getPublicUrl(path);
+    const url = pub && pub.publicUrl;
+    if (!url) throw new Error(t('사진 주소를 받지 못했어요','Could not get the photo URL'));
+
+    const { data, error } = await sb.from('members')
+      .update({ photo_url: url }).eq('id', ME.id).select('id');
+    if (error) {
+      if (/photo_url/.test(error.message || '')) {
+        showUploadToast(t('이 기능이 아직 설치되지 않았어요 (db/프로필사진_DB설치.sql)',
+                          'Not installed yet (db/프로필사진_DB설치.sql)'));
+        return;
+      }
+      throw error;
+    }
+    // 규칙에 막히면 수파베이스는 오류 대신 '0줄 고침' 을 돌려준다.
+    if (!data || !data.length) { showUploadToast(t('사진을 저장할 권한이 없어요','You do not have permission to set this photo')); return; }
+    applyMyPhoto(url);
+    showUploadToast(t('✅ 프로필 사진이 바뀌었어요','✅ Profile photo updated'));
+  } catch (e) {
+    showUploadToast(t('사진 올리기 실패: ','Photo upload failed: ') + (e.message || e));
+  }
+}
+
+async function clearMyPhoto() {
+  if (!ME || !ME.photo_url) return;
+  if (!confirm(t('프로필 사진을 내릴까요?\n다시 이모지·글자 아이콘으로 돌아갑니다.',
+                 'Remove your profile photo?\nYour emoji or letter icon comes back.'))) return;
+  const { data, error } = await sb.from('members')
+    .update({ photo_url: null }).eq('id', ME.id).select('id');
+  if (error) { showUploadToast(t('내리지 못했어요 — ','Could not remove — ') + error.message); return; }
+  if (!data || !data.length) { showUploadToast(t('내릴 권한이 없어요','You do not have permission')); return; }
+  applyMyPhoto(null);
+  showUploadToast(t('사진을 내렸어요','Photo removed'));
+}
+
+// 올리거나 내린 뒤 화면에 바로 반영한다. 통째로 다시 그리지 않는 까닭은
+// 골라 둔 이모지 판이 닫히고 화면이 맨 위로 튀기 때문이다.
+function applyMyPhoto(url) {
+  ME.photo_url = url || null;
+  if (members[ME.id]) members[ME.id].photo_url = ME.photo_url;
+  paintMyAvatar();
+  try { redrawAllMsgRows(); } catch (_) {}    // 내가 쓴 말풍선 옆 아이콘
+  try { renderMembers(); } catch (_) {}       // 오른쪽 멤버 목록
+  renderProfilePage();                        // 단추 글씨가 '바꾸기/내리기' 로 바뀐다
+}
+
 // 아바타(이모지·글자) 저장 → initials 필드에 저장(모든 아바타에 즉시 반영)
 async function saveMyAvatar(val) {
   val = (val || '').trim();
@@ -10633,7 +10765,7 @@ async function renderProfilePage() {
 
       <!-- 프로필 카드 -->
       <div style="background:linear-gradient(135deg,#1d3a5f,#2a5298);border-radius:20px;padding:24px;margin-bottom:20px;display:flex;align-items:center;gap:16px">
-        <div style="width:60px;height:60px;border-radius:16px;background:${ME.color||'rgba(255,255,255,.2)'};display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:white;flex-shrink:0">${ME.initials||ME.name?.[0]||'?'}</div>
+        <div style="width:60px;height:60px;border-radius:16px;${avFill(ME, 'rgba(255,255,255,.2)')};display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:white;flex-shrink:0">${avInner(ME)}</div>
         <div style="flex:1">
           <div style="font-size:18px;font-weight:700;color:white">${ME.name}</div>
           <div style="font-size:12px;color:rgba(255,255,255,.7);margin-top:2px">${ME.email}</div>
@@ -10644,17 +10776,20 @@ async function renderProfilePage() {
       <!-- 아바타 꾸미기 -->
       <div class="adm-card" style="margin-bottom:16px">
         <div style="font-size:14px;font-weight:700;color:var(--adeep);margin-bottom:4px">🎨 ${t('내 아바타 꾸미기','Customize My Avatar')}</div>
-        <div style="font-size:12px;color:var(--ink3);margin-bottom:14px">${t('채팅과 목록에 보이는 내 아이콘이에요. 마음에 드는 이모지나 글자로 바꿔보세요!','This is the icon shown in chat and lists. Pick an emoji or letter you like!')}</div>
+        <div style="font-size:12px;color:var(--ink3);margin-bottom:14px">${t('채팅과 목록에 보이는 내 아이콘이에요. 사진을 올리거나, 이모지·글자로 바꿀 수 있어요.','This is the icon shown in chat and lists. Upload a photo, or pick an emoji or letter.')}</div>
         <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;flex-wrap:wrap">
-          <div id="av-preview" style="width:60px;height:60px;border-radius:18px;background:${ME.color||'#1d3a5f'};display:flex;align-items:center;justify-content:center;font-size:30px;color:#fff;flex-shrink:0">${ME.initials||ME.name?.[0]||'?'}</div>
+          <div id="av-preview" style="width:60px;height:60px;border-radius:18px;${avFill(ME, '#1d3a5f')};display:flex;align-items:center;justify-content:center;font-size:30px;color:#fff;flex-shrink:0">${avInner(ME)}</div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <input type="file" id="pfp-file" accept="image/*" style="display:none" onchange="pickMyPhoto(this)"/>
+            <button onclick="document.getElementById('pfp-file').click()" style="height:38px;padding:0 14px;border:none;background:var(--accent);color:#fff;border-radius:10px;font:700 12.5px var(--font);cursor:pointer">📷 ${t(ME.photo_url?'사진 바꾸기':'사진 올리기', ME.photo_url?'Change photo':'Upload photo')}</button>
+            ${ME.photo_url ? `<button onclick="clearMyPhoto()" style="height:38px;padding:0 13px;border:1.5px solid var(--border);background:var(--surface);border-radius:10px;font:600 12.5px var(--font);color:#c0392b;cursor:pointer">${t('사진 내리기','Remove photo')}</button>` : ''}
             <button onclick="saveMyAvatar((ME.name||'?')[0])" style="height:38px;padding:0 14px;border:1.5px solid var(--border);background:var(--surface);border-radius:10px;font:700 12.5px var(--font);color:var(--ink2);cursor:pointer">🔤 ${t('이름 첫 글자로','First letter')}</button>
             <input id="avatar-custom" maxlength="4" placeholder="${t('직접 입력','Custom')}" style="width:110px;height:38px;padding:0 12px;border:1.5px solid var(--border);border-radius:10px;font:15px var(--font);text-align:center;outline:none" onkeydown="if(event.key==='Enter')saveMyAvatar(this.value)"/>
             <button onclick="saveMyAvatar(document.getElementById('avatar-custom').value)" style="height:38px;padding:0 14px;border:none;background:#1d3a5f;color:#fff;border-radius:10px;font:700 12.5px var(--font);cursor:pointer">${t('적용','Apply')}</button>
           </div>
         </div>
         <button onclick="toggleAvatarPicker()" style="width:100%;height:42px;padding:0 14px;border:1.5px solid var(--border);background:var(--s2);border-radius:11px;cursor:pointer;display:flex;align-items:center;gap:8px;font:700 12.5px var(--font);color:var(--ink2)">
-          🎨 ${t('이모지 · 배경색 고르기','Pick an emoji · background color')}
+          🎨 ${ME.photo_url ? t('이모지 · 배경색 고르기 (지금은 사진이 보여요)','Pick an emoji · background color (your photo is showing)') : t('이모지 · 배경색 고르기','Pick an emoji · background color')}
           <span style="margin-left:auto;font-size:11px;font-weight:600;color:var(--ink3)">${t(`이모지 ${AVATAR_EMOJIS.length}개`, `${AVATAR_EMOJIS.length} emojis`)}</span>
           <span id="av-picker-arrow" style="font-size:10px;color:var(--ink3)">${_avOpen ? '▲' : '▼'}</span>
         </button>
@@ -11217,12 +11352,12 @@ async function initTcsPage() {
 function renderTcsStudentPanel() {
   const panel = document.getElementById('tcs-student-panel');
   const studentRow = (s) => `
-      <div onclick="selectTcsStudent(${JSON.stringify({id:s.id,name:s.name,color:s.color,initials:s.initials}).replace(/"/g,'&quot;')})" id="tcs-student-${s.id}"
+      <div onclick="selectTcsStudent(${JSON.stringify({id:s.id,name:s.name,color:s.color,initials:s.initials,photo_url:s.photo_url||null}).replace(/"/g,'&quot;')})" id="tcs-student-${s.id}"
         style="display:flex;align-items:center;gap:8px;padding:9px 10px;border-radius:10px;cursor:pointer;transition:background .12s;margin-bottom:2px;
         ${tcsCurrentStudent?.id===s.id?'background:var(--asoft)':''}"
         onmouseover="if('${s.id}'!==tcsCurrentStudent?.id)this.style.background='var(--s3)'"
         onmouseout="if('${s.id}'!==tcsCurrentStudent?.id)this.style.background=''">
-        <div style="width:28px;height:28px;border-radius:8px;background:${s.color||'#1d3a5f'};display:flex;align-items:center;justify-content:center;color:white;font-size:11px;font-weight:700;flex-shrink:0">${s.initials||s.name?.[0]||'?'}</div>
+        <div style="width:28px;height:28px;border-radius:8px;${avFill(s)};display:flex;align-items:center;justify-content:center;color:white;font-size:11px;font-weight:700;flex-shrink:0">${avInner(s)}</div>
         <span style="font-size:13px;font-weight:${tcsCurrentStudent?.id===s.id?'700':'400'};color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${s.name}</span>
       </div>`;
   let body = '';
@@ -11271,7 +11406,7 @@ function renderGroupManager() {
     <div style="font-size:13px;font-weight:700;color:var(--adeep);margin-bottom:8px">${t('학생 배치','Assign Students')}</div>
     <div class="adm-card">
       ${tcsStudents.length ? tcsStudents.map(s => `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--bs)">
-        <div style="width:30px;height:30px;border-radius:8px;background:${s.color || '#1d3a5f'};display:flex;align-items:center;justify-content:center;color:white;font-size:11px;font-weight:700;flex-shrink:0">${s.initials || s.name?.[0] || '?'}</div>
+        <div style="width:30px;height:30px;border-radius:8px;${avFill(s)};display:flex;align-items:center;justify-content:center;color:white;font-size:11px;font-weight:700;flex-shrink:0">${avInner(s)}</div>
         <div style="flex:1;font-size:13px;font-weight:600;color:var(--ink)">${s.name}</div>
         <select onchange="assignStudentGroup('${s.id}',this.value)" style="height:30px;padding:0 8px;border-radius:7px;border:1.5px solid var(--border);font:500 12px var(--font);background:white;cursor:pointer">${groupOpts(s.group_id)}</select>
       </div>`).join('') : `<div style="font-size:12px;color:var(--ink3)">${t('학생이 없어요','No students')}</div>`}
@@ -11420,7 +11555,7 @@ function renderTcsSectionList() {
   main.innerHTML = `
     <div style="max-width:700px">
       <div style="background:linear-gradient(135deg,#1d3a5f,#2a5298);border-radius:18px;padding:20px 24px;margin-bottom:16px;display:flex;align-items:center;gap:16px">
-        <div style="width:52px;height:52px;border-radius:14px;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;color:white;font-size:20px;font-weight:700;flex-shrink:0">${tcsCurrentStudent.initials||tcsCurrentStudent.name?.[0]||'?'}</div>
+        <div style="width:52px;height:52px;border-radius:14px;${tcsCurrentStudent.photo_url?avFill(tcsCurrentStudent):'background:rgba(255,255,255,.2)'};display:flex;align-items:center;justify-content:center;color:white;font-size:20px;font-weight:700;flex-shrink:0">${avInner(tcsCurrentStudent)}</div>
         <div style="flex:1">
           <div style="font-size:18px;font-weight:700;color:white">${tcsCurrentStudent.name}${gradeLabel}</div>
           <div style="font-size:12px;color:rgba(255,255,255,.7);margin-top:2px">${t('TCS 학생 종합 기록부','TCS Student Comprehensive Record')}</div>
@@ -12270,7 +12405,7 @@ async function initMockPage() {
   page.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink3)">' + t('불러오는 중...','Loading...') + '</div>';
 
   const { data: students } = await sb.from('members')
-    .select('id,name,color,initials,grade,status')
+    .select('id,name,color,initials,grade,status,photo_url')
     .eq('community_id', ME.community_id || '00000000-0000-0000-0000-000000000001')
     .or('community_role.eq.student,role.eq.학생')
     .order('name');
@@ -12289,7 +12424,7 @@ async function initMockPage() {
 
 async function loadMockStudent(id) {
   const s = tcsMockStudents.find(x => x.id === id) || tcsMockStudents[0];
-  tcsCurrentStudent = { id: s.id, name: s.name, color: s.color, initials: s.initials, grade: s.grade };
+  tcsCurrentStudent = { id: s.id, name: s.name, color: s.color, initials: s.initials, grade: s.grade, photo_url: s.photo_url || null };
   tcsMockState = { files: [], answerFiles: [], result: null, analyzing: false };
 
   // 이 학생의 모의고사 기록 로드
@@ -13271,7 +13406,7 @@ async function deleteReadingLog(bookId) {
 // ── 관리자/교사 화면: 전체 현황 + 책 관리 ──
 async function renderReadingAdmin() {
   const page = document.getElementById('reading-page');
-  const { data: students } = await sb.from('members').select('id,name,initials,color,status')
+  const { data: students } = await sb.from('members').select('id,name,initials,color,status,photo_url')
     .eq('community_id', CID()).or('community_role.eq.student,role.eq.학생').order('name');
   const studs = (students || []).filter(m => m.status !== 'removed');
   const ids = studs.map(s => s.id);
@@ -13311,7 +13446,7 @@ async function renderReadingAdmin() {
     const pct = total ? Math.round(c / total * 100) : 0;
     const prPct = total ? Math.round(pr / total * 100) : 0;
     return `<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)">
-      <div style="width:30px;height:30px;border-radius:8px;background:${s.color || '#1d3a5f'};color:white;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex-shrink:0">${s.initials || s.name[0]}</div>
+      <div style="width:30px;height:30px;border-radius:8px;${avFill(s)};color:white;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex-shrink:0">${avInner(s)}</div>
       <div style="width:90px;font-size:13px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.name}</div>
       <div style="flex:1;background:var(--s3);border-radius:99px;height:8px;overflow:hidden;display:flex">
         <div style="height:100%;width:${Math.max(0, pct - prPct)}%;background:#2a5298"></div>
@@ -15985,7 +16120,7 @@ async function viewCommunityMembers(communityId, communityName) {
             ? `<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:99px;background:#fee2e2;color:#b91c1c">거절됨</span>` : '';
           return `
         <div class="adm-row" style="display:flex;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid var(--bs);flex-wrap:wrap">
-          <div style="width:36px;height:36px;border-radius:10px;background:${m.color||'#1d3a5f'};display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:14px;flex-shrink:0">${m.initials||m.name?.[0]||'?'}</div>
+          <div style="width:36px;height:36px;border-radius:10px;${avFill(m)};display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:14px;flex-shrink:0">${avInner(m)}</div>
           <div style="flex:1;min-width:130px">
             <div style="font-size:13px;font-weight:600">${m.name}</div>
             <div style="font-size:11px;color:var(--ink3)">${m.email||''}</div>
@@ -16540,7 +16675,7 @@ async function renderAdminMembers() {
     : '';
   const memberRow = (m, showApproval=false) => `
     <div class="adm-row" style="padding:14px 20px;flex-wrap:wrap;gap:10px">
-      <div style="width:38px;height:38px;border-radius:12px;background:${m.color||'#999'};color:white;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;flex-shrink:0">${m.initials||m.name[0]}</div>
+      <div style="width:38px;height:38px;border-radius:12px;${avFill(m, '#999')};color:white;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;flex-shrink:0">${avInner(m)}</div>
       <div style="flex:1;min-width:0">
         <div style="display:flex;align-items:center;gap:8px">
           <span style="font-size:14px;font-weight:600">${escHtml(m.name || '')}</span>
@@ -16623,7 +16758,7 @@ async function renderAdminMembers() {
       <div style="padding:12px 20px;font-size:12px;font-weight:600;color:var(--ink3);border-bottom:1px solid var(--bs)">${t('거절된 멤버 '+rejected.length+'명', rejected.length+' rejected members')}</div>
       ${rejected.map(m => `
       <div class="adm-row" style="padding:14px 20px">
-        <div style="width:38px;height:38px;border-radius:12px;background:${m.color||'#999'};color:white;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;flex-shrink:0">${m.initials||m.name[0]}</div>
+        <div style="width:38px;height:38px;border-radius:12px;${avFill(m, '#999')};color:white;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;flex-shrink:0">${avInner(m)}</div>
         <div style="flex:1;min-width:0">
           <div style="font-size:14px;font-weight:600">${m.name}</div>
           <div style="font-size:12px;color:var(--ink3)">${m.email||''}</div>
@@ -16981,7 +17116,7 @@ async function renderAdminChannels() {
         <div style="display:flex;gap:4px;padding-left:48px;flex-wrap:wrap">
           ${chMems.map(mid => {
             const m = members[mid];
-            return m ? `<div title="${m.name}" style="width:26px;height:26px;border-radius:7px;background:${m.color||'#999'};color:white;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600">${m.initials||m.name[0]}</div>` : '';
+            return m ? `<div title="${m.name}" style="width:26px;height:26px;border-radius:7px;${avFill(m, '#999')};color:white;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600">${avInner(m)}</div>` : '';
           }).join('')}
         </div>
       </div>`;
@@ -17012,7 +17147,7 @@ async function showChannelMemberMgmt(chId) {
         ${Object.values(members).map(m => {
           const isIn = pendingMemberIds.has(m.id);
           return `<div onclick="togglePendingMember('${m.id}')" style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:11px;background:${isIn?'var(--asoft)':'var(--bg)'};cursor:pointer;transition:background .1s">
-            <div style="width:32px;height:32px;border-radius:10px;background:${m.color||'#999'};color:white;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600">${m.initials||m.name[0]}</div>
+            <div style="width:32px;height:32px;border-radius:10px;${avFill(m, '#999')};color:white;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600">${avInner(m)}</div>
             <div style="flex:1;font-size:13.5px;font-weight:500">${m.name}</div>
             <div style="font-size:12px;color:var(--ink3)">${m.role||'멤버'}</div>
             <div style="width:22px;height:22px;border-radius:6px;border:2px solid ${isIn?'var(--accent)':'var(--border)'};background:${isIn?'var(--accent)':'transparent'};display:flex;align-items:center;justify-content:center;flex-shrink:0">
@@ -20770,7 +20905,7 @@ async function memLoadChecks(studentId) {
 
 async function memLoadClass() {
   try {
-    const { data: studs } = await sb.from('members').select('id,name,initials,color,status,community_role')
+    const { data: studs } = await sb.from('members').select('id,name,initials,color,status,community_role,photo_url')
       .eq('community_id', CID()).or('community_role.eq.student,role.eq.학생').order('name');
     memStudents = (studs || []).filter(m => m.status !== 'removed');
   } catch (_) { memStudents = []; }
@@ -20920,7 +21055,7 @@ function memRender() {
     ${modes}
     ${memMode === 'class' ? `<div style="display:flex;align-items:center;gap:9px;margin-bottom:12px">
       ${inFrame ? '' : `<button onclick="memPickStudent(null)" style="height:30px;padding:0 11px;border-radius:8px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);font:600 12px var(--font);cursor:pointer">${t('← 반 전체','← Overview')}</button>`}
-      <div style="width:28px;height:28px;border-radius:8px;flex-shrink:0;background:${(who&&who.color)||'#1d3a5f'};color:#fff;display:flex;align-items:center;justify-content:center;font:700 11px var(--font)">${escHtml((who&&(who.initials||(who.name||'?')[0]))||'?')}</div>
+      <div style="width:28px;height:28px;border-radius:8px;flex-shrink:0;${avFill(who)};color:#fff;display:flex;align-items:center;justify-content:center;font:700 11px var(--font)">${avInner(who)}</div>
       <div style="font-size:15px;font-weight:700;color:var(--ink);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(who ? who.name : '')}</div>
     </div>` : ''}
     ${kindTabs}
@@ -21026,7 +21161,7 @@ function memClassHtml() {
         const v = by[s.id]; const pct = total ? Math.round(v.cf/total*100) : 0;
         const wpct = total ? Math.round((v.ck-v.cf)/total*100) : 0;
         return `<div onclick="memPickStudent('${s.id}')" style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);cursor:pointer">
-          <div style="width:30px;height:30px;border-radius:8px;background:${s.color||'#1d3a5f'};color:#fff;display:flex;align-items:center;justify-content:center;font:600 12px var(--font);flex-shrink:0">${escHtml(s.initials||(s.name||'?')[0])}</div>
+          <div style="width:30px;height:30px;border-radius:8px;${avFill(s)};color:#fff;display:flex;align-items:center;justify-content:center;font:600 12px var(--font);flex-shrink:0">${avInner(s)}</div>
           <div style="width:88px;font-size:13px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(s.name)}</div>
           <div style="flex:1;background:var(--s3);border-radius:99px;height:8px;overflow:hidden;display:flex">
             <div style="height:100%;width:${pct}%;background:#15803d"></div>
@@ -23604,7 +23739,7 @@ function renderAttDaily() {
         border:1.5px solid ${on?st.color:'var(--border)'};background:${on?st.bg:'var(--surface)'};color:${on?st.color:'var(--ink3)'}">${st.label}</button>`;
     }).join('');
     return `<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:1px solid var(--border)">
-      <div style="width:30px;height:30px;border-radius:8px;background:${s.color||'#1d3a5f'};display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:700;flex-shrink:0">${s.initials||s.name?.[0]||'?'}</div>
+      <div style="width:30px;height:30px;border-radius:8px;${avFill(s)};display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:700;flex-shrink:0">${avInner(s)}</div>
       <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${s.name}</div>
         <div style="font-size:11px;color:var(--ink3)">${s.grade||t('학년 미정','Grade N/A')}</div></div>
       <div style="display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end">${btns}</div>
@@ -25917,7 +26052,7 @@ async function renderFinBalances(kind) {
     if (minus) minusCount++;
     return `<div style="border:1px solid ${open?'#2a5298':(minus?'#f5c6c0':'var(--border)')};border-radius:11px;margin-bottom:8px;background:${minus?'#fffafa':'var(--surface)'};overflow:hidden">
       <div onclick="finToggleStudent('${s.id}')" style="display:flex;align-items:center;gap:12px;padding:11px 14px;cursor:pointer">
-        <div style="width:34px;height:34px;border-radius:9px;background:${s.color||'#1d3a5f'};display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:700;flex-shrink:0">${s.initials||s.name?.[0]||'?'}</div>
+        <div style="width:34px;height:34px;border-radius:9px;${avFill(s)};display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:700;flex-shrink:0">${avInner(s)}</div>
         <div style="flex:1;min-width:0">
           <div style="font-size:14px;font-weight:700;color:var(--ink)">${escHtml(s.name)}</div>
           <div style="font-size:11px;color:var(--ink3)">${s.grade||''}${s360GroupName(s.group_id)?` · ${s360GroupName(s.group_id)}`:''}</div>
@@ -28590,7 +28725,7 @@ function renderS360List() {
     const tn = s360TeacherNames(s.id);
     return `<div onclick="selectS360('${s.id}')" style="display:flex;align-items:center;gap:9px;padding:9px 10px;border-radius:10px;cursor:pointer;margin-bottom:2px;background:${on?'var(--asoft)':'transparent'}"
       onmouseover="if(!${on})this.style.background='var(--s3)'" onmouseout="if(!${on})this.style.background='transparent'">
-      <div style="width:28px;height:28px;border-radius:8px;background:${s.color||'#1d3a5f'};display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700;flex-shrink:0">${s.initials||s.name?.[0]||'?'}</div>
+      <div style="width:28px;height:28px;border-radius:8px;${avFill(s)};display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700;flex-shrink:0">${avInner(s)}</div>
       <div style="min-width:0"><div style="font-size:13px;font-weight:${on?'700':'500'};color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${s.name}</div>
         <div style="font-size:10.5px;color:var(--ink3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${s.grade||t('학년 미정','Grade N/A')}${tn?` · ${tn}`:''}</div></div>
     </div>`;
@@ -28673,7 +28808,7 @@ async function renderS360Detail() {
   detail.innerHTML = `
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px 20px;margin-bottom:14px">
       <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
-        <div style="width:48px;height:48px;border-radius:13px;background:${s.color||'#1d3a5f'};display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px;font-weight:700;flex-shrink:0">${s.initials||s.name?.[0]||'?'}</div>
+        <div style="width:48px;height:48px;border-radius:13px;${avFill(s)};display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px;font-weight:700;flex-shrink:0">${avInner(s)}</div>
         <div style="flex:1;min-width:0">
           <div style="font-size:19px;font-weight:800;color:var(--ink)">${s.name}</div>
           <div style="font-size:12.5px;color:var(--ink3)">${s.grade||t('학년 미정','Grade N/A')}${s360GroupName(s.group_id)?` · ${s360GroupName(s.group_id)}`:''}</div>
@@ -29335,8 +29470,16 @@ async function loadMyChildren() {
   const ids = (links || []).map(l => l.student_id);
   if (!ids.length) { childList = []; return; }
   const relOf = {}; (links || []).forEach(l => { relOf[l.student_id] = l.relation; });
-  const { data: kids } = await sb.from('members')
+  // photo_url 칸이 아직 없으면 이 조회가 통째로 실패한다. 예전엔 오류를
+  // 받아 보지도 않아서, 학부모가 들어가면 '자녀가 없다' 고만 나왔다.
+  let { data: kids, error: kErr } = await sb.from('members')
     .select('id,name,initials,color,grade,birth_date,photo_url').in('id', ids);
+  if (kErr && /photo_url/.test(kErr.message || '')) {
+    const again = await sb.from('members')
+      .select('id,name,initials,color,grade,birth_date').in('id', ids);
+    kids = again.data; kErr = again.error;
+  }
+  if (kErr) throw kErr;
   childList = (kids || []).map(k => ({ ...k, relation: relOf[k.id] || '' }));
   childList.sort((a, b) => String(a.name||'').localeCompare(String(b.name||''), 'ko'));
 }

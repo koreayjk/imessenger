@@ -1561,6 +1561,42 @@ grant select, insert, update, delete on public.my_message_marks to authenticated
 notify pgrst, 'reload schema';
 
 
+-- ════════════════════════════════════════════════════════════════════
+--  🖼 18) 프로필 사진 (프사)  (db/프로필사진_DB설치.sql)
+-- ════════════════════════════════════════════════════════════════════
+
+
+alter table public.members add column if not exists photo_url text;
+
+comment on column public.members.photo_url is
+  '프로필 사진(프사) 주소. 비어 있으면 이모지·글자 아바타를 쓴다. 생활기록부 증명사진과는 다른 것.';
+
+-- 지금 저장된 프사가 무엇인지 규칙 안에서 물어보기 위한 함수.
+-- security definer 인 까닭: 규칙을 검사하는 중에 같은 표를 다시 읽으면
+-- 규칙이 또 걸려서 제 꼬리를 문다.
+create or replace function public.member_photo_of(m uuid)
+returns text language sql stable security definer parallel safe
+set search_path = public
+as $$ select photo_url from public.members where id = m $$;
+
+-- 새로 만든 함수는 기본으로 '아무나' 부를 수 있게 열린다. 먼저 닫는다.
+revoke all on function public.member_photo_of(uuid) from public, anon;
+grant execute on function public.member_photo_of(uuid) to authenticated;
+
+-- restrictive = 다른 규칙과 'AND' 로 묶인다. 하나라도 어기면 막힌다.
+drop policy if exists members_photo_guard on public.members;
+create policy members_photo_guard on public.members
+  as restrictive for update to authenticated
+  using ( true )
+  with check (
+    photo_url is not distinct from public.member_photo_of(id)  -- 프사를 안 건드렸거나
+    or id = auth.uid()                                         -- 내 프사이거나
+    or public.can_admin_members()                              -- 관리자이거나
+  );
+
+notify pgrst, 'reload schema';
+
+
 -- ── 전체 확인 ────────────────────────────────────────────────────
 -- 이 줄이 보이면 파일 끝까지 다 돌았다는 뜻입니다.
 select '✅ 설치 끝 — 여기까지 보이면 전부 돌았어요' as "결과";
