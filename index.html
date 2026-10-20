@@ -371,6 +371,10 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
 /* 학사·운영 화면의 공통 틀.
    화면마다 알맞은 폭은 달라도(표는 넓게, 입력폼은 좁게) 왼쪽 끝은 언제나 같은 자리다.
    폭마다 margin:0 auto 로 따로 가운데 정렬하면 탭을 옮길 때마다 내용이 좌우로 흔들린다. */
+/* 스티커 말풍선 — 그림만 보이게 바탕을 없앤다 */
+.bubble.sticker-bubble { background: none !important; border: none !important;
+  box-shadow: none !important; padding: 2px 0 !important; }
+
 .spage { margin-left: max(0px, calc((100% - 1200px) / 2)); margin-right: 0; }
 
 /* 페이지 틀 — 폭과 자리는 여기 한 곳에서만 정한다.
@@ -5493,7 +5497,7 @@ function msgActions(m) {
   if (!m) return [];
   const isMine = m.sender_id === ME.id;
   const sender = members[m.sender_id] || { name: m.sender_name || '알 수 없음' };
-  const plain = (m.kind !== 'file' && m.kind !== 'poll');   // 글이 있는 메시지
+  const plain = (m.kind !== 'file' && m.kind !== 'poll' && m.kind !== 'sticker');   // 글이 있는 메시지
   const id = escJs(m.id);
   const a = [];
   a.push({ k:'react', icon:'😊', label:t('리액션','React'), call:`showReactionPicker('${id}',this)` });
@@ -5891,6 +5895,16 @@ function msgHtml(m, prev, readMap={}) {
     } catch(e) { bubbleContent = escHtml(m.text); }
   }
   if (m.kind === 'poll') { bubbleContent = renderPollCard(m); }
+  if (m.kind === 'sticker') {
+    const g = String(m.text || '').trim();
+    const u = stickerUrl(g);
+    // 그림을 못 받아 오면 글자라도 크게 보여 준다 — 빈 네모보다 낫다
+    bubbleContent = u
+      ? `<img src="${escAttr(u)}" alt="${escAttr(g)}" loading="lazy"
+           onerror="this.outerHTML='<span style=&quot;font-size:64px;line-height:1&quot;>'+this.alt+'</span>'"
+           style="width:116px;height:116px;display:block;object-fit:contain"/>`
+      : `<span style="font-size:64px;line-height:1">${escHtml(g)}</span>`;
+  }
 
   // 고친 메시지에는 흔적을 남긴다. 남기지 않으면 "나는 그렇게 안 썼는데" 가
   // 되고, 공동체 안에서는 그게 다툼이 된다.
@@ -5911,7 +5925,7 @@ function msgHtml(m, prev, readMap={}) {
       <div class="msg-body">
         ${!sameAsPrev ? `<div class="msg-meta"><span class="name">${sender.name}</span><span class="time">${fmtTime(m.created_at)}</span>${bookMark}</div>` : ''}
         ${replyQuote}
-        <div class="bubble${m.kind==='poll'?' poll-bubble':''}${isRich?' rich-bubble':''}"${memHi?' style="box-shadow:inset 3px 0 0 #F0B429;background:rgba(240,180,41,.12)"':''}>${bubbleContent}</div>
+        <div class="bubble${m.kind==='poll'?' poll-bubble':''}${m.kind==='sticker'?' sticker-bubble':''}${isRich?' rich-bubble':''}"${memHi?' style="box-shadow:inset 3px 0 0 #F0B429;background:rgba(240,180,41,.12)"':''}>${bubbleContent}</div>
         ${reactions}
         ${readLabel}
       </div>
@@ -5922,7 +5936,7 @@ function msgHtml(m, prev, readMap={}) {
     <div class="msg-body">
       ${!sameAsPrev ? `<div class="msg-meta"><span class="name" onclick="openMemberCard('${m.sender_id}')" style="cursor:pointer">${sender.name}</span><span class="time">${fmtTime(m.created_at)}</span>${bookMark}</div>` : ''}
       ${replyQuote}
-      <div class="bubble${m.kind==='poll'?' poll-bubble':''}${isRich?' rich-bubble':''}"${memHi?' style="box-shadow:inset 3px 0 0 #F0B429;background:rgba(240,180,41,.12)"':''}>${bubbleContent}</div>
+      <div class="bubble${m.kind==='poll'?' poll-bubble':''}${m.kind==='sticker'?' sticker-bubble':''}${isRich?' rich-bubble':''}"${memHi?' style="box-shadow:inset 3px 0 0 #F0B429;background:rgba(240,180,41,.12)"':''}>${bubbleContent}</div>
       ${reactions}
     </div>
   </div>`;
@@ -6732,6 +6746,48 @@ const EMOJI_POPULAR = [
   '👋','👌','✌️','🫶','🌸','🌈','☀️','🍀','☕','🍰','🎁','🎵','📚','⚽','🏆','🚀',
 ];
 
+// ── 스티커 ──────────────────────────────────────────────────────
+//  마이크로소프트 Fluent Emoji 3D. MIT 라이선스라 출처를 적을 의무도
+//  없지만, 남의 것이니 어디서 왔는지는 아래 STICKER_CREDIT 에 적어 둔다.
+//  https://github.com/microsoft/fluentui-emoji  (MIT)
+//
+//  ⚠️ 주소를 커밋 하나에 못박아 둔다. @main 으로 두면 저쪽에서 파일
+//     이름을 바꾸는 날 스티커가 전부 깨진 네모가 된다.
+//  ⚠️ 파일 이름 규칙이 들쭉날쭉하다(피부색이 있는 것은 _3d_default.png).
+//     규칙대로인 326개는 폴더만, 어긋나는 63개는 경로를 통째로 담았다.
+//     389개 전부 실제로 열리는지 확인하고 넣었다.
+const STICKER_CDN = 'https://cdn.jsdelivr.net/gh/microsoft/fluentui-emoji@1ffb34c/assets/';
+const STICKER_CREDIT = 'Microsoft Fluent Emoji (MIT)';
+const STICKER_MAP = {"😀":"Grinning face","😃":"Grinning face with big eyes","😄":"Grinning face with smiling eyes","😁":"Beaming face with smiling eyes","😆":"Grinning squinting face","😅":"Grinning face with sweat","🤣":"Rolling on the floor laughing","😂":"Face with tears of joy","🙂":"Slightly smiling face","🙃":"Upside-down face|Upside-down face/3D/upside-down_face_3d.png","😉":"Winking face","😊":"Smiling face with smiling eyes","😇":"Smiling face with halo","🥰":"Smiling face with hearts","😍":"Smiling face with heart-eyes|Smiling face with heart-eyes/3D/smiling_face_with_heart-eyes_3d.png","🤩":"Star-struck|Star-struck/3D/star-struck_3d.png","😘":"Face blowing a kiss","😗":"Kissing face","😚":"Kissing face with closed eyes","😙":"Kissing face with smiling eyes","🥲":"Smiling face with tear","😋":"Face savoring food","😛":"Face with tongue","😜":"Winking face with tongue","🤪":"Zany face","😝":"Squinting face with tongue","🤑":"Money-mouth face|Money-mouth face/3D/money-mouth_face_3d.png","🤗":"Hugging face","🤭":"Face with hand over mouth","🤫":"Shushing face","🤔":"Thinking face","🤐":"Zipper-mouth face|Zipper-mouth face/3D/zipper-mouth_face_3d.png","🤨":"Face with raised eyebrow","😐":"Neutral face","😑":"Expressionless face","😶":"Face without mouth","😏":"Smirking face","😒":"Unamused face","🙄":"Face with rolling eyes","😬":"Grimacing face","😮‍💨":"Face exhaling","🤥":"Lying face","😌":"Relieved face","😔":"Pensive face","😪":"Sleepy face","🤤":"Drooling face","😴":"Sleeping face","😷":"Face with medical mask","🤒":"Face with thermometer","🤕":"Face with head-bandage|Face with head-bandage/3D/face_with_head-bandage_3d.png","🤢":"Nauseated face","🤮":"Face vomiting","🥵":"Hot face","🥶":"Cold face","😵":"Knocked-out face|Knocked-out face/3D/knocked-out_face_3d.png","🤯":"Exploding head","🤠":"Cowboy hat face","🥳":"Partying face","🥸":"Disguised face","😎":"Smiling face with sunglasses","🤓":"Nerd face","🧐":"Face with monocle","😕":"Confused face","😟":"Worried face","🙁":"Slightly frowning face","😮":"Face with open mouth","😯":"Hushed face","😲":"Astonished face","😳":"Flushed face","🥺":"Pleading face","😦":"Frowning face with open mouth","😨":"Fearful face","😰":"Anxious face with sweat","😥":"Sad but relieved face","😢":"Crying face","😭":"Loudly crying face","😱":"Face screaming in fear","😖":"Confounded face","😣":"Persevering face","😞":"Disappointed face","😓":"Downcast face with sweat","😩":"Weary face","😫":"Tired face","🥱":"Yawning face","😤":"Face with steam from nose","😡":"Pouting face","😠":"Angry face","🤬":"Face with symbols on mouth","😈":"Smiling face with horns","💀":"Skull","🤡":"Clown face","👻":"Ghost","👽":"Alien","🤖":"Robot","💩":"Pile of poo","👍":"Thumbs up|Thumbs up/Default/3D/thumbs_up_3d_default.png","👎":"Thumbs down|Thumbs down/Default/3D/thumbs_down_3d_default.png","👏":"Clapping hands|Clapping hands/Default/3D/clapping_hands_3d_default.png","🙌":"Raising hands|Raising hands/Default/3D/raising_hands_3d_default.png","👐":"Open hands|Open hands/Default/3D/open_hands_3d_default.png","🤲":"Palms up together|Palms up together/Default/3D/palms_up_together_3d_default.png","🤝":"Handshake","🙏":"Folded hands|Folded hands/Default/3D/folded_hands_3d_default.png","✌️":"Victory hand|Victory hand/Default/3D/victory_hand_3d_default.png","🤞":"Crossed fingers|Crossed fingers/Default/3D/crossed_fingers_3d_default.png","🤟":"Love-you gesture|Love-you gesture/Default/3D/love-you_gesture_3d_default.png","🤘":"Sign of the horns|Sign of the horns/Default/3D/sign_of_the_horns_3d_default.png","👌":"Ok hand|Ok hand/Default/3D/ok_hand_3d_default.png","🤌":"Pinched fingers|Pinched fingers/Default/3D/pinched_fingers_3d_default.png","🤏":"Pinching hand|Pinching hand/Default/3D/pinching_hand_3d_default.png","👈":"Backhand index pointing left|Backhand index pointing left/Default/3D/backhand_index_pointing_left_3d_default.png","👉":"Backhand index pointing right|Backhand index pointing right/Default/3D/backhand_index_pointing_right_3d_default.png","👆":"Backhand index pointing up|Backhand index pointing up/Default/3D/backhand_index_pointing_up_3d_default.png","👇":"Backhand index pointing down|Backhand index pointing down/Default/3D/backhand_index_pointing_down_3d_default.png","☝️":"Index pointing up|Index pointing up/Default/3D/index_pointing_up_3d_default.png","✋":"Raised hand|Raised hand/Default/3D/raised_hand_3d_default.png","🤚":"Raised back of hand|Raised back of hand/Default/3D/raised_back_of_hand_3d_default.png","🖐️":"Hand with fingers splayed|Hand with fingers splayed/Default/3D/hand_with_fingers_splayed_3d_default.png","🖖":"Vulcan salute|Vulcan salute/Default/3D/vulcan_salute_3d_default.png","👋":"Waving hand|Waving hand/Default/3D/waving_hand_3d_default.png","🤙":"Call me hand|Call me hand/Default/3D/call_me_hand_3d_default.png","💪":"Flexed biceps|Flexed biceps/Default/3D/flexed_biceps_3d_default.png","🦾":"Mechanical arm","✍️":"Writing hand|Writing hand/Default/3D/writing_hand_3d_default.png","👀":"Eyes","👁️":"Eye","🧠":"Brain","👶":"Baby|Baby/Default/3D/baby_3d_default.png","🧒":"Child|Child/Default/3D/child_3d_default.png","👦":"Boy|Boy/Default/3D/boy_3d_default.png","👧":"Girl|Girl/Default/3D/girl_3d_default.png","🧑":"Person|Person/Default/3D/person_3d_default.png","👨":"Man|Man/Default/3D/man_3d_default.png","👩":"Woman|Woman/Default/3D/woman_3d_default.png","🧓":"Older person|Older person/Default/3D/older_person_3d_default.png","👨‍🏫":"Man teacher|Man teacher/Default/3D/man_teacher_3d_default.png","👩‍🏫":"Woman teacher|Woman teacher/Default/3D/woman_teacher_3d_default.png","👨‍🎓":"Man student|Man student/Default/3D/man_student_3d_default.png","👩‍🎓":"Woman student|Woman student/Default/3D/woman_student_3d_default.png","🙋":"Person raising hand|Person raising hand/Default/3D/person_raising_hand_3d_default.png","🙆":"Person gesturing ok|Person gesturing ok/Default/3D/person_gesturing_ok_3d_default.png","🙅":"Person gesturing no|Person gesturing no/Default/3D/person_gesturing_no_3d_default.png","💁":"Person tipping hand|Person tipping hand/Default/3D/person_tipping_hand_3d_default.png","🤷":"Person shrugging|Person shrugging/Default/3D/person_shrugging_3d_default.png","🤦":"Person facepalming|Person facepalming/Default/3D/person_facepalming_3d_default.png","🏃":"Person running|Person running/Default/3D/person_running_3d_default.png","🚶":"Person walking|Person walking/Default/3D/person_walking_3d_default.png","🧎":"Person kneeling|Person kneeling/Default/3D/person_kneeling_3d_default.png","💃":"Woman dancing|Woman dancing/Default/3D/woman_dancing_3d_default.png","🕺":"Man dancing|Man dancing/Default/3D/man_dancing_3d_default.png","❤️":"Red heart","🧡":"Orange heart","💛":"Yellow heart","💚":"Green heart","💙":"Blue heart","💜":"Purple heart","🖤":"Black heart","🤍":"White heart","🤎":"Brown heart","💔":"Broken heart","❣️":"Heart exclamation","💕":"Two hearts","💞":"Revolving hearts","💓":"Beating heart","💗":"Growing heart","💖":"Sparkling heart","💘":"Heart with arrow","💝":"Heart with ribbon","💟":"Heart decoration","☮️":"Peace symbol","✝️":"Latin cross","🕊️":"Dove","💒":"Wedding","⛪":"Church","📖":"Open book","🕯️":"Candle","👑":"Crown","🎁":"Wrapped gift","🐶":"Dog face","🐱":"Cat face","🐭":"Mouse face","🐹":"Hamster","🐰":"Rabbit face","🦊":"Fox","🐻":"Bear","🐼":"Panda","🐨":"Koala","🐯":"Tiger face","🦁":"Lion","🐮":"Cow face","🐷":"Pig face","🐸":"Frog","🐵":"Monkey face","🐔":"Chicken","🐧":"Penguin","🐦":"Bird","🦆":"Duck","🦉":"Owl","🐝":"Honeybee","🦋":"Butterfly","🐢":"Turtle","🐳":"Spouting whale","🐬":"Dolphin","🐟":"Fish","🦄":"Unicorn","🐘":"Elephant","🌸":"Cherry blossom","🌼":"Blossom","🌻":"Sunflower","🌹":"Rose","🌷":"Tulip","🌺":"Hibiscus","🌿":"Herb","🍀":"Four leaf clover","🍁":"Maple leaf","🍂":"Fallen leaf","🌱":"Seedling","🌳":"Deciduous tree","🌵":"Cactus","⭐":"Star","🌟":"Glowing star","✨":"Sparkles","⚡":"High voltage","🔥":"Fire","🌈":"Rainbow","☀️":"Sun","🌤️":"Sun behind small cloud","☁️":"Cloud","🌧️":"Cloud with rain","⛈️":"Cloud with lightning and rain","❄️":"Snowflake","⛄":"Snowman without snow","🌊":"Water wave","🌙":"Crescent moon","🌍":"Globe showing europe-africa|Globe showing europe-africa/3D/globe_showing_europe-africa_3d.png","🏔️":"Snow-capped mountain|Snow-capped mountain/3D/snow-capped_mountain_3d.png","🍎":"Red apple","🍊":"Tangerine","🍋":"Lemon","🍌":"Banana","🍉":"Watermelon","🍇":"Grapes","🍓":"Strawberry","🍑":"Peach","🍍":"Pineapple","🥝":"Kiwi fruit","🍅":"Tomato","🥕":"Carrot","🌽":"Ear of corn","🥔":"Potato","🍞":"Bread","🥐":"Croissant","🧀":"Cheese wedge","🥚":"Egg","🍳":"Cooking","🥓":"Bacon","🍔":"Hamburger","🍟":"French fries","🍕":"Pizza","🌭":"Hot dog","🌮":"Taco","🍜":"Steaming bowl","🍲":"Pot of food","🍛":"Curry rice","🍚":"Cooked rice","🍱":"Bento box","🍣":"Sushi","🍙":"Rice ball","🥟":"Dumpling","🍗":"Poultry leg","🥗":"Green salad","🍦":"Soft ice cream","🍩":"Doughnut","🍪":"Cookie","🎂":"Birthday cake","🧁":"Cupcake","🍫":"Chocolate bar","🍬":"Candy","🍿":"Popcorn","☕":"Hot beverage","🍵":"Teacup without handle","🥤":"Cup with straw","🧃":"Beverage box","💧":"Droplet","⚽":"Soccer ball","🏀":"Basketball","🏈":"American football","⚾":"Baseball","🎾":"Tennis","🏐":"Volleyball","🏓":"Ping pong","🏸":"Badminton","🥅":"Goal net","🏊":"Person swimming|Person swimming/Default/3D/person_swimming_3d_default.png","🚴":"Person biking|Person biking/Default/3D/person_biking_3d_default.png","🧗":"Person climbing|Person climbing/Default/3D/person_climbing_3d_default.png","🏆":"Trophy","🥇":"1st place medal","🥈":"2nd place medal","🥉":"3rd place medal","🎯":"Bullseye","🎮":"Video game","🎲":"Game die","🧩":"Puzzle piece","🎨":"Artist palette","🎭":"Performing arts","🎤":"Microphone","🎧":"Headphone","🎵":"Musical note","🎶":"Musical notes","🎸":"Guitar","🎹":"Musical keyboard","🥁":"Drum","🎺":"Trumpet","📚":"Books","✏️":"Pencil","🖊️":"Pen","📝":"Memo","📒":"Ledger","📅":"Calendar","⏰":"Alarm clock","⌛":"Hourglass done","💻":"Laptop","📱":"Mobile phone","📷":"Camera","🎥":"Movie camera","📺":"Television","🔔":"Bell","📢":"Loudspeaker","📣":"Megaphone","🔑":"Key","💡":"Light bulb","🔦":"Flashlight","🧹":"Broom","🧺":"Basket","🚗":"Automobile","🚌":"Bus","✈️":"Airplane","🚀":"Rocket","🏠":"House","🏫":"School","🏥":"Hospital","🏪":"Convenience store","✅":"Check mark button","☑️":"Check box with check","✔️":"Check mark","❌":"Cross mark","⭕":"Hollow red circle","❗":"Red exclamation mark","❓":"Red question mark","‼️":"Double exclamation mark","⚠️":"Warning","🚫":"Prohibited","🔴":"Red circle","🟠":"Orange circle","🟡":"Yellow circle","🟢":"Green circle","🔵":"Blue circle","🟣":"Purple circle","⚫":"Black circle","⚪":"White circle","🔺":"Red triangle","🔻":"Red triangle pointed down","🔶":"Large orange diamond","💯":"Hundred points","🆗":"Ok button","🆕":"New button","🔝":"Top arrow","🔜":"Soon arrow","➕":"Plus","➖":"Minus","✖️":"Multiply","➗":"Divide","♾️":"Infinity","💬":"Speech balloon","💭":"Thought balloon","🗯️":"Right anger bubble","🔍":"Magnifying glass tilted left","📌":"Pushpin","📍":"Round pushpin","🔗":"Link","📎":"Paperclip","🎉":"Party popper","🎊":"Confetti ball","🎈":"Balloon","🎀":"Ribbon"};
+// 스티커는 '글자 하나' 로 저장한다. 주소를 DB 에 박아 두면 나중에
+// 그림 묶음을 바꾸는 날 옛 메시지가 전부 깨진 네모가 된다.
+async function sendSticker(e) {
+  if (!currentChannel || !ME || !STICKER_MAP[e]) return;
+  if (typeof replyingTo !== 'undefined' && replyingTo) cancelReply();
+  emojiRemember(e);
+  const { data, error } = await sb.from('messages').insert({
+    channel_id: currentChannel.id, sender_id: ME.id, sender_name: ME.name,
+    text: e, kind: 'sticker',
+  }).select().single();
+  if (error) {
+    // kind 칸이 'sticker' 를 안 받으면 글자로라도 보낸다
+    showUploadToast(t('스티커를 보내지 못했어요 — ','Could not send the sticker — ') + (error.message || ''));
+    return;
+  }
+  if (data) { appendMessage({ ...data, reactions: [] }, {}); pushNotifySent(data.id); }
+}
+
+function stickerUrl(e) {
+  const v = STICKER_MAP[e];
+  if (!v) return '';
+  const i = v.indexOf('|');
+  const path = i >= 0 ? v.slice(i + 1)
+    : v + '/3D/' + v.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') + '_3d.png';
+  return STICKER_CDN + encodeURI(path);
+}
+
+let _stickerPick = null, _emojiMode = 'emoji';
+
 const EMOJI_RECENT_KEY = 'tcs_emoji_recent';
 function emojiRecent() {
   try {
@@ -6799,6 +6855,8 @@ function openEmojiPanel(onPick, anchor, opts) {
   _emojiKeep = !!(opts && opts.keepOpen);
   _emojiOnClose = (opts && opts.onClose) || null;
   _emojiTab = 'recent';   // 이제 최근 칸은 자주 쓰는 것으로 채워져 늘 꽉 찬다
+  _stickerPick = (opts && opts.onSticker) || null;   // 있으면 '스티커' 칸이 생긴다
+  _emojiMode = 'emoji';
   _emojiQuery = '';
 
   const narrow = window.innerWidth < 560;
@@ -6846,7 +6904,16 @@ function openEmojiPanel(onPick, anchor, opts) {
 
 function emojiPanelHtml() {
   const tabs = [{ key: 'recent', icon: '🕘', ko: '최근', en: 'Recent' }].concat(EMOJI_GROUPS);
-  return `
+  const seg = !_stickerPick ? '' : `
+    <div style="display:flex;gap:4px;background:var(--s2);border-radius:10px;padding:3px;margin-bottom:8px;flex-shrink:0">
+      ${[['emoji', t('이모지','Emoji')], ['sticker', t('스티커','Stickers')]].map(([k, lb]) => `
+        <button onclick="emojiMode('${k}')" style="flex:1;height:30px;border:none;border-radius:8px;cursor:pointer;
+          font:${_emojiMode === k ? '800' : '600'} 12.5px var(--font);
+          background:${_emojiMode === k ? 'var(--surface)' : 'transparent'};
+          color:${_emojiMode === k ? 'var(--ink)' : 'var(--ink3)'};
+          box-shadow:${_emojiMode === k ? '0 1px 3px rgba(15,23,42,.14)' : 'none'}">${lb}</button>`).join('')}
+    </div>`;
+  return seg + `
     <input id="emoji-q" value="${escAttr(_emojiQuery)}" oninput="emojiSearch(this.value)"
       placeholder="${t('찾기 — 하트, 박수, pray…','Search — heart, clap, pray…')}"
       style="height:34px;padding:0 11px;border:1.5px solid var(--border);border-radius:10px;
@@ -6884,6 +6951,18 @@ function emojiGridHtml() {
     const g = EMOJI_GROUPS.find(x => x.key === _emojiTab) || EMOJI_GROUPS[0];
     list = g.list.map(x => x[0]);
   }
+  if (_emojiMode === 'sticker') {
+    const only = list.filter(e => STICKER_MAP[e]);
+    if (!only.length) {
+      return `<div style="grid-column:1/-1;padding:22px 8px;text-align:center;font:500 12.5px var(--font);color:var(--ink3)">
+        ${t('이 갈래에는 스티커가 없어요','No stickers in this group')}</div>`;
+    }
+    return only.map(e => `<button class="hov-soft" onclick="emojiChoose('${e}')" title="${escAttr(e)}"
+      style="height:52px;border-radius:10px;padding:3px;display:flex;align-items:center;justify-content:center">
+      <img src="${escAttr(stickerUrl(e))}" alt="${escAttr(e)}" loading="lazy"
+        onerror="this.outerHTML='<span style=&quot;font-size:24px&quot;>'+this.alt+'</span>'"
+        style="width:100%;height:100%;object-fit:contain;pointer-events:none"/></button>`).join('');
+  }
   return list.map(e => `<button class="hov-soft" onclick="emojiChoose('${e}')"
     style="height:38px;border-radius:8px;font-size:21px;line-height:1">${e}</button>`).join('');
 }
@@ -6891,6 +6970,11 @@ function emojiGridHtml() {
 function emojiRedrawGrid() {
   const g = document.getElementById('emoji-grid');
   if (g) g.innerHTML = emojiGridHtml();
+}
+function emojiMode(m) {
+  _emojiMode = m;
+  const box = document.getElementById('emoji-panel');
+  if (box) box.innerHTML = emojiPanelHtml();
 }
 function emojiTab(key) {
   _emojiTab = key; _emojiQuery = '';
@@ -6915,6 +6999,13 @@ function emojiSearch(v) {
 }
 function emojiChoose(e) {
   emojiRemember(e);
+  // 스티커 칸에서 고른 것은 글에 끼우는 게 아니라 바로 보낸다
+  if (_emojiMode === 'sticker' && _stickerPick) {
+    const g = _stickerPick;
+    closeEmojiPanel();
+    try { g(e); } catch (_) {}
+    return;
+  }
   const f = _emojiPick;
   if (_emojiKeep) {
     // 글을 쓰는 중에는 닫지 않는다. 😀😀😀 처럼 몇 개씩 넣는 일이 흔하다.
@@ -6979,7 +7070,7 @@ function composerEmoji(btn) {
   if (narrow) {
     // 자판을 내린다. 안 내리면 판이 자판 뒤로 숨는다.
     if (ta) ta.blur();
-    openEmojiPanel((e) => composerInsert(e), null, {
+    openEmojiPanel((e) => composerInsert(e), null, { onSticker: (e) => sendSticker(e),
       keepOpen: true,
       onClose: () => sheetLift(0),
     });
@@ -6992,7 +7083,7 @@ function composerEmoji(btn) {
     openEmojiPanel((e) => {
       composerInsert(e);
       if (ta) { _emojiSelfFocus = true; try { ta.focus(); } finally { setTimeout(() => { _emojiSelfFocus = false; }, 0); } }
-    }, btn, { keepOpen: true });
+    }, btn, { keepOpen: true, onSticker: (e) => sendSticker(e) });
   }
 }
 
@@ -7642,6 +7733,7 @@ function msgPlainText(m) {
   if (!m) return '';
   try {
     if (m.kind === 'poll') return '[' + t('투표','Poll') + '] ' + (JSON.parse(m.text || '{}').q || '');
+    if (m.kind === 'sticker') return '[' + t('스티커','Sticker') + '] ' + String(m.text || '').trim();
     if (m.kind === 'file') {
       const f = JSON.parse(m.text || '{}');
       const names = f.name || (Array.isArray(f.items) ? f.items.map(x => x.name).join(', ') : '');
