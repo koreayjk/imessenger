@@ -126,7 +126,14 @@ html, body { overscroll-behavior: none; }
    안 뜨게 한다. 안 막으면 우리 메뉴와 둘이 같이 뜬다. 대신 메뉴에
    '골라서 복사' 를 뒀다 — 거기서 .sel-ok 를 붙여 그때만 고를 수 있게 한다. */
 @media (pointer: coarse) {
-  .msg-row .msg-body, .msg-row .msg-text {
+  /* user-select 는 물려받는다. 줄에 한 번 걸어 두면 안쪽 글자까지
+     같이 막힌다. 아래 줄은 저마다 제 규칙을 가진 것들만 다시 막는 것.
+     (입력칸은 일부러 빼 둔다 — 제 규칙이 있어서 물려받지 않는다) */
+  .msg-row {
+    -webkit-touch-callout: none !important;
+    -webkit-user-select: none !important; user-select: none !important;
+  }
+  .msg-row .msg-body, .msg-row .msg-avatar, .msg-row .msg-meta, .msg-row .bubble {
     -webkit-touch-callout: none !important;
     -webkit-user-select: none !important; user-select: none !important;
   }
@@ -5432,6 +5439,9 @@ function msgMenuEsc(e) { if (e.key === 'Escape') closeMsgMenu(); }
 
 function openMsgMenu(id, x, y) {
   closeMsgMenu();
+  // 전에 '골라서 복사' 로 고른 게 남아 있으면 먼저 거둔다.
+  // 안 거두면 그 말풍선이 계속 고를 수 있는 채로 남는다.
+  try { clearSelOk(); const s0 = window.getSelection(); if (s0) s0.removeAllRanges(); } catch (_) {}
   const m = _msgById[id];
   if (!m) return;
   _msgMenuId = id;
@@ -5519,14 +5529,36 @@ function msgMenuReact(emoji) {
 // 글자를 골라 둔다 — 일부만 복사하고 싶을 때. 휴대폰에서는 길게 눌러도
 //  고를 수 없게 막아 뒀기 때문에(안 막으면 아이폰 제 메뉴가 뜬다),
 //  여기서 골라 준다.
+// 골라서 복사 — 말풍선 '안의 글자' 만 고른다.
+//  예전엔 .msg-text / .msg-bubble 을 찾았는데 이 앱에는 그런 이름이 없다.
+//  그래서 늘 줄 전체(동그란 사진·이름·시각)로 떨어졌고, 고른 자리가
+//  왼쪽 사진까지 걸쳐 있어서 손잡이를 잡아도 글자를 맞출 수가 없었다.
+//  답장 미리보기는 .msg-body 바로 아래 .bubble 이 아니라서 자연히 빠진다.
+let _selOkEl = null;
+function clearSelOk() {
+  document.removeEventListener('selectionchange', _selOkWatch);
+  if (!_selOkEl) return;
+  try { _selOkEl.classList.remove('sel-ok'); } catch (_) {}
+  _selOkEl = null;
+}
+// 사람이 딴 데를 눌러 고른 게 풀리면 .sel-ok 도 같이 거둔다.
+// 안 거두면 그 말풍선은 영영 '고를 수 있는' 채로 남아서, 다음에 길게
+// 누를 때마다 아이폰이 제멋대로 글자를 집는다.
+function _selOkWatch() {
+  const s = window.getSelection();
+  if (!s || s.rangeCount === 0 || s.isCollapsed) clearSelOk();
+}
 function selectMsgText(id) {
   const row = document.querySelector('.msg-row[data-id="' + cssEsc(id) + '"]');
-  const el = row && (row.querySelector('.msg-text') || row.querySelector('.msg-bubble') || row);
+  const el = row && (row.querySelector('.msg-body > .bubble') || row.querySelector('.bubble') || row.querySelector('.msg-body'));
   if (!el) return;
   try {
-    el.classList.add('sel-ok');
+    clearSelOk();
+    el.classList.add('sel-ok'); _selOkEl = el;
     const r = document.createRange(); r.selectNodeContents(el);
     const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+    // 고르자마자 붙이면 removeAllRanges 가 만든 '빈 선택' 에 제가 걸려 넘어진다
+    setTimeout(() => { if (_selOkEl) document.addEventListener('selectionchange', _selOkWatch); }, 400);
     showUploadToast(t('글자를 골랐어요 — 원하는 만큼 줄여서 복사하세요',
                       'Text selected — trim it and copy'));
   } catch (_) {}
@@ -5582,8 +5614,33 @@ function msgMenuInit() {
     if (pid === null || e.pointerId !== pid) return;
     if (Math.abs(e.clientX - sx) > 10 || Math.abs(e.clientY - sy) > 10) cancel();
   }, { passive: true });
+
+  // 손가락이 눌려 있는 동안에는 아이폰이 글자를 집지 못하게 한다.
+  //  CSS 의 user-select:none 만으로는 새는 자리가 있다 (링크·이모지·
+  //  다시 그려진 직후). 그래서 '고르기 시작' 자체를 막는다.
+  //  · 마우스로 끄는 중이면 pid 가 null 이라 손대지 않는다 — 데스크탑에서
+  //    글을 드래그해 고르는 건 그대로 된다.
+  //  · '골라서 복사' 로 일부러 고른 중(_selOkEl)이면 비켜준다 — 손잡이를
+  //    잡고 범위를 줄이는 것도 selectstart 로 들어온다.
+  area.addEventListener('selectstart', (e) => {
+    if (_selOkEl) return;
+    if (pid === null) return;
+    if (rowOf(e.target)) e.preventDefault();
+  });
   ['pointerup', 'pointercancel', 'pointerleave'].forEach(t2 =>
-    area.addEventListener(t2, cancel, { passive: true }));
+    area.addEventListener(t2, (e) => {
+      cancel();
+      // 아이폰은 손을 뗀 '뒤에' 글자를 집어 놓기도 한다. 메뉴가 떠 있는
+      // 동안 생긴 건 우리가 시킨 게 아니니 거둔다. ('골라서 복사' 로
+      // 일부러 고른 것(_selOkEl)은 그대로 둔다)
+      if (e && e.pointerType === 'mouse') return;   // 데스크탑에서 끌어 고른 건 남겨 둔다
+      if (!_msgMenuId || _selOkEl) return;
+      setTimeout(() => {
+        if (_selOkEl) return;
+        try { const s1 = window.getSelection();
+              if (s1 && !s1.isCollapsed) s1.removeAllRanges(); } catch (_) {}
+      }, 60);
+    }, { passive: true }));
   area.addEventListener('scroll', cancel, { passive: true });
 }
 
