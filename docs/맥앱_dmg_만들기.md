@@ -65,22 +65,57 @@ signing ... identityName=Developer ID Application: IM AMERICA GROUP CORP (H6B99P
 
 ### 공증하기 — 설정은 안 건드립니다
 
-**앱 암호**만 하나 만들면 됩니다:
+#### ⚠️ 먼저: 어느 애플 ID 인지 확인하세요
+
+여기서 한 번 크게 헤맸습니다. **개발자 계정과 평소 쓰는 애플 ID 가
+다를 수 있습니다.** 앱 암호는 **만든 그 계정으로만** 통해서, 계정이
+다르면 암호를 몇 번을 새로 만들어도 이 오류만 반복됩니다:
+
+```
+HTTP status code: 401. Invalid credentials.
+```
+
+**developer.apple.com → Account** 오른쪽 위에 뜨는 이메일이
+`APPLE_ID` 에 들어갈 그 이메일입니다. 그 **같은 계정**으로
+appleid.apple.com 에 들어가 앱 암호를 만드세요.
+
+#### 앱 암호 만들고 저장하기
+
 appleid.apple.com → 로그인 및 보안 → **앱 암호** → 이름 `tcs-notary`
 
-그 값을 넣고 만들면 끝입니다:
+받은 값은 키체인에 넣습니다. 저장하기 전에 애플에 물어보기 때문에,
+**맞는지 그 자리에서 알 수 있습니다** (빌드를 돌려볼 필요가 없습니다):
+
+```bash
+xcrun notarytool store-credentials "tcs-notary" \
+  --apple-id "developer.apple.com 에 뜬 그 이메일" \
+  --team-id "H6B99PYZ8W"
+```
+
+`Credentials saved to Keychain` 이 뜨면 맞은 것입니다.
+
+#### 만들기
 
 ```bash
 cd ~/imessenger/desktop
-export APPLE_ID="imamerica2414@gmail.com"
-export APPLE_APP_SPECIFIC_PASSWORD="위에서-받은-앱-암호"
+export APPLE_KEYCHAIN_PROFILE="tcs-notary"
 export APPLE_TEAM_ID="H6B99PYZ8W"
 npm run dmg
 ```
 
-이 셋이 있으면 electron-builder 가 **알아서 공증까지** 합니다.
-`package.json` 에 더 적을 것은 없습니다. (셋 중 하나라도 빠지면
-"env var needs to be set" 이라며 알려줍니다)
+electron-builder 가 **알아서 공증까지** 합니다. `package.json` 에
+더 적을 것은 없습니다.
+
+키체인을 쓰지 않고 그때그때 넣으셔도 됩니다:
+
+```bash
+export APPLE_ID="developer.apple.com 에 뜬 그 이메일"
+export APPLE_APP_SPECIFIC_PASSWORD='abcd-efgh-ijkl-mnop'
+export APPLE_TEAM_ID="H6B99PYZ8W"
+```
+
+붙임표(`-`)까지 그대로 넣어야 합니다 (19자). 작은따옴표를 쓰면
+zsh 가 중간 글자를 건드리지 않습니다.
 
 애플 서버에 보내고 답을 기다리므로 **몇 분 더 걸립니다.**
 끝나면 로그에 `notarization successful` 이 뜹니다.
@@ -97,6 +132,33 @@ xcrun stapler validate dist/TCS-1.0.0-arm64.dmg
 
 `spctl` 이 **`accepted`** 와 **`source=Notarized Developer ID`** 라고 하면
 받으시는 분이 그냥 열 수 있습니다.
+
+### 401 이 나면 — 빌드 말고 5초짜리로 확인
+
+10분짜리 빌드를 다시 돌리지 마세요. 자격만 따로 물어볼 수 있습니다:
+
+```bash
+xcrun notarytool history \
+  --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" \
+  --password "$APPLE_APP_SPECIFIC_PASSWORD"
+```
+
+값이 어떻게 들어갔는지는 암호를 드러내지 않고 볼 수 있습니다:
+
+```bash
+echo "ID   = [$APPLE_ID]"
+echo "길이  = ${#APPLE_APP_SPECIFIC_PASSWORD}"
+echo "모양  = $(echo "$APPLE_APP_SPECIFIC_PASSWORD" | sed 's/[a-zA-Z]/x/g; s/[0-9]/9/g')"
+```
+
+`길이 = 19` · `모양 = xxxx-xxxx-xxxx-xxxx` 가 나와야 합니다.
+
+| 보이는 것 | 뜻 |
+|---|---|
+| 길이 16 | 붙임표를 뺐습니다 |
+| 길이 20 이상 | 앞뒤에 따옴표·공백이 딸려왔습니다 |
+| `ID = []` | 그 터미널 창에 `export` 가 안 살아 있습니다 (창을 새로 열면 사라집니다) |
+| 모양은 맞는데 401 | **애플 ID 가 다릅니다** — 맨 위 ⚠️ 를 보세요 |
 
 ---
 
