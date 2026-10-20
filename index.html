@@ -1816,6 +1816,7 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
   <!-- 이미지 크게 보기 모달 (공통 · 항상 존재) -->
   <div id="img-modal" style="display:none;position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.9);align-items:center;justify-content:center;overflow:hidden;touch-action:none">
     <div id="img-modal-close" onclick="closeImageModal()" style="position:absolute;top:16px;right:16px;width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:10;color:white;font-size:18px">✕</div>
+    <div id="img-modal-save" onclick="event.stopPropagation();downloadShownImage()" title="사진 저장" style="position:absolute;top:16px;right:62px;width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:10;color:white;font-size:17px">⤓</div>
     <div id="img-prev" onclick="event.stopPropagation();imgNav(-1)" style="display:none;position:absolute;left:14px;top:50%;transform:translateY(-50%);width:46px;height:46px;border-radius:50%;background:rgba(255,255,255,.18);align-items:center;justify-content:center;cursor:pointer;z-index:10;color:white;font-size:24px">‹</div>
     <div id="img-next" onclick="event.stopPropagation();imgNav(1)" style="display:none;position:absolute;right:14px;top:50%;transform:translateY(-50%);width:46px;height:46px;border-radius:50%;background:rgba(255,255,255,.18);align-items:center;justify-content:center;cursor:pointer;z-index:10;color:white;font-size:24px">›</div>
     <img id="img-modal-src" style="max-width:95vw;max-height:95vh;border-radius:8px;object-fit:contain;transform-origin:center center;cursor:grab;user-select:none"/>
@@ -4276,6 +4277,7 @@ async function leaveCurrentChannel() {
 
 function closeMobileChat() {
   // 채팅방 닫고 채널 목록으로
+  sweepEmptyDm(currentChannel);     // 말 한마디 없이 닫은 1:1 방은 치운다
   currentChannel = null;
   sessionStorage.removeItem('last_channel_id');
   document.getElementById('chat-active').style.display = 'none';
@@ -4563,6 +4565,7 @@ function setMode(m, opts) {
   // (사이드바에는 안 보이지만 새로고침 복원으로 들어올 수 있다)
   if (isParent() && ['tcs','mock','gishome','allowance','deposit','mytt','leave',
                      'bookreport','review','reading','memory','store'].includes(m)) m = 'child';
+  if (m !== 'chat' && currentChannel) sweepEmptyDm(currentChannel);
   mode = m;
   sessionStorage.setItem('last_mode', m);   // 새로고침 시 현재 페이지 복원용 (early return 전에 저장)
   // 화면 전환 시 대화방 전체화면 해제(하단 탭바 복귀) — 대화 열면 openChannel이 다시 설정
@@ -5141,9 +5144,37 @@ function filterChannels(q) {
 }
 
 // ── 채널 열기 ──
+// 눌러만 보고 닫은 1:1 방을 치운다.
+//  방을 열 때 바로 만들어 두기 때문에, 말 한마디 없이 나가면 빈 방이
+//  목록에 남는다. 같은 사람과의 빈 방이 줄줄이 쌓인 까닭이다.
+//  ⚠️ 지우기 전에 DB 로 다시 센다. 내가 보던 사이에 상대가 썼을 수 있다.
+//  ⚠️ 규칙에 막히면(0줄) 조용히 둔다 — 남의 방을 지우려 들지 않는다.
+async function sweepEmptyDm(ch) {
+  if (!ch || !ME || ch.kind !== 'dm') return;
+  if (ch.created_by !== ME.id) return;          // 내가 만든 것만
+  try {
+    const { count, error } = await sb.from('messages')
+      .select('id', { count: 'exact', head: true }).eq('channel_id', ch.id);
+    if (error || count) return;                 // 한 줄이라도 있으면 둔다
+    const { data } = await sb.from('channels').delete().eq('id', ch.id).select('id');
+    if (!data || !data.length) return;          // 권한이 없으면 그대로 둔다
+    channels = channels.filter(c => c.id !== ch.id);
+    myChannelIds.delete(ch.id); myRealChannelIds.delete(ch.id);
+    delete unreadCounts[ch.id];
+    renderPanel();
+  } catch (_) {}
+}
+
+// 창을 덮거나 다른 앱으로 갈 때도 치운다 — 휴대폰은 이쪽이 더 흔하다
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') sweepEmptyDm(currentChannel);
+});
+
 async function openChannel(id) {
+  const leaving = currentChannel;
   currentChannel = channels.find(c=>c.id===id);
   if (!currentChannel) return;
+  if (leaving && leaving.id !== id) sweepEmptyDm(leaving);
   setupReactionInteractions();
 
   sessionStorage.setItem('last_channel_id', id);
@@ -5472,6 +5503,9 @@ function msgActions(m) {
   if (plain) a.push({ k:'copy',   icon:'📋', label:t('복사','Copy'),            call:`copyMsgText('${id}')` });
   if (plain) a.push({ k:'select', icon:'🔤', label:t('골라서 복사','Select & copy'), call:`selectMsgText('${id}')` });
   if (plain) a.push({ k:'share',  icon:'📤', label:t('공유','Share'),           call:`shareMsg('${id}')` });
+  // 사진이 든 메시지는 바로 저장할 수 있게
+  if (m.kind === 'file' && msgFirstImage(m))
+    a.push({ k:'save', icon:'⤓', label:t('사진 저장','Save photo'), call:`saveMsgImages('${id}')` });
   if (m.kind !== 'poll')
     a.push({ k:'note', icon:'📝', label:t('IM노트에 저장','Save to IM Notes'), call:`saveMsgAsNote('${id}')` });
   a.push(myBookmarks.has(m.id)
@@ -5819,7 +5853,7 @@ function msgHtml(m, prev, readMap={}) {
         if (f.isImage) {
           bubbleContent = `<div style="max-width:260px;line-height:0;border-radius:12px;overflow:hidden">
             <img class="chat-img" data-img="${f.viewUrl}" src="${f.thumbUrl||f.directUrl}" alt="${f.name}" style="width:100%;display:block;cursor:pointer;border-radius:12px" onclick="openImageModal('${f.viewUrl}')" onerror="this.src='${f.directUrl}';this.onerror=null"/>
-            <div style="line-height:1.4;padding:4px 2px 0;font-size:11px;text-align:right"><span onclick="openImageModal('${f.viewUrl}')" style="color:var(--accent);cursor:pointer">크게 보기 ↗</span></div>
+            <div style="line-height:1.4;padding:4px 2px 0;font-size:11px;text-align:right;display:flex;gap:10px;justify-content:flex-end"><span onclick="downloadImage('${escJs(f.viewUrl)}','${escJs(f.name||'')}')" style="color:var(--accent);cursor:pointer">${t('저장 ⤓','Save ⤓')}</span><span onclick="openImageModal('${f.viewUrl}')" style="color:var(--accent);cursor:pointer">${t('크게 보기 ↗','View ↗')}</span></div>
           </div>`;
         } else if (f.isVideo) {
           bubbleContent = `<div style="max-width:280px">
@@ -9772,6 +9806,68 @@ async function renderHome() {
 }
 
 let imgGallery = [], imgIndex = -1;
+// ── 사진 내려받기 ───────────────────────────────────────────────
+//  사진은 다른 집(Supabase)에 있어서 <a download> 만으로는 안 된다.
+//  브라우저가 남의 집 파일에는 그 속성을 무시하고 그냥 열어 버린다.
+//  그래서 내려받아(fetch) 내 손에 쥔 다음에 저장한다.
+//  휴대폰은 공유창을 띄운다 — 거기서 '이미지 저장' 을 누르면 사진첩에
+//  들어간다. 아이폰은 이 길 말고는 사진첩에 넣을 방법이 없다.
+async function downloadImage(url, name) {
+  if (!url) return;
+  const fname = (name && name.trim()) ||
+    decodeURIComponent(String(url).split('?')[0].split('/').pop() || '') || 'photo.jpg';
+  let blob;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    blob = await res.blob();
+  } catch (_) {
+    window.open(url, '_blank');            // 못 받아오면 새 창에서 길게 눌러 저장
+    return;
+  }
+  // 휴대폰 — 공유창
+  try {
+    const file = new File([blob], fname, { type: blob.type || 'image/jpeg' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file] });
+      return;                               // 사람이 닫았어도 여기서 끝낸다
+    }
+  } catch (_) { return; }                   // 공유창을 닫은 것 — 또 받지 않는다
+  // 데스크탑 — 바로 저장
+  try {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = fname;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => { try { URL.revokeObjectURL(a.href); } catch (_) {} }, 4000);
+    showUploadToast(t('사진을 내려받았어요','Photo saved'));
+  } catch (_) {
+    window.open(url, '_blank');
+  }
+}
+// 메시지에 든 첫 사진. 없으면 null.
+function msgFirstImage(m) {
+  if (!m || m.kind !== 'file') return null;
+  try {
+    const f = JSON.parse(m.text || '{}');
+    const list = Array.isArray(f.items) ? f.items : [f];
+    const im = list.find(x => x && x.viewUrl && /^image\//.test(x.mimeType || '')) ||
+               list.find(x => x && x.viewUrl && /\.(jpe?g|png|gif|webp|heic)$/i.test(x.name || ''));
+    return im || null;
+  } catch (_) { return null; }
+}
+async function saveMsgImages(id) {
+  const m = _msgById[id];
+  const im = msgFirstImage(m);
+  if (!im) { showUploadToast(t('저장할 사진이 없어요','No photo to save')); return; }
+  await downloadImage(im.viewUrl, im.name);
+}
+
+function downloadShownImage() {
+  const img = document.getElementById('img-modal-src');
+  if (img && img.src) downloadImage(img.src);
+}
+
 function openImageModal(url, forceIndex) {
   const modal = document.getElementById('img-modal');
   const img = document.getElementById('img-modal-src');
