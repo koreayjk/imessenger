@@ -1201,6 +1201,12 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
           <span data-ko="이미 계정이 있으신가요?" data-en="Already have an account?">이미 계정이 있으신가요?</span> <span onclick="switchTab('signin')" style="color:var(--adeep);font-weight:600;cursor:pointer" data-ko="로그인" data-en="Sign in">로그인</span>
         </div>
       </div>
+      <!-- 심사자는 로그인 전에 이 화면만 봅니다. 여기에도 길을 둡니다. -->
+      <div style="text-align:center;margin-top:18px;font-size:11.5px;color:rgba(255,255,255,.75)">
+        <a href="./terms.html" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline" data-ko="개인정보처리방침" data-en="Privacy Policy">개인정보처리방침</a>
+        <span style="opacity:.5;margin:0 6px">·</span>
+        <a href="./delete-account.html" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline" data-ko="계정 삭제 안내" data-en="Account deletion">계정 삭제 안내</a>
+      </div>
     </div>
   </div>
 </div>
@@ -11306,6 +11312,20 @@ async function renderProfilePage() {
         style="width:100%;height:46px;border-radius:13px;border:1.5px solid #FFD6D6;background:#FFF0F0;color:var(--rose);font:700 15px var(--font);cursor:pointer;margin-bottom:20px;display:flex;align-items:center;justify-content:center;gap:8px">
         🚪 ${t('로그아웃','Log Out')}
       </button>
+
+      <!-- 약관·개인정보처리방침 — 애플도 구글도 '앱 안에서 볼 수 있는 길'을
+           요구합니다 (애플 심사지침 5.1.1). 메타데이터에 주소만 적어 두고
+           앱 안에 길이 없으면 되돌려 보냅니다. -->
+      <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+        <a href="./terms.html" target="_blank" rel="noopener"
+          style="flex:1;min-width:150px;height:42px;border-radius:11px;border:1px solid var(--border);background:var(--surface);color:var(--ink2);font:600 13px var(--font);text-decoration:none;display:flex;align-items:center;justify-content:center;gap:6px">
+          📄 ${t('개인정보처리방침','Privacy Policy')}
+        </a>
+        <a href="./delete-account.html" target="_blank" rel="noopener"
+          style="flex:1;min-width:150px;height:42px;border-radius:11px;border:1px solid var(--border);background:var(--surface);color:var(--ink2);font:600 13px var(--font);text-decoration:none;display:flex;align-items:center;justify-content:center;gap:6px">
+          🗑 ${t('계정 삭제 안내','About deletion')}
+        </a>
+      </div>
 
       <!-- 계정 삭제 — 눌러서 여는 접이식. 실수로 누르기 어렵게 맨 아래 둔다 -->
       <details style="margin-bottom:24px;border:1px solid var(--border);border-radius:13px;background:var(--s2);overflow:hidden">
