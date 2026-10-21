@@ -8,6 +8,7 @@
 <meta property="og:description" content="한 아이의 모든 것을, 한 페이지에. 생기부·출결·상담·소통을 한 곳에서."/>
 <meta property="og:type" content="website"/>
 <link rel="icon" href="./tcs_logo.png?v=2"/>
+<link rel="manifest" href="./manifest.webmanifest"/>
 <title>TCS · 작은 학교를 위한 토탈 케어 시스템</title>
 <style>
   :root{
@@ -258,8 +259,9 @@
   .sec-head p{color:var(--ink-2);margin-top:14px;font-size:17.5px}
 
   /* 앱 내려받기 */
-  .dl{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:34px}
-  @media(max-width:860px){.dl{grid-template-columns:1fr}}
+  .dl{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:34px}
+  @media(max-width:1040px){.dl{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:640px){.dl{grid-template-columns:1fr}}
   .dlc{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:24px;
     display:flex;flex-direction:column;gap:4px;
     transition:transform .5s var(--e),box-shadow .5s var(--e)}
@@ -469,6 +471,17 @@
         <div class="go">
           <a class="dlbtn soon" id="dl-dmg" aria-disabled="true">준비 중</a>
           <div class="meta" id="dl-dmg-m">.dmg 파일</div>
+        </div>
+      </div>
+
+      <!-- 윈도우 — 브라우저에서 앱으로 깐다 (PWA) -->
+      <div class="dlc rise" style="--d:240ms">
+        <div class="os">🪟</div>
+        <h3>윈도우</h3>
+        <p class="sub">엣지·크롬에서 <b>앱으로 설치</b>하면 작업 표시줄에 아이콘이 생기고 알림도 옵니다.</p>
+        <div class="go">
+          <a class="dlbtn" id="dl-win" href="./index.html">앱으로 설치</a>
+          <div class="meta" id="dl-win-m">설치 파일이 필요 없어요</div>
         </div>
       </div>
     </div>
@@ -691,6 +704,33 @@
   //  아직 안 올린 파일을 가리키는 죽은 단추가 되고, 나중에 올려도
   //  이 페이지를 또 고쳐야 한다. 그래서 들어올 때 릴리스를 물어보고
   //  '실제로 있는 것만' 단추를 켠다. 없으면 '준비 중' 그대로 둔다.
+  // ── 윈도우: 브라우저가 '앱으로 설치' 를 내주면 그 자리에서 깐다 ──
+  //  엣지·크롬은 설치할 수 있을 때 beforeinstallprompt 를 보낸다. 그걸
+  //  잡아 뒀다가 단추를 누를 때 내민다. 못 잡으면(사파리·파이어폭스,
+  //  이미 깔린 경우) 그냥 앱을 여는 길로 둔다 — 죽은 단추가 되지 않게.
+  let _installPrompt = null;
+  addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    _installPrompt = e;
+    const b = document.getElementById('dl-win');
+    const m = document.getElementById('dl-win-m');
+    if (b) b.textContent = '이 브라우저에 설치';
+    if (m) m.textContent = '한 번 누르면 끝';
+  });
+  const winBtn = document.getElementById('dl-win');
+  if (winBtn) winBtn.addEventListener('click', async (e) => {
+    if (!_installPrompt) return;           // 못 잡았으면 링크대로 앱을 연다
+    e.preventDefault();
+    const p = _installPrompt; _installPrompt = null;
+    try { await p.prompt(); } catch (_) {}
+  });
+  addEventListener('appinstalled', () => {
+    const b = document.getElementById('dl-win');
+    const m = document.getElementById('dl-win-m');
+    if (b) b.textContent = '설치됐어요 — 열기';
+    if (m) m.textContent = '시작 메뉴에서도 열립니다';
+  });
+
   const REPO = 'koreayjk/imessenger';
   const mb = (n) => (n > 1048576 ? (n / 1048576).toFixed(1) + 'MB' : Math.round(n / 1024) + 'KB');
 
