@@ -4965,10 +4965,16 @@ let unreadCounts = {}; // channel_id → unread count
 //  한 방을 읽으면 줄 하나가 바뀌지만, 여러 방을 연달아 읽으면 여러 번
 //  온다. 잠깐 모았다 한 번만 센다.
 let _readSyncTimer = null;
+// 읽음 표시가 바뀔 때마다 서버가 모두를 깨운다. 사람이 여럿이면 서로를
+// 깨워 눈덩이가 된다 — 무거운 일이라 DB 가 숨이 차고, 그러면 로그인까지
+// 같이 느려진다. 실제로 그렇게 뻗었다. 적어도 이만큼은 쉬어 간다.
+const READ_SYNC_GAP = 4000;
+let _readSyncAt = 0;
 function readSyncSoon() {
   if (_readSyncTimer) clearTimeout(_readSyncTimer);
+  const wait = Math.max(600, READ_SYNC_GAP - (Date.now() - _readSyncAt));
   _readSyncTimer = setTimeout(async () => {
-    _readSyncTimer = null;
+    _readSyncTimer = null; _readSyncAt = Date.now();
     try {
       await loadUnreadCounts();
       // 지금 보고 있는 방은 읽은 것으로 친다. 안 그러면 보고 있는 방에
@@ -4977,7 +4983,7 @@ function readSyncSoon() {
       updateUnreadBadges();
       renderPanel();          // 방 줄의 숫자는 다시 그려야 바뀐다
     } catch (_) {}
-  }, 600);
+  }, wait);
 }
 
 // 안읽음을 어느 길로 셌나. 'db' = 서버 함수가 세 줬다(정확).
@@ -4985,7 +4991,22 @@ function readSyncSoon() {
 //  앱 안 숫자가 안 뜰 때, 화면 판이 옛것인지 SQL 이 안 깔린 건지를
 //  이 한 줄로 가린다.
 let _unreadVia = '?', _unreadWhy = '';
+// ⚠️ 이 일은 무겁다. 서버 함수가 막히면 45일치 글을 1000줄까지 받아
+//    오는 길로 떨어진다. 그래서 '한 번에 하나만' 돌게 한다.
+//    읽고 나서 배지가 바로 사라져야 하므로 여기서는 미루지 않는다 —
+//    눈덩이가 생기는 자리는 실시간 알림 쪽이라, 묶는 것은 readSyncSoon
+//    에만 건다.
+let _unreadBusy = null, _unreadRpcDead = false;
 async function loadUnreadCounts() {
+  if (_unreadBusy) return _unreadBusy;          // 돌고 있으면 그것을 같이 기다린다
+  _unreadBusy = (async () => {
+    try { await _loadUnreadCountsOnce(); }
+    finally { _unreadBusy = null; }
+  })();
+  return _unreadBusy;
+}
+
+async function _loadUnreadCountsOnce() {
   // 각 채널의 마지막 메시지 중 내가 읽지 않은 것 카운트
   const visibleIds = Array.from(myChannelIds);
   if (!visibleIds.length) return;
@@ -4999,7 +5020,7 @@ async function loadUnreadCounts() {
   //  정작 안 읽은 최근 글은 한 줄도 안 왔다. 그래서 방이 많은 계정에서는
   //  모든 방이 '다 읽음' 으로 보였다 — 아이콘 숫자는 7 인데 목록엔 아무
   //  표시가 없는 상태. 설치: db/안읽음_방별_DB설치.sql
-  {
+  if (!_unreadRpcDead) {
     const { data: rows, error } = await sb.rpc('unread_by_channel');
     if (!error && Array.isArray(rows)) {
       unreadCounts = {};
@@ -5012,7 +5033,13 @@ async function loadUnreadCounts() {
     // 잘리더라도 안 읽은 글(= 최근 글)은 그 안에 들어온다.
     _unreadVia = 'old';
     _unreadWhy = (error && (error.message || String(error)) || '').slice(0, 90);
-    if (error) console.warn('unread_by_channel 없음 — 예전 방식으로 셉니다', _unreadWhy);
+    if (error) {
+      // 권한이 막혔거나 함수가 없으면 다음에도 똑같이 막힌다. 매번 두드려서
+      // 서버 기록만 채우지 않는다. (하루에 한 번쯤 다시 본다)
+      const why = String((error && error.code) || '') + ' ' + _unreadWhy;
+      if (/42501|PGRST202|permission denied|does not exist/i.test(why)) _unreadRpcDead = true;
+      console.warn('unread_by_channel 을 못 씁니다 — 예전 방식으로 셉니다', _unreadWhy);
+    }
   }
 
   const [creadsRes, msgsRes] = await Promise.all([
