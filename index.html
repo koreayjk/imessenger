@@ -5310,12 +5310,14 @@ async function openChannel(id) {
           showUploadToast('💬 ' + (payload.new.sender_name || '누군가') + '님이 회원님을 언급했어요');
         }
         // 내가 보낸 메시지는 '읽음'으로 표시하지 않음 (안 그러면 상대가 안 읽어도 '모두 읽음'이 됨)
-        if (payload.new.sender_id !== ME.id) { await markRead(payload.new.id); markChannelRead(id); }
+        if (payload.new.sender_id !== ME.id) { await markRead(payload.new.id); markChannelReadSoon(id); }
       })
+    // ⚠️ 이 둘은 거르개를 걸 수 없다(표에 '어느 방' 칸이 없다). 받는 쪽에서
+    //    화면에 있는 글인지 보고 거른다. 안 그러면 조회가 제곱으로 는다.
     .on('postgres_changes', { event:'INSERT', schema:'public', table:'message_reads' },
-      async () => { await refreshReadCounts(); })
+      (payload) => { if (onScreenMsg(payload)) refreshReadCountsSoon(); })
     .on('postgres_changes', { event:'*', schema:'public', table:'message_reactions' },
-      async () => { await refreshReactions(); })
+      (payload) => { if (onScreenMsg(payload)) refreshReactionsSoon(); })
     .on('postgres_changes', { event:'*', schema:'public', table:'poll_votes' },
       async (payload) => {
         const mid = payload.new?.message_id || payload.old?.message_id;
@@ -5386,6 +5388,46 @@ async function markRead(messageId) {
 //  막히면 던지는 게 아니라 { error } 를 돌려줍니다. 그래서 권한에 막혀
 //  한 글자도 안 써져도 조용히 넘어갔고, 안읽음 수는 영영 안 줄었습니다.
 //  이제는 적힌 걸 확인하고, 안 적히면 말합니다.
+// ── 실시간 소식 걸러 받기 ───────────────────────────────────────
+//  message_reads · message_reactions 에는 '어느 방' 인지 적는 칸이 없다.
+//  그래서 서버에 거르개를 걸 수가 없고, 온 세상의 소식이 전부 날아온다.
+//  받는 쪽에서 걸러야 한다 — 안 그러면 사람 수의 제곱으로 조회가 늘어
+//  DB 가 숨이 찬다. (실제로 그렇게 뻗었다)
+//
+//  메시지 하나가 오면 받은 사람 수만큼 '읽음' 줄이 생기고, 그 줄 하나하나가
+//  접속한 모두를 깨운다. 열 명이면 한 메시지에 조회 100번이다.
+//
+//  poll_votes 는 처음부터 이렇게 걸러 받고 있었다. 둘만 빠져 있었다.
+function onScreenMsg(payload) {
+  const id = (payload && ((payload.new && payload.new.message_id) ||
+                          (payload.old && payload.old.message_id))) || '';
+  if (!id) return false;
+  try { return !!document.querySelector('.msg-row[data-id="' + cssEsc(id) + '"]'); }
+  catch (_) { return false; }
+}
+
+// 화면에 있는 글이라도, 여럿이 한꺼번에 읽으면 소식이 쏟아진다. 묶는다.
+function throttled(fn, gap) {
+  let t = null, last = 0;
+  return () => {
+    if (t) return;
+    t = setTimeout(async () => {
+      t = null; last = Date.now();
+      try { await fn(); } catch (_) {}
+    }, Math.max(250, gap - (Date.now() - last)));
+  };
+}
+const refreshReadCountsSoon = throttled(() => refreshReadCounts(), 1500);
+const refreshReactionsSoon  = throttled(() => refreshReactions(),  1200);
+
+// 글이 쏟아질 때 방 읽음 표시를 글마다 쓰지 않는다. 한 번만 쓴다.
+//  이 쓰기는 내 다른 기기를 깨우고, 깨어난 쪽은 안읽음을 다시 센다.
+let _mcrT = null;
+function markChannelReadSoon(channelId) {
+  if (_mcrT) return;
+  _mcrT = setTimeout(() => { _mcrT = null; markChannelRead(channelId); }, 1500);
+}
+
 async function markChannelRead(channelId) {
   let error = null;
   try {
