@@ -206,10 +206,13 @@ Deno.serve(async (req) => {
   const auth = req.headers.get('Authorization') ?? '';
   if (!auth) return json({ error: '로그인이 필요합니다' }, 401);
 
-  let body: { message_id?: string; check?: boolean; sync?: boolean };
+  let body: { message_id?: string; check?: boolean; sync?: boolean; call_id?: string };
   try { body = await req.json(); } catch { return json({ error: '잘못된 요청' }, 400); }
   const messageId = String(body.message_id ?? '');
-  if (!messageId && !body.check && !body.sync) return json({ error: 'message_id 가 없습니다' }, 400);
+  const callId = String(body.call_id ?? '');
+  if (!messageId && !callId && !body.check && !body.sync) {
+    return json({ error: 'message_id 가 없습니다' }, 400);
+  }
 
   const url = Deno.env.get('SUPABASE_URL')!;
   // 부른 사람이 누구인지는 그 사람의 토큰으로 확인한다
@@ -341,6 +344,74 @@ Deno.serve(async (req) => {
     }
     if (dead.length) await admin.from('push_subscriptions').delete().in('id', dead);
     return json({ 아이콘숫자: n, 보낸기기: sent, 지운기기: dead.length });
+  }
+
+  // ── 📞 전화 왔다고 깨우기 ({ call_id }) ───────────────────────────
+  //  앱이 닫혀 있으면 실시간 줄이 끊겨 벨이 울리지 않습니다. 걸은 쪽이
+  //  이걸 불러 상대 기기를 깨웁니다.
+  //  ⚠️ 건 사람만 자기 전화의 알림을 쏠 수 있습니다. 아니면 아무나
+  //     남의 통화 번호로 벨을 뿌릴 수 있습니다.
+  //  ⚠️ 받는 사람은 '그 전화의 받는 사람' 한 명뿐입니다. 방 사람 전부가
+  //     아닙니다 — 1:1 전화인데 단체방에 벨이 울리면 안 됩니다.
+  //  ※ 아이폰 잠금화면의 '진짜 전화 화면'(CallKit)은 앱 쪽 작업이라
+  //    여기서는 보통 알림으로 깨웁니다. 눌러서 들어오면 벨이 울립니다.
+  if (callId) {
+    const { data: call } = await admin.from('calls')
+      .select('id,caller_id,callee_id,status,created_at').eq('id', callId).maybeSingle();
+    if (!call) return json({ error: '통화를 찾을 수 없습니다' }, 404);
+    if (call.caller_id !== uid) return json({ error: '이 통화를 건 사람이 아닙니다' }, 403);
+    if (call.status !== 'ringing') return json({ sent: 0, skipped: call.status });
+    // 지난 전화 번호로 뒤늦게 벨을 울리지 못하게
+    if (Date.now() - new Date(String(call.created_at)).getTime() > 90_000) {
+      return json({ sent: 0, skipped: 'stale' });
+    }
+    // 날 차단한 사람에게는 걸지 않는다
+    const { data: blk } = await admin.from('user_blocks')
+      .select('blocker_id').eq('blocked_id', uid).eq('blocker_id', call.callee_id).maybeSingle();
+    if (blk) return json({ sent: 0, skipped: 'blocked' });
+
+    const { data: meRow } = await admin.from('members').select('name').eq('id', uid).maybeSingle();
+    const callerName = String(meRow?.name ?? '누군가');
+    const { data: cSubs } = await admin.from('push_subscriptions').select('*').eq('member_id', call.callee_id);
+    if (!cSubs || !cSubs.length) return json({ sent: 0 });
+
+    if (HAS_WEB) webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC, VAPID_PRIVATE);
+    const title = '📞 전화가 왔어요';
+    const bodyText = callerName + ' 님';
+    let cSent = 0;
+    const cDead: string[] = [];
+    await Promise.all(cSubs.map(async (s) => {
+      // 전화는 방별 알림 끄기(mutes)와 '멘션만' 설정을 따르지 않습니다 —
+      // 방이 아니라 사람에게 거는 것이고, 놓치면 연락이 안 됩니다.
+      if (!s.enabled) return;
+      if (s.kind === 'ios') {
+        if (!HAS_IOS) return;
+        try {
+          const r = await apnsSend(String(s.endpoint), {
+            aps: { alert: { title, body: bodyText }, sound: 'default', 'interruption-level': 'time-sensitive' },
+            callId: call.id,
+          });
+          if (r === true) cSent++;
+          else if (r === 'dead') cDead.push(String(s.id));
+        } catch (e) { console.error('📞 APNs 던짐', String(e)); }
+        return;
+      }
+      if (!HAS_WEB || !s.p256dh || !s.auth) return;
+      try {
+        await webpush.sendNotification(
+          { endpoint: String(s.endpoint), keys: { p256dh: String(s.p256dh), auth: String(s.auth) } },
+          JSON.stringify({ title, body: bodyText, tag: 'tcs-call', callId: call.id, renotify: true }),
+          // 벨은 지금 울려야 뜻이 있다. 45초 지나면 버린다.
+          { TTL: 45, urgency: 'high' },
+        );
+        cSent++;
+      } catch (e) {
+        const code = (e as { statusCode?: number })?.statusCode ?? 0;
+        if (code === 404 || code === 410) cDead.push(String(s.id));
+      }
+    }));
+    if (cDead.length) await admin.from('push_subscriptions').delete().in('id', cDead);
+    return json({ sent: cSent, removed: cDead.length });
   }
 
   // ── 🔎 시험 ({ check: true }) ──────────────────────────────────────

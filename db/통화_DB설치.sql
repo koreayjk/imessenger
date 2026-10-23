@@ -44,6 +44,28 @@ set search_path = public as $$
 $$;
 grant execute on function public.can_call(uuid) to authenticated;
 
+-- ── 내 공동체 id ────────────────────────────────────────────────
+--  아래 calls_insert 규칙이 씁니다. db/IM노트_DB설치.sql 에도 똑같이
+--  있는데, 그걸 안 깔았으면 여기서 멈춥니다. 같은 내용으로 한 번 더
+--  둡니다 — 여러 번 돌려도 같은 함수가 됩니다.
+create or replace function public.my_community_id()
+returns uuid language sql security definer stable set search_path = public as $$
+  select community_id from public.members where id = auth.uid() limit 1;
+$$;
+grant execute on function public.my_community_id() to authenticated;
+
+-- ── 통화 시간 제한 ──────────────────────────────────────────────
+--  길어지면 수업에 방해가 되고, 중계(TURN)를 쓰는 통화는 데이터도 씁니다.
+--  기본 10분. 관리자가 공동체 설정에서 바꿉니다. 0 이면 제한 없음.
+alter table public.communities
+  add column if not exists call_limit_min int not null default 10;
+comment on column public.communities.call_limit_min is
+  '통화 시간 제한(분). 0 이면 제한 없음. 화면이 이 시간에 맞춰 끊는다.';
+do $$ begin
+  alter table public.communities add constraint communities_call_limit_ok
+    check (call_limit_min >= 0 and call_limit_min <= 180);
+exception when duplicate_object then null; end $$;
+
 -- ── 통화 ────────────────────────────────────────────────────────
 create table if not exists public.calls (
   id           uuid primary key default gen_random_uuid(),
@@ -107,6 +129,32 @@ end $$;
 
 notify pgrst, 'reload schema';
 
+-- ── 받지 않은 전화를 정리한다 ────────────────────────────────────
+--  벨만 울리다 아무도 안 누르면 'ringing' 으로 영영 남습니다. 그러면
+--  다음에 들어올 때 옛 벨이 다시 울립니다. 2분이 지난 것은 '못 받음'.
+--  ⚠️ 치우는 것은 '내' 전화뿐입니다. security invoker 라 위 calls_update
+--     규칙이 그대로 걸리고, where 절에도 한 번 더 적어 두었습니다.
+--     definer 로 두면 아무나 남의 '울리는 중' 을 '못 받음' 으로
+--     바꿀 수 있습니다 (unread_by_channel 과 같은 뜻으로 invoker 입니다).
+create or replace function public.expire_stale_calls()
+returns int language sql volatile security invoker
+set search_path = public as $$
+  with done as (
+    update public.calls
+       set status = 'missed', ended_at = now(), end_reason = 'timeout'
+     where status = 'ringing'
+       and created_at < now() - interval '2 minutes'
+       and (callee_id = auth.uid() or caller_id = auth.uid())
+    returning 1
+  ) select count(*)::int from done;
+$$;
+revoke all on function public.expire_stale_calls() from public, anon;
+grant execute on function public.expire_stale_calls() to authenticated;
+
+notify pgrst, 'reload schema';
+
 -- ── 확인 ─────────────────────────────────────────────────────────
 select policyname as "정책", cmd as "대상"
   from pg_policies where schemaname='public' and tablename='calls' order by 2, 1;
+
+select '통화 제한(분)' as "설정", call_limit_min as "값" from public.communities limit 5;

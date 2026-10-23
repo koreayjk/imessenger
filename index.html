@@ -1377,6 +1377,9 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ink3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/><path d="M8.5 14.5l1.8 1.8 3.7-3.8"/></svg>
             <span style="font-size:12.5px;font-weight:600;color:var(--ink3)">제출</span>
           </div>
+          <div class="header-action" id="call-btn" onclick="callCurrentDm()" title="전화 걸기" style="display:none;align-items:center;justify-content:center">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2a7a5a" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 01-2.2 2 19.8 19.8 0 01-8.6-3.1 19.5 19.5 0 01-6-6A19.8 19.8 0 012.1 4.2 2 2 0 014.1 2h3a2 2 0 012 1.7c.1 1 .4 1.9.7 2.8a2 2 0 01-.5 2.1L8.1 9.9a16 16 0 006 6l1.3-1.3a2 2 0 012.1-.4c.9.3 1.8.6 2.8.7a2 2 0 011.7 2z"/></svg>
+          </div>
           <div class="header-action" onclick="toggleTodoPanel()" title="To-Do List" id="todo-btn"
             style="display:flex;align-items:center;gap:4px;padding:0 10px;width:auto;border-radius:10px">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ink3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
@@ -2790,6 +2793,12 @@ async function pushInit() {
       if (d.type === 'tcs-open-channel' && d.channelId) {
         try { window.focus(); } catch (_) {}
         try { setMode('chat'); openChannel(d.channelId); } catch (_) {}
+      }
+      // 📞 전화 알림을 눌러 들어왔다. 앱이 닫혀 있던 동안에는 실시간 줄이
+      //    없어서 벨 소식을 못 받았으니, 그 전화를 직접 물어본다.
+      if (d.type === 'tcs-open-call' && d.callId) {
+        try { window.focus(); } catch (_) {}
+        try { callOpenFromNotification(d.callId); } catch (_) {}
       }
     });
   } catch (_) { _swReg = null; }
@@ -4541,6 +4550,7 @@ async function init() {
 
   // 모든 채널 새 메시지 감지 → 읽지 않은 배지 업데이트
   subscribeGlobalMessages();
+  try { callInit(); } catch (_) {}        // 📞 전화가 오면 벨이 울리게
 
   renderPanel();
   renderMembers();
@@ -5231,6 +5241,9 @@ async function openChannel(id) {
   document.getElementById('ch-name').textContent = currentChannel.name;
   document.getElementById('ch-desc').textContent = currentChannel.description || '';
   try { notiSyncBell(); } catch (_) {}
+  // 전화 단추는 1:1 방에서만. 멤버를 읽고 나서야 상대를 알 수 있으니
+  // 여기서는 감추고, renderMembers() 끝에서 켠다.
+  try { const _cb = document.getElementById('call-btn'); if (_cb) _cb.style.display = 'none'; } catch (_) {}
 
   // 공지글(고정) 배너 — 최신값 반영 후 렌더
   _announceExpanded = false;
@@ -8563,6 +8576,8 @@ async function renderMembers() {
       </div>
     </div>`;
   }).join('');
+
+  try { callSyncBtn(); } catch (_) {}   // 1:1 이면 머리말에 📞 를 켠다
 }
 
 let rightPanelHidden = false;   // 사용자가 직접 접어둔 상태 (채팅으로 돌아와도 유지)
@@ -8647,6 +8662,7 @@ function openMemberCard(memberId) {
     </div>
     <div style="display:flex;flex-direction:column;gap:7px;margin-top:16px">
       ${canDm ? `<button onclick="memberCardDm('${m.id}')" style="height:42px;border-radius:12px;border:none;background:#1d3a5f;color:#fff;font:700 14px var(--font);cursor:pointer">💬 ${t('1:1 대화','Direct message')}</button>` : ''}
+      ${canDm ? `<button onclick="startCall('${escJs(m.id)}')" style="height:42px;border-radius:12px;border:none;background:#2a7a5a;color:#fff;font:700 14px var(--font);cursor:pointer">📞 ${t('전화 걸기','Call')}</button>` : ''}
       ${me ? `<button onclick="closeMemberCard();setMode('profile')" style="height:42px;border-radius:12px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);font:700 13.5px var(--font);cursor:pointer">${t('내 프로필','My profile')}</button>` : ''}
       <button onclick="closeMemberCard()" style="height:38px;border-radius:11px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink3);font:600 13px var(--font);cursor:pointer">${t('닫기','Close')}</button>
     </div>`;
@@ -10801,6 +10817,69 @@ async function csBlocks(size) {
 })();
 
 // ── 관리 화면 카드 — 어디에 쓰고 있는지 ──
+// ── 📞 전화 기록 ──
+//  교직원이 봅니다. 미성년자가 쓰는 앱에서 통화만 아무 기록이 없으면
+//  나중에 곤란해집니다. 내용은 안 남고, 누가·누구에게·언제·몇 분만 남습니다.
+//  아무도 지울 수 없습니다 (delete 권한을 아예 주지 않았습니다).
+const CALL_STATUS_KO = { ringing:'울리는 중', accepted:'통화', ended:'통화', declined:'거절',
+                         missed:'못 받음', canceled:'취소', failed:'실패' };
+function callLogWhen(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d)) return '';
+  const p = (x) => String(x).padStart(2, '0');
+  return `${d.getMonth() + 1}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function callLogLen(r) {
+  if (!r || !r.answered_at || !r.ended_at) return '';
+  const sec = Math.round((new Date(r.ended_at) - new Date(r.answered_at)) / 1000);
+  if (!Number.isFinite(sec) || sec < 0) return '';
+  return callMmSs(sec);
+}
+async function csRenderCallLog(commId) {
+  const box = document.getElementById('cs-call-log');
+  if (!box) return;
+  const { data, error } = await sb.from('calls')
+    .select('id,caller_id,callee_id,status,end_reason,answered_at,ended_at,created_at')
+    .eq('community_id', commId).order('created_at', { ascending: false }).limit(40);
+  if (error) {
+    box.innerHTML = callSetupMissing(error)
+      ? `<div style="font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:9px;padding:10px 12px;line-height:1.7">
+           전화 기능이 아직 설치되지 않았어요.<br>Supabase → SQL Editor 에서 <b>db/통화_DB설치.sql</b> 을 실행해주세요.
+         </div>`
+      : `<div style="font-size:12px;color:var(--ink3)">기록을 불러오지 못했어요: ${escHtml(error.message || '')}</div>`;
+    return;
+  }
+  if (!data || !data.length) {
+    box.innerHTML = '<div style="font-size:12px;color:var(--ink3)">아직 걸린 전화가 없어요</div>';
+    return;
+  }
+  // 이름은 명단에서 찾고, 명단에 없는 사람(다른 공동체·나간 사람)만 따로 물어본다
+  const need = new Set();
+  data.forEach(r => { [r.caller_id, r.callee_id].forEach(id => { if (id && !members[id]) need.add(id); }); });
+  const extra = {};
+  if (need.size) {
+    try {
+      const { data: more } = await sb.from('members').select('id,name').in('id', [...need]);
+      (more || []).forEach(m => { extra[m.id] = m; });
+    } catch (_) {}
+  }
+  const nameOf = (id) => escHtml(((members[id] || extra[id] || {}).name) || '알 수 없음');
+  box.innerHTML = data.map(r => {
+    const st = CALL_STATUS_KO[r.status] || r.status || '';
+    const bad = ['declined','missed','canceled','failed'].includes(r.status);
+    const len = callLogLen(r);
+    const lim = r.end_reason === 'time_limit' ? ' · 시간 제한' : '';
+    return `<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border);font-size:12.5px">
+      <span style="color:var(--ink3);width:74px;flex-shrink:0">${escHtml(callLogWhen(r.created_at))}</span>
+      <span style="flex:1;min-width:0;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+        ${nameOf(r.caller_id)} <span style="color:var(--ink3)">→</span> ${nameOf(r.callee_id)}</span>
+      <span style="font-weight:700;color:${bad ? '#c0392b' : 'var(--sage)'};flex-shrink:0">${escHtml(st)}</span>
+      <span style="color:var(--ink3);width:64px;text-align:right;flex-shrink:0">${escHtml(len + lim)}</span>
+    </div>`;
+  }).join('');
+}
+
 async function csRenderCard(commId) {
   const box = document.getElementById('cs-usage');
   if (!box) return;
@@ -15492,6 +15571,24 @@ async function renderCommunitySettings() {
           </div>
         </div>
 
+        <!-- 전화 (통화 시간 제한) -->
+        <div style="border-top:1px solid var(--border);margin:16px 0 14px;padding-top:14px">
+          <div style="font-size:12px;font-weight:600;color:var(--ink3);margin-bottom:6px">📞 전화 — 한 통화의 시간 제한</div>
+          <select id="cs-call-limit" class="adm-input" style="width:100%">
+            ${[0,5,10,15,20,30,45,60].map(v =>
+              `<option value="${v}"${Number(comm.call_limit_min ?? 10) === v ? ' selected' : ''}>${v === 0 ? '제한 없음' : v + '분'}</option>`
+            ).join('')}
+          </select>
+          <div style="font-size:11px;color:var(--ink3);line-height:1.65;margin-top:6px">
+            이 시간이 되면 통화가 저절로 끊어집니다. 끊기기 <b>30초 전</b>에 양쪽에 알려줍니다.<br>
+            길어지면 수업에 방해가 되고, 학교 와이파이에서는 중계를 타느라 데이터도 씁니다. <b>10분</b>을 권합니다.
+          </div>
+          <div style="font-size:11px;color:#1d4ed8;background:#eff6ff;border:1px solid #bfdbfe;border-radius:9px;padding:9px 11px;line-height:1.7;margin-top:8px;word-break:keep-all">
+            ℹ️ 소리는 두 기기가 <b>바로</b> 주고받습니다 — 서버를 지나가지 않고 <b>녹음도 하지 않습니다.</b>
+            남는 것은 아래 기록(누가·누구에게·언제·몇 분)뿐이고, <b>아무도 지울 수 없습니다.</b>
+          </div>
+        </div>
+
         <!-- 저장 버튼 -->
         <button onclick="saveCommSettings('${comm.id}')"
           style="width:100%;height:44px;border-radius:12px;border:none;background:linear-gradient(135deg,#1d3a5f,#2a5298);color:white;font:600 15px var(--font);cursor:pointer;box-shadow:var(--sh-2)">
@@ -15508,9 +15605,16 @@ async function renderCommunitySettings() {
         <div id="cs-usage"><div style="font-size:12px;color:var(--ink3)">불러오는 중...</div></div>
       </div>
 
-      <!-- 통화 -->
+      <!-- 전화 기록 -->
+      <div class="adm-card" style="margin-bottom:16px">
+        <div style="font-size:14px;font-weight:700;margin-bottom:4px">📞 전화 기록</div>
+        <div style="font-size:12px;color:var(--ink3);margin-bottom:12px">최근 40통 · 내용은 남지 않습니다 (누가·누구에게·언제·몇 분)</div>
+        <div id="cs-call-log"><div style="font-size:12px;color:var(--ink3)">불러오는 중...</div></div>
+      </div>
+
+      <!-- 돈 단위 -->
       <div style="border-top:1px solid var(--border);margin:16px 0 14px;padding-top:14px">
-        <div style="font-size:12px;font-weight:600;color:var(--ink3);margin-bottom:6px">💱 통화</div>
+        <div style="font-size:12px;font-weight:600;color:var(--ink3);margin-bottom:6px">💱 돈 단위 (통화)</div>
         <div style="display:inline-flex;gap:4px;background:var(--s2);border:1px solid var(--border);border-radius:11px;padding:4px">
           ${Object.keys(CURRENCIES).map(v=>`<button onclick="setCommCurrency('${v}')" style="height:34px;padding:0 15px;border:none;border-radius:8px;cursor:pointer;font:700 13px var(--font);white-space:nowrap;background:${COMM_CUR===v?'#1d3a5f':'transparent'};color:${COMM_CUR===v?'#fff':'var(--ink2)'}">${curOf(v).sign} ${t(curOf(v).ko.split(' ')[0], curOf(v).en.split(' ')[0])}</button>`).join('')}
         </div>
@@ -15637,6 +15741,7 @@ async function renderCommunitySettings() {
   renderRecordOrgsAdmin();
   csRenderCard(comm.id);        // 저장 용량 — 서버에 물어보느라 늦으니 따로 채운다
   renderSealsAdmin();
+  csRenderCallLog(comm.id);     // 📞 전화 기록 — 따로 읽어 채운다
   loadGcalInfo();
   renderGcalAcl();
   wcFillPicker(comm.id, comm.welcome_channel_ids || []);
@@ -16303,10 +16408,21 @@ async function saveCommSettings(commId) {
   if (wcBox && !wcBox.querySelector('span')) updateData.welcome_channel_ids = wcPicked();
   const bkEl = document.getElementById('cs-books-key');
   if (bkEl) updateData.books_api_key = bkEl.value.trim() || null;
+  const clEl = document.getElementById('cs-call-limit');
+  if (clEl) {
+    const v = Number(clEl.value);
+    if (Number.isFinite(v) && v >= 0 && v <= 180) updateData.call_limit_min = v;
+  }
   if (logoUrl) updateData.logo_url = logoUrl;
   // 저장했는데 '0건'이면 오류 없이 조용히 넘어간다 — 규칙(RLS)에 막힐 때가 그렇다.
   // 그래서 바뀐 행을 돌려받아 확인한다.
-  const { data: saved, error } = await sb.from('communities').update(updateData).eq('id', commId).select('id');
+  let { data: saved, error } = await sb.from('communities').update(updateData).eq('id', commId).select('id');
+  // 통화 제한 칸을 아직 안 깔았으면 그것만 빼고 다시 — 다른 설정까지 막을 일은 아니다
+  if (error && /call_limit_min/.test(error.message || '')) {
+    delete updateData.call_limit_min;
+    ({ data: saved, error } = await sb.from('communities').update(updateData).eq('id', commId).select('id'));
+    if (!error) showUploadToast('전화 시간 제한만 빼고 저장했어요 — db/통화_DB설치.sql 을 실행해주세요');
+  }
   if (error) {
     const m = error.message || '';
     showUploadToast(/column .* does not exist|schema cache/i.test(m)
@@ -31208,6 +31324,593 @@ async function deleteWriting(id) {
   if (error) { showUploadToast('삭제 실패: ' + error.message); return; }
   writingEntries = writingEntries.filter(e => e.id !== id);
   renderWriting();
+}
+
+
+// ══════════════════════════════════════════════════════════════════
+//  📞 전화 — 소리만, 기기끼리 바로
+//
+//  소리는 서버를 지나가지 않습니다. 두 기기가 직접 주고받습니다(WebRTC).
+//  녹음도 하지 않습니다. 남는 것은 '누가 누구에게 언제 몇 분' 뿐입니다.
+//
+//  서버가 하는 일은 셋뿐입니다:
+//    1. 표(calls)에 '벨이 울린다' 를 적어 상대 화면을 켠다
+//    2. 서로를 찾는 쪽지(SDP·ICE)를 실시간 방송으로 건네준다 — 안 남는다
+//    3. 학교 와이파이처럼 직접 연결이 막힌 곳에서 중계해 준다 (TURN)
+//
+//  설치: db/통화_DB설치.sql + Edge Function turn-credentials
+//  ※ 중계 열쇠는 Supabase 비밀값(CF_TURN_KEY_ID·CF_TURN_API_TOKEN)에만
+//    둡니다. 앱에 넣으면 공개 저장소에 올라갑니다.
+// ══════════════════════════════════════════════════════════════════
+
+let CALL = null;              // 지금 하고 있는 통화 하나. 둘은 없다.
+let CALL_LIMIT_MIN = 10;      // 통화 시간 제한(분). 공동체 설정에서 읽는다. 0 = 제한 없음
+let _callSub = null;          // 내게 오는 전화를 듣는 줄
+let _callIce = null, _callIceAt = 0;
+let _callRingT = null, _callTickT = null;
+let _callLimitT = null, _callWarnT = null, _callNoAnsT = null;
+
+const CALL_NO_ANSWER_MS = 45000;   // 이만큼 안 받으면 끊는다
+
+// 이 사람에게 전화를 걸 수 있나 — 데이터베이스의 can_call() 과 같은 규칙.
+//  화면만 막으면 아무나 아무에게 걸 수 있다. 둘을 같이 두고 같이 고친다.
+function canCallMember(m) {
+  if (!m || !ME || m.id === ME.id) return false;
+  if (m.status === 'removed') return false;
+  if (m.community_role === 'store_bot') return false;
+  if (isStudent() && isStudentMember(m)) return false;   // 학생 × 학생
+  return true;
+}
+
+// 아직 db/통화_DB설치.sql 을 안 돌렸을 때를 알아본다
+function callSetupMissing(err) {
+  const m = ((err && (err.message || err.code)) || '') + ' ' + ((err && err.code) || '');
+  return /PGRST205|PGRST20[0-9]|does not exist|schema cache|relation .* does not exist/i.test(m);
+}
+
+// ── 중계(TURN) 자격 ──────────────────────────────────────────────
+//  직접 연결이 되는 집·휴대폰에서는 STUN 만으로 붙습니다. 학교·회사
+//  방화벽 안에서는 중계가 있어야 붙습니다(재 보면 20~25%).
+async function callIceServers() {
+  const FB = [{ urls: ['stun:stun.cloudflare.com:3478'] },
+              { urls: ['stun:stun.l.google.com:19302'] }];
+  if (_callIce && Date.now() - _callIceAt < 10 * 60 * 1000) return _callIce;
+  try {
+    const { data, error } = await sb.functions.invoke('turn-credentials', { body: {} });
+    if (error || !data || !Array.isArray(data.iceServers) || !data.iceServers.length) {
+      console.warn('📞 중계 없이 갑니다', (error && error.message) || (data && data.why) || '');
+      return FB;
+    }
+    if (data.turn === false) console.warn('📞 중계 꺼짐:', data.why || '');
+    _callIce = data.iceServers; _callIceAt = Date.now();
+    return _callIce;
+  } catch (e) {
+    console.warn('📞 중계 자격을 못 받았습니다', String(e));
+    return FB;
+  }
+}
+
+// ── 마이크 ───────────────────────────────────────────────────────
+async function callMic() {
+  if (CALL && CALL.mic) return CALL.mic;
+  const md = navigator.mediaDevices;
+  if (!md || !md.getUserMedia) throw new Error('no-getUserMedia');
+  const s = await md.getUserMedia({
+    audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+    video: false,
+  });
+  if (CALL) CALL.mic = s; else s.getTracks().forEach(tr => tr.stop());
+  return s;
+}
+
+// ── 서로를 찾는 쪽지를 주고받는 줄 (실시간 방송 — 아무것도 안 남는다) ──
+function callSignalJoin(id) {
+  const ch = sb.channel(`call:${id}`);
+  ch.on('broadcast', { event: 'sig' }, (p) => callOnSignal((p && p.payload) || {}));
+  ch.subscribe();
+  return ch;
+}
+function callSend(type, extra) {
+  if (!CALL || !CALL.sig || !ME) return;
+  try {
+    CALL.sig.send({ type: 'broadcast', event: 'sig',
+                    payload: Object.assign({ type, from: ME.id }, extra || {}) });
+  } catch (_) {}
+}
+
+async function callMakePc() {
+  const pc = new RTCPeerConnection({ iceServers: await callIceServers() });
+  pc.onicecandidate = (e) => {
+    if (!e.candidate) return;
+    const c = e.candidate.toJSON ? e.candidate.toJSON() : e.candidate;
+    callSend('ice', { c });
+  };
+  pc.ontrack = (e) => {
+    const a = callAudioEl();
+    const st = (e.streams && e.streams[0]) || null;
+    if (a && st) { a.srcObject = st; a.play().catch(() => {}); }
+  };
+  pc.onconnectionstatechange = () => {
+    if (!CALL || CALL.pc !== pc) return;
+    const s = pc.connectionState;
+    if (s === 'connected') { CALL.linked = true; renderCallScreen(); }
+    // 'disconnected' 는 잠깐 끊긴 것일 수 있어 기다린다. 'failed' 는 끝이다.
+    else if (s === 'failed') endCall('connect_failed');
+  };
+  return pc;
+}
+
+// 소리가 나올 자리. 통화 화면과 따로 둔다 — 화면을 지웠다 그릴 때
+// 같이 지워지면 소리가 끊긴다.
+function callAudioEl() {
+  let a = document.getElementById('call-audio');
+  if (!a) {
+    a = document.createElement('audio');
+    a.id = 'call-audio';
+    a.autoplay = true;
+    a.setAttribute('playsinline', '');
+    a.style.display = 'none';
+    document.body.appendChild(a);
+  }
+  return a;
+}
+
+async function callFlushIce() {
+  if (!CALL || !CALL.pc || !CALL.iceQ) return;
+  const q = CALL.iceQ; CALL.iceQ = null;
+  for (const c of q) { try { await CALL.pc.addIceCandidate(c); } catch (_) {} }
+}
+
+// 건 쪽이 먼저 제안한다. 상대가 받은 뒤에야 한다 — 받기 전에 보내면
+// 상대는 아직 이 줄에 붙어 있지 않아 쪽지가 허공으로 간다.
+async function callStartOffer() {
+  if (!CALL || CALL.dir !== 'out' || CALL.offered) return;
+  CALL.offered = true;
+  try {
+    CALL.pc = CALL.pc || await callMakePc();
+    const mic = await callMic();
+    mic.getTracks().forEach(tr => CALL.pc.addTrack(tr, mic));
+    const off = await CALL.pc.createOffer({ offerToReceiveAudio: true });
+    await CALL.pc.setLocalDescription(off);
+    callSend('offer', { sdp: { type: off.type, sdp: off.sdp } });
+  } catch (e) {
+    console.warn('📞 제안 실패', String(e));
+    endCall('offer_failed');
+  }
+}
+
+async function callOnSignal(p) {
+  if (!CALL || !p || !p.type || !ME || p.from === ME.id) return;
+  try {
+    if (p.type === 'ready' && CALL.dir === 'out') {
+      await callStartOffer();
+    } else if (p.type === 'offer' && CALL.dir === 'in') {
+      if (!p.sdp) return;
+      CALL.pc = CALL.pc || await callMakePc();
+      await CALL.pc.setRemoteDescription(p.sdp);
+      const mic = await callMic();
+      mic.getTracks().forEach(tr => CALL.pc.addTrack(tr, mic));
+      const ans = await CALL.pc.createAnswer();
+      await CALL.pc.setLocalDescription(ans);
+      callSend('answer', { sdp: { type: ans.type, sdp: ans.sdp } });
+      await callFlushIce();
+    } else if (p.type === 'answer' && CALL.dir === 'out') {
+      if (!p.sdp || !CALL.pc || CALL.pc.currentRemoteDescription) return;
+      await CALL.pc.setRemoteDescription(p.sdp);
+      await callFlushIce();
+    } else if (p.type === 'ice') {
+      if (!p.c) return;
+      // 아직 상대 쪽 설명이 안 왔으면 모아 두고 뒤에 한꺼번에 넣는다
+      if (CALL.pc && CALL.pc.remoteDescription) { try { await CALL.pc.addIceCandidate(p.c); } catch (_) {} }
+      else (CALL.iceQ = CALL.iceQ || []).push(p.c);
+    } else if (p.type === 'bye') {
+      // 상대가 끊었다. 표는 끊은 쪽이 적는다.
+      callTeardown();
+      showUploadToast(t('통화가 끝났어요','Call ended'));
+    }
+  } catch (e) { console.warn('📞 신호', String(e)); }
+}
+
+// ── 벨소리 ───────────────────────────────────────────────────────
+function callRingStart(incoming) {
+  callRingStop();
+  const ring = () => {
+    try { notiBeep(); if (incoming) setTimeout(notiBeep, 280); } catch (_) {}
+  };
+  ring();
+  _callRingT = setInterval(ring, incoming ? 1800 : 3000);
+}
+function callRingStop() { if (_callRingT) { clearInterval(_callRingT); _callRingT = null; } }
+
+// ── 시간 재기와 제한 ─────────────────────────────────────────────
+function callStopClock() {
+  if (_callTickT) clearInterval(_callTickT);
+  if (_callLimitT) clearTimeout(_callLimitT);
+  if (_callWarnT) clearTimeout(_callWarnT);
+  _callTickT = null; _callLimitT = null; _callWarnT = null;
+}
+function callStartClock() {
+  callStopClock();
+  _callTickT = setInterval(callTick, 1000);
+  callTick();
+  const lim = Number(CALL_LIMIT_MIN) || 0;
+  if (lim <= 0) return;                       // 제한 없음
+  const ms = lim * 60000;
+  _callLimitT = setTimeout(() => {
+    showUploadToast(t('통화 시간이 다 됐어요','Call time limit reached'));
+    endCall('time_limit');
+  }, ms);
+  if (ms > 40000) {
+    _callWarnT = setTimeout(() => {
+      try { notiBeep(); } catch (_) {}
+      showUploadToast(t('30초 뒤에 통화가 끊어져요','This call ends in 30 seconds'));
+    }, ms - 30000);
+  }
+}
+function callElapsed() {
+  if (!CALL || !CALL.startedAt) return 0;
+  return Math.max(0, Math.floor((Date.now() - CALL.startedAt) / 1000));
+}
+function callMmSs(sec) {
+  const s = Math.max(0, Math.floor(sec));
+  return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+}
+function callTick() {
+  if (!CALL || CALL.status !== 'accepted') return;
+  const el = document.getElementById('call-time');
+  if (el) el.textContent = callMmSs(callElapsed());
+  const lim = Number(CALL_LIMIT_MIN) || 0;
+  const left = document.getElementById('call-left');
+  if (left) {
+    const r = lim > 0 ? lim * 60 - callElapsed() : 0;
+    left.textContent = lim > 0 ? t('제한 ','limit ') + lim + t('분 · 남은 시간 ',' min · ') + callMmSs(r) : '';
+    left.style.color = (lim > 0 && r <= 30) ? '#ffb4a2' : 'rgba(255,255,255,.55)';
+  }
+}
+
+// ── 화면 ─────────────────────────────────────────────────────────
+function renderCallScreen() {
+  let el = document.getElementById('call-screen');
+  if (!CALL) { if (el) el.remove(); return; }
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'call-screen';
+    document.body.appendChild(el);
+  }
+  el.style.cssText = 'position:fixed;inset:0;z-index:900;background:linear-gradient(165deg,#13263c,#1d3a5f 55%,#27507a);'
+    + 'display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;'
+    + 'padding:30px 24px;padding-top:calc(30px + env(safe-area-inset-top));'
+    + 'padding-bottom:calc(30px + env(safe-area-inset-bottom));text-align:center';
+
+  const m = CALL.peer || {};
+  const inc = CALL.dir === 'in';
+  const ringing = CALL.status === 'ringing';
+  const live = CALL.status === 'accepted';
+  const head = ringing ? (inc ? t('📞 전화가 왔어요','📞 Incoming call') : t('전화를 걸고 있어요…','Calling…'))
+             : live ? (CALL.linked ? t('통화 중','On a call') : t('잇고 있어요…','Connecting…'))
+             : t('잇고 있어요…','Connecting…');
+
+  const btn = (label, bg, fg, fn, wide) =>
+    `<button onclick="${fn}" style="height:54px;min-width:${wide ? '190px' : '130px'};padding:0 22px;border:none;`
+    + `border-radius:16px;background:${bg};color:${fg};font:700 15px var(--font);cursor:pointer;`
+    + `box-shadow:0 8px 22px rgba(0,0,0,.25)">${label}</button>`;
+
+  let actions = '';
+  if (ringing && inc) {
+    actions = btn('📞 ' + t('받기','Answer'), '#2a7a5a', '#fff', 'acceptCall()')
+            + btn('✕ ' + t('거절','Decline'), 'rgba(255,255,255,.14)', '#fff', "declineCall('declined')");
+  } else if (ringing) {
+    actions = btn('✕ ' + t('취소','Cancel'), '#b23b3b', '#fff', "endCall('canceled')", true);
+  } else {
+    actions = btn((CALL.muted ? '🔇 ' + t('음소거 중','Muted') : '🎙 ' + t('음소거','Mute')),
+                  CALL.muted ? '#8a6d1f' : 'rgba(255,255,255,.14)', '#fff', 'callToggleMute()')
+            + btn('✕ ' + t('끊기','Hang up'), '#b23b3b', '#fff', "endCall('hangup')");
+  }
+
+  el.innerHTML = `
+    <div style="width:104px;height:104px;border-radius:34px;${avFill(m,'#2a5298')};color:#fff;
+                display:flex;align-items:center;justify-content:center;font:700 40px var(--font);
+                box-shadow:0 0 0 8px rgba(255,255,255,.08),0 18px 44px rgba(0,0,0,.35)">${avInner(m)}</div>
+    <div style="font:700 23px var(--font);color:#fff;margin-top:4px">${escHtml(m.name || t('누군가','Someone'))}</div>
+    <div style="font:600 13.5px var(--font);color:rgba(255,255,255,.72)">${escHtml(head)}</div>
+    ${live ? `<div id="call-time" style="font:700 30px var(--font);color:#fff;letter-spacing:.02em;margin-top:2px">0:00</div>
+              <div id="call-left" style="font:600 12px var(--font);color:rgba(255,255,255,.55);min-height:16px"></div>` : ''}
+    <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-top:18px">${actions}</div>
+    <div style="font:500 11.5px var(--font);color:rgba(255,255,255,.42);line-height:1.7;margin-top:14px;max-width:300px;word-break:keep-all">
+      ${t('소리는 두 기기가 바로 주고받아요 — 녹음하지 않습니다.','Audio goes device to device. Nothing is recorded.')}<br>
+      ${t('누가 누구에게 언제 걸었는지는 기록으로 남습니다.','Who called whom and when is kept as a record.')}
+    </div>`;
+  callTick();
+}
+
+// 화면이 안 보일 때는 알림으로 알린다
+function callNotify(m) {
+  try {
+    if (typeof notiPerm === 'function' && notiPerm() !== 'granted') return;
+    const n = new Notification(t('📞 전화가 왔어요','📞 Incoming call'), {
+      body: (m && m.name) || '', icon: './tcs_icon-192.png?v=2', tag: 'tcs-call', renotify: true,
+    });
+    setTimeout(() => { try { n.close(); } catch (_) {} }, CALL_NO_ANSWER_MS);
+  } catch (_) {}
+}
+
+// ── 걸기 ─────────────────────────────────────────────────────────
+async function startCall(memberId) {
+  if (!ME) return;
+  if (CALL) { showUploadToast(t('이미 통화 중이에요','You are already on a call')); return; }
+  if (!window.RTCPeerConnection) {
+    showUploadToast(t('이 브라우저는 통화를 지원하지 않아요','This browser cannot make calls')); return;
+  }
+  const m = members[memberId];
+  if (!m) { showUploadToast(t('상대를 찾지 못했어요','Could not find that person')); return; }
+  if (!canCallMember(m)) {
+    showUploadToast(isStudent() && isStudentMember(m)
+      ? t('학생끼리는 전화를 걸 수 없어요','Students cannot call each other')
+      : t('이 분에게는 전화를 걸 수 없어요','You cannot call this person'));
+    return;
+  }
+  try { closeMemberCard(); } catch (_) {}
+  try { closeRightPanelMobile(); } catch (_) {}
+
+  CALL = { id: null, dir: 'out', peer: m, status: 'ringing', startedAt: 0 };
+  renderCallScreen();
+
+  // 마이크를 먼저 받는다 — 거절당하면 전화 기록부터 만들지 않는다
+  try { await callMic(); }
+  catch (_) {
+    callTeardown();
+    showUploadToast(t('마이크를 쓸 수 없어요. 브라우저·기기 설정에서 마이크를 켜주세요.',
+                      'Microphone unavailable. Allow mic access in your browser or device settings.'));
+    return;
+  }
+  if (!CALL) return;                 // 허락을 기다리는 동안 닫았다
+
+  const { data, error } = await sb.from('calls').insert({
+    community_id: ME.community_id,
+    callee_id: m.id,
+    caller_id: ME.id,
+    kind: 'audio',
+    channel_id: (currentChannel && currentChannel.kind === 'dm') ? currentChannel.id : null,
+  }).select('id').single();
+
+  if (error || !data) {
+    callTeardown();
+    showUploadToast(callSetupMissing(error)
+      ? t('전화 기능이 아직 설치되지 않았어요 (db/통화_DB설치.sql)','Calling is not installed yet (db/통화_DB설치.sql)')
+      : t('전화를 걸지 못했어요: ','Could not place the call: ') + ((error && error.message) || ''));
+    return;
+  }
+  CALL.id = data.id;
+  CALL.sig = callSignalJoin(data.id);
+  callRingStart(false);
+  renderCallScreen();
+
+  // 상대 기기를 깨운다 — 앱이 닫혀 있어도 벨이 울리게
+  try { sb.functions.invoke('push-notify', { body: { call_id: data.id } }).then(() => {}, () => {}); } catch (_) {}
+
+  const mine = data.id;
+  _callNoAnsT = setTimeout(() => {
+    if (CALL && CALL.id === mine && CALL.status === 'ringing') {
+      showUploadToast(t('상대가 받지 않았어요','No answer'));
+      endCall('no_answer');
+    }
+  }, CALL_NO_ANSWER_MS);
+}
+
+// ── 받기·거절·끊기 ───────────────────────────────────────────────
+async function acceptCall() {
+  if (!CALL || CALL.dir !== 'in' || CALL.status !== 'ringing') return;
+  callRingStop();
+  if (_callNoAnsT) { clearTimeout(_callNoAnsT); _callNoAnsT = null; }
+  CALL.status = 'connecting';
+  renderCallScreen();
+  try { await callMic(); }
+  catch (_) {
+    showUploadToast(t('마이크를 쓸 수 없어요','Microphone unavailable'));
+    declineCall('no_mic');
+    return;
+  }
+  if (!CALL) return;
+  const ok = await callMark(CALL.id, { status: 'accepted', answered_at: new Date().toISOString() });
+  if (!CALL) return;
+  if (!ok) { showUploadToast(t('전화를 받지 못했어요','Could not answer the call')); callTeardown(); return; }
+  CALL.status = 'accepted';
+  CALL.startedAt = Date.now();
+  callSend('ready', {});
+  callStartClock();
+  renderCallScreen();
+}
+
+function declineCall(reason) { return endCall(reason || 'declined'); }
+
+async function endCall(reason) {
+  if (!CALL) return;
+  const id = CALL.id, dir = CALL.dir, was = CALL.status;
+  callSend('bye', {});
+  callTeardown();
+  if (!id) return;
+  const now = new Date().toISOString();
+  if (was === 'accepted') {
+    await callMark(id, { status: 'ended', ended_at: now, end_reason: reason || 'hangup' });
+  } else if (dir === 'out') {
+    // 안 받아서 끊은 것과 내가 그만둔 것을 가린다 — 기록이 뜻을 가져야 한다
+    await callMark(id, { status: reason === 'no_answer' ? 'missed' : 'canceled',
+                         ended_at: now, end_reason: reason || 'canceled' });
+  } else {
+    await callMark(id, { status: 'declined', ended_at: now, end_reason: reason || 'declined' });
+  }
+}
+
+function callTeardown() {
+  callRingStop();
+  callStopClock();
+  if (_callNoAnsT) { clearTimeout(_callNoAnsT); _callNoAnsT = null; }
+  const c = CALL;
+  CALL = null;
+  if (c) {
+    try { if (c.pc) { c.pc.onicecandidate = null; c.pc.ontrack = null; c.pc.onconnectionstatechange = null; c.pc.close(); } } catch (_) {}
+    try { if (c.mic) c.mic.getTracks().forEach(tr => tr.stop()); } catch (_) {}
+    try { if (c.sig) sb.removeChannel(c.sig); } catch (_) {}
+  }
+  const a = document.getElementById('call-audio');
+  if (a) { try { a.pause(); a.srcObject = null; } catch (_) {} }
+  renderCallScreen();
+}
+
+function callToggleMute() {
+  if (!CALL || !CALL.mic) return;
+  CALL.muted = !CALL.muted;
+  try { CALL.mic.getAudioTracks().forEach(tr => { tr.enabled = !CALL.muted; }); } catch (_) {}
+  renderCallScreen();
+}
+
+// 규칙(RLS)에 막히면 오류 없이 0행이 온다. 그래서 바뀐 줄을 돌려받아 센다.
+async function callMark(id, patch) {
+  if (!id) return false;
+  try {
+    const { data, error } = await sb.from('calls').update(patch).eq('id', id).select('id');
+    if (error) { console.warn('📞 기록', error.message); return false; }
+    return !!(data && data.length);
+  } catch (_) { return false; }
+}
+
+// ── 벨이 울린다 ──────────────────────────────────────────────────
+async function onCallRing(row) {
+  if (!ME || !row || row.callee_id !== ME.id || row.status !== 'ringing') return;
+  // 지난 벨이 뒤늦게 닿는 걸 막는다 — 오래된 '울리는 중' 은 못 받은 전화다
+  const age = Date.now() - new Date(row.created_at || Date.now()).getTime();
+  if (age > 60000) return;
+  if (CALL) {
+    // 통화 중이다. 자동으로 거절하되 왜 그랬는지는 남긴다.
+    callMark(row.id, { status: 'declined', ended_at: new Date().toISOString(), end_reason: 'busy' });
+    return;
+  }
+  let m = members[row.caller_id];
+  if (!m) {
+    // 다른 공동체를 보는 중이거나 명단에 아직 없는 사람
+    try {
+      const { data } = await sb.from('members').select('id,name,color,initials,photo_url')
+        .eq('id', row.caller_id).maybeSingle();
+      if (data) m = data;
+    } catch (_) {}
+  }
+  if (CALL) return;                    // 이름을 찾는 동안 다른 통화가 시작됐다
+  CALL = { id: row.id, dir: 'in', peer: m || { name: t('누군가','Someone') }, status: 'ringing', startedAt: 0 };
+  CALL.sig = callSignalJoin(row.id);
+  callRingStart(true);
+  renderCallScreen();
+  try { if (document.hidden || (document.hasFocus && !document.hasFocus())) callNotify(CALL.peer); } catch (_) {}
+  const mine = row.id;
+  _callNoAnsT = setTimeout(() => {
+    if (CALL && CALL.id === mine && CALL.status === 'ringing') {
+      callMark(mine, { status: 'missed', ended_at: new Date().toISOString(), end_reason: 'no_answer' });
+      callTeardown();
+    }
+  }, CALL_NO_ANSWER_MS);
+}
+
+// 알림을 눌러 들어왔다 — 그 전화가 아직 울리고 있으면 벨을 울린다.
+//  앱이 닫혀 있던 동안에는 실시간 줄이 없어 INSERT 소식을 못 받았다.
+async function callOpenFromNotification(id) {
+  if (!id || CALL || !ME) return;
+  try {
+    const { data } = await sb.from('calls')
+      .select('id,caller_id,callee_id,status,created_at').eq('id', id).maybeSingle();
+    if (data) await onCallRing(data);     // 오래됐거나 이미 끝난 전화는 안에서 걸러진다
+  } catch (_) {}
+}
+
+// 표가 바뀌었다 — 상대가 받았거나 끊었다
+function onCallChanged(row) {
+  if (!CALL || !row || row.id !== CALL.id) return;
+  if (CALL.dir === 'out' && row.status === 'accepted' && CALL.status === 'ringing') {
+    callRingStop();
+    if (_callNoAnsT) { clearTimeout(_callNoAnsT); _callNoAnsT = null; }
+    CALL.status = 'accepted';
+    CALL.startedAt = Date.now();
+    callStartClock();
+    renderCallScreen();
+    callStartOffer();          // 방송('ready')이 안 닿아도 여기서 시작한다
+    return;
+  }
+  if (['declined','missed','ended','canceled','failed'].includes(row.status)) {
+    const why = row.status === 'declined'
+      ? (row.end_reason === 'busy' ? t('상대가 통화 중이에요','They are on another call') : t('상대가 전화를 받지 않았어요','They declined'))
+      : row.status === 'missed' ? t('상대가 받지 못했어요','No answer')
+      : t('통화가 끝났어요','Call ended');
+    callTeardown();
+    showUploadToast(why);
+  }
+}
+
+function subscribeCalls() {
+  if (!ME) return;
+  if (_callSub) { try { sb.removeChannel(_callSub); } catch (_) {} _callSub = null; }
+  _callSub = sb.channel('calls-mine')
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'calls', filter: `callee_id=eq.${ME.id}` },
+      (p) => onCallRing(p.new))
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'calls', filter: `callee_id=eq.${ME.id}` },
+      (p) => onCallChanged(p.new))
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'calls', filter: `caller_id=eq.${ME.id}` },
+      (p) => onCallChanged(p.new))
+    .subscribe();
+}
+
+// 통화 시간 제한을 읽어 온다. 칸이 없어도(설치 전) 조용히 기본값을 쓴다.
+async function loadCallLimit() {
+  if (!ME || !ME.community_id) return;
+  try {
+    const { data, error } = await sb.from('communities')
+      .select('call_limit_min').eq('id', ME.community_id).maybeSingle();
+    if (error || !data) return;
+    const v = Number(data.call_limit_min);
+    if (Number.isFinite(v) && v >= 0) CALL_LIMIT_MIN = v;
+  } catch (_) {}
+}
+
+function callInit() {
+  subscribeCalls();
+  loadCallLimit();
+  // 벨만 울리다 아무도 안 누른 내 지난 전화를 '못 받음' 으로 정리한다
+  try { sb.rpc('expire_stale_calls').then(() => {}, () => {}); } catch (_) {}
+  // 창을 닫으면 상대 화면이 영영 '울리는 중' 으로 남는다. 알려만 주고 나간다.
+  //  ⚠️ persisted 를 꼭 본다. 아이폰에서 앱을 바꿀 때도 pagehide 가 오는데
+  //     (돌아올 수 있게 재워 두는 것이라 persisted 가 true 다), 그때까지
+  //     끊으면 통화 중에 무언가 확인하려 나갔다 오면 전화가 끊긴다.
+  window.addEventListener('pagehide', (e) => {
+    if (e && e.persisted) return;
+    if (!CALL) return;
+    callSend('bye', {});
+    const id = CALL.id, dir = CALL.dir, was = CALL.status;
+    if (id) {
+      const st = was === 'accepted' ? 'ended' : (dir === 'out' ? 'canceled' : 'declined');
+      // 기다릴 수 없다 — 던지고 나간다
+      try { sb.from('calls').update({ status: st, ended_at: new Date().toISOString(), end_reason: 'closed' }).eq('id', id).then(() => {}, () => {}); } catch (_) {}
+    }
+  });
+}
+
+// ── 1:1 방에서 바로 걸기 ─────────────────────────────────────────
+function callDmPeer() {
+  if (!currentChannel || currentChannel.kind !== 'dm' || !ME) return null;
+  const ids = currentChannelMemberIds;
+  if (ids && ids.size) {
+    for (const id of ids) if (id !== ME.id && members[id]) return members[id];
+  }
+  return null;
+}
+function callSyncBtn() {
+  const b = document.getElementById('call-btn');
+  if (!b) return;
+  const m = callDmPeer();
+  const on = !!(m && canCallMember(m));
+  b.style.display = on ? 'flex' : 'none';
+  if (on) b.title = t('전화 걸기','Call') + ' · ' + (m.name || '');
+}
+function callCurrentDm() {
+  const m = callDmPeer();
+  if (!m) { showUploadToast(t('1:1 대화에서만 전화를 걸 수 있어요','You can only call from a direct message')); return; }
+  startCall(m.id);
 }
 
 // ── 세션 복원은 위 window.addEventListener('load') 에서 처리 ──

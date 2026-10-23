@@ -26,9 +26,16 @@ self.addEventListener('push', (event) => {
     // 같은 방 알림은 하나로 덮어쓴다. 스무 개가 쌓이면 알림이 아니라 방해다.
     tag: d.tag || 'tcs',
     renotify: false,
-    data: { channelId: d.channelId || null, url: d.url || SCOPE_URL },
+    data: { channelId: d.channelId || null, callId: d.callId || null, url: d.url || SCOPE_URL },
     timestamp: Date.now(),
   };
+  // 📞 전화는 메시지와 다르게 다룬다. 메시지는 나중에 봐도 되지만
+  //    전화는 지금 받아야 뜻이 있다.
+  if (d.callId) {
+    opts.renotify = true;              // 또 와도 다시 알린다 (덮고 조용히 있으면 못 받는다)
+    opts.requireInteraction = true;     // 손대기 전에는 저절로 사라지지 않는다
+    opts.vibrate = [250, 120, 250, 120, 250];
+  }
   // 🔴 앱 아이콘의 빨간 숫자 (설치해서 쓰는 사람 — 안드로이드·PWA)
   //  여기서 쓰는 badge 와 이름이 같아서 헷갈린다: 위의 opts.badge 는
   //  '알림 옆 작은 단색 그림' 이고, 아이콘에 붙는 숫자는 setAppBadge 다.
@@ -53,7 +60,11 @@ self.addEventListener('notificationclick', (event) => {
     for (const c of all) {
       if (c.url.startsWith(SCOPE_URL)) {
         try { await c.focus(); } catch (_) {}
-        try { c.postMessage({ type: 'tcs-open-channel', channelId: data.channelId }); } catch (_) {}
+        try {
+          c.postMessage(data.callId
+            ? { type: 'tcs-open-call', callId: data.callId }
+            : { type: 'tcs-open-channel', channelId: data.channelId });
+        } catch (_) {}
         return;
       }
     }
