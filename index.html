@@ -31454,10 +31454,32 @@ function callSend(type, extra) {
   } catch (_) {}
 }
 
+// 모은 길의 종류를 센다. 이게 '왜 소리가 안 나는가' 의 답이다.
+//   host  = 같은 와이파이 안에서 바로
+//   srflx = 공유기 밖으로 (STUN 이 찾아 준 길)
+//   relay = 중계(TURN)를 지나는 길  ← 이게 0 이면 센 방화벽 안에서는 못 붙는다
+function callCandKind(c) {
+  if (!c) return '?';
+  if (c.type) return c.type;
+  const m = String(c.candidate || '').match(/ typ (\w+)/);
+  return m ? m[1] : '?';
+}
+function callCandSummary() {
+  const k = (CALL && CALL.cand) || {};
+  const parts = ['host','srflx','relay','prflx'].filter(x => k[x]).map(x => x + ' ' + k[x]);
+  return parts.length ? parts.join(' · ') : '아직 없음';
+}
+
 async function callMakePc() {
-  const pc = new RTCPeerConnection({ iceServers: await callIceServers() });
+  const ice = await callIceServers();
+  const pc = new RTCPeerConnection({ iceServers: ice });
+  // 중계를 하나도 못 받았으면 미리 적어 둔다 — 안 붙을 때 까닭이 된다
+  if (CALL) CALL.hasTurn = ice.some(s => /^turns?:/i.test(
+    Array.isArray(s.urls) ? (s.urls[0] || '') : String(s.urls || '')));
   pc.onicecandidate = (e) => {
     if (!e.candidate) return;
+    const kind = callCandKind(e.candidate);
+    if (CALL) { CALL.cand = CALL.cand || {}; CALL.cand[kind] = (CALL.cand[kind] || 0) + 1; }
     const c = e.candidate.toJSON ? e.candidate.toJSON() : e.candidate;
     callSend('ice', { c });
   };
@@ -31468,11 +31490,47 @@ async function callMakePc() {
   pc.onconnectionstatechange = () => {
     if (!CALL || CALL.pc !== pc) return;
     const s = pc.connectionState;
-    if (s === 'connected') { CALL.linked = true; renderCallScreen(); }
-    // 'disconnected' 는 잠깐 끊긴 것일 수 있어 기다린다. 'failed' 는 끝이다.
-    else if (s === 'failed') endCall('connect_failed');
+    CALL.net = s;
+    console.log('📞 길 상태:', s, '· 모은 길:', callCandSummary(),
+                '· 중계:', CALL.hasTurn ? '있음' : '없음');
+    if (s === 'connected') { CALL.linked = true; renderCallScreen(); return; }
+    if (s === 'failed') {
+      // 와이파이에서 LTE 로 넘어가는 순간처럼 잠깐 엇갈린 것일 수 있다.
+      // 한 번은 다시 찾아본다. 바로 끊어 버리면 까닭도 모른 채 꺼진다.
+      if (!CALL.iceRetried) {
+        CALL.iceRetried = true;
+        console.warn('📞 길이 막혔습니다 — 한 번 다시 찾아봅니다');
+        try { if (pc.restartIce) pc.restartIce(); } catch (_) {}
+        if (CALL.dir === 'out') callStartOffer(true);
+        renderCallScreen();
+        return;
+      }
+      callFailed();
+      return;
+    }
+    renderCallScreen();
   };
   return pc;
+}
+
+// 소리 길을 끝내 못 찾았다. 조용히 꺼지면 '전화가 고장났다' 로만 남는다.
+// 화면에 까닭을 적고, 끊는 것은 사람이 누르게 둔다.
+function callFailed() {
+  if (!CALL || CALL.status === 'failed') return;
+  const noTurn = !CALL.hasTurn || !(CALL.cand && CALL.cand.relay);
+  CALL.status = 'failed';
+  CALL.why = noTurn
+    ? t('소리 길이 막혔어요. 중계(TURN)가 꺼져 있습니다 — 설치 안내 2단계를 해주세요.',
+        'No audio path. The TURN relay is off — do step 2 of the setup guide.')
+    : t('소리 길을 못 찾았어요. 네트워크를 바꿔서(와이파이↔데이터) 다시 해보세요.',
+        'Could not find an audio path. Switch networks (Wi-Fi ↔ cellular) and try again.');
+  callStopClock();
+  callRingStop();
+  console.warn('📞 끝내 못 붙었습니다 — 모은 길:', callCandSummary(),
+               '· 중계:', CALL.hasTurn ? '있음' : '없음');
+  if (CALL.id) callMark(CALL.id, { status: 'failed', ended_at: new Date().toISOString(),
+                                   end_reason: noTurn ? 'no_relay' : 'ice_failed' });
+  renderCallScreen();
 }
 
 // 소리가 나올 자리. 통화 화면과 따로 둔다 — 화면을 지웠다 그릴 때
@@ -31557,14 +31615,19 @@ async function callFlushIce() {
 
 // 건 쪽이 먼저 제안한다. 상대가 받은 뒤에야 한다 — 받기 전에 보내면
 // 상대는 아직 이 줄에 붙어 있지 않아 쪽지가 허공으로 간다.
-async function callStartOffer() {
-  if (!CALL || CALL.dir !== 'out' || CALL.offered) return;
+async function callStartOffer(restart) {
+  if (!CALL || CALL.dir !== 'out') return;
+  if (CALL.offered && !restart) return;
   CALL.offered = true;
   try {
     CALL.pc = CALL.pc || await callMakePc();
-    const mic = await callMic();
-    mic.getTracks().forEach(tr => CALL.pc.addTrack(tr, mic));
-    const off = await CALL.pc.createOffer({ offerToReceiveAudio: true });
+    // ⚠️ 두 번 올리면 안 된다. 다시 찾을 때도 소리줄은 이미 올라가 있다.
+    if (!CALL.added) {
+      const mic = await callMic();
+      mic.getTracks().forEach(tr => CALL.pc.addTrack(tr, mic));
+      CALL.added = true;
+    }
+    const off = await CALL.pc.createOffer({ offerToReceiveAudio: true, iceRestart: !!restart });
     await CALL.pc.setLocalDescription(off);
     callSend('offer', { sdp: { type: off.type, sdp: off.sdp } });
   } catch (e) {
@@ -31582,14 +31645,20 @@ async function callOnSignal(p) {
       if (!p.sdp) return;
       CALL.pc = CALL.pc || await callMakePc();
       await CALL.pc.setRemoteDescription(p.sdp);
-      const mic = await callMic();
-      mic.getTracks().forEach(tr => CALL.pc.addTrack(tr, mic));
+      if (!CALL.added) {       // 다시 찾는 중이면 이미 올라가 있다
+        const mic = await callMic();
+        mic.getTracks().forEach(tr => CALL.pc.addTrack(tr, mic));
+        CALL.added = true;
+      }
       const ans = await CALL.pc.createAnswer();
       await CALL.pc.setLocalDescription(ans);
       callSend('answer', { sdp: { type: ans.type, sdp: ans.sdp } });
       await callFlushIce();
     } else if (p.type === 'answer' && CALL.dir === 'out') {
-      if (!p.sdp || !CALL.pc || CALL.pc.currentRemoteDescription) return;
+      // ⚠️ '이미 받았으면 무시' 로 두면 안 된다. 길을 다시 찾을 때
+      //    두 번째 답이 오는데, 그걸 버리면 영영 안 붙는다.
+      if (!p.sdp || !CALL.pc) return;
+      if (CALL.pc.signalingState !== 'have-local-offer') return;
       await CALL.pc.setRemoteDescription(p.sdp);
       await callFlushIce();
     } else if (p.type === 'ice') {
@@ -31680,8 +31749,12 @@ function renderCallScreen() {
   const inc = CALL.dir === 'in';
   const ringing = CALL.status === 'ringing';
   const live = CALL.status === 'accepted';
-  const head = ringing ? (inc ? t('📞 전화가 왔어요','📞 Incoming call') : t('전화를 걸고 있어요…','Calling…'))
-             : live ? (CALL.linked ? t('통화 중','On a call') : t('잇고 있어요…','Connecting…'))
+  const dead = CALL.status === 'failed';
+  const head = dead ? t('소리가 안 통했어요','Could not connect')
+             : ringing ? (inc ? t('📞 전화가 왔어요','📞 Incoming call') : t('전화를 걸고 있어요…','Calling…'))
+             : live ? (CALL.linked ? t('통화 중','On a call')
+                       : (CALL.iceRetried ? t('소리 길을 다시 찾는 중…','Retrying the audio path…')
+                                          : t('소리 길을 찾는 중…','Finding an audio path…')))
              : t('잇고 있어요…','Connecting…');
 
   const btn = (label, bg, fg, fn, wide) =>
@@ -31690,7 +31763,9 @@ function renderCallScreen() {
     + `box-shadow:0 8px 22px rgba(0,0,0,.25)">${label}</button>`;
 
   let actions = '';
-  if (ringing && inc) {
+  if (dead) {
+    actions = btn('✕ ' + t('닫기','Close'), 'rgba(255,255,255,.16)', '#fff', "endCall('connect_failed')", true);
+  } else if (ringing && inc) {
     actions = btn('📞 ' + t('받기','Answer'), '#2a7a5a', '#fff', 'acceptCall()')
             + btn('✕ ' + t('거절','Decline'), 'rgba(255,255,255,.14)', '#fff', "declineCall('declined')");
   } else if (ringing) {
@@ -31719,6 +31794,16 @@ function renderCallScreen() {
     <div style="font:600 13.5px var(--font);color:rgba(255,255,255,.72)">${escHtml(head)}</div>
     ${live ? `<div id="call-time" style="font:700 30px var(--font);color:#fff;letter-spacing:.02em;margin-top:2px">0:00</div>
               <div id="call-left" style="font:600 12px var(--font);color:rgba(255,255,255,.55);min-height:16px"></div>` : ''}
+    ${dead ? `<div style="margin-top:12px;max-width:320px;background:rgba(0,0,0,.28);border:1px solid rgba(255,255,255,.18);
+         border-radius:14px;padding:13px 15px;font:600 13px var(--font);color:#ffd7cf;line-height:1.75;word-break:keep-all">
+         ${escHtml(CALL.why || '')}
+       </div>` : ''}
+    ${(dead || (live && !CALL.linked)) ? `<div style="margin-top:10px;font:500 11.5px var(--font);
+         color:rgba(255,255,255,.5);line-height:1.8;max-width:320px;word-break:keep-all">
+         ${t('찾은 길','Paths')}: ${escHtml(callCandSummary())}
+         · ${t('중계','Relay')}: ${CALL.hasTurn ? t('있음','on') : t('없음','off')}
+         · ${t('상태','State')}: ${escHtml(CALL.net || '-')}
+       </div>` : ''}
     ${tapBar ? `<div style="display:flex;flex-direction:column;align-items:center;gap:8px;margin-top:14px">${tapBar}</div>` : ''}
     <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-top:18px">${actions}</div>
     ${live ? `<div style="font:500 11.5px var(--font);color:rgba(255,255,255,.5);line-height:1.7;margin-top:12px;max-width:300px;word-break:keep-all">
@@ -31831,7 +31916,9 @@ async function endCall(reason) {
   callTeardown();
   if (!id) return;
   const now = new Date().toISOString();
-  if (was === 'accepted') {
+  if (was === 'failed') {
+    // callFailed() 가 이미 적었다. 덮어쓰면 까닭이 사라진다.
+  } else if (was === 'accepted') {
     await callMark(id, { status: 'ended', ended_at: now, end_reason: reason || 'hangup' });
   } else if (dir === 'out') {
     // 안 받아서 끊은 것과 내가 그만둔 것을 가린다 — 기록이 뜻을 가져야 한다
