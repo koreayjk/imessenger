@@ -113,6 +113,16 @@ create policy calls_update on public.calls
   using ( caller_id = auth.uid() or callee_id = auth.uid() )
   with check ( caller_id = auth.uid() or callee_id = auth.uid() );
 
+-- ── 권한 — 먼저 닫고, 쓸 것만 연다 ────────────────────────────
+--  ⚠️ 수파베이스는 public 스키마에 새로 만든 표에 anon·authenticated
+--     모두에게 권한을 '전부' 기본으로 줘 버립니다. grant 만 적고 끝내면
+--     DELETE 와 TRUNCATE 가 그대로 남습니다.
+--  ⚠️ 그리고 TRUNCATE 에는 RLS 가 걸리지 않습니다. 재 봤습니다:
+--       delete  → RLS 가 막아 0줄
+--       truncate→ 통화 기록 전체가 사라짐
+--     그러니 '기록은 아무도 못 지운다' 는 말은 revoke 를 해야 참이 됩니다.
+revoke all on public.calls from public, anon, authenticated;
+
 -- 통화 기록은 지우지 않는다. 지울 수 있으면 기록이 아니다.
 grant select, insert, update on public.calls to authenticated;
 
