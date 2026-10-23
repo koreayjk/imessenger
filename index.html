@@ -31462,9 +31462,8 @@ async function callMakePc() {
     callSend('ice', { c });
   };
   pc.ontrack = (e) => {
-    const a = callAudioEl();
-    const st = (e.streams && e.streams[0]) || null;
-    if (a && st) { a.srcObject = st; a.play().catch(() => {}); }
+    const st = (e.streams && e.streams[0]) || (e.track ? new MediaStream([e.track]) : null);
+    if (st) callPlayRemote(st);
   };
   pc.onconnectionstatechange = () => {
     if (!CALL || CALL.pc !== pc) return;
@@ -31478,6 +31477,10 @@ async function callMakePc() {
 
 // 소리가 나올 자리. 통화 화면과 따로 둔다 — 화면을 지웠다 그릴 때
 // 같이 지워지면 소리가 끊긴다.
+//
+//  ⚠️ display:none 으로 두면 안 된다. 아이폰은 '화면에 없는' 소리틀을
+//     틀어 주지 않는다. 안 보이게만 하고 화면에는 남겨 둔다.
+//     (맥에서 건 전화를 아이폰이 못 듣던 까닭이 이것이었다)
 function callAudioEl() {
   let a = document.getElementById('call-audio');
   if (!a) {
@@ -31485,10 +31488,65 @@ function callAudioEl() {
     a.id = 'call-audio';
     a.autoplay = true;
     a.setAttribute('playsinline', '');
-    a.style.display = 'none';
+    a.setAttribute('autoplay', '');
+    //  ⚠️ controls 를 꼭 붙인다. 브라우저 기본 스타일이
+    //       audio:not([controls]) { display: none !important }
+    //     여서, controls 가 없으면 inline style 로도 못 이긴다 (재 봤다).
+    //     그러면 '화면에 없는' 소리틀이 되고, 아이폰은 그걸 안 틀어 준다.
+    //     붙이고 나서 1px·투명으로 화면 밖에 치워 둔다 — 보이지는 않지만
+    //     브라우저에게는 '화면에 있는' 소리틀이다.
+    a.setAttribute('controls', '');
+    a.style.cssText = 'display:block;position:fixed;left:-9999px;top:0;'
+                    + 'width:1px;height:1px;opacity:0;pointer-events:none';
     document.body.appendChild(a);
   }
   return a;
+}
+
+// 아무 소리도 안 나는 아주 짧은 소리. 잠금을 푸는 데만 쓴다.
+const CALL_SILENT = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+
+// 아이폰은 '사람이 손가락으로 누른 바로 그 순간' 에 한 번 소리를 내 본
+// 적이 있어야 그 뒤로 소리를 내준다. 상대 목소리는 몇 초 뒤에 오므로
+// 그때는 이미 늦다. 걸기·받기를 누른 그 순간에 미리 풀어 둔다.
+function callUnlockAudio() {
+  const a = callAudioEl();
+  try {
+    if (!a.srcObject) { a.src = CALL_SILENT; a.load(); }
+    const p = a.play();
+    if (p && p.catch) p.catch(() => {});
+  } catch (_) {}
+}
+
+// 상대 목소리를 튼다. 막히면 화면에 '🔊 소리 켜기' 를 내민다 —
+// 조용한 채로 두면 전화가 안 되는 줄 안다.
+function callPlayRemote(stream) {
+  const a = callAudioEl();
+  try { a.removeAttribute('src'); } catch (_) {}
+  a.srcObject = stream;
+  a.muted = false;
+  const go = () => {
+    let p;
+    try { p = a.play(); } catch (e) { p = Promise.reject(e); }
+    if (!p || !p.then) return;
+    p.then(() => { if (CALL && CALL.needTap) { CALL.needTap = false; renderCallScreen(); } },
+           (e) => {
+             console.warn('📞 상대 목소리를 못 틀었습니다 —', String(e && e.name || e));
+             if (CALL && !CALL.needTap) { CALL.needTap = true; renderCallScreen(); }
+           });
+  };
+  go();
+  // 한 번에 안 될 때가 있다. 잠깐 뒤 한 번 더.
+  setTimeout(() => { if (a.paused) go(); }, 500);
+}
+
+// 막혔을 때 쓰는 단추 — 누른 그 순간이 '사람이 누른 때' 라 통한다
+function callTapToHear() {
+  const a = callAudioEl();
+  try {
+    const p = a.play();
+    if (p && p.then) p.then(() => { if (CALL) { CALL.needTap = false; renderCallScreen(); } }, () => {});
+  } catch (_) {}
 }
 
 async function callFlushIce() {
@@ -31642,6 +31700,16 @@ function renderCallScreen() {
                   CALL.muted ? '#8a6d1f' : 'rgba(255,255,255,.14)', '#fff', 'callToggleMute()')
             + btn('✕ ' + t('끊기','Hang up'), '#b23b3b', '#fff', "endCall('hangup')");
   }
+  // 상대 목소리가 막혔다 — 누를 자리를 내민다. 조용한 채로 두면
+  // 전화가 아예 안 되는 줄 안다.
+  const tapBar = CALL.needTap
+    ? `<button onclick="callTapToHear()" style="height:50px;padding:0 24px;border:none;border-radius:14px;
+         background:#f0b429;color:#2b2200;font:700 15px var(--font);cursor:pointer;
+         box-shadow:0 8px 22px rgba(0,0,0,.3)">🔊 ${t('눌러서 소리 켜기','Tap to hear')}</button>
+       <div style="font:600 12px var(--font);color:#ffd79a;max-width:280px;line-height:1.7;word-break:keep-all">
+         ${t('이 기기가 소리를 막았어요. 위를 한 번 눌러주세요.','This device blocked the audio. Tap above once.')}
+       </div>`
+    : '';
 
   el.innerHTML = `
     <div style="width:104px;height:104px;border-radius:34px;${avFill(m,'#2a5298')};color:#fff;
@@ -31651,7 +31719,11 @@ function renderCallScreen() {
     <div style="font:600 13.5px var(--font);color:rgba(255,255,255,.72)">${escHtml(head)}</div>
     ${live ? `<div id="call-time" style="font:700 30px var(--font);color:#fff;letter-spacing:.02em;margin-top:2px">0:00</div>
               <div id="call-left" style="font:600 12px var(--font);color:rgba(255,255,255,.55);min-height:16px"></div>` : ''}
+    ${tapBar ? `<div style="display:flex;flex-direction:column;align-items:center;gap:8px;margin-top:14px">${tapBar}</div>` : ''}
     <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-top:18px">${actions}</div>
+    ${live ? `<div style="font:500 11.5px var(--font);color:rgba(255,255,255,.5);line-height:1.7;margin-top:12px;max-width:300px;word-break:keep-all">
+      ${t('휴대폰에서 소리가 작으면 전화처럼 귀에 대보세요 — 통화는 수화구로 나옵니다.','On a phone the sound comes from the earpiece — hold it to your ear.')}
+    </div>` : ''}
     <div style="font:500 11.5px var(--font);color:rgba(255,255,255,.42);line-height:1.7;margin-top:14px;max-width:300px;word-break:keep-all">
       ${t('소리는 두 기기가 바로 주고받아요 — 녹음하지 않습니다.','Audio goes device to device. Nothing is recorded.')}<br>
       ${t('누가 누구에게 언제 걸었는지는 기록으로 남습니다.','Who called whom and when is kept as a record.')}
@@ -31688,6 +31760,7 @@ async function startCall(memberId) {
   try { closeMemberCard(); } catch (_) {}
   try { closeRightPanelMobile(); } catch (_) {}
 
+  callUnlockAudio();      // 누른 바로 지금 풀어 둔다 (아이폰은 뒤늦게는 안 통한다)
   CALL = { id: null, dir: 'out', peer: m, status: 'ringing', startedAt: 0 };
   renderCallScreen();
 
@@ -31731,6 +31804,7 @@ async function startCall(memberId) {
 // ── 받기·거절·끊기 ───────────────────────────────────────────────
 async function acceptCall() {
   if (!CALL || CALL.dir !== 'in' || CALL.status !== 'ringing') return;
+  callUnlockAudio();      // 받기를 누른 바로 지금
   callRingStop();
   if (_callNoAnsT) { clearTimeout(_callNoAnsT); _callNoAnsT = null; }
   CALL.status = 'connecting';
@@ -31780,7 +31854,7 @@ function callTeardown() {
     try { if (c.sig) sb.removeChannel(c.sig); } catch (_) {}
   }
   const a = document.getElementById('call-audio');
-  if (a) { try { a.pause(); a.srcObject = null; } catch (_) {} }
+  if (a) { try { a.pause(); a.srcObject = null; a.removeAttribute('src'); } catch (_) {} }
   renderCallScreen();
 }
 
