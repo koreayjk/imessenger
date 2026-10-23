@@ -31391,10 +31391,46 @@ async function callIceServers() {
 }
 
 // ── 마이크 ───────────────────────────────────────────────────────
+//  왜 안 되는지를 한 줄로 알려 준다. '마이크를 쓸 수 없어요' 만 띄우면
+//  거절한 것인지, 이 앱이 아예 못 하는 것인지 알 수 없어 헤맨다.
+//  (아이폰 앱에서는 개발자도구를 못 여니 화면에 그대로 적는다)
+function callMicWhy(e) {
+  //  ⚠️ name 만 보면 안 된다. new Error('no-getUserMedia') 의 name 은
+  //     'Error' 라서, name 만 보면 이 가지에 영영 못 들어온다. (재 보고 고침)
+  const nm = (e && e.name) || '';
+  const ms = (e && e.message) || '';
+  const name = (nm + ' ' + ms).trim();
+  if (/no-getUserMedia/.test(name)) {
+    return t('이 앱에서는 마이크를 쓸 수 없어요. 사파리로 koreayjk.github.io/imessenger 를 열어 거세요.',
+             'This app cannot use the microphone. Open koreayjk.github.io/imessenger in Safari to call.');
+  }
+  if (/NotAllowed|Permission|SecurityError/i.test(name)) {
+    return t('마이크를 막아 두셨어요. 아이폰은 설정 → TCS → 마이크, 컴퓨터는 주소창 왼쪽 자물쇠에서 켜주세요.',
+             'Microphone is blocked. iPhone: Settings → TCS → Microphone. Computer: the lock icon in the address bar.');
+  }
+  if (/NotFound|DevicesNotFound|OverconstrainedError/i.test(name)) {
+    return t('마이크를 못 찾았어요. 시뮬레이터에는 마이크가 없습니다 — 실제 기기에서 해보세요.',
+             'No microphone found. Simulators have none — try a real device.');
+  }
+  if (/NotReadable|TrackStartError|AbortError/i.test(name)) {
+    return t('다른 앱이 마이크를 쓰고 있어요. 그 앱을 닫고 다시 해주세요.',
+             'Another app is using the microphone. Close it and try again.');
+  }
+  return t('마이크를 쓸 수 없어요 — ','Microphone unavailable — ') + String(name).slice(0, 60);
+}
 async function callMic() {
   if (CALL && CALL.mic) return CALL.mic;
   const md = navigator.mediaDevices;
-  if (!md || !md.getUserMedia) throw new Error('no-getUserMedia');
+  if (!md || !md.getUserMedia) {
+    // 여기로 오는 까닭은 거의 하나다: 안전한 자리(https)가 아니다.
+    //  아이폰 앱은 capacitor://localhost 에서 돌아가므로, 혹시 막히면
+    //  이 줄이 콘솔에 남아 있어야 까닭을 바로 안다.
+    console.warn('📞 마이크를 쓸 수 없는 자리입니다 —',
+      'isSecureContext=' + (typeof isSecureContext !== 'undefined' ? isSecureContext : '?'),
+      '· origin=' + location.origin,
+      '· mediaDevices=' + (md ? '있음' : '없음'));
+    throw new Error('no-getUserMedia');
+  }
   const s = await md.getUserMedia({
     audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
     video: false,
@@ -31657,12 +31693,7 @@ async function startCall(memberId) {
 
   // 마이크를 먼저 받는다 — 거절당하면 전화 기록부터 만들지 않는다
   try { await callMic(); }
-  catch (_) {
-    callTeardown();
-    showUploadToast(t('마이크를 쓸 수 없어요. 브라우저·기기 설정에서 마이크를 켜주세요.',
-                      'Microphone unavailable. Allow mic access in your browser or device settings.'));
-    return;
-  }
+  catch (e) { callTeardown(); showUploadToast(callMicWhy(e)); return; }
   if (!CALL) return;                 // 허락을 기다리는 동안 닫았다
 
   const { data, error } = await sb.from('calls').insert({
@@ -31705,11 +31736,7 @@ async function acceptCall() {
   CALL.status = 'connecting';
   renderCallScreen();
   try { await callMic(); }
-  catch (_) {
-    showUploadToast(t('마이크를 쓸 수 없어요','Microphone unavailable'));
-    declineCall('no_mic');
-    return;
-  }
+  catch (e) { showUploadToast(callMicWhy(e)); declineCall('no_mic'); return; }
   if (!CALL) return;
   const ok = await callMark(CALL.id, { status: 'accepted', answered_at: new Date().toISOString() });
   if (!CALL) return;
