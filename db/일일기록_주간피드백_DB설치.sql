@@ -101,7 +101,7 @@ create table if not exists public.weekly_feedbacks (
   grew          text,    -- 구체적으로 자란 것 (점수가 아니라 '무엇이 달라졌나')
   working_on    text,    -- 아직 도와야 할 것
   plan          text,    -- 우리가 다음 주에 할 것
-  home          text,    -- 가정에서 도와주실 것
+  home          text,    -- 통화하실 때 칭찬해 주실 거리 (기숙생이라 '집에서' 가 아니다)
 
   status        text not null default 'draft' check (status in ('draft','sent')),
   sent_at       timestamptz,

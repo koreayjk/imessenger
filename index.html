@@ -32188,8 +32188,10 @@ const DAILY_AREAS = [
     ph:t('혼자 한 것과 도움받은 것 (예: 15문제 중 12문제를 혼자 풀었음)','What they did alone vs. with help') },
   { k:'self_note',     icon:'⏱', ko:'자기관리',   en:'Self-management',
     ph:t('스스로 시작했나 · 시간 관리 (예: 계획표를 쓴 뒤 스스로 시작함)','Did they start on their own? Time management') },
+  //  기숙생이라 하루 전체가 우리 손 안에 있습니다. 학부모가 볼 수 없는
+  //  자리라, 여기 적히는 것이 학부모에게는 가장 귀한 소식이 됩니다.
   { k:'life_note',     icon:'🤝', ko:'생활·인격',  en:'Life & Character',
-    ph:t('책임감 · 도움 요청하는 태도 (예: 모르는 지시문을 먼저 물어봄)','Responsibility, asking for help') },
+    ph:t('기숙사 생활 · 책임감 · 도움 요청하는 태도 (예: 모르는 지시문을 먼저 물어봄, 방 정리를 스스로 함)','Dorm life, responsibility, asking for help') },
   { k:'growth_note',   icon:'🌱', ko:'오늘의 성장', en:'Growth',
     ph:t('어제보다 나아진 점 / 다음에 확인할 것','What improved, and what to check next time') },
 ];
@@ -32447,8 +32449,11 @@ const FB_SECTIONS = [
     ph:t('솔직하게. 숨기면 나중에 더 곤란해집니다','Be honest — hiding it hurts later') },
   { k:'plan',       icon:'📋', ko:'우리가 할 것',   en:'What we will do',
     ph:t('다음 주에 학원이 무엇을 할지','What we will do next week') },
-  { k:'home',       icon:'🏠', ko:'가정에서',       en:'At home',
-    ph:t('집에서 도와주실 것 한 가지 (칭찬할 거리를 짚어 드리면 좋아요)','One thing to help with at home') },
+  //  ⚠️ 기숙생입니다. 집에 가지 않으니 '집에서 도와주세요' 는 틀린 말이
+  //     됩니다. 학부모가 할 수 있는 것은 통화할 때 하는 말입니다.
+  //     그래서 칭찬할 거리를 짚어 드리는 것이 더 중요합니다.
+  { k:'home',       icon:'📞', ko:'통화하실 때',    en:'When you call',
+    ph:t('통화하실 때 칭찬해 주실 거리 한 가지 (떨어져 계시니 이게 제일 큽니다)','One thing to praise when you next call') },
 ];
 
 // 그 주 월요일. 'T00:00:00' 을 꼭 붙인다 — 안 붙이면 UTC 자정으로 읽혀

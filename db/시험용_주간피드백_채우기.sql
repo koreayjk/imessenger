@@ -65,7 +65,7 @@ begin
     '[시험용] 전에는 모르는 지시문을 그냥 넘어갔는데, 이번 주에는 먼저 물어보기 시작했어요. 수학 숙제 15문제 중 12문제를 혼자 풀었습니다.',
     '[시험용] 영어로 된 문제의 요구사항을 두 가지 놓치는 일이 있었어요. 수학을 몰라서가 아니라 지시문을 끝까지 읽지 않아서였습니다.',
     '[시험용] 다음 주에는 문제를 풀기 전에 지시문에 밑줄을 긋고 무엇을 묻는지 말해보게 하겠습니다.',
-    '[시험용] 모르는 것을 먼저 물어본 점을 집에서도 칭찬해 주세요. 그게 이번 주 가장 큰 변화예요.',
+    '[시험용] 이번 주 통화하실 때, 모르는 것을 먼저 물어본 점을 꼭 칭찬해 주세요. 그게 이번 주 가장 큰 변화예요.',
     'sent', now() - interval '3 days', v_tname, v_staff)
   on conflict (community_id, student_id, week_start) do nothing
   returning id into v_f1;
@@ -87,7 +87,7 @@ begin
     insert into public.weekly_feedback_comments
       (feedback_id, author_id, author_name, author_role, body, created_at)
     values (v_f1, v_parent, coalesce(v_pname,'학부모'), 'parent',
-      '[시험용] 집에서도 요즘 먼저 물어보더라고요. 칭찬해 주었습니다. 감사합니다!',
+      '[시험용] 어제 통화했는데 목소리가 밝더라고요. 말씀하신 것 꼭 칭찬해 주었습니다. 감사합니다!',
       now() - interval '2 days')
     returning id into v_c1;
 
