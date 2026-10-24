@@ -31470,12 +31470,25 @@ function callCandSummary() {
   return parts.length ? parts.join(' · ') : '아직 없음';
 }
 
+// 받아 온 길 목록에 '중계(turn/turns)' 가 하나라도 있나
+function callHasRelay(list) {
+  if (!Array.isArray(list)) return false;
+  for (const s of list) {
+    if (!s) continue;
+    const us = Array.isArray(s.urls) ? s.urls : (s.urls ? [s.urls] : (s.url ? [s.url] : []));
+    for (const u of us) if (/^turns?:/i.test(String(u || '').trim())) return true;
+  }
+  return false;
+}
+
 async function callMakePc() {
   const ice = await callIceServers();
   const pc = new RTCPeerConnection({ iceServers: ice });
-  // 중계를 하나도 못 받았으면 미리 적어 둔다 — 안 붙을 때 까닭이 된다
-  if (CALL) CALL.hasTurn = ice.some(s => /^turns?:/i.test(
-    Array.isArray(s.urls) ? (s.urls[0] || '') : String(s.urls || '')));
+  // 중계를 하나도 못 받았으면 미리 적어 둔다 — 안 붙을 때 까닭이 된다.
+  //  ⚠️ urls 의 '첫 줄' 만 보면 안 된다. 클라우드플레어는 한 칸에 주소를
+  //     여섯 개씩 담아 주고, 칸에 따라 stun: 이 먼저 올 수도 있다.
+  //     전부 펼쳐서 본다.
+  if (CALL) CALL.hasTurn = callHasRelay(ice);
   pc.onicecandidate = (e) => {
     if (!e.candidate) return;
     const kind = callCandKind(e.candidate);
