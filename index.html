@@ -4167,6 +4167,15 @@ async function restoreLastState() {
   // 링크로 들어온 노트가 있으면 보던 화면보다 그게 먼저다
   if (_pendingNoteId) { setMode('note'); return; }
 
+  // 📬 주간 피드백 링크 — 학부모는 '내 아이' 를, 교직원은 보던 화면을
+  //    띄워 두고 그 위에 피드백을 연다.
+  if (_pendingFeedbackId) {
+    const id = _pendingFeedbackId; _pendingFeedbackId = null;
+    setMode(isParent() ? 'child' : 'home');
+    setTimeout(() => { try { openFeedbackView(id); } catch (_) {} }, 400);
+    return;
+  }
+
   if (saved === 'chat' && lastChannelId) {
     setMode('chat');
     // 채널이 로드될 때까지 잠깐 기다렸다가 열기
@@ -19454,6 +19463,7 @@ function imOnSearch(v) { imNoteQ = v; renderNotePage(); }
 //  볼 수 있는지는 링크가 아니라 노트의 공개 범위(RLS)가 정합니다 —
 //  링크를 안다고 남의 노트가 열리지는 않습니다.
 let _pendingNoteId = null;
+let _pendingFeedbackId = null;   // 📬 주간 피드백 링크로 들어왔다
 let _pendingChannelId = null;   // 알림을 눌러 들어온 채팅방
 
 function imNoteLinkUrl(n) {
@@ -20410,6 +20420,14 @@ window.addEventListener('load', async () => {
     try { history.replaceState(null, '', location.pathname + location.search); } catch (_) {}
   }
 
+  // 📬 주간 피드백 링크 (#pf=<id>) — 로그인이 필요하다. 아이 이야기라
+  //    아무나 열 수 있으면 안 된다. 로그인한 뒤 그 피드백을 띄운다.
+  const pfMatch = (location.hash || '').match(/#pf=([0-9a-fA-F-]{36})/);
+  if (pfMatch) {
+    _pendingFeedbackId = pfMatch[1];
+    try { history.replaceState(null, '', location.pathname + location.search); } catch (_) {}
+  }
+
   // 기존 세션 복원
   try {
     const { data: { session } } = await sb.auth.getSession();
@@ -20448,6 +20466,10 @@ window.addEventListener('load', async () => {
   if (_pendingNoteId) {
     const m = document.getElementById('si-msg');
     if (m) { m.style.color = 'var(--accent)'; m.textContent = t('🔗 공유된 노트를 열려면 먼저 로그인해 주세요','🔗 Sign in to open the shared note'); }
+  }
+  if (_pendingFeedbackId) {
+    const m = document.getElementById('si-msg');
+    if (m) { m.style.color = 'var(--accent)'; m.textContent = t('📬 주간 피드백을 보려면 먼저 로그인해 주세요','📬 Sign in to see the weekly feedback'); }
   }
 });
 
@@ -21210,6 +21232,8 @@ const SCHOOL_TABS = [
   { id:'record',     icon:'🗂', label:t('생활기록부','Records'),       group:'student', section:'school' },
   { id:'reading',    icon:'📖', label:t('트리플스쿨','Triple School'), group:'student', section:'school' },
   { id:'memory',     icon:'📜', label:t('성구암송','Memory'),          group:'student', section:'school' },
+  { id:'daily',      icon:'📋', label:t('일일기록','Daily log'),        group:'student', section:'school' },
+  { id:'feedback',   icon:'📬', label:t('주간 피드백','Weekly'),         group:'student', section:'school' },
   { id:'timetable',  icon:'🗓', label:t('시간표','Timetable'),        group:'class',   section:'school' },
   { id:'attendance', icon:'✅', label:t('출석부','Attendance'),       group:'class',   section:'school' },
   { id:'leave',      icon:'📝', label:t('출결 신청','Leave'),         group:'class',   section:'school' },
@@ -21361,6 +21385,8 @@ function renderSchoolMain() {
   }
   // 👤 학생 · 🗂 생활기록부 · 📖 트리플스쿨 · 📜 성구암송 — 왼쪽 사람 목록을 함께 쓴다
   if (['student','record','reading','memory'].includes(schoolSubMode)) return renderStudent360();
+  if (schoolSubMode === 'daily')      return renderDailyHub();
+  if (schoolSubMode === 'feedback')   return renderFeedbackHub();
   if (schoolSubMode === 'attendance') return renderAttendanceHub();
   if (schoolSubMode === 'leave')      return renderApprovalHub();
   if (schoolSubMode === 'timetable')  return renderTimetableHub();
@@ -30138,13 +30164,13 @@ async function renderChildPage() {
   const hn = document.getElementById('child-header-name');
   const hs = document.getElementById('child-header-sub');
   if (hn) hn.textContent = kid.name || t('내 아이','My child');
-  if (hs) hs.textContent = t('예치금·매점·학비를 볼 수 있어요','Deposit, store purchases and tuition');
+  if (hs) hs.textContent = t('주간 피드백 · 예치금 · 매점 · 학비','Weekly feedback, deposit, store and tuition');
 
   main.innerHTML = childChipsHtml() + `<div style="text-align:center;padding:40px;color:var(--ink3);font-size:13px">${t('불러오는 중...','Loading...')}</div>`;
 
   // 한 번에 가져온다. 하나가 막혀도 나머지는 보여준다.
   const safe = p => p.then(r => (r && r.error) ? { data: [] } : r, () => ({ data: [] }));
-  const [dep, sales, bills, reqs] = await Promise.all([
+  const [dep, sales, bills, reqs, fbs] = await Promise.all([
     safe(sb.from('deposit_entries').select('*').eq('member_id', kid.id)
           .order('date', { ascending:false }).order('created_at', { ascending:false })),
     safe(sb.from('store_sales').select('*, store_sale_items(name,qty)')
@@ -30153,10 +30179,14 @@ async function renderChildPage() {
           .order('period', { ascending:false }).order('created_at', { ascending:false })),
     safe(sb.from('cert_requests').select('*').eq('student_id', kid.id)
           .order('created_at', { ascending:false }).limit(20)),
+    // 📬 보낸 것만 옵니다 — 초안은 서버(RLS)에서 걸러집니다
+    safe(sb.from('weekly_feedbacks').select('*').eq('student_id', kid.id)
+          .order('week_start', { ascending:false }).limit(52)),
   ]);
 
   main.innerHTML = childChipsHtml()
     + `<div style="max-width:760px">`
+    + childFeedbackHtml(fbs.data || [])
     + childDepositHtml(dep.data || [])
     + childStoreHtml(sales.data || [])
     + childTuitionHtml(bills.data || [])
@@ -32112,6 +32142,776 @@ function callCurrentDm() {
   const m = callDmPeer();
   if (!m) { showUploadToast(t('1:1 대화에서만 전화를 걸 수 있어요','You can only call from a direct message')); return; }
   startCall(m.id);
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  📋 일일기록 — 선생님이 매일 2~3분 적는 내부 기록
+//
+//  우리는 미국 학교에 다녀온 아이를 방과 후에 맡습니다. 그래서
+//  '오늘 뭘 가르쳤나' 가 아니라 '학교가 시킨 걸 파악했나 · 혼자
+//  해냈나 · 스스로 시작했나' 가 적을 거리입니다.
+//
+//  ⚠️ 교직원만 봅니다. 학생도 학부모도 못 봅니다 — 그래야 '아직
+//     스스로 시작하지 못합니다' 를 솔직하게 적을 수 있습니다.
+//     여기서 고른 것만 주간 피드백으로 옮겨 학부모께 드립니다.
+//  설치: db/일일기록_주간피드백_DB설치.sql
+// ══════════════════════════════════════════════════════════════════
+const DAILY_FILE = 'db/일일기록_주간피드백_DB설치.sql';
+
+const DAILY_HW = [
+  { v:'done',    ko:'다 함',    en:'Done',      c:'#2a7a5a' },
+  { v:'partial', ko:'일부',     en:'Partial',   c:'#b8860b' },
+  { v:'none',    ko:'못 함',    en:'None',      c:'#c0392b' },
+  { v:'na',      ko:'없었음',   en:'None given',c:'#7f8c8d' },
+];
+const DAILY_IND = [
+  { v:'self',      ko:'혼자 해냄',   en:'On their own',  c:'#2a7a5a' },
+  { v:'some_help', ko:'조금 도움',   en:'Some help',     c:'#b8860b' },
+  { v:'much_help', ko:'많이 도움',   en:'Much help',     c:'#c0392b' },
+  { v:'na',        ko:'해당 없음',   en:'N/A',           c:'#7f8c8d' },
+];
+//  ⚠️ 이 칸이 이 기록의 핵심입니다. 수학을 틀려도 까닭이 '개념' 일
+//     수도, '영어로 된 문제를 못 읽은 것' 일 수도 있습니다. 안 가르면
+//     엉뚱한 걸 가르치게 됩니다.
+const DAILY_CAUSE = [
+  { v:'concept',  ko:'개념을 모름',     en:'Concept',      c:'#2a5298' },
+  { v:'english',  ko:'영어를 못 읽음',  en:'English',      c:'#8e44ad' },
+  { v:'careless', ko:'실수',            en:'Careless',     c:'#b8860b' },
+  { v:'time',     ko:'시간 부족',       en:'Out of time',  c:'#e67e22' },
+  { v:'focus',    ko:'집중',            en:'Focus',        c:'#c0392b' },
+  { v:'none',     ko:'어려움 없음',     en:'No trouble',   c:'#2a7a5a' },
+];
+const DAILY_AREAS = [
+  { k:'school_note',   icon:'🏫', ko:'학교',       en:'School',
+    ph:t('학교에서 받은 과제·시험·제출기한 (예: 과학 프로젝트 월요일 마감)','Homework, tests, due dates from school') },
+  { k:'academic_note', icon:'📘', ko:'과제 수행',  en:'Academic',
+    ph:t('혼자 한 것과 도움받은 것 (예: 15문제 중 12문제를 혼자 풀었음)','What they did alone vs. with help') },
+  { k:'self_note',     icon:'⏱', ko:'자기관리',   en:'Self-management',
+    ph:t('스스로 시작했나 · 시간 관리 (예: 계획표를 쓴 뒤 스스로 시작함)','Did they start on their own? Time management') },
+  { k:'life_note',     icon:'🤝', ko:'생활·인격',  en:'Life & Character',
+    ph:t('책임감 · 도움 요청하는 태도 (예: 모르는 지시문을 먼저 물어봄)','Responsibility, asking for help') },
+  { k:'growth_note',   icon:'🌱', ko:'오늘의 성장', en:'Growth',
+    ph:t('어제보다 나아진 점 / 다음에 확인할 것','What improved, and what to check next time') },
+];
+function dailyPick(list, v) { return list.find(x => x.v === v) || null; }
+function dailyLabel(list, v) { const p = dailyPick(list, v); return p ? t(p.ko, p.en) : ''; }
+
+let dailyStudentId = '';
+let dailyEntries = [];
+let dailyDate = '';
+
+async function renderDailyHub() {
+  const main = document.getElementById('school-main');
+  if (!main) return;
+  if (!schoolStudents.length) {
+    main.innerHTML = `<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px">${t('등록된 학생이 없어요.','No students registered yet.')}</div>`;
+    return;
+  }
+  if (!dailyStudentId || !schoolStudents.find(s => s.id === dailyStudentId)) dailyStudentId = schoolStudents[0].id;
+  if (!dailyDate) dailyDate = attTodayStr();
+  main.innerHTML = `<div style="text-align:center;padding:40px;color:var(--ink3);font-size:13px">${t('불러오는 중...','Loading...')}</div>`;
+  try { await loadDailyLogs(); }
+  catch (e) {
+    if (schoolTableMissing(e)) return schoolSetupNeeded(e, DAILY_FILE);
+    main.innerHTML = `<div style="color:#b91c1c;padding:30px;text-align:center;font-size:13px">${t('불러오기 실패: ','Failed to load: ')}${escHtml(e.message || String(e))}</div>`;
+    return;
+  }
+  renderDaily();
+}
+
+async function loadDailyLogs() {
+  const { data, error } = await sb.from('daily_logs').select('*')
+    .eq('community_id', CID()).eq('student_id', dailyStudentId)
+    .order('date', { ascending:false }).order('created_at', { ascending:false }).limit(120);
+  if (error) throw error;
+  dailyEntries = data || [];
+}
+
+function changeDailyStudent(id) { dailyStudentId = id; renderDailyHub(); }
+
+function dailyChipRow(name, list, cur) {
+  return `<div style="display:flex;gap:5px;flex-wrap:wrap">${list.map(o => `
+    <label style="cursor:pointer">
+      <input type="radio" name="${name}" value="${o.v}" ${cur === o.v ? 'checked' : ''} style="display:none" onchange="dailyPaintChips('${escJs(name)}')"/>
+      <span data-chip="${escAttr(name)}" data-v="${escAttr(o.v)}" style="display:inline-block;height:30px;line-height:28px;padding:0 11px;border-radius:99px;
+        border:1.5px solid ${cur === o.v ? o.c : 'var(--border)'};background:${cur === o.v ? o.c : 'var(--surface)'};
+        color:${cur === o.v ? '#fff' : 'var(--ink2)'};font:700 12px var(--font)">${escHtml(t(o.ko, o.en))}</span>
+    </label>`).join('')}</div>`;
+}
+// 고른 것만 칠한다. 라디오를 숨겨 두었으니 색으로 알려줘야 한다.
+function dailyPaintChips(name) {
+  const col = {};
+  [DAILY_HW, DAILY_IND, DAILY_CAUSE].forEach(l => l.forEach(o => { col[o.v] = o.c; }));
+  const picked = (document.querySelector(`input[name="${CSS.escape(name)}"]:checked`) || {}).value;
+  document.querySelectorAll(`span[data-chip="${CSS.escape(name)}"]`).forEach(s => {
+    const on = s.getAttribute('data-v') === picked;
+    const c = col[s.getAttribute('data-v')] || '#7f8c8d';
+    s.style.border = '1.5px solid ' + (on ? c : 'var(--border)');
+    s.style.background = on ? c : 'var(--surface)';
+    s.style.color = on ? '#fff' : 'var(--ink2)';
+  });
+}
+function dailyRadio(name) {
+  const el = document.querySelector(`input[name="${CSS.escape(name)}"]:checked`);
+  return el ? el.value : null;
+}
+
+function renderDaily() {
+  const main = document.getElementById('school-main');
+  const inp = 'height:36px;padding:0 10px;border:1px solid var(--border);border-radius:9px;font:600 13px var(--font);color:var(--ink);background:var(--surface)';
+  const studentOpts = schoolStudents.map(x =>
+    `<option value="${escAttr(x.id)}" ${x.id === dailyStudentId ? 'selected' : ''}>${escHtml(x.name || '')}${x.grade ? ` (${escHtml(x.grade)})` : ''}</option>`).join('');
+
+  const areaInputs = DAILY_AREAS.map(a => `
+    <div style="margin-bottom:9px">
+      <div style="font:700 12px var(--font);color:var(--ink2);margin-bottom:4px">${a.icon} ${escHtml(t(a.ko, a.en))}</div>
+      <textarea id="dl-${a.k}" placeholder="${escAttr(a.ph)}" style="width:100%;min-height:44px;padding:9px 11px;border:1px solid var(--border);border-radius:9px;font:400 13.5px var(--font);color:var(--ink);line-height:1.7;resize:vertical;background:var(--surface)"></textarea>
+    </div>`).join('');
+
+  const entries = dailyEntries.map(e => {
+    const bits = [
+      e.homework ? { l:t('숙제','Homework'), o:dailyPick(DAILY_HW, e.homework) } : null,
+      e.independence ? { l:t('혼자','Alone'), o:dailyPick(DAILY_IND, e.independence) } : null,
+      e.cause ? { l:t('막힌 곳','Blocked by'), o:dailyPick(DAILY_CAUSE, e.cause) } : null,
+    ].filter(x => x && x.o);
+    const notes = DAILY_AREAS.filter(a => (e[a.k] || '').trim()).map(a => `
+      <div style="margin-top:7px">
+        <div style="font:700 11px var(--font);color:var(--ink3)">${a.icon} ${escHtml(t(a.ko, a.en))}</div>
+        <div style="font:400 13px var(--font);color:var(--ink2);line-height:1.7;white-space:pre-wrap">${escHtml(e[a.k])}</div>
+      </div>`).join('');
+    return `<div style="border:1px solid var(--border);border-radius:12px;padding:13px 15px;margin-bottom:10px;background:var(--surface)">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span style="font:800 13px var(--font);color:var(--ink)">${escHtml(e.date || '')}</span>
+        ${e.author_name ? `<span style="font:500 11px var(--font);color:var(--ink3)">${escHtml(e.author_name)}</span>` : ''}
+        ${bits.map(b => `<span style="font:700 11px var(--font);color:#fff;background:${b.o.c};padding:2px 8px;border-radius:6px">${escHtml(b.l)}: ${escHtml(t(b.o.ko, b.o.en))}</span>`).join('')}
+        <div style="flex:1"></div>
+        ${e.to_record
+          ? `<span style="font:700 11px var(--font);color:#2a7a5a;background:#e8f5ee;padding:3px 9px;border-radius:7px">🗂 ${t('생기부에 넣음','In record')}</span>`
+          : `<button onclick="openDailyToRecord('${escJs(e.id)}')" style="height:28px;padding:0 10px;border:1.5px solid var(--border);background:var(--surface);color:var(--adeep);border-radius:8px;cursor:pointer;font:700 11.5px var(--font)">🗂 ${t('생기부로','To record')}</button>`}
+        <button onclick="deleteDailyLog('${escJs(e.id)}')" title="${escAttr(t('삭제','Delete'))}" style="border:none;background:transparent;cursor:pointer;color:var(--ink3);font-size:14px">✕</button>
+      </div>
+      ${notes || `<div style="font:400 12.5px var(--font);color:var(--ink3);margin-top:6px">${t('적은 글 없음 — 고른 것만 있어요','No notes — only the quick picks')}</div>`}
+    </div>`;
+  }).join('');
+
+  main.innerHTML = `<div class="spage" style="max-width:760px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+      <label style="font:600 12px var(--font);color:var(--ink2)">${t('학생','Student')}</label>
+      <select onchange="changeDailyStudent(this.value)" style="${inp};min-width:160px">${studentOpts}</select>
+      <button onclick="setSchoolSubMode('feedback')" style="height:34px;padding:0 13px;border:1.5px solid var(--border);background:var(--surface);color:var(--adeep);border-radius:9px;cursor:pointer;font:700 12px var(--font)">📬 ${t('주간 피드백 →','Weekly feedback →')}</button>
+    </div>
+    <div style="font:500 12px var(--font);color:var(--ink3);line-height:1.8;margin-bottom:14px;word-break:keep-all">
+      ${t('매일 <b>2~3분</b>이면 됩니다. 글은 안 써도 괜찮아요 — 아래 고르기만 해도 추세가 쌓입니다.','<b>2–3 minutes</b> a day. You need not write — the quick picks alone build a trend.')}<br>
+      ${t('<b>교직원만 봅니다.</b> 학생도 학부모도 못 봐요. 여기서 고른 것만 주간 피드백으로 옮깁니다.','<b>Staff only.</b> Neither students nor parents can see this. Only what you pick moves to the weekly feedback.')}
+    </div>
+
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:15px;margin-bottom:16px">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:11px">
+        <input id="dl-date" type="date" value="${escAttr(dailyDate)}" style="${inp}"/>
+        <span style="font:700 12.5px var(--font);color:var(--ink2)">${t('오늘 기록','Today')}</span>
+      </div>
+      <div style="display:grid;gap:9px;margin-bottom:11px">
+        <div><div style="font:700 12px var(--font);color:var(--ink2);margin-bottom:5px">📝 ${t('숙제','Homework')}</div>${dailyChipRow('dl-hw', DAILY_HW, '')}</div>
+        <div><div style="font:700 12px var(--font);color:var(--ink2);margin-bottom:5px">🙋 ${t('혼자 해냈나','Did it alone?')}</div>${dailyChipRow('dl-ind', DAILY_IND, '')}</div>
+        <div>
+          <div style="font:700 12px var(--font);color:var(--ink2);margin-bottom:5px">🔍 ${t('막힌 곳','What blocked them')}</div>
+          <div style="font:500 11px var(--font);color:var(--ink3);margin-bottom:5px;word-break:keep-all">${t('수학을 틀려도 까닭이 다릅니다 — 개념인지, 영어로 된 문제를 못 읽은 것인지. 이걸 가려야 맞는 걸 가르칩니다.','A wrong answer has different causes — the concept, or not being able to read the English. This is what tells you what to teach.')}</div>
+          ${dailyChipRow('dl-cause', DAILY_CAUSE, '')}
+        </div>
+      </div>
+      ${areaInputs}
+      <div style="display:flex;justify-content:flex-end;margin-top:6px">
+        <button onclick="addDailyLog()" style="height:38px;padding:0 20px;border:none;background:#1d3a5f;color:#fff;border-radius:10px;cursor:pointer;font:700 13px var(--font)">＋ ${t('기록 남기기','Save entry')}</button>
+      </div>
+    </div>
+
+    ${dailyEntries.length ? entries : `<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px;background:var(--surface);border:1px solid var(--border);border-radius:12px">${t('아직 기록이 없어요.','No entries yet.')}</div>`}
+  </div>`;
+}
+
+async function addDailyLog() {
+  const row = {
+    community_id: CID(), student_id: dailyStudentId,
+    date: (document.getElementById('dl-date') || {}).value || attTodayStr(),
+    homework: dailyRadio('dl-hw'), independence: dailyRadio('dl-ind'), cause: dailyRadio('dl-cause'),
+    author_name: ME.name || '', created_by: ME.id,
+  };
+  let any = !!(row.homework || row.independence || row.cause);
+  DAILY_AREAS.forEach(a => {
+    const v = ((document.getElementById('dl-' + a.k) || {}).value || '').trim();
+    row[a.k] = v || null;
+    if (v) any = true;
+  });
+  if (!any) { showUploadToast(t('고르거나 한 줄이라도 적어주세요','Pick something or write a line')); return; }
+  const { error } = await sb.from('daily_logs').insert(row);
+  if (error) {
+    showUploadToast(schoolTableMissing(error)
+      ? t('아직 설치되지 않았어요 (','Not installed yet (') + DAILY_FILE + ')'
+      : t('저장 실패: ','Save failed: ') + error.message);
+    return;
+  }
+  dailyDate = row.date;
+  showUploadToast(t('✅ 기록했어요','✅ Saved'));
+  await renderDailyHub();
+}
+
+async function deleteDailyLog(id) {
+  if (!confirm(t('이 기록을 지울까요?','Delete this entry?'))) return;
+  const { data, error } = await sb.from('daily_logs').delete().eq('id', id).select('id');
+  if (error) { showUploadToast(t('삭제 실패: ','Delete failed: ') + error.message); return; }
+  if (!data || !data.length) { showUploadToast(t('지울 권한이 없어요','You cannot delete this')); return; }
+  dailyEntries = dailyEntries.filter(e => e.id !== id);
+  renderDaily();
+}
+
+// ── 🗂 생기부로 보내기 ────────────────────────────────────────────
+//  바로 집어넣지 않습니다. 생기부는 공식 문서라서, 적은 그대로 들어가면
+//  안 됩니다. 분류를 고르고 문장을 다듬어 보내게 합니다.
+function openDailyToRecord(id) {
+  const e = dailyEntries.find(x => x.id === id);
+  if (!e) return;
+  document.querySelectorAll('.d2r-modal').forEach(x => x.remove());
+  const spec = LOG_SPECS.observation;
+  const draft = DAILY_AREAS.filter(a => (e[a.k] || '').trim())
+    .map(a => t(a.ko, a.en) + ': ' + e[a.k].trim()).join('\n');
+  const title = (e.growth_note || e.academic_note || e.school_note || '').trim().split('\n')[0].slice(0, 40);
+  const m = document.createElement('div');
+  m.className = 'd2r-modal';
+  m.style.cssText = 'position:fixed;inset:0;z-index:320;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px';
+  m.onclick = (ev) => { if (ev.target === m) m.remove(); };
+  const inp = 'height:38px;padding:0 11px;border:1.5px solid var(--border);border-radius:9px;font:600 13px var(--font);color:var(--ink);background:var(--surface)';
+  m.innerHTML = `<div style="background:var(--surface);border-radius:18px;width:520px;max-width:94vw;max-height:86vh;display:flex;flex-direction:column;box-shadow:var(--sh-3)">
+    <div style="padding:16px 18px;border-bottom:1px solid var(--border)">
+      <div style="font:800 15px var(--font);color:var(--ink)">🗂 ${t('생기부(관찰 누가기록)로 보내기','Send to the record (observation log)')}</div>
+      <div style="font:500 12px var(--font);color:var(--ink3);margin-top:4px;line-height:1.7;word-break:keep-all">${t('생기부는 공식 문서예요. 분류를 고르고, 들어갈 문장을 다듬어 주세요.','The record is an official document. Pick a category and polish the wording.')}</div>
+    </div>
+    <div style="padding:14px 18px;overflow-y:auto;flex:1">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+        <select id="d2r-cat" style="${inp}">${spec.cats.map(c => `<option value="${escAttr(c)}">${escHtml(c)}</option>`).join('')}</select>
+        <input id="d2r-date" type="date" value="${escAttr(e.date || attTodayStr())}" style="${inp}"/>
+      </div>
+      <input id="d2r-title" value="${escAttr(title)}" placeholder="${escAttr(spec.titlePh)}" style="${inp};width:100%;margin-bottom:10px"/>
+      <textarea id="d2r-body" style="width:100%;min-height:150px;padding:11px;border:1.5px solid var(--border);border-radius:9px;font:400 13.5px var(--font);color:var(--ink);line-height:1.8;resize:vertical;background:var(--surface)">${escTa(draft)}</textarea>
+    </div>
+    <div style="padding:12px 16px;border-top:1px solid var(--border);display:flex;gap:8px">
+      <button onclick="this.closest('.d2r-modal').remove()" style="flex:1;height:42px;border-radius:11px;border:none;background:var(--s3);color:var(--ink2);font:600 14px var(--font);cursor:pointer">${t('취소','Cancel')}</button>
+      <button onclick="sendDailyToRecord('${escJs(id)}')" style="flex:2;height:42px;border-radius:11px;border:none;background:#1d3a5f;color:#fff;font:700 14px var(--font);cursor:pointer">🗂 ${t('생기부에 넣기','Add to record')}</button>
+    </div>
+  </div>`;
+  document.body.appendChild(m);
+}
+
+async function sendDailyToRecord(id) {
+  const e = dailyEntries.find(x => x.id === id);
+  if (!e) return;
+  const body = ((document.getElementById('d2r-body') || {}).value || '').trim();
+  if (!body) { showUploadToast(t('들어갈 내용을 적어주세요','Write what should go in')); return; }
+  const row = {
+    community_id: CID(), student_id: e.student_id,
+    date: (document.getElementById('d2r-date') || {}).value || e.date,
+    category: (document.getElementById('d2r-cat') || {}).value || '기타',
+    title: ((document.getElementById('d2r-title') || {}).value || '').trim() || null,
+    content: body, author_name: ME.name || '', created_by: ME.id,
+  };
+  const { data, error } = await sb.from('observation_logs').insert(row).select('id').single();
+  if (error || !data) {
+    showUploadToast(schoolTableMissing(error)
+      ? t('관찰기록이 아직 설치되지 않았어요 (db/학사_관찰기록_DB설치.sql)','The observation log is not installed yet (db/학사_관찰기록_DB설치.sql)')
+      : t('보내기 실패: ','Failed: ') + ((error && error.message) || ''));
+    return;
+  }
+  // 두 번 보내지 않게 표시해 둔다
+  await sb.from('daily_logs').update({ to_record: true, observation_id: data.id, updated_at: new Date().toISOString() }).eq('id', id);
+  document.querySelectorAll('.d2r-modal').forEach(x => x.remove());
+  showUploadToast(t('🗂 생기부(관찰 누가기록)에 넣었어요','🗂 Added to the record'));
+  await renderDailyHub();
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  📬 주간 학부모 피드백
+//
+//  매일 긴 보고를 보내면 정작 중요한 연락이 묻힙니다. 매일은 안에
+//  기록하고(일일기록), 일주일에 한 번 골라서 드립니다.
+//
+//  ⚠️ '보냄' 으로 바꾼 것만 학부모가 봅니다. 쓰다 만 초안이 보이면
+//     안 됩니다. 서버(RLS)에서도 막혀 있습니다.
+//  ⚠️ 학생 본인은 피드백도 댓글도 못 봅니다 — 일부러 그렇게 두었습니다.
+//     선생님이 솔직하게 쓰고, 학부모도 걱정을 편히 적을 수 있게요.
+// ══════════════════════════════════════════════════════════════════
+const FB_SECTIONS = [
+  { k:'summary',    icon:'👀', ko:'이번 주 한눈에', en:'This week at a glance',
+    ph:t('이번 주에 무엇을 했는지 두세 줄로','Two or three lines on what happened this week') },
+  { k:'grew',       icon:'🌱', ko:'자란 것',        en:'What grew',
+    ph:t('점수가 아니라 무엇이 달라졌는지 (예: 전에는 지시문을 안 물어봤는데 이번 주엔 먼저 물어봤어요)','Not a score — what changed') },
+  { k:'working_on', icon:'🔍', ko:'아직 도울 것',   en:'Still working on',
+    ph:t('솔직하게. 숨기면 나중에 더 곤란해집니다','Be honest — hiding it hurts later') },
+  { k:'plan',       icon:'📋', ko:'우리가 할 것',   en:'What we will do',
+    ph:t('다음 주에 학원이 무엇을 할지','What we will do next week') },
+  { k:'home',       icon:'🏠', ko:'가정에서',       en:'At home',
+    ph:t('집에서 도와주실 것 한 가지 (칭찬할 거리를 짚어 드리면 좋아요)','One thing to help with at home') },
+];
+
+// 그 주 월요일. 'T00:00:00' 을 꼭 붙인다 — 안 붙이면 UTC 자정으로 읽혀
+// 시차가 있는 곳에서 하루 앞 주가 된다.
+function fbMonday(dStr) {
+  const x = dStr ? new Date(dStr + 'T00:00:00') : new Date();
+  x.setHours(0, 0, 0, 0);
+  x.setDate(x.getDate() - ((x.getDay() + 6) % 7));
+  return x;
+}
+function fbYmd(d) { const z = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}`; }
+function fbWeekLabel(ws) {
+  if (!ws) return '';
+  const a = new Date(ws + 'T00:00:00'); if (isNaN(a)) return ws;
+  const b = new Date(a); b.setDate(b.getDate() + 6);
+  return `${a.getMonth() + 1}/${a.getDate()} ~ ${b.getMonth() + 1}/${b.getDate()}`;
+}
+function fbMissing(e) {
+  const m = ((e && (e.message || e.code)) || '') + '';
+  return /weekly_feedback|daily_logs|PGRST205|does not exist|schema cache/i.test(m);
+}
+
+let fbStudentId = '';
+let fbWeek = '';
+let fbList = [];          // 그 학생의 지난 피드백들
+let fbCur = null;         // 지금 보고 있는 주의 피드백 (없으면 null)
+
+async function renderFeedbackHub() {
+  const main = document.getElementById('school-main');
+  if (!main) return;
+  if (!schoolStudents.length) {
+    main.innerHTML = `<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px">${t('등록된 학생이 없어요.','No students registered yet.')}</div>`;
+    return;
+  }
+  if (!fbStudentId || !schoolStudents.find(s => s.id === fbStudentId)) fbStudentId = schoolStudents[0].id;
+  if (!fbWeek) fbWeek = fbYmd(fbMonday());
+  main.innerHTML = `<div style="text-align:center;padding:40px;color:var(--ink3);font-size:13px">${t('불러오는 중...','Loading...')}</div>`;
+  try { await loadFeedbacks(); }
+  catch (e) {
+    if (fbMissing(e)) return schoolSetupNeeded(e, DAILY_FILE);
+    main.innerHTML = `<div style="color:#b91c1c;padding:30px;text-align:center;font-size:13px">${t('불러오기 실패: ','Failed to load: ')}${escHtml(e.message || String(e))}</div>`;
+    return;
+  }
+  renderFeedback();
+}
+
+async function loadFeedbacks() {
+  const { data, error } = await sb.from('weekly_feedbacks').select('*')
+    .eq('community_id', CID()).eq('student_id', fbStudentId)
+    .order('week_start', { ascending:false }).limit(60);
+  if (error) throw error;
+  fbList = data || [];
+  fbCur = fbList.find(f => f.week_start === fbWeek) || null;
+}
+
+function changeFbStudent(id) { fbStudentId = id; renderFeedbackHub(); }
+function changeFbWeek(v) { fbWeek = fbYmd(fbMonday(v)); renderFeedbackHub(); }
+function fbShiftWeek(n) {
+  const d = fbMonday(fbWeek); d.setDate(d.getDate() + n * 7);
+  fbWeek = fbYmd(d); renderFeedbackHub();
+}
+
+function renderFeedback() {
+  const main = document.getElementById('school-main');
+  const inp = 'height:36px;padding:0 10px;border:1px solid var(--border);border-radius:9px;font:600 13px var(--font);color:var(--ink);background:var(--surface)';
+  const stu = schoolStudents.find(s => s.id === fbStudentId) || {};
+  const sent = !!(fbCur && fbCur.status === 'sent');
+
+  const editor = FB_SECTIONS.map(s => `
+    <div style="margin-bottom:11px">
+      <div style="font:700 12.5px var(--font);color:var(--ink2);margin-bottom:4px">${s.icon} ${escHtml(t(s.ko, s.en))}</div>
+      <textarea id="fb-${s.k}" placeholder="${escAttr(s.ph)}" style="width:100%;min-height:58px;padding:10px 11px;border:1px solid var(--border);border-radius:9px;font:400 13.5px var(--font);color:var(--ink);line-height:1.75;resize:vertical;background:var(--surface)">${escTa((fbCur && fbCur[s.k]) || '')}</textarea>
+    </div>`).join('');
+
+  const history = fbList.length ? fbList.map(f => `
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">
+      <span style="font:700 12.5px var(--font);color:var(--ink)">${escHtml(fbWeekLabel(f.week_start))}</span>
+      <span style="font:700 10.5px var(--font);color:#fff;background:${f.status === 'sent' ? '#2a7a5a' : '#b8860b'};padding:2px 8px;border-radius:6px">${f.status === 'sent' ? t('보냄','Sent') : t('초안','Draft')}</span>
+      <span style="font:500 11px var(--font);color:var(--ink3);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml((f.summary || '').slice(0, 50))}</span>
+      <button onclick="changeFbWeek('${escJs(f.week_start)}')" style="height:26px;padding:0 9px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:7px;cursor:pointer;font:700 11px var(--font)">${t('열기','Open')}</button>
+      <button onclick="openFeedbackView('${escJs(f.id)}')" style="height:26px;padding:0 9px;border:1.5px solid var(--border);background:var(--surface);color:var(--adeep);border-radius:7px;cursor:pointer;font:700 11px var(--font)">👁 ${t('학부모 화면','Parent view')}</button>
+    </div>`).join('') : `<div style="font:500 12.5px var(--font);color:var(--ink3);padding:16px 0;text-align:center">${t('아직 보낸 피드백이 없어요','No feedback yet')}</div>`;
+
+  main.innerHTML = `<div class="spage" style="max-width:780px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+      <label style="font:600 12px var(--font);color:var(--ink2)">${t('학생','Student')}</label>
+      <select onchange="changeFbStudent(this.value)" style="${inp};min-width:150px">
+        ${schoolStudents.map(x => `<option value="${escAttr(x.id)}" ${x.id === fbStudentId ? 'selected' : ''}>${escHtml(x.name || '')}${x.grade ? ` (${escHtml(x.grade)})` : ''}</option>`).join('')}
+      </select>
+      <button onclick="fbShiftWeek(-1)" style="${inp};cursor:pointer;border:1.5px solid var(--border)">‹</button>
+      <input type="date" value="${escAttr(fbWeek)}" onchange="changeFbWeek(this.value)" style="${inp}"/>
+      <button onclick="fbShiftWeek(1)" style="${inp};cursor:pointer;border:1.5px solid var(--border)">›</button>
+      <span style="font:700 12.5px var(--font);color:var(--adeep)">${escHtml(fbWeekLabel(fbWeek))}</span>
+      <button onclick="setSchoolSubMode('daily')" style="height:34px;padding:0 13px;border:1.5px solid var(--border);background:var(--surface);color:var(--adeep);border-radius:9px;cursor:pointer;font:700 12px var(--font)">← 📋 ${t('일일기록','Daily log')}</button>
+    </div>
+
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+        <span style="font:800 15px var(--font);color:var(--ink)">${escHtml(stu.name || '')}</span>
+        <span style="font:600 12px var(--font);color:var(--ink3)">${escHtml(fbWeekLabel(fbWeek))}</span>
+        ${fbCur ? `<span style="font:700 10.5px var(--font);color:#fff;background:${sent ? '#2a7a5a' : '#b8860b'};padding:3px 9px;border-radius:7px">${sent ? t('보냄','Sent') : t('초안','Draft')}</span>` : ''}
+        ${sent && fbCur.sent_at ? `<span style="font:500 11px var(--font);color:var(--ink3)">${escHtml(new Date(fbCur.sent_at).toLocaleString())}</span>` : ''}
+      </div>
+      <div style="font:500 11.5px var(--font);color:var(--ink3);line-height:1.8;margin-bottom:12px;word-break:keep-all">
+        ${t('아래 다섯 칸 중 <b>빈 칸은 학부모 화면에 안 보입니다.</b> 쓸 말이 없으면 비워 두세요.','Empty boxes are <b>hidden from parents</b>. Leave them blank if you have nothing to say.')}<br>
+        ${sent ? t('이미 보낸 글입니다. 고치면 학부모 화면도 바로 바뀝니다.','Already sent. Edits show up for parents right away.')
+               : t('<b>저장만 하면 학부모에게 안 보입니다.</b> 다 쓰고 ‘보내기’ 를 눌러주세요.','<b>Saving alone does not show it to parents.</b> Press Send when you are done.')}
+      </div>
+      ${editor}
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
+        <button onclick="saveFeedback(false)" style="height:40px;padding:0 18px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:10px;cursor:pointer;font:700 13px var(--font)">💾 ${t('초안 저장','Save draft')}</button>
+        ${sent
+          ? `<button onclick="saveFeedback(true)" style="height:40px;padding:0 18px;border:none;background:#2a7a5a;color:#fff;border-radius:10px;cursor:pointer;font:700 13px var(--font)">✅ ${t('고친 내용 저장','Save changes')}</button>`
+          : `<button onclick="saveFeedback(true)" style="height:40px;padding:0 20px;border:none;background:#1d3a5f;color:#fff;border-radius:10px;cursor:pointer;font:700 13px var(--font)">📬 ${t('학부모에게 보내기','Send to parents')}</button>`}
+        ${fbCur ? `<button onclick="openFeedbackView('${escJs(fbCur.id)}')" style="height:40px;padding:0 16px;border:1.5px solid var(--border);background:var(--surface);color:var(--adeep);border-radius:10px;cursor:pointer;font:700 13px var(--font)">👁 ${t('학부모 화면으로 보기','Parent view')}</button>` : ''}
+        ${sent ? `<button onclick="shareFeedback('${escJs(fbCur.id)}')" style="height:40px;padding:0 16px;border:1.5px solid var(--border);background:var(--surface);color:var(--adeep);border-radius:10px;cursor:pointer;font:700 13px var(--font)">🔗 ${t('링크 보내기','Send link')}</button>` : ''}
+      </div>
+    </div>
+
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px">
+      <div style="font:800 13.5px var(--font);color:var(--ink2);margin-bottom:8px">🗓 ${escHtml(stu.name || '')} ${t('지난 피드백','Past feedback')}</div>
+      ${history}
+    </div>
+  </div>`;
+}
+
+async function saveFeedback(send) {
+  const row = { community_id: CID(), student_id: fbStudentId, week_start: fbWeek,
+                author_name: ME.name || '', created_by: ME.id, updated_at: new Date().toISOString() };
+  let any = false;
+  FB_SECTIONS.forEach(s => {
+    const v = ((document.getElementById('fb-' + s.k) || {}).value || '').trim();
+    row[s.k] = v || null;
+    if (v) any = true;
+  });
+  if (!any) { showUploadToast(t('한 칸이라도 적어주세요','Write at least one box')); return; }
+  if (send) {
+    if (!fbCur || fbCur.status !== 'sent') {
+      const stu = schoolStudents.find(s => s.id === fbStudentId) || {};
+      if (!confirm(t(`${stu.name} 학부모님께 이번 주 피드백을 보낼까요?\n보내면 바로 보입니다.`,
+                     `Send this week's feedback to ${stu.name}'s parents?\nThey will see it right away.`))) return;
+    }
+    row.status = 'sent';
+    row.sent_at = (fbCur && fbCur.sent_at) || new Date().toISOString();
+  } else if (!fbCur) {
+    row.status = 'draft';
+  }
+
+  let res;
+  if (fbCur) res = await sb.from('weekly_feedbacks').update(row).eq('id', fbCur.id).select('id');
+  else       res = await sb.from('weekly_feedbacks').insert(row).select('id');
+  if (res.error) {
+    showUploadToast(fbMissing(res.error)
+      ? t('아직 설치되지 않았어요 (','Not installed yet (') + DAILY_FILE + ')'
+      : t('저장 실패: ','Save failed: ') + res.error.message);
+    return;
+  }
+  if (!res.data || !res.data.length) { showUploadToast(t('저장 권한이 없어요','You cannot save this')); return; }
+  showUploadToast(send ? t('📬 학부모에게 보냈어요','📬 Sent to parents') : t('💾 초안을 저장했어요','💾 Draft saved'));
+  await renderFeedbackHub();
+}
+
+// ── 🔗 링크 ───────────────────────────────────────────────────────
+//  어디에 붙여 넣어도 됩니다 — 카톡·문자·TCS 1:1. 누르면 로그인하고
+//  그 피드백으로 바로 갑니다. (로그인 없이는 안 보입니다)
+function feedbackLink(id) {
+  const base = location.origin + location.pathname.replace(/[^/]*$/, 'index.html');
+  return base + '#pf=' + id;
+}
+async function shareFeedback(id) {
+  const f = fbList.find(x => x.id === id) || fbCur;
+  const stu = schoolStudents.find(s => s.id === fbStudentId) || {};
+  const url = feedbackLink(id);
+  const msg = t(`${stu.name} 학생 주간 피드백 (${fbWeekLabel(f && f.week_start)})\n${url}`,
+                `Weekly feedback for ${stu.name} (${fbWeekLabel(f && f.week_start)})\n${url}`);
+  document.querySelectorAll('.fb-share').forEach(x => x.remove());
+  const m = document.createElement('div');
+  m.className = 'fb-share';
+  m.style.cssText = 'position:fixed;inset:0;z-index:330;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px';
+  m.onclick = (e) => { if (e.target === m) m.remove(); };
+  m.innerHTML = `<div style="background:var(--surface);border-radius:18px;width:460px;max-width:94vw;padding:20px;box-shadow:var(--sh-3)">
+    <div style="font:800 15px var(--font);color:var(--ink);margin-bottom:6px">🔗 ${t('링크 보내기','Send the link')}</div>
+    <div style="font:500 12px var(--font);color:var(--ink3);line-height:1.8;margin-bottom:12px;word-break:keep-all">
+      ${t('카톡·문자에 붙여넣으셔도 되고, TCS 1:1 로 바로 보내셔도 돼요.','Paste it into KakaoTalk or SMS, or send it straight through TCS.')}<br>
+      ${t('로그인해야 보입니다 — 아무나 열 수 없어요.','It requires a login — not just anyone can open it.')}
+    </div>
+    <textarea id="fb-share-text" readonly style="width:100%;min-height:72px;padding:10px;border:1.5px solid var(--border);border-radius:9px;font:400 12.5px var(--font);color:var(--ink2);line-height:1.7;resize:vertical;background:var(--s2)">${escTa(msg)}</textarea>
+    <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+      <button onclick="copyFeedbackLink()" style="flex:1;height:40px;border-radius:10px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);font:700 13px var(--font);cursor:pointer">${t('복사','Copy')}</button>
+      <button onclick="dmFeedbackLink('${escJs(id)}')" style="flex:1.4;height:40px;border-radius:10px;border:none;background:#1d3a5f;color:#fff;font:700 13px var(--font);cursor:pointer">💬 ${t('TCS 1:1 로 보내기','Send via TCS')}</button>
+      <button onclick="this.closest('.fb-share').remove()" style="height:40px;padding:0 14px;border-radius:10px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink3);font:600 13px var(--font);cursor:pointer">${t('닫기','Close')}</button>
+    </div>
+  </div>`;
+  document.body.appendChild(m);
+}
+function copyFeedbackLink() {
+  const el = document.getElementById('fb-share-text');
+  if (!el) return;
+  try { el.select(); } catch (_) {}
+  const done = () => showUploadToast(t('복사했어요','Copied'));
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(el.value).then(done, () => { try { document.execCommand('copy'); done(); } catch (_) {} });
+  } else { try { document.execCommand('copy'); done(); } catch (_) {} }
+}
+// 그 아이의 학부모에게 TCS 1:1 로 보낸다. 연결된 학부모가 없으면 알려준다.
+async function dmFeedbackLink(id) {
+  const el = document.getElementById('fb-share-text');
+  const text = el ? el.value : feedbackLink(id);
+  const { data: links, error } = await sb.from('student_parents').select('parent_id').eq('student_id', fbStudentId);
+  if (error) { showUploadToast(t('학부모를 찾지 못했어요: ','Could not find parents: ') + error.message); return; }
+  const ids = (links || []).map(l => l.parent_id).filter(Boolean);
+  if (!ids.length) {
+    showUploadToast(t('이 학생과 연결된 학부모가 없어요 — 관리자 → 멤버에서 먼저 연결해주세요',
+                      'No parent is linked to this student — link one in Admin → Members first'));
+    return;
+  }
+  document.querySelectorAll('.fb-share').forEach(x => x.remove());
+  let ok = 0;
+  for (const pid of ids) {
+    try { if (await dmSendTextTo(pid, text)) ok++; } catch (_) {}
+  }
+  showUploadToast(ok ? t(`💬 학부모 ${ok}분께 보냈어요`, `💬 Sent to ${ok} parent(s)`)
+                     : t('보내지 못했어요','Could not send'));
+}
+
+// 1:1 방을 찾거나 만들어 글 한 줄을 보낸다. 화면은 옮기지 않는다.
+//  (주간 피드백 링크를 학부모께 보낼 때 쓴다)
+async function dmSendTextTo(memberId, text) {
+  if (!memberId || !text || !ME) return false;
+  let ch = await findDMChannel(memberId);
+  if (!ch) {
+    const target = members[memberId] || {};
+    const { data, error } = await sb.from('channels').insert({
+      name: `${ME.name} · ${target.name || ''}`, emoji: '💬', description: '1:1 대화',
+      pinned: false, kind: 'dm', community_id: CID(), created_by: ME.id,
+    }).select().single();
+    if (error || !data) return false;
+    const { error: mErr } = await sb.from('channel_members').insert([
+      { channel_id: data.id, member_id: ME.id },
+      { channel_id: data.id, member_id: memberId },
+    ]);
+    // 줄이 안 들어가면 상대에게는 영영 안 보이는 방이 된다. 보냈다고 하지 않는다.
+    if (mErr) return false;
+    myChannelIds.add(data.id); myRealChannelIds.add(data.id); channels.push(data);
+    ch = data;
+  } else if (!myChannelIds.has(ch.id)) {
+    await sb.from('channel_members').insert({ channel_id: ch.id, member_id: ME.id }).then(() => {}, () => {});
+    myChannelIds.add(ch.id); myRealChannelIds.add(ch.id);
+  }
+  const { data: ins, error } = await sb.from('messages').insert({
+    channel_id: ch.id, sender_id: ME.id, sender_name: ME.name, text,
+  }).select('id').single();
+  if (error || !ins) return false;
+  try { pushNotifySent(ins.id); } catch (_) {}
+  const nowIso = new Date().toISOString();
+  touchChannelActivity(ch.id, nowIso);
+  sb.from('channels').update({ last_message_at: nowIso }).eq('id', ch.id).then(() => {}, () => {});
+  return true;
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  📬 주간 피드백 보기 — 학부모가 보는 바로 그 화면
+//
+//  선생님도 같은 화면으로 미리 봅니다. 두 화면을 따로 만들면 하나만
+//  고치게 되고, 결국 학부모가 보는 쪽이 낡습니다.
+// ══════════════════════════════════════════════════════════════════
+let fbView = null;         // 지금 열어 둔 피드백
+let fbViewCmts = [];
+let fbReplyTo = null;      // 대댓글 달 윗 댓글 id
+
+function closeFeedbackView() {
+  document.querySelectorAll('.fb-view').forEach(x => x.remove());
+  fbView = null; fbViewCmts = []; fbReplyTo = null;
+}
+
+async function openFeedbackView(id) {
+  if (!id) return;
+  closeFeedbackView();
+  const bd = document.createElement('div');
+  bd.className = 'fb-view';
+  bd.style.cssText = 'position:fixed;inset:0;z-index:340;background:rgba(14,26,42,.5);display:flex;align-items:flex-start;justify-content:center;padding:18px;overflow-y:auto';
+  bd.onclick = (e) => { if (e.target === bd) closeFeedbackView(); };
+  bd.innerHTML = `<div style="background:var(--surface);border-radius:20px;width:640px;max-width:96vw;margin:auto;padding:40px;text-align:center;color:var(--ink3);font:500 13px var(--font)">${t('불러오는 중...','Loading...')}</div>`;
+  document.body.appendChild(bd);
+
+  const { data, error } = await sb.from('weekly_feedbacks').select('*').eq('id', id).maybeSingle();
+  if (error || !data) {
+    bd.innerHTML = `<div style="background:var(--surface);border-radius:20px;width:520px;max-width:96vw;margin:auto;padding:34px;text-align:center">
+      <div style="font-size:38px">📭</div>
+      <div style="font:800 15px var(--font);color:var(--ink);margin:10px 0 6px">${t('이 피드백을 볼 수 없어요','You cannot view this feedback')}</div>
+      <div style="font:500 12.5px var(--font);color:var(--ink3);line-height:1.8;word-break:keep-all">${
+        fbMissing(error) ? t('아직 설치되지 않았어요 (','Not installed yet (') + DAILY_FILE + ')'
+        : t('아직 보내지 않았거나, 내 아이의 것이 아니에요.','It has not been sent yet, or it is not for your child.')}</div>
+      <button onclick="closeFeedbackView()" style="margin-top:16px;height:38px;padding:0 18px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:10px;cursor:pointer;font:700 13px var(--font)">${t('닫기','Close')}</button>
+    </div>`;
+    return;
+  }
+  fbView = data;
+  renderFeedbackView();
+  loadFeedbackComments(id).then(() => renderFeedbackView(), () => {});
+}
+
+async function loadFeedbackComments(id) {
+  const { data, error } = await sb.from('weekly_feedback_comments').select('*')
+    .eq('feedback_id', id).order('created_at', { ascending:true });
+  if (error) { fbViewCmts = []; return; }
+  fbViewCmts = data || [];
+}
+
+function fbStudentName(sid) {
+  const m = members[sid] || (schoolStudents || []).find(s => s.id === sid)
+          || (childList || []).find(c => c.id === sid);
+  return (m && m.name) || '';
+}
+
+function fbCommentHtml() {
+  const roots = fbViewCmts.filter(c => !c.parent_id);
+  const kids = {};
+  fbViewCmts.filter(c => c.parent_id).forEach(c => { (kids[c.parent_id] = kids[c.parent_id] || []).push(c); });
+  const one = (c, depth) => {
+    const staff = c.author_role === 'staff';
+    const mine = ME && c.author_id === ME.id;
+    return `<div style="margin:0 0 9px ${depth ? 26 : 0}px;padding:10px 12px;border-radius:12px;
+         background:${staff ? 'var(--asoft)' : 'var(--s2)'};border:1px solid ${staff ? 'transparent' : 'var(--border)'}">
+      <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:3px">
+        <span style="font:700 12.5px var(--font);color:${staff ? 'var(--adeep)' : 'var(--ink)'}">${escHtml(c.author_name || '')}</span>
+        <span style="font:700 10px var(--font);color:#fff;background:${staff ? '#1d3a5f' : '#be5b2a'};padding:1px 7px;border-radius:5px">${staff ? t('선생님','Teacher') : t('학부모','Parent')}</span>
+        <span style="font:500 10.5px var(--font);color:var(--ink3)">${escHtml(new Date(c.created_at).toLocaleString())}</span>
+        <div style="flex:1"></div>
+        ${depth ? '' : `<button onclick="fbSetReply('${escJs(c.id)}')" style="border:none;background:transparent;cursor:pointer;color:var(--ink3);font:700 11px var(--font)">${t('답글','Reply')}</button>`}
+        ${mine ? `<button onclick="deleteFeedbackComment('${escJs(c.id)}')" style="border:none;background:transparent;cursor:pointer;color:var(--ink3);font-size:13px">✕</button>` : ''}
+      </div>
+      <div style="font:400 13px var(--font);color:var(--ink2);line-height:1.75;white-space:pre-wrap">${escHtml(c.body || '')}</div>
+    </div>`;
+  };
+  const list = roots.length
+    ? roots.map(r => one(r, 0) + (kids[r.id] || []).map(k => one(k, 1)).join('')).join('')
+    : `<div style="font:500 12.5px var(--font);color:var(--ink3);padding:14px 0;text-align:center">${t('아직 글이 없어요. 궁금한 점이나 집에서 본 모습을 남겨주세요.','Nothing yet. Leave a question, or what you saw at home.')}</div>`;
+
+  const replying = fbReplyTo ? fbViewCmts.find(c => c.id === fbReplyTo) : null;
+  return `<div style="border-top:1px solid var(--border);margin-top:22px;padding-top:16px">
+    <div style="font:800 13.5px var(--font);color:var(--ink2);margin-bottom:10px">💬 ${t('주고받은 이야기','Conversation')} ${fbViewCmts.length ? `<span style="color:var(--ink3);font-weight:600">${fbViewCmts.length}</span>` : ''}</div>
+    ${list}
+    ${replying ? `<div style="font:600 11.5px var(--font);color:var(--adeep);background:var(--asoft);padding:6px 10px;border-radius:8px;margin-bottom:6px;display:flex;align-items:center;gap:6px">
+        ↳ ${escHtml(replying.author_name || '')}${t(' 님께 답글','')}
+        <button onclick="fbSetReply('')" style="border:none;background:transparent;cursor:pointer;color:var(--adeep);font-size:13px">✕</button>
+      </div>` : ''}
+    <textarea id="fb-cmt" placeholder="${escAttr(t('한 줄 남겨주세요','Leave a line'))}" style="width:100%;min-height:62px;padding:10px 11px;border:1.5px solid var(--border);border-radius:10px;font:400 13.5px var(--font);color:var(--ink);line-height:1.7;resize:vertical;background:var(--surface)"></textarea>
+    <div style="display:flex;justify-content:flex-end;margin-top:7px">
+      <button onclick="addFeedbackComment()" style="height:36px;padding:0 18px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 13px var(--font)">${t('남기기','Post')}</button>
+    </div>
+  </div>`;
+}
+
+function renderFeedbackView() {
+  const bd = document.querySelector('.fb-view');
+  if (!bd || !fbView) return;
+  const f = fbView;
+  const name = fbStudentName(f.student_id);
+  const body = FB_SECTIONS.filter(s => (f[s.k] || '').trim()).map(s => `
+    <div style="margin-bottom:18px">
+      <div style="display:flex;align-items:center;gap:7px;margin-bottom:6px">
+        <span style="font-size:15px">${s.icon}</span>
+        <span style="font:800 13px var(--font);color:var(--adeep);letter-spacing:.02em">${escHtml(t(s.ko, s.en))}</span>
+      </div>
+      <div style="font:400 14.5px var(--font);color:var(--ink);line-height:1.85;white-space:pre-wrap;padding-left:22px;word-break:keep-all">${escHtml(f[s.k])}</div>
+    </div>`).join('');
+
+  bd.innerHTML = `<div style="background:var(--surface);border-radius:20px;width:660px;max-width:96vw;margin:auto;box-shadow:0 24px 60px rgba(14,26,42,.3);overflow:hidden">
+    <div style="background:linear-gradient(135deg,#1d3a5f,#2a5298);padding:24px 26px;color:#fff;position:relative">
+      <button onclick="closeFeedbackView()" style="position:absolute;top:16px;right:16px;width:32px;height:32px;border:none;border-radius:10px;background:rgba(255,255,255,.18);color:#fff;cursor:pointer;font-size:15px">✕</button>
+      <div style="font:600 12px var(--font);opacity:.8;letter-spacing:.06em">${t('주간 학습 피드백','WEEKLY FEEDBACK')}</div>
+      <div style="font:800 23px var(--font);margin-top:5px">${escHtml(name)}</div>
+      <div style="font:600 13px var(--font);opacity:.85;margin-top:3px">${escHtml(fbWeekLabel(f.week_start))}${f.author_name ? ' · ' + escHtml(f.author_name) : ''}</div>
+      ${f.status !== 'sent' ? `<div style="margin-top:9px;display:inline-block;font:700 11px var(--font);background:#b8860b;padding:3px 10px;border-radius:7px">${t('초안 — 학부모에게는 아직 안 보여요','Draft — parents cannot see this yet')}</div>` : ''}
+    </div>
+    <div style="padding:24px 26px">
+      ${body || `<div style="font:500 13px var(--font);color:var(--ink3);text-align:center;padding:20px 0">${t('아직 내용이 없어요','Nothing written yet')}</div>`}
+      ${fbCommentHtml()}
+    </div>
+  </div>`;
+}
+
+function fbSetReply(id) { fbReplyTo = id || null; renderFeedbackView(); }
+
+async function addFeedbackComment() {
+  if (!fbView || !ME) return;
+  const el = document.getElementById('fb-cmt');
+  const body = ((el && el.value) || '').trim();
+  if (!body) { showUploadToast(t('한 줄 적어주세요','Write a line')); return; }
+  const row = {
+    feedback_id: fbView.id, parent_id: fbReplyTo || null,
+    author_id: ME.id, author_name: ME.name || '',
+    author_role: isParent() ? 'parent' : 'staff', body,
+  };
+  const { data, error } = await sb.from('weekly_feedback_comments').insert(row).select('*').single();
+  if (error || !data) {
+    showUploadToast(fbMissing(error)
+      ? t('아직 설치되지 않았어요 (','Not installed yet (') + DAILY_FILE + ')'
+      : t('남기지 못했어요: ','Could not post: ') + ((error && error.message) || ''));
+    return;
+  }
+  fbViewCmts.push(data);
+  fbReplyTo = null;
+  renderFeedbackView();
+  // 상대에게 1:1 로 알려 준다 — 댓글만 달아두면 아무도 안 본다.
+  fbNotifyComment(data).catch(() => {});
+}
+
+// 댓글이 달렸다고 1:1 로 알린다.
+//  학부모가 달면 → 그 글을 쓴 선생님께. 선생님이 달면 → 그 아이 학부모께.
+async function fbNotifyComment(c) {
+  if (!fbView) return;
+  const name = fbStudentName(fbView.student_id);
+  const link = feedbackLink(fbView.id);
+  const head = isParent()
+    ? t(`💬 ${name} 학생 주간 피드백에 학부모님이 글을 남기셨어요`, `💬 A parent replied on ${name}'s weekly feedback`)
+    : t(`💬 ${name} 학생 주간 피드백에 선생님이 답을 남겼어요`, `💬 A teacher replied on ${name}'s weekly feedback`);
+  const text = `${head}\n\n${c.body}\n\n${link}`;
+  let targets = [];
+  if (isParent()) {
+    if (fbView.created_by) targets = [fbView.created_by];
+  } else {
+    const { data } = await sb.from('student_parents').select('parent_id').eq('student_id', fbView.student_id);
+    targets = (data || []).map(x => x.parent_id).filter(Boolean);
+  }
+  for (const id of targets) {
+    if (id === ME.id) continue;
+    try { await dmSendTextTo(id, text); } catch (_) {}
+  }
+}
+
+async function deleteFeedbackComment(id) {
+  if (!confirm(t('이 글을 지울까요?','Delete this?'))) return;
+  const { data, error } = await sb.from('weekly_feedback_comments').delete().eq('id', id).select('id');
+  if (error) { showUploadToast(t('삭제 실패: ','Delete failed: ') + error.message); return; }
+  if (!data || !data.length) { showUploadToast(t('지울 권한이 없어요','You cannot delete this')); return; }
+  fbViewCmts = fbViewCmts.filter(c => c.id !== id && c.parent_id !== id);
+  renderFeedbackView();
+}
+
+// ── 👨‍👩‍👧 내 아이 화면의 주간 피드백 칸 ─────────────────────────
+//  매주 쌓여서, 지난 것도 언제든 볼 수 있습니다.
+function childFeedbackHtml(list) {
+  if (!list.length) {
+    return childCard('📬', t('주간 피드백','Weekly feedback'), '',
+      childEmpty(t('아직 받은 피드백이 없어요','No feedback yet')));
+  }
+  const rows = list.map(f => {
+    const peek = FB_SECTIONS.map(s => (f[s.k] || '').trim()).filter(Boolean)[0] || '';
+    return `<div onclick="openFeedbackView('${escJs(f.id)}')" style="display:flex;align-items:center;gap:10px;padding:11px 12px;border:1px solid var(--border);border-radius:12px;margin-bottom:8px;cursor:pointer;background:var(--surface)"
+        onmouseover="this.style.background='var(--s2)'" onmouseout="this.style.background='var(--surface)'">
+      <div style="width:40px;height:40px;border-radius:12px;background:var(--asoft);display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0">📬</div>
+      <div style="flex:1;min-width:0">
+        <div style="font:800 13.5px var(--font);color:var(--ink)">${escHtml(fbWeekLabel(f.week_start))}</div>
+        <div style="font:400 12px var(--font);color:var(--ink3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(peek.slice(0, 60))}</div>
+      </div>
+      <span style="font:700 12px var(--font);color:var(--adeep);flex-shrink:0">${t('보기','Open')} ›</span>
+    </div>`;
+  }).join('');
+  return childCard('📬', t('주간 피드백','Weekly feedback'),
+    t(`${list.length}주치`, `${list.length} week(s)`),
+    rows + `<div style="font:500 11.5px var(--font);color:var(--ink3);line-height:1.7;margin-top:6px;word-break:keep-all">${t('열어서 아래에 글을 남기시면 선생님이 답해 드려요.','Open one and leave a note — the teacher will reply.')}</div>`);
 }
 
 // ── 세션 복원은 위 window.addEventListener('load') 에서 처리 ──
