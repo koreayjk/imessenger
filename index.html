@@ -17270,9 +17270,9 @@ async function renderAdminMembers() {
   const approved = list.filter(m => (m.status === 'approved' || !m.status));
 
   const roleLabel = APP_LANG === 'en'
-    ? { super_admin:'Super Admin', vice_admin:'Deputy Admin', community_admin:'Admin', teacher:'Teacher', staff:'Staff', student:'Student', parent:'Parent', member:'Member' }
-    : { super_admin:'총관리자', vice_admin:'부총관리자', community_admin:'관리자', teacher:'교사', staff:'간사', student:'학생', parent:'학부모', member:'멤버' };
-  const roleColor = { super_admin:'#7c3aed', vice_admin:'#9333ea', community_admin:'#1d4ed8', teacher:'#0369a1', staff:'#b45309', student:'#15803d', parent:'#be5b2a', member:'#6b7280' };
+    ? { super_admin:'Super Admin', vice_admin:'Deputy Admin', community_admin:'Admin', admin_officer:'Admin Officer', teacher:'Teacher', staff:'Staff', student:'Student', parent:'Parent', member:'Member' }
+    : { super_admin:'총관리자', vice_admin:'부총관리자', community_admin:'관리자', admin_officer:'행정담당자', teacher:'교사', staff:'간사', student:'학생', parent:'학부모', member:'멤버' };
+  const roleColor = { super_admin:'#7c3aed', vice_admin:'#9333ea', community_admin:'#1d4ed8', admin_officer:'#0f766e', teacher:'#0369a1', staff:'#b45309', student:'#15803d', parent:'#be5b2a', member:'#6b7280' };
 
   // 스토리지 사용량 — 버킷 전체를 훑느라 몇 초 걸린다.
   // 여기서 기다리면 멤버 목록이 그만큼 늦게 뜬다. 자리만 잡고 뒤에서 채운다.
@@ -17309,6 +17309,7 @@ async function renderAdminMembers() {
             : `<select onchange="changeMemberCommunityRole('${m.id}',this.value)"
             style="height:30px;padding:0 10px;border-radius:9px;border:1.5px solid var(--border);font:12px var(--font);background:white;cursor:pointer;outline:none">
             <option value="student"          ${m.community_role==='student'?'selected':''}>${t('학생','Student')}</option>
+            <option value="parent"           ${m.community_role==='parent'?'selected':''}>${t('학부모','Parent')}</option>
             <option value="staff"            ${m.community_role==='staff'?'selected':''}>${t('간사','Staff')}</option>
             <option value="teacher"          ${m.community_role==='teacher'?'selected':''}>${t('교사','Teacher')}</option>
             <option value="admin_officer"    ${m.community_role==='admin_officer'?'selected':''}>${t('행정담당자','Admin Officer')}</option>
@@ -17387,6 +17388,7 @@ let rolesGuideOpen = false;
 function toggleRolesGuide() { rolesGuideOpen = !rolesGuideOpen; renderMembers(); }
 const ROLE_COLS = [
   { k:'student',        label:'학생' },
+  { k:'parent',         label:'학부모' },
   { k:'staff',          label:'간사' },
   { k:'teacher',        label:'교사' },
   { k:'admin_officer',  label:'행정담당' },
@@ -17396,7 +17398,9 @@ const ROLE_COLS = [
 ];
 // 부총관리자의 ✓ 는 '자기 소속 공동체에서' 라는 뜻이다. 표 아래에 적어 둔다.
 const ROLE_CAPS = [
-  { name:'채팅 · 일정 · 홈 · 기도제목', roles:['student','staff','teacher','admin_officer','community_admin','vice_admin','super_admin'] },
+  { name:'채팅 · 일정 · 홈 · 기도제목', roles:['student','parent','staff','teacher','admin_officer','community_admin','vice_admin','super_admin'] },
+  { name:'노트 · 자료실 · 개선창', roles:['student','parent','staff','teacher','admin_officer','community_admin','vice_admin','super_admin'] },
+  { name:'👨‍👩‍👧 내 아이 — 주간 피드백 · 예치금 · 용돈 · 매점 · 학비 · 서류 신청', roles:['parent'] },
   { name:'내 생기부 · 트리플스쿨 독서(본인 기록)', roles:['student','staff'] },
   { name:'학사관리 — 학생·출석부·시간표·생기부 작성', roles:['staff','teacher','admin_officer','community_admin','vice_admin','super_admin'] },
   { name:'매점 관리 · 전자결재', roles:['staff','teacher','admin_officer','community_admin','vice_admin','super_admin'] },
@@ -17435,7 +17439,9 @@ function rolePermGuideHtml() {
         · <b>총관리자</b>는 모든 권한 + 공동체 전환 · 총관리자 계정은 총관리자만 변경할 수 있어요(보호됨).<br>
         · <b>부총관리자</b>는 <b>모든 공동체를 둘러보고 채팅</b>할 수 있어요. 다만 위 표의 ✓ 는 <b>자기 소속 공동체에서만</b>이고,
           다른 공동체에서는 <b>보기와 채팅만</b> 됩니다. 공동체를 만들거나 지우거나 설정을 고치는 것, 총관리자·부총관리자를 임명하는 것은 할 수 없어요.<br>
-        · <b>관리자</b>는 공동체 운영 전반, <b>행정담당</b>은 재정·문서·학사, <b>교사</b>는 학사·생기부 작성, <b>간사</b>는 학사 보조 + 본인 학습기록, <b>학생</b>은 본인 학습·조회 중심이에요.
+        · <b>관리자</b>는 공동체 운영 전반, <b>행정담당</b>은 재정·문서·학사, <b>교사</b>는 학사·생기부 작성, <b>간사</b>는 학사 보조 + 본인 학습기록, <b>학생</b>은 본인 학습·조회 중심이에요.<br>
+        · <b>학부모</b>는 <b>연결된 자기 아이 것만</b> 봅니다. 생기부·출결·보건·상담은 열리지 않고, 보기만 되고 아무것도 고치지 못해요.
+          1:1 대화도 <b>교사·간사·행정담당·관리자에게만</b> 걸 수 있어요 — 다른 학부모나 학생에게는 연결되지 않습니다.
       </div>
     </div>` : ''}
   </div>`;
