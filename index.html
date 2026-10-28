@@ -26078,6 +26078,10 @@ function trainStatusHtml() {
 let tuiBills = [];
 let tuiYear = new Date().getFullYear();
 let tuiGroups = new Set();   // 선택된 그룹 id들 (+ 'none'=미지정). 비어있으면 전체
+//  🚫 학비 대상이 아닌 사람 — 같은 그룹 안에도 학비를 내지 않는 분이 있다.
+//     꺼 두면 표에서 빠지고 미납·예상수입 계산에서도 빠진다. 지우는 게
+//     아니라 꺼 두는 것이라, 아래 칩으로 언제든 다시 보고 되돌린다.
+let tuiShowExempt = false;
 // 재정 하위탭. 학비·입출금은 공동체 살림이라 행정담당·관리자만,
 // 용돈·예치금은 학생을 직접 보는 교사·간사도 기록해야 해서 열어 둔다.
 const FIN_TABS = [
@@ -27776,11 +27780,38 @@ function tuiPayMap() {
   });
   return m;
 }
-function tuiRowStudents() {
+// 그룹(전체·리뉴젠·인투젠…)까지만 거른 사람들 — 제외한 사람도 들어 있다
+function tuiGroupStudents() {
   // 학생 + 간사 모두 (schoolStudents 자체가 학생·간사 목록)
   let list = schoolStudents.slice();
   if (tuiGroups.size) list = list.filter(s => (s.group_id && tuiGroups.has(s.group_id)) || (!s.group_id && tuiGroups.has('none')));
   return list;
+}
+// 표에 실제로 올릴 사람 — 꺼 둔 사람은 '제외 보기' 를 켰을 때만 보인다
+function tuiRowStudents() {
+  const list = tuiGroupStudents();
+  return tuiShowExempt ? list : list.filter(s => !s.tuition_exempt);
+}
+function tuiIsExempt(s) { return !!(s && s.tuition_exempt); }
+function tuiToggleShowExempt() { tuiShowExempt = !tuiShowExempt; renderTuition(); }
+
+// 이 사람을 학비 대상에서 빼거나 되돌린다
+async function toggleTuiExempt(sid) {
+  const s = schoolStudents.find(x => x.id === sid); if (!s) return;
+  const next = !s.tuition_exempt;
+  const { error } = await sb.from('members').update({ tuition_exempt: next }).eq('id', sid);
+  if (error) {
+    if (/tuition_exempt|column|schema cache/i.test(error.message || '')) {
+      showUploadToast(t('이 기능은 DB 설치가 필요해요 (db/학비_대상제외_DB설치.sql)',
+                        'Needs DB setup (db/학비_대상제외_DB설치.sql)'));
+      return;
+    }
+    showUploadToast(t('저장 실패: ','Save failed: ') + error.message); return;
+  }
+  s.tuition_exempt = next;
+  showUploadToast(next ? t(`${s.name} — 학비 대상에서 뺐어요`, `${s.name} — excluded from tuition`)
+                       : t(`${s.name} — 학비 대상으로 되돌렸어요`, `${s.name} — back in tuition`));
+  renderTuition();
 }
 function tuiToggleGroup(gid) { if (tuiGroups.has(gid)) tuiGroups.delete(gid); else tuiGroups.add(gid); renderTuitionHub(); }
 function tuiClearGroups() { tuiGroups.clear(); renderTuitionHub(); }
@@ -27794,7 +27825,9 @@ function renderTuition() {
   // 요약
   const yearReceived = tuiBills.filter(b=>b.paid).reduce((a,b)=>a+(Number(b.paid_amount ?? b.amount)||0),0);
   const paidCount = tuiBills.filter(b=>b.paid).length;
-  const expects = (s) => Number(s && s.tuition_monthly) > 0;   // 월 학비 설정된 사람만 미납 표시
+  //  꺼 둔 사람(학비 대상 아님)은 미납도 예상수입도 없다. 월 학비가
+  //  적혀 있어도 마찬가지 — 끈 쪽이 더 센 뜻이다.
+  const expects = (s) => !tuiIsExempt(s) && Number(s && s.tuition_monthly) > 0;
   const smap = {}; students.forEach(s => smap[s.id] = s);
   const startM = {}; students.forEach(s => startM[s.id] = tuiStartMonth(s));   // 학생별 시작월(tuiYear 기준)
 
@@ -27853,10 +27886,20 @@ function renderTuition() {
     const paidN = TUI_MONTHS.filter(mo=>{ const b=payMap[s.id]&&payMap[s.id][mo]; return b&&b.paid; }).length;
     const unit = curSign(tuiCur);
     const startSelVal = (() => { const ym=s.tuition_start_ym; if(!ym) return ''; const p=String(ym).split('-').map(Number); return (p[0]===tuiYear)?p[1]:''; })();
+    const off = tuiIsExempt(s);
     return `<tr>
-      <td style="position:sticky;left:0;z-index:1;background:var(--surface);padding:6px 8px;white-space:nowrap;border:1px solid var(--border)">
-        <div style="font-size:12.5px;font-weight:700;color:var(--ink)">${escHtml(s.name)} <span style="font-size:10px;color:var(--ink3);font-weight:500">${paidN}/12</span></div>
-        <div style="display:flex;align-items:center;gap:3px;margin-top:3px">
+      <td style="position:sticky;left:0;z-index:1;background:var(--surface);padding:6px 8px;white-space:nowrap;border:1px solid var(--border);${off?'opacity:.5':''}">
+        <div style="display:flex;align-items:center;gap:5px">
+          <button onclick="toggleTuiExempt('${s.id}');event.stopPropagation()"
+            title="${escAttr(off ? t('학비 대상으로 되돌리기','Put back in tuition') : t('학비 대상에서 빼기 (표에서 숨겨집니다)','Exclude from tuition (hidden from the board)'))}"
+            style="width:20px;height:20px;flex-shrink:0;border-radius:6px;cursor:pointer;line-height:1;
+                   border:1.5px solid ${off?'var(--border)':'#bfe3cf'};background:${off?'var(--s3)':'#e8f5ee'};
+                   color:${off?'var(--ink3)':'#2a7a5a'};font:800 11px var(--font)">${off?'＋':'✓'}</button>
+          <div style="font-size:12.5px;font-weight:700;color:var(--ink)">${escHtml(s.name)}
+            ${off ? `<span style="font-size:9.5px;color:var(--ink3);font-weight:700;background:var(--s3);border-radius:99px;padding:1px 7px;margin-left:3px">${t('대상 아님','Not billed')}</span>`
+                  : `<span style="font-size:10px;color:var(--ink3);font-weight:500">${paidN}/12</span>`}</div>
+        </div>
+        <div style="display:${off?'none':'flex'};align-items:center;gap:3px;margin-top:3px">
           <span style="font-size:10px;color:var(--ink3)">${unit}</span>
           <input type="number" min="0" step="${curStep(tuiCur, true)}" value="${s.tuition_monthly!=null?s.tuition_monthly:''}" placeholder="${t('월 학비','Monthly')}" onchange="saveTuiStudentAmount('${s.id}',this.value)" onclick="event.stopPropagation()" style="width:74px;height:22px;border:1px solid var(--border);border-radius:6px;padding:0 6px;font:600 11px var(--font);text-align:right;background:var(--s2)"/>
           <select onchange="saveTuiStudentStart('${s.id}',this.value)" onclick="event.stopPropagation()" title="${t('납부 시작월','Start month')}" style="height:22px;border:1px solid var(--border);border-radius:6px;padding:0 2px;font:600 10px var(--font);background:var(--s2);color:var(--ink2);cursor:pointer">
@@ -27883,7 +27926,15 @@ function renderTuition() {
     const oc = id==='all' ? 'tuiClearGroups()' : `tuiToggleGroup('${id}')`;
     return `<button onclick="${oc}" style="height:30px;padding:0 12px;border-radius:8px;cursor:pointer;font:700 12px var(--font);border:1.5px solid ${on?'#1d3a5f':'var(--border)'};background:${on?'#1d3a5f':'var(--surface)'};color:${on?'#fff':'var(--ink2)'}">${on&&id!=='all'?'✓ ':''}${escHtml(label)}</button>`;
   };
-  const groupChips = `<div style="display:inline-flex;gap:5px;flex-wrap:wrap;align-items:center">${chip('all',t('전체','All'))}${tcsGroups.map(g=>chip(g.id,g.name)).join('')}${chip('none',t('미지정','Unassigned'))}</div>`;
+  //  🚫 이 그룹 안에서 꺼 둔 사람이 몇 명인지. 눌러서 보고, 줄의 ＋ 로 되돌린다.
+  const exemptN = tuiGroupStudents().filter(tuiIsExempt).length;
+  const exemptChip = exemptN ? `<button onclick="tuiToggleShowExempt()"
+      title="${escAttr(t('학비 대상에서 뺀 사람들. 눌러서 보고, 줄 앞의 ＋ 를 눌러 되돌립니다','People excluded from tuition. Click to show; use ＋ on a row to put them back'))}"
+      style="height:30px;padding:0 12px;border-radius:8px;cursor:pointer;font:700 12px var(--font);
+             border:1.5px solid ${tuiShowExempt?'#8a4a22':'var(--border)'};
+             background:${tuiShowExempt?'#8a4a22':'var(--surface)'};color:${tuiShowExempt?'#fff':'var(--ink3)'}">
+      ${tuiShowExempt?'✓ ':''}${t('대상 아님','Not billed')} ${exemptN}${t('명','')}</button>` : '';
+  const groupChips = `<div style="display:inline-flex;gap:5px;flex-wrap:wrap;align-items:center">${chip('all',t('전체','All'))}${tcsGroups.map(g=>chip(g.id,g.name)).join('')}${chip('none',t('미지정','Unassigned'))}${exemptChip}</div>`;
   const headMonths = TUI_MONTHS.map(mo=>`<th style="padding:7px 2px;font-size:11px;font-weight:700;color:${(tuiYear===nowY&&mo===nowM)?'#1d3a5f':'var(--ink3)'};text-align:center;border:1px solid var(--border);background:${(tuiYear===nowY&&mo===nowM)?'#e7f0fb':'var(--s2)'}">${t(mo+'월',TUI_MON_EN[mo])}</th>`).join('');
 
   main.innerHTML = `<div class="spage" style="max-width:1200px">
@@ -27892,6 +27943,7 @@ function renderTuition() {
       <div>
         <div style="font-size:18px;font-weight:800;color:var(--ink)">${t('💰 학비 납부 현황판','💰 Tuition Payment Board')}</div>
         <div style="font-size:12px;color:var(--ink3);margin-top:2px">${t('칸을 눌러 그 달 학비 납부를 기록해요. 초록=납부(금액), 빨강=미납','Tap a cell to log tuition for that month. Green = paid (amount), red = unpaid')}</div>
+        <div style="font-size:11.5px;color:var(--ink3);margin-top:2px">${t('학비를 내지 않는 분은 이름 앞 ✓ 를 눌러 빼 두세요 — 미납 계산에서도 빠집니다.','Use the ✓ next to a name to exclude someone who is not billed — they drop out of the unpaid totals too.')}</div>
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <div style="display:inline-flex;align-items:center;gap:4px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:3px 4px">
@@ -28019,7 +28071,9 @@ async function saveTuiExempt(sid, mo, existingId) {
 function printTuitionMatrix() {
   const now = new Date(); const nowY=now.getFullYear(), nowM=now.getMonth()+1;
   const payMap = tuiPayMap();
-  const students = tuiRowStudents();
+  //  종이로 뽑을 때는 '제외 보기' 를 켜 뒀더라도 대상자만 싣는다 —
+  //  화면을 어떻게 보고 있었는지에 따라 종이가 달라지면 안 된다.
+  const students = tuiRowStudents().filter(s => !tuiIsExempt(s));
   if (!students.length) { showUploadToast(t('학생이 없어요','No students')); return; }
   const isPast = mo => (tuiYear<nowY)||(tuiYear===nowY&&mo<=nowM);
   const smap = {}; students.forEach(s=>smap[s.id]=s);
