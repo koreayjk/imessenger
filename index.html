@@ -6566,7 +6566,12 @@ function renderDrivePage() {
 // ══════════════════════════════════════════════════════════════════
 //  채팅 공지글(고정) — 간사 이상만 등록/해제, 상단 2줄 고정 + 더보기
 // ══════════════════════════════════════════════════════════════════
-function canManageAnnounce() { return ME && !isStudentMember(ME); }   // 학생 제외 = 간사 이상
+// 📢 공지 · 📋 제출 현황 · 투표 선택지 — '방 운영' 에 해당하는 일.
+//  학생과 학부모는 하지 않는다. 학부모는 화면에는 단추가 보이는데
+//  서버(channels_update)가 막아서 오류만 났다 — 보이지 않게 한다.
+function canManageAnnounce() {
+  return !!ME && !isStudentMember(ME) && !isParentMember(ME);
+}
 
 let _announceExpanded = false;
 // 지난 공지 보관함 — 새 공지를 올리면 앞의 공지가 그 자리에서 사라졌다.
