@@ -17301,8 +17301,10 @@ async function renderAdminMembers() {
           <span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:99px;background:${roleColor[m.community_role]||'#6b728022'}22;color:${roleColor[m.community_role]||'#6b7280'}">${roleLabel[m.community_role]||m.community_role||t('멤버','Member')}</span>
         </div>
         <div style="font-size:12px;color:var(--ink3);margin-top:2px">${m.email||''} ${m.birth_date?'· '+m.birth_date:''}</div>
-        ${m.community_role==='parent' ? `<div style="font-size:12px;color:#8a4a22;background:#FDF1E7;border:1px solid #F0D5BE;border-radius:8px;padding:5px 9px;margin-top:5px;display:inline-block">
-          👨‍👩‍👧 ${admParentLine(m)}</div>` : ''}
+        ${m.community_role==='parent' ? `<div style="font-size:12px;color:#8a4a22;background:#FDF1E7;border:1px solid #F0D5BE;border-radius:8px;padding:5px 9px;margin-top:5px;display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span>👨‍👩‍👧 ${admParentLine(m)}</span>
+          ${(!showApproval && m.parent_claim_name) ? `<button class="adm-btn sage" style="height:24px;padding:0 9px;font-size:11.5px;line-height:1"
+            onclick="admLinkClaimedChild('${escJs(m.id)}')">🔗 ${t('아이 연결','Link child')}</button>` : ''}</div>` : ''}
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;flex-wrap:wrap">
         ${showApproval ? `
@@ -17579,12 +17581,29 @@ function copyBulkCredentials() {
 // 학부모 줄에 적을 한 마디 — 이미 이어졌으면 아이 이름, 아직이면 적어 낸 것
 function admParentLine(m) {
   const kid = (admParentLinks && admParentLinks[m.id]) || null;
-  if (kid) return t(`${escHtml(kid)} 학생의 보호자`, `Guardian of ${escHtml(kid)}`);
+  const bits = [];
+  //  이어진 아이 — 둘 이상이면 둘 다 적는다
+  if (kid) bits.push(t(`${escHtml(kid)} 학생의 보호자`, `Guardian of ${escHtml(kid)}`));
+  //  아직 안 이어진 신청 — 이미 한 명과 이어져 있어도 따로 보여 준다.
+  //  (둘째를 신청해 두었는데 안 보이면 영영 안 이어진다)
   if (m.parent_claim_name) {
-    return t(`${escHtml(m.parent_claim_name)} (${escHtml(m.parent_claim_birth||'')}) 학생의 보호자라고 적었어요 — 아직 연결 전`,
-             `Says they are the guardian of ${escHtml(m.parent_claim_name)} (${escHtml(m.parent_claim_birth||'')}) — not linked yet`);
+    bits.push(t(`<b>${escHtml(m.parent_claim_name)}</b> (${escHtml(m.parent_claim_birth||'')}) ${kid?'도 ':''}보호자라고 적었어요 — 아직 연결 전`,
+                `Says they are the guardian of <b>${escHtml(m.parent_claim_name)}</b> (${escHtml(m.parent_claim_birth||'')}) — not linked yet`));
   }
-  return t('아직 아이와 연결되지 않았어요','Not linked to a child yet');
+  if (!bits.length) return t('아직 아이와 연결되지 않았어요','Not linked to a child yet');
+  return bits.join(' · ');
+}
+
+// 적어 낸 아이와 이어 준다 (가입 승인과 같은 길 — 이미 승인된 학부모도 쓴다)
+async function admLinkClaimedChild(id) {
+  const ok = await approveParentMember(id);
+  if (!ok) return;
+  //  이었으면 신청 칸을 비운다 — 안 비우면 줄에 '아직 연결 전' 이 계속 남는다
+  await sb.from('members')
+    .update({ parent_claim_name: null, parent_claim_birth: null, parent_claim_rel: null })
+    .eq('id', id).then(() => {}, () => {});
+  if (members[id]) { members[id].parent_claim_name = null; members[id].parent_claim_birth = null; members[id].parent_claim_rel = null; }
+  await renderAdminMembers();
 }
 
 // 학부모 → 아이 이름 (관리 화면에서 한 번에 읽어 둔다)
@@ -17597,7 +17616,9 @@ async function loadParentLinks(list) {
     const names = {};
     (Object.values(members || {})).forEach(m => { if (m) names[m.id] = m.name; });
     (list || []).forEach(m => { if (m) names[m.id] = m.name; });
-    data.forEach(r => { if (names[r.student_id]) admParentLinks[r.parent_id] = names[r.student_id]; });
+    data.forEach(r => { const nm = names[r.student_id]; if (!nm) return;
+      const cur = admParentLinks[r.parent_id];
+      admParentLinks[r.parent_id] = cur ? (cur.split(' · ').includes(nm) ? cur : cur + ' · ' + nm) : nm; });
   } catch (_) {}
 }
 
@@ -30267,12 +30288,126 @@ function childMissingHtml(e) {
 }
 
 function childChipsHtml() {
-  if (childList.length < 2) return '';
-  return `<div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:16px">
-    ${childList.map(c => `<button onclick="pickChild('${escJs(c.id)}')" style="height:34px;padding:0 14px;border-radius:99px;cursor:pointer;font:700 12.5px var(--font);
+  //  아이가 하나여도 '＋ 아이 추가' 는 보여 준다 — 둘째를 어디서 더하는지
+  //  몰라 선생님께 전화하시는 일이 없게.
+  const add = `<button onclick="openAddChildModal()" style="height:34px;padding:0 13px;border-radius:99px;cursor:pointer;font:700 12.5px var(--font);
+      border:1.5px dashed var(--border);background:var(--surface);color:var(--ink3)">＋ ${t('아이 추가','Add a child')}</button>`;
+  const chips = childList.length < 2 ? '' : childList.map(c =>
+    `<button onclick="pickChild('${escJs(c.id)}')" style="height:34px;padding:0 14px;border-radius:99px;cursor:pointer;font:700 12.5px var(--font);
       border:1.5px solid ${c.id===childPicked?'#be5b2a':'var(--border)'};
-      background:${c.id===childPicked?'#be5b2a':'var(--surface)'};color:${c.id===childPicked?'#fff':'var(--ink2)'}">${escHtml(c.name||'')}</button>`).join('')}
+      background:${c.id===childPicked?'#be5b2a':'var(--surface)'};color:${c.id===childPicked?'#fff':'var(--ink2)'}">${escHtml(c.name||'')}</button>`).join('');
+  return `<div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:16px;align-items:center">${chips}${add}</div>`;
+}
+
+// ── ＋ 아이 추가 — 둘째부터는 여기서 신청합니다 ────────────────────
+//
+//  가입 때와 똑같이 **이름 + 생년월일**로 찾고, 바로 잇지 않고
+//  **선생님 확인을 거쳐** 연결됩니다. 이름과 생일만 알면 남의 아이를
+//  들여다볼 수 있으니, 사람이 한 번 보는 단계를 둡니다.
+let addChildOk = false;
+function openAddChildModal() {
+  document.querySelectorAll('.add-child-modal').forEach(x => x.remove());
+  addChildOk = false;
+  const pend = (ME && ME.parent_claim_name) ? ME.parent_claim_name : '';
+  const inp = 'width:100%;height:42px;padding:0 12px;border:1.5px solid var(--border);border-radius:11px;background:var(--s2);font:14px var(--font);color:var(--ink);outline:none';
+  const wrap = document.createElement('div');
+  wrap.className = 'add-child-modal';
+  wrap.style.cssText = 'position:fixed;inset:0;z-index:500;background:rgba(15,23,42,.5);display:flex;align-items:center;justify-content:center;padding:20px';
+  wrap.onclick = e => { if (e.target === wrap) wrap.remove(); };
+  wrap.innerHTML = `<div style="background:var(--surface);border-radius:18px;padding:22px;width:100%;max-width:400px" onclick="event.stopPropagation()">
+    <div style="font-size:17px;font-weight:800;color:var(--ink)">👨‍👩‍👧 ${t('아이 추가하기','Add a child')}</div>
+    <div style="font-size:12.5px;color:var(--ink3);margin:4px 0 16px;line-height:1.7">${t(
+      '아이 이름과 생년월일이 <b>둘 다</b> 맞아야 찾을 수 있어요. 아이가 먼저 가입되어 있어야 하고요.<br>찾은 뒤 <b>선생님이 확인해 드리면</b> 연결됩니다.',
+      'Both the name and the date of birth must match, and your child must already have an account.<br>A teacher confirms the link.')}</div>
+    ${pend ? `<div style="background:#fffbeb;border:1px solid #fde68a;color:#8a4a22;border-radius:10px;padding:10px 12px;font-size:12.5px;line-height:1.6;margin-bottom:12px">
+      ${t(`<b>${escHtml(pend)}</b> 학생을 신청해 두셨어요 — 선생님 확인을 기다리는 중이에요.<br>새로 적으면 그 신청을 대신합니다.`,
+          `You already requested <b>${escHtml(pend)}</b> — waiting for a teacher.<br>Entering a new one replaces it.`)}</div>` : ''}
+    <div style="display:flex;gap:10px;margin-bottom:11px">
+      <div style="flex:1.2"><label style="font-size:12px;font-weight:700;color:var(--ink3);display:block;margin-bottom:5px">${t('아이 이름','Child\'s name')}</label>
+        <input id="ac-name" oninput="addChildReset()" placeholder="${t('예) 홍길동','e.g. Jane Doe')}" style="${inp}"/></div>
+      <div style="flex:1"><label style="font-size:12px;font-weight:700;color:var(--ink3);display:block;margin-bottom:5px">${t('아이 생년월일','Date of birth')}</label>
+        <input id="ac-birth" type="date" onchange="addChildReset()" style="${inp}"/></div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:flex-end;margin-bottom:6px">
+      <div style="flex:0 0 auto"><label style="font-size:12px;font-weight:700;color:var(--ink3);display:block;margin-bottom:5px">${t('관계','Relation')}</label>
+        <select id="ac-rel" style="${inp};width:auto;min-width:96px;cursor:pointer"><option value="부">${t('아버지','Father')}</option><option value="모">${t('어머니','Mother')}</option><option value="보호자">${t('보호자','Guardian')}</option></select></div>
+      <button id="ac-find" onclick="addChildFind()" style="flex:1;height:42px;border:1.5px solid var(--adeep);background:var(--surface);color:var(--adeep);border-radius:11px;font:700 13px var(--font);cursor:pointer">${t('아이 확인하기','Find my child')}</button>
+    </div>
+    <div id="ac-msg" style="font-size:12px;margin:8px 0 2px;line-height:1.6;min-height:18px"></div>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button onclick="this.closest('.add-child-modal').remove()" style="flex:1;height:44px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:11px;font:700 13px var(--font);cursor:pointer">${t('닫기','Close')}</button>
+      <button id="ac-save" onclick="addChildRequest()" style="flex:1.4;height:44px;border:none;background:#be5b2a;color:#fff;border-radius:11px;font:800 14px var(--font);cursor:pointer">${t('신청하기','Request')}</button>
+    </div>
   </div>`;
+  document.body.appendChild(wrap);
+  setTimeout(() => document.getElementById('ac-name')?.focus(), 50);
+}
+function addChildReset() { addChildOk = false; const m = document.getElementById('ac-msg'); if (m) m.textContent = ''; }
+
+async function addChildFind() {
+  const msg = document.getElementById('ac-msg'), btn = document.getElementById('ac-find');
+  const name = (document.getElementById('ac-name').value || '').trim();
+  const birth = document.getElementById('ac-birth').value;
+  const say = (x, c) => { if (msg) { msg.innerHTML = x; msg.style.color = c; } };
+  addChildOk = false;
+  if (!name || !birth) { say(t('아이 이름과 생년월일을 모두 적어주세요','Enter both the name and the date of birth'), '#c0392b'); return; }
+  if (childList.some(c => String(c.name||'').replace(/\s/g,'') === name.replace(/\s/g,''))) {
+    say(t('이미 연결된 아이예요.','That child is already linked.'), '#b45309'); return;
+  }
+  btn.disabled = true; btn.textContent = t('찾는 중...','Searching...');
+  try {
+    const { data, error } = await sb.functions.invoke('parent-verify', {
+      body: { community_id: (ME && ME.community_id) || CID(), child_name: name, child_birth: birth },
+    });
+    if (error) throw error;
+    if (data && data.found) { addChildOk = true;
+      say(t(`✅ ${escHtml(data.masked)} 학생을 찾았어요. 신청하시면 선생님 확인 후 연결됩니다.`,
+            `✅ Found ${escHtml(data.masked)}. A teacher will confirm it.`), '#15803d');
+    } else if (data && data.reason === 'ambiguous') { addChildOk = true;
+      say(t('같은 이름·같은 생일인 학생이 둘 이상이에요. 신청하시면 선생님이 직접 연결해 드려요.',
+            'More than one student matches. Request it and a teacher will link you.'), '#b45309');
+    } else {
+      say(t('그 이름과 생년월일로 가입된 학생을 찾지 못했어요. 아이가 먼저 가입했는지, 생년월일이 맞는지 확인해주세요.',
+            'No student found. Check that your child has an account and the date is right.'), '#c0392b');
+    }
+  } catch (_) { addChildOk = true;
+    say(t('지금은 확인할 수 없어요. 신청해 두시면 선생님이 확인해 드려요.',
+          'Cannot verify right now. Request it and a teacher will check.'), '#b45309');
+  }
+  btn.disabled = false; btn.textContent = t('아이 확인하기','Find my child');
+}
+
+async function addChildRequest() {
+  const msg = document.getElementById('ac-msg');
+  const name = (document.getElementById('ac-name').value || '').trim();
+  const birth = document.getElementById('ac-birth').value;
+  const rel = document.getElementById('ac-rel').value || '보호자';
+  if (!name || !birth) { if (msg) { msg.textContent = t('아이 이름과 생년월일을 모두 적어주세요','Enter both the name and the date of birth'); msg.style.color = '#c0392b'; } return; }
+  if (!addChildOk) { if (msg) { msg.textContent = t('먼저 아이 확인하기를 눌러주세요','Press "Find my child" first'); msg.style.color = '#c0392b'; } return; }
+  const btn = document.getElementById('ac-save'); if (btn) { btn.disabled = true; btn.textContent = t('보내는 중...','Sending...'); }
+  const { error } = await sb.from('members')
+    .update({ parent_claim_name: name, parent_claim_birth: birth, parent_claim_rel: rel })
+    .eq('id', ME.id);
+  if (error) {
+    if (btn) { btn.disabled = false; btn.textContent = t('신청하기','Request'); }
+    if (msg) { msg.textContent = /parent_claim|column|schema cache/i.test(error.message||'')
+      ? t('관리자가 db/학부모_2_가입연결_DB설치.sql 을 실행해야 해요','An admin needs to run db/학부모_2_가입연결_DB설치.sql')
+      : t('신청 실패: ','Failed: ') + error.message; msg.style.color = '#c0392b'; }
+    return;
+  }
+  ME.parent_claim_name = name; ME.parent_claim_birth = birth; ME.parent_claim_rel = rel;
+  document.querySelector('.add-child-modal')?.remove();
+  showUploadToast(t('✅ 신청했어요 — 선생님이 확인하면 연결돼요','✅ Requested — a teacher will confirm it'));
+  try { await addChildNotify(name, birth, rel); } catch (_) {}
+  await renderChildPage();
+}
+
+// 아이 추가 신청이 들어왔다고 선생님·행정담당자께 알린다 (서류 신청과 같은 길)
+async function addChildNotify(name, birth, rel) {
+  const kid = childList[0] || { id: childPicked, name: '', community_id: (ME && ME.community_id) || CID() };
+  return notifyStaffOfStudent(kid, t(
+    `👨‍👩‍👧 아이 연결 신청이 들어왔어요\n${ME.name} 님이 ${name} (${birth}) 학생의 ${rel} 라고 적으셨어요.\n\n관리자 → 멤버 관리 에서 확인하고 연결해 주세요.`,
+    `👨‍👩‍👧 Parent link request\n${ME.name} says they are the ${rel} of ${name} (${birth}).\n\nConfirm it in Admin → Members.`));
 }
 
 async function pickChild(id) { childPicked = id; await renderChildPage(); }
@@ -30456,7 +30591,9 @@ function childCertHtml(kid, reqs) {
 //  선생님은 우연히 화면을 봐야 압니다. 담임(여러 명일 수 있음)과 실제로
 //  발급하는 행정담당자 양쪽에 보냅니다.
 //  — 보낸 사람 수를 돌려줍니다. 0 이면 '알렸다' 고 말하지 않습니다.
-async function certNotifyStaff(kid, label, purpose, copies) {
+// 이 아이를 맡고 있는 분들에게 글 한 줄을 보낸다 — 담임 + 행정담당자.
+//  보낸 사람 수를 돌려줍니다. 0 이면 '알렸다' 고 말하지 않습니다.
+async function notifyStaffOfStudent(kid, line) {
   try {
     const cid = kid.community_id || (ME && ME.community_id) || CID();
     const ids = new Set();
@@ -30479,16 +30616,17 @@ async function certNotifyStaff(kid, label, purpose, copies) {
 
     ids.delete(ME && ME.id);
     if (!ids.size) return 0;
-
-    const n = copies > 1 ? ` ${copies}${t('부','')}` : '';
-    const line = t(
-      `📄 서류 신청이 들어왔어요\n${kid.name} 학생 · ${label}${n}\n용도: ${purpose}\n신청: ${ME.name}\n\n운영 → 📄 증명서 에서 발급해 주세요.`,
-      `📄 New document request\n${kid.name} · ${label}${copies > 1 ? ' ×' + copies : ''}\nPurpose: ${purpose}\nFrom: ${ME.name}\n\nIssue it in Operations → Certificates.`);
-
     let sent = 0;
     for (const id of ids) { if (await dmSendTextTo(id, line)) sent++; }
     return sent;
   } catch (_) { return 0; }
+}
+
+async function certNotifyStaff(kid, label, purpose, copies) {
+  const n = copies > 1 ? ` ${copies}${t('부','')}` : '';
+  return notifyStaffOfStudent(kid, t(
+    `📄 서류 신청이 들어왔어요\n${kid.name} 학생 · ${label}${n}\n용도: ${purpose}\n신청: ${ME.name}\n\n운영 → 📄 증명서 에서 발급해 주세요.`,
+    `📄 New document request\n${kid.name} · ${label}${copies > 1 ? ' ×' + copies : ''}\nPurpose: ${purpose}\nFrom: ${ME.name}\n\nIssue it in Operations → Certificates.`));
 }
 
 async function childCertRequest() {
