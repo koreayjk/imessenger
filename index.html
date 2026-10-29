@@ -27645,11 +27645,40 @@ async function ledgerPickFile(input) {
     });
     if (!out.length) { showUploadToast(t('인식할 거래가 없어요. Posting Date · Description · Amount 열을 확인해주세요.','No transactions found. Check for Posting Date · Description · Amount columns.')); return; }
     ledgerPending = out;
-    ledgerShowImportPreview(out);
+    showUploadToast(t('겹치는 줄이 있는지 보는 중...','Checking for duplicates...'));
+    let scan = { dup: 0, add: out.length };
+    try { scan = await ledgerScanDuplicates(out); } catch (_) {}
+    ledgerShowImportPreview(out, scan);
   } catch(e) { showUploadToast(t('분석 실패: ','Parse failed: ') + (e.message||e)); }
 }
 
-function ledgerShowImportPreview(rows) {
+// 📥 같은 줄이 이미 들어 있는지 — 날짜·내용·금액이 모두 같으면 같은 거래로 본다.
+//
+//  왜 세느냐면: 같은 날 같은 가게에서 같은 금액을 두 번 쓸 수 있습니다.
+//  '있다/없다' 로 보면 둘째 줄이 영영 안 들어갑니다. 그래서 개수로 셉니다 —
+//  파일에 3건, 이미 2건이면 1건만 더합니다.
+const ledgerKey = (r) => `${r.tx_date || ''}|${String(r.description || '').trim()}|${Number(r.amount || 0).toFixed(2)}`;
+
+async function ledgerScanDuplicates(rows) {
+  const months = [...new Set(rows.map(r => r.month).filter(Boolean))];
+  const have = {};
+  for (const m of months) {
+    const { data, error } = await sb.from('finance_transactions')
+      .select('tx_date,description,amount').eq('community_id', CID()).eq('month', m);
+    if (error) continue;             // 못 읽으면 '겹치는 게 없다' 로 두고 넘어간다
+    (data || []).forEach(x => { const k = ledgerKey(x); have[k] = (have[k] || 0) + 1; });
+  }
+  let dup = 0;
+  rows.forEach(r => {
+    const k = ledgerKey(r);
+    if (have[k] > 0) { have[k] -= 1; r._dup = true; dup++; }
+    else r._dup = false;
+  });
+  return { dup, add: rows.length - dup };
+}
+
+function ledgerShowImportPreview(rows, scan) {
+  scan = scan || { dup: 0, add: rows.length };
   document.querySelectorAll('.ledger-import-modal').forEach(x=>x.remove());
   const byMonth = {}; rows.forEach(r => { byMonth[r.month] = (byMonth[r.month]||0)+1; });
   const income = rows.filter(r=>r.amount>0).reduce((s,r)=>s+r.amount,0);
@@ -27670,9 +27699,19 @@ function ledgerShowImportPreview(rows) {
       </div>
       <div style="font-size:12px;color:var(--ink3);margin-bottom:8px">${t('월별','By month')}: ${months.map(m=>`${m} (${byMonth[m]})`).join(' · ')}</div>
       <div style="border:1px solid var(--border);border-radius:10px;padding:8px 12px;margin-bottom:6px">${sample}${rows.length>6?`<div style="font-size:11px;color:var(--ink3);text-align:center;padding-top:6px">… ${t('외','and')} ${rows.length-6}${t('건',' more')}</div>`:''}</div>
-      <label style="display:flex;align-items:flex-start;gap:8px;font-size:12px;color:var(--ink2);background:var(--s2);border-radius:9px;padding:9px 11px;margin-bottom:8px;cursor:pointer">
-        <input type="checkbox" id="lg-replace" checked style="width:16px;height:16px;margin-top:1px;cursor:pointer"/>
-        <span>${t('겹치는 달의 기존 업로드 내역을 지우고 새로 넣기 <b>(중복 방지, 권장)</b>','Replace previously-uploaded rows for the same months <b>(prevents duplicates, recommended)</b>')}<br><span style="color:var(--ink3)">${t('※ 직접 추가한 항목은 지우지 않아요.','※ Manually-added entries are kept.')}</span></span>
+      ${scan.dup ? `<div style="font-size:12px;background:#fffbeb;border:1px solid #fde68a;color:#8a4a22;border-radius:9px;padding:9px 11px;margin-bottom:8px;line-height:1.6">
+        ${t(`이 가운데 <b>${scan.dup}건</b>은 이미 들어 있어요 (날짜·내용·금액이 같음). 새로 들어갈 것은 <b>${scan.add}건</b>이에요.`,
+            `<b>${scan.dup}</b> of these are already in (same date, description and amount). <b>${scan.add}</b> would be added.`)}
+      </div>` : ''}
+      <label style="display:flex;align-items:flex-start;gap:8px;font-size:12px;color:var(--ink2);background:var(--s2);border-radius:9px;padding:9px 11px;margin-bottom:6px;cursor:pointer">
+        <input type="radio" name="lg-mode" value="add" checked style="width:16px;height:16px;margin-top:1px;cursor:pointer"/>
+        <span><b>${t('더하기 — 겹치는 줄은 건너뜁니다 (권장)','Add — skip rows that are already in (recommended)')}</b><br>
+          <span style="color:var(--ink3)">${t('이미 있는 내역은 그대로 두고, 새 줄만 넣어요.','Existing rows stay; only new ones go in.')}</span></span>
+      </label>
+      <label style="display:flex;align-items:flex-start;gap:8px;font-size:12px;color:var(--ink2);background:#fef2f2;border:1px solid #fecaca;border-radius:9px;padding:9px 11px;margin-bottom:8px;cursor:pointer">
+        <input type="radio" name="lg-mode" value="replace" style="width:16px;height:16px;margin-top:1px;cursor:pointer"/>
+        <span><b style="color:#b91c1c">${t('⚠️ 이 달에 올렸던 내역을 지우고 새로 넣기','⚠️ Delete this month\'s uploaded rows and import fresh')}</b><br>
+          <span style="color:var(--ink3)">${t('한 달치를 통째로 다시 올릴 때만 쓰세요. 그 달에 올렸던 줄이 <b>전부 지워집니다</b> (직접 추가한 항목은 남습니다).','Only when re-uploading a whole month. Every uploaded row in that month is <b>deleted</b> (manual entries are kept).')}</span></span>
       </label>
       <div style="font-size:11px;color:var(--ink3);line-height:1.6">${t('분류는 자동 추정된 값이에요. 가져온 뒤 목록에서 각 항목의 분류를 바꿀 수 있어요.','Categories are auto-estimated. You can change each one in the list after importing.')}</div>
     </div>
@@ -27685,9 +27724,25 @@ function ledgerShowImportPreview(rows) {
 }
 
 async function ledgerImport() {
-  const rows = ledgerPending || []; if (!rows.length) return;
-  const replace = !!document.getElementById('lg-replace')?.checked;
+  const all = ledgerPending || []; if (!all.length) return;
+  const mode = (document.querySelector('input[name="lg-mode"]:checked') || {}).value || 'add';
+  const replace = mode === 'replace';
+  //  ⚠️ 지우는 쪽은 한 번 더 묻습니다. 예전에는 이게 기본값이라, 한 달치를
+  //     더 올리려다 그 달에 올려 둔 것이 통째로 사라지는 일이 있었습니다.
+  if (replace) {
+    const ms = [...new Set(all.map(r => r.month).filter(Boolean))].sort();
+    if (!confirm(t(`${ms.join(' · ')} 에 올려 두었던 내역을 모두 지우고 새로 넣습니다.\n\n이어서 더하시려면 '취소' 를 누르고 위에서 '더하기' 를 고르세요.`,
+                   `This deletes every uploaded row in ${ms.join(', ')} and imports fresh.\n\nTo append instead, press Cancel and choose 'Add'.`))) return;
+  }
+  //  더하기면 겹치는 줄은 빼고 넣습니다 (미리보기에서 세어 둔 표시)
+  const rows = replace ? all : all.filter(r => !r._dup);
+  const skipped = all.length - rows.length;
   const btn = document.getElementById('lg-import-btn'); if (btn) { btn.disabled = true; btn.textContent = t('가져오는 중...','Importing...'); }
+  if (!rows.length) {
+    ledgerPending = [];
+    ledgerShowImportResult([], 0, 0, '', skipped);
+    return;
+  }
 
   // 달별로 묶어 처리 → 어느 달이 몇 건 들어갔는지 정확히 집계
   const groups = {};
@@ -27730,7 +27785,7 @@ async function ledgerImport() {
   const grandOk = results.reduce((s,r)=>s+r.ok,0), grandFail = results.reduce((s,r)=>s+r.fail,0);
   const firstErr = (results.find(r=>r.err)||{}).err || '';
   if (grandFail) console.warn('[ledger import] 실패', results.filter(r=>r.fail));
-  ledgerShowImportResult(results, grandOk, grandFail, firstErr);
+  ledgerShowImportResult(results, grandOk, grandFail, firstErr, skipped);
   // 가장 많은 건수의 달로 이동
   const top = results.slice().sort((a,b)=>b.ok-a.ok)[0];
   if (top && top.month !== '?') ledgerMonth = top.month;
@@ -27738,7 +27793,7 @@ async function ledgerImport() {
 }
 
 // 가져오기 결과 — 달별 몇 건 들어갔는지 + 실패 사유 표시
-function ledgerShowImportResult(results, grandOk, grandFail, firstErr) {
+function ledgerShowImportResult(results, grandOk, grandFail, firstErr, skipped) {
   document.querySelectorAll('.ledger-import-modal').forEach(x=>x.remove());
   const modal = document.createElement('div');
   modal.className = 'ledger-import-modal';
@@ -27756,7 +27811,7 @@ function ledgerShowImportResult(results, grandOk, grandFail, firstErr) {
   modal.innerHTML = `<div style="background:var(--surface);border-radius:18px;width:460px;max-width:94vw;max-height:84vh;display:flex;flex-direction:column;box-shadow:var(--sh-3)">
     <div style="padding:16px 18px;border-bottom:1px solid var(--border);font-size:15px;font-weight:800">${grandFail?'⚠️':'✅'} ${t('가져오기 결과','Import result')}</div>
     <div style="padding:14px 18px;overflow-y:auto;flex:1">
-      <div style="font-size:13px;font-weight:700;margin-bottom:10px">${t('총','Total')} <span style="color:#15803d">${grandOk}${t('건 저장','saved')}</span>${grandFail?` · <span style="color:#dc2626">${grandFail}${t('건 실패','failed')}</span>`:''}</div>
+      <div style="font-size:13px;font-weight:700;margin-bottom:10px">${t('총','Total')} <span style="color:#15803d">${grandOk}${t('건 저장','saved')}</span>${grandFail?` · <span style="color:#dc2626">${grandFail}${t('건 실패','failed')}</span>`:''}${skipped?` · <span style="color:var(--ink3)">${t(`이미 있어 건너뜀 ${skipped}건`, `${skipped} already in, skipped`)}</span>`:''}</div>
       <div style="font-size:11.5px;color:var(--ink3);margin-bottom:6px">${t('월별 저장 결과','By month')}</div>
       ${rowsHtml}
       ${firstErr?`<div style="margin-top:12px;background:#fef2f2;border:1px solid #fecaca;border-radius:9px;padding:9px 11px;font-size:11.5px;color:#b91c1c;word-break:break-word"><b>${t('실패 사유','Error')}:</b> ${escHtml(firstErr)}</div>`:''}
