@@ -15743,6 +15743,26 @@ async function renderCommunitySettings() {
           </div>
         </div>
 
+        <!-- 차량 (단위·통화) -->
+        <div style="border-top:1px solid var(--border);margin:16px 0 14px;padding-top:14px">
+          <div style="font-size:12px;font-weight:600;color:var(--ink3);margin-bottom:6px">🚗 차량 — 거리 단위와 통화</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <select id="cs-veh-unit" class="adm-input" style="flex:1;min-width:130px">
+              <option value="mi"${(comm.veh_unit || 'mi') === 'mi' ? ' selected' : ''}>마일 (mi)</option>
+              <option value="km"${comm.veh_unit === 'km' ? ' selected' : ''}>킬로미터 (km)</option>
+            </select>
+            <select id="cs-veh-cur" class="adm-input" style="flex:1;min-width:130px">
+              ${Object.keys(CURRENCIES).map(v => `<option value="${escAttr(v)}"${(comm.veh_currency || '$') === v ? ' selected' : ''}>${curSign(v)} ${escHtml(curOf(v).ko)}</option>`).join('')}
+            </select>
+          </div>
+          <div style="font-size:11px;color:var(--ink3);line-height:1.65;margin-top:6px">
+            거리는 <b>늘 마일로 저장</b>하고 보여줄 때만 바꿉니다 — km 로 바꿔도 이미 적어 둔 거리가 틀어지지 않아요.<br>
+            돈은 <b>바꿔 계산하지 않습니다.</b> 환율은 날마다 달라서, 예전에 $로 적은 40 을 오늘 환율로 고치면 거짓이 됩니다.
+            그래서 <b>기록마다 그때의 통화를 같이 적어</b> 두고, 여기서 바꾼 통화는 <b>앞으로 적는 기록</b>에만 쓰입니다.
+            예전 기록은 그때 그 돈으로 그대로 읽히고, 합계는 통화별로 따로 냅니다.
+          </div>
+        </div>
+
         <!-- 전화 (통화 시간 제한) -->
         <div style="border-top:1px solid var(--border);margin:16px 0 14px;padding-top:14px">
           <div style="font-size:12px;font-weight:600;color:var(--ink3);margin-bottom:6px">📞 전화 — 한 통화의 시간 제한</div>
@@ -16580,6 +16600,10 @@ async function saveCommSettings(commId) {
   if (wcBox && !wcBox.querySelector('span')) updateData.welcome_channel_ids = wcPicked();
   const bkEl = document.getElementById('cs-books-key');
   if (bkEl) updateData.books_api_key = bkEl.value.trim() || null;
+  const vuEl = document.getElementById('cs-veh-unit');
+  if (vuEl) updateData.veh_unit = (vuEl.value === 'km') ? 'km' : 'mi';
+  const vcEl = document.getElementById('cs-veh-cur');
+  if (vcEl && CURRENCIES[vcEl.value]) updateData.veh_currency = vcEl.value;
   const clEl = document.getElementById('cs-call-limit');
   if (clEl) {
     const v = Number(clEl.value);
@@ -16590,6 +16614,12 @@ async function saveCommSettings(commId) {
   // 그래서 바뀐 행을 돌려받아 확인한다.
   let { data: saved, error } = await sb.from('communities').update(updateData).eq('id', commId).select('id');
   // 통화 제한 칸을 아직 안 깔았으면 그것만 빼고 다시 — 다른 설정까지 막을 일은 아니다
+  //  차량 단위·통화 칸이 아직 없으면 그것만 빼고 다시
+  if (error && /veh_unit|veh_currency/.test(error.message || '')) {
+    delete updateData.veh_unit; delete updateData.veh_currency;
+    ({ data: saved, error } = await sb.from('communities').update(updateData).eq('id', commId).select('id'));
+    if (!error) showUploadToast('차량 단위·통화만 빼고 저장했어요 — db/차량_단위통화_DB설치.sql 을 실행해주세요');
+  }
   if (error && /call_limit_min/.test(error.message || '')) {
     delete updateData.call_limit_min;
     ({ data: saved, error } = await sb.from('communities').update(updateData).eq('id', commId).select('id'));
@@ -24926,8 +24956,40 @@ const VEH_TASKS = [
 ];
 function vehTask(k){ return VEH_TASKS.find(x => x.key === k) || { key:k, icon:'🔧', ko:k, en:k, mi:null, mo:null }; }
 function vehTaskName(k){ const x = vehTask(k); return t(x.ko, x.en); }
-const vehMoney = n => (n === null || n === undefined || n === '') ? '' : '$' + Number(n).toLocaleString('en-US',{minimumFractionDigits:2, maximumFractionDigits:2});
-const vehMi    = n => (n === null || n === undefined || n === '') ? '' : Number(n).toLocaleString('en-US') + ' mi';
+// ── 단위와 통화 ────────────────────────────────────────────────
+//
+//  거리는 **늘 마일로 저장**하고, 보여줄 때·받을 때만 km 로 바꿉니다.
+//  표시만 'km' 로 갈아끼우면 이미 들어 있는 숫자가 전부 틀어집니다.
+//
+//  돈은 바꿔 계산하지 않습니다 — 환율은 날마다 달라서, 예전에 $로 적은
+//  40 을 오늘 환율로 원으로 고치는 건 거짓이 됩니다. 그래서 **기록마다
+//  그때의 통화를 같이 적어** 두고, 합계는 통화별로 따로 냅니다.
+let VEH_UNIT = 'mi';     // 'mi' | 'km'
+let VEH_CUR  = '$';
+const MI_KM = 1.609344;
+const vehIsKm   = () => VEH_UNIT === 'km';
+const miToShow  = n => (n === null || n === undefined || n === '') ? '' : (vehIsKm() ? Math.round(Number(n) * MI_KM) : Number(n));
+const showToMi  = n => (n === null || n === undefined || n === '') ? null : (vehIsKm() ? Math.round(Number(n) / MI_KM) : Number(n));
+const vehUnitLabel = () => vehIsKm() ? 'km' : 'mi';
+
+const vehMoney = (n, cur) => (n === null || n === undefined || n === '') ? ''
+  : allowMoney(Number(n), cur || VEH_CUR);
+const vehMi    = n => (n === null || n === undefined || n === '') ? ''
+  : Number(miToShow(n)).toLocaleString('en-US') + ' ' + vehUnitLabel();
+
+// 기록에 적힌 통화 (예전 기록에는 없으니 $ 로 본다 — 그때 그렇게 적었다)
+const vehCurOf = l => (l && l.currency) || '$';
+function vehSumByCur(list) {
+  const o = {};
+  (list || []).forEach(l => { const v = Number(l.cost); if (!Number.isFinite(v)) return;
+    const c = vehCurOf(l); o[c] = (o[c] || 0) + v; });
+  return o;
+}
+function vehMoneyMap(map) {
+  const ks = Object.keys(map || {}).filter(k => map[k]);
+  return ks.length ? ks.map(k => vehMoney(map[k], k)).join(' · ') : '';
+}
+function vehRawSum(map) { return Object.values(map || {}).reduce((a,b) => a + b, 0); }
 const vehDate  = d => String(d || '').slice(0,10);
 function vehToday(){ const d = new Date(), z = n => String(n).padStart(2,'0'); return `${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}`; }
 function vehAddMonths(ds, mo){ const d = new Date(ds + 'T00:00:00'); d.setMonth(d.getMonth() + mo); const z = n => String(n).padStart(2,'0'); return `${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}`; }
@@ -24997,12 +25059,17 @@ function vehDueSorted(v){
     .sort((a,b) => (rank[a.state] - rank[b.state]) || (b.pct - a.pct));
 }
 function vehLogsOf(vid){ return vehLogs.filter(l => l.vehicle_id === vid); }
-function vehTotalCost(vid){ return vehLogsOf(vid).reduce((s,l) => s + (Number(l.cost) || 0), 0); }
+function vehTotalCost(vid){ return vehSumByCur(vehLogsOf(vid)); }
 
 // ── 불러오기 ──
 async function renderVehicleHub(){
   const main = document.getElementById('school-main');
   main.innerHTML = `<div style="text-align:center;padding:40px;color:var(--ink3);font-size:13px">${t('불러오는 중...','Loading...')}</div>`;
+  //  이 공동체가 쓰는 단위·통화 (칸이 없으면 예전 그대로 mi · $)
+  try {
+    const { data: c } = await sb.from('communities').select('veh_unit,veh_currency').eq('id', CID()).maybeSingle();
+    if (c) { VEH_UNIT = (c.veh_unit === 'km') ? 'km' : 'mi'; VEH_CUR = c.veh_currency || '$'; }
+  } catch (_) {}
   try {
     const { data: vs, error } = await sb.from('vehicles').select('*').eq('community_id', CID()).order('sort').order('plate');
     if (error) throw error;
@@ -25032,7 +25099,7 @@ function vehListHtml(){
   let over = 0, soon = 0;
   vehicles.forEach(v => vehDueSorted(v).forEach(d => { if (d.state === 'over') over++; else if (d.state === 'soon') soon++; }));
   const yr = new Date().getFullYear();
-  const yearCost = vehLogs.filter(l => vehDate(l.service_date).slice(0,4) === String(yr)).reduce((s,l) => s + (Number(l.cost)||0), 0);
+  const yearCost = vehSumByCur(vehLogs.filter(l => vehDate(l.service_date).slice(0,4) === String(yr)));
 
   const card = (v) => {
     const dues = vehDueSorted(v).filter(d => d.state === 'over' || d.state === 'soon').slice(0,3);
@@ -25049,7 +25116,7 @@ function vehListHtml(){
         ${dues.length ? `<span style="flex-shrink:0;font-size:11px;font-weight:800;padding:3px 9px;border-radius:99px;background:${VEH_STATE[dues[0].state][1]};color:${VEH_STATE[dues[0].state][0]}">${dues.filter(d=>d.state==='over').length ? `🔴 ${dues.filter(d=>d.state==='over').length}` : `🟡 ${dues.length}`}</span>` : `<span style="flex-shrink:0;font-size:11px;font-weight:800;padding:3px 9px;border-radius:99px;background:#e8f5ee;color:#15803d">✅</span>`}
       </div>
       <div style="display:flex;gap:14px;font-size:12px;color:var(--ink2);margin-bottom:10px;flex-wrap:wrap">
-        <span><b style="font-size:14px;color:var(--ink)">${v.odometer ? Number(v.odometer).toLocaleString() : '—'}</b> mi</span>
+        <span><b style="font-size:14px;color:var(--ink)">${v.odometer ? Number(miToShow(v.odometer)).toLocaleString() : '—'}</b> ${vehUnitLabel()}</span>
         ${v.odometer_at ? `<span style="color:var(--ink3)">${vehDate(v.odometer_at)} ${t('기준','as of')}</span>` : ''}
       </div>
       ${dues.length ? `<div style="display:flex;flex-direction:column;gap:4px;margin-bottom:10px">
@@ -25060,7 +25127,7 @@ function vehListHtml(){
       </div>` : `<div style="font-size:11.5px;color:var(--ink3);margin-bottom:10px">${t('지금 당장 할 정비는 없어요','Nothing due right now')}</div>`}
       <div style="display:flex;gap:12px;font-size:11px;color:var(--ink3);border-top:1px solid var(--border);padding-top:9px">
         <span>${t('기록','Records')} <b style="color:var(--ink2)">${n}</b></span>
-        <span>${t('누적 지출','Total')} <b style="color:var(--ink2)">${vehMoney(vehTotalCost(v.id)) || '$0.00'}</b></span>
+        <span>${t('누적 지출','Total')} <b style="color:var(--ink2)">${vehMoneyMap(vehTotalCost(v.id)) || vehMoney(0)}</b></span>
         ${last ? `<span style="margin-left:auto">${t('최근','Last')} ${vehDate(last.service_date)}</span>` : ''}
       </div>
     </div>`;
@@ -25078,7 +25145,7 @@ function vehListHtml(){
       ${stat(t('관리 차량','Vehicles'), vehicles.length + t('대',''))}
       ${stat(t('정비 시기 지남','Overdue'), over, over ? t('바로 확인하세요','Check now') : t('없음','None'), over ? '#c0392b' : 'var(--adeep)')}
       ${stat(t('곧 정비','Due soon'), soon, t('30일 / 500mi 이내','within 30d / 500mi'), soon ? '#b45309' : 'var(--adeep)')}
-      ${stat(t(`${yr}년 지출`, `${yr} spend`), vehMoney(yearCost) || '$0.00')}
+      ${stat(t(`${yr}년 지출`, `${yr} spend`), vehMoneyMap(yearCost) || vehMoney(0))}
     </div>
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
       <div style="font-size:15px;font-weight:800;color:var(--adeep)">🚗 ${t('차량','Vehicles')}</div>
@@ -25115,17 +25182,17 @@ function vehDetailHtml(){
       <div style="display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap">
         <div>
           <div style="font-size:12px;opacity:.8">${t('현재 주행거리','Odometer')}</div>
-          <div style="font-size:26px;font-weight:800;line-height:1.2">${v.odometer ? Number(v.odometer).toLocaleString() : '—'}<span style="font-size:14px;font-weight:600;opacity:.85"> mi</span></div>
+          <div style="font-size:26px;font-weight:800;line-height:1.2">${v.odometer ? Number(miToShow(v.odometer)).toLocaleString() : '—'}<span style="font-size:14px;font-weight:600;opacity:.85"> ${vehUnitLabel()}</span></div>
           ${v.odometer_at ? `<div style="font-size:11px;opacity:.75;margin-top:1px">${vehDate(v.odometer_at)} ${t('기준','as of')}</div>` : ''}
         </div>
         ${vehCanEdit() ? `<div style="display:flex;gap:6px;align-items:center">
-          <input id="veh-odo" type="number" placeholder="${t('주행거리 갱신','Update odometer')}" style="width:130px;height:34px;padding:0 11px;border:none;border-radius:9px;font:13px var(--font);outline:none"/>
+          <input id="veh-odo" type="number" placeholder="${t('주행거리 갱신','Update odometer')} (${vehUnitLabel()})" style="width:130px;height:34px;padding:0 11px;border:none;border-radius:9px;font:13px var(--font);outline:none"/>
           <button onclick="saveVehOdometer('${v.id}')" style="height:34px;padding:0 13px;border:none;border-radius:9px;background:rgba(255,255,255,.22);color:#fff;font:700 12px var(--font);cursor:pointer">${t('기록','Save')}</button>
         </div>` : ''}
         <div style="flex:1"></div>
         <div style="text-align:right">
           <div style="font-size:12px;opacity:.8">${t('누적 지출','Total spend')}</div>
-          <div style="font-size:20px;font-weight:800">${vehMoney(vehTotalCost(v.id)) || '$0.00'}</div>
+          <div style="font-size:20px;font-weight:800">${vehMoneyMap(vehTotalCost(v.id)) || vehMoney(0)}</div>
         </div>
       </div>
       ${(v.insurance_exp || v.registration_exp || v.inspection_exp) ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:12px">
@@ -25196,14 +25263,14 @@ function vehDueHtml(v){
         <span style="font-size:13.5px;font-weight:800;color:var(--ink)">${t(x.ko, x.en)}</span>
         <span style="font-size:10.5px;color:var(--ink3)">${t('주기 없음 · 생길 때마다','No interval · as needed')}</span>
         <div style="flex:1"></div>
-        ${list.length ? `<span style="font-size:11.5px;color:var(--ink3)">${t(`${list.length}건`, `${list.length}`)} · <b style="color:var(--ink2)">${vehMoney(total) || '$0.00'}</b></span>` : ''}
+        ${list.length ? `<span style="font-size:11.5px;color:var(--ink3)">${t(`${list.length}건`, `${list.length}`)} · <b style="color:var(--ink2)">${vehMoneyMap(vehSumByCur(list)) || vehMoney(0)}</b></span>` : ''}
         ${vehCanEdit() ? `<button onclick="vehNewLog('${v.id}','${x.key}')" style="height:28px;padding:0 11px;border:1.5px solid var(--border);background:var(--surface);border-radius:8px;cursor:pointer;font:700 11.5px var(--font);color:var(--ink2);white-space:nowrap">＋ ${t('기록','Log')}</button>` : ''}
       </div>
       ${list.length ? `<div style="margin-top:7px;display:flex;flex-direction:column;gap:3px">
         ${list.slice(0,3).map(l => `<div style="display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--ink3)">
           <span style="color:var(--ink2);font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(l.title || t(x.ko,x.en))}</span>
           <span>${vehDate(l.service_date)}</span>
-          <span style="font-weight:700;color:var(--ink2);width:82px;text-align:right">${vehMoney(l.cost) || '—'}</span>
+          <span style="font-weight:700;color:var(--ink2);min-width:82px;text-align:right">${vehMoney(l.cost, vehCurOf(l)) || '—'}</span>
         </div>`).join('')}
         ${list.length > 3 ? `<div onclick="setVehTab('log')" style="font-size:11px;color:#1d4ed8;cursor:pointer;margin-top:2px">${t(`+ ${list.length - 3}건 더 — 정비 이력에서 보기`, `+ ${list.length - 3} more — see history`)}</div>` : ''}
       </div>` : `<div style="font-size:11.5px;color:var(--ink3);margin-top:6px">${t('기록 없음','No records')}</div>`}
@@ -25238,7 +25305,7 @@ function vehLogHtml(v){
         ${l.note ? `<div style="font-size:11px;color:var(--ink3);margin-top:4px;line-height:1.6;white-space:pre-wrap">${escHtml(l.note)}</div>` : ''}
       </div>
       <div style="text-align:right;flex-shrink:0">
-        <div style="font-size:14px;font-weight:800;color:var(--ink)">${vehMoney(l.cost) || '—'}</div>
+        <div style="font-size:14px;font-weight:800;color:var(--ink)">${vehMoney(l.cost, vehCurOf(l)) || '—'}</div>
         ${vehCanEdit() ? `<div style="display:flex;gap:4px;margin-top:6px;justify-content:flex-end">
           <button onclick="vehEditLog('${l.id}')" title="${t('수정','Edit')}" style="width:26px;height:26px;border:1px solid var(--border);background:var(--surface);border-radius:7px;cursor:pointer;font-size:11px">✏️</button>
           <button onclick="deleteVehLog('${l.id}')" title="${t('삭제','Delete')}" style="width:26px;height:26px;border:1px solid var(--border);background:var(--surface);border-radius:7px;cursor:pointer;color:#ef4444;font-size:13px">×</button>
@@ -25256,25 +25323,33 @@ function vehCostHtml(v){
   const byYear = {}, byKind = {};
   list.forEach(l => {
     const y = vehDate(l.service_date).slice(0,4);
-    byYear[y] = (byYear[y] || 0) + Number(l.cost);
-    byKind[l.kind] = (byKind[l.kind] || 0) + Number(l.cost);
+    const c = vehCurOf(l);
+    (byYear[y] = byYear[y] || {})[c] = (byYear[y][c] || 0) + Number(l.cost);
+    (byKind[l.kind] = byKind[l.kind] || {})[c] = (byKind[l.kind][c] || 0) + Number(l.cost);
   });
-  const total = Object.values(byYear).reduce((a,b) => a+b, 0);
-  const maxK = Math.max(1, ...Object.values(byKind));
+  //  막대 길이는 통화를 섞어 재면 뜻이 없다 — 날숫자로만 길이를 잡고,
+  //  글자는 통화별로 따로 적는다. 섞여 있으면 아래에 그렇다고 알린다.
+  const rawY = {}; Object.keys(byYear).forEach(y => rawY[y] = vehRawSum(byYear[y]));
+  const rawK = {}; Object.keys(byKind).forEach(k => rawK[k] = vehRawSum(byKind[k]));
+  const totalMap = vehSumByCur(list);
+  const total = vehRawSum(totalMap);
+  const mixed = Object.keys(totalMap).length > 1;
+  const maxK = Math.max(1, ...Object.values(rawK));
   const years = Object.keys(byYear).sort().reverse();
-  const kinds = Object.keys(byKind).sort((a,b) => byKind[b] - byKind[a]);
+  const kinds = Object.keys(byKind).sort((a,b) => rawK[b] - rawK[a]);
   const noCost = vehLogsOf(v.id).filter(l => !Number(l.cost) && l.cost !== 0).length;
   return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin-bottom:14px">
       <div style="font-size:12px;color:var(--ink3)">${t('누적 지출','Total spend')}</div>
-      <div style="font-size:26px;font-weight:800;color:var(--adeep)">${vehMoney(total) || '$0.00'}</div>
+      <div style="font-size:26px;font-weight:800;color:var(--adeep)">${vehMoneyMap(totalMap) || vehMoney(0)}</div>
+      ${mixed ? `<div style="font-size:11px;color:#8a4a22;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:6px 9px;margin-top:6px;line-height:1.6">${t('통화가 섞여 있어요 — 서로 다른 돈은 더하지 않습니다. 막대 길이는 참고만 하세요.','Mixed currencies — different currencies are never added together. The bars are only a rough guide.')}</div>` : ''}
       ${noCost ? `<div style="font-size:11px;color:var(--ink3);margin-top:3px">${t(`금액이 안 적힌 기록 ${noCost}건은 빠져 있어요`, `${noCost} record(s) without a cost are not counted`)}</div>` : ''}
     </div>
     <div style="font-size:13px;font-weight:800;color:var(--adeep);margin:0 0 8px">📅 ${t('연도별','By year')}</div>
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:6px 14px;margin-bottom:16px">
       ${years.map(y => `<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)">
         <span style="font-size:13px;font-weight:700;color:var(--ink2);width:56px">${y}</span>
-        <div style="flex:1;background:var(--s3);border-radius:99px;height:8px;overflow:hidden"><div style="height:100%;width:${Math.round(byYear[y]/Math.max(1,total)*100)}%;background:#2a5298;border-radius:99px"></div></div>
-        <span style="font-size:13px;font-weight:700;color:var(--ink);width:96px;text-align:right">${vehMoney(byYear[y])}</span>
+        <div style="flex:1;background:var(--s3);border-radius:99px;height:8px;overflow:hidden"><div style="height:100%;width:${Math.round(rawY[y]/Math.max(1,total)*100)}%;background:#2a5298;border-radius:99px"></div></div>
+        <span style="font-size:13px;font-weight:700;color:var(--ink);min-width:96px;text-align:right">${vehMoneyMap(byYear[y])}</span>
       </div>`).join('') || `<div style="font-size:12.5px;color:var(--ink3);padding:12px 0">${t('데이터 없음','No data')}</div>`}
     </div>
     <div style="font-size:13px;font-weight:800;color:var(--adeep);margin:0 0 8px">🔧 ${t('항목별','By item')}</div>
@@ -25282,8 +25357,8 @@ function vehCostHtml(v){
       ${kinds.map(k => `<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)">
         <span style="font-size:15px;width:22px">${vehTask(k).icon}</span>
         <span style="font-size:12.5px;font-weight:600;color:var(--ink2);width:118px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${vehTaskName(k)}</span>
-        <div style="flex:1;background:var(--s3);border-radius:99px;height:8px;overflow:hidden"><div style="height:100%;width:${Math.round(byKind[k]/maxK*100)}%;background:#5A7C8B;border-radius:99px"></div></div>
-        <span style="font-size:12.5px;font-weight:700;color:var(--ink);width:96px;text-align:right">${vehMoney(byKind[k])}</span>
+        <div style="flex:1;background:var(--s3);border-radius:99px;height:8px;overflow:hidden"><div style="height:100%;width:${Math.round(rawK[k]/maxK*100)}%;background:#5A7C8B;border-radius:99px"></div></div>
+        <span style="font-size:12.5px;font-weight:700;color:var(--ink);min-width:96px;text-align:right">${vehMoneyMap(byKind[k])}</span>
       </div>`).join('') || `<div style="font-size:12.5px;color:var(--ink3);padding:12px 0">${t('데이터 없음','No data')}</div>`}
     </div>`;
 }
@@ -25294,13 +25369,14 @@ const vehLbl = 'font-size:11.5px;font-weight:700;color:var(--ink3);display:block
 function vehNewLog(vid, kind){
   const v = vehicles.find(x => x.id === vid);
   vehLogDraft = { id:null, vehicle_id:vid, kind:kind||'oil', title:'', service_date:vehToday(),
-                  odometer: v && v.odometer ? v.odometer : '', cost:'', vendor:'', warranty_until:'', note:'' };
+                  odometer: v && v.odometer ? v.odometer : '', cost:'', currency: VEH_CUR, vendor:'', warranty_until:'', note:'' };
   renderVehicleMain();
 }
 function vehEditLog(id){
   const l = vehLogs.find(x => x.id === id); if (!l) return;
   vehLogDraft = { id:l.id, vehicle_id:l.vehicle_id, kind:l.kind, title:l.title||'', service_date:vehDate(l.service_date),
-                  odometer:l.odometer||'', cost:(l.cost===null||l.cost===undefined)?'':l.cost, vendor:l.vendor||'',
+                  odometer:l.odometer||'', cost:(l.cost===null||l.cost===undefined)?'':l.cost,
+                  currency: l.currency || '$', vendor:l.vendor||'',
                   warranty_until:l.warranty_until?vehDate(l.warranty_until):'', note:l.note||'' };
   vehTabMode = 'log';
   renderVehicleMain();
@@ -25314,8 +25390,8 @@ function vehLogFormHtml(){
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:11px">
       <div><label style="${vehLbl}">${t('항목','Item')}</label><select id="vl-kind" style="${vehInp};cursor:pointer">${opts}</select></div>
       <div><label style="${vehLbl}">${t('날짜','Date')}</label><input id="vl-date" type="date" value="${escAttr(d.service_date)}" style="${vehInp}"/></div>
-      <div><label style="${vehLbl}">${t('주행거리 (mi)','Odometer (mi)')}</label><input id="vl-odo" type="number" value="${escAttr(d.odometer)}" placeholder="${t('선택','optional')}" style="${vehInp}"/></div>
-      <div><label style="${vehLbl}">${t('금액 ($)','Cost ($)')}</label><input id="vl-cost" type="number" step="0.01" value="${escAttr(d.cost)}" placeholder="${t('선택','optional')}" style="${vehInp}"/></div>
+      <div><label style="${vehLbl}">${t(`주행거리 (${vehUnitLabel()})`, `Odometer (${vehUnitLabel()})`)}</label><input id="vl-odo" type="number" value="${escAttr(miToShow(d.odometer))}" placeholder="${t('선택','optional')}" style="${vehInp}"/></div>
+      <div><label style="${vehLbl}">${t(`금액 (${curSign(d.currency || VEH_CUR)})`, `Cost (${curSign(d.currency || VEH_CUR)})`)}</label><input id="vl-cost" type="number" step="${curStep(d.currency || VEH_CUR, true)}" value="${escAttr(d.cost)}" placeholder="${t('선택','optional')}" style="${vehInp}"/></div>
       <div style="grid-column:1/-1"><label style="${vehLbl}">${t('내용','What was done')}</label><input id="vl-title" value="${escAttr(d.title)}" placeholder="${t('예: 타이어 4개 교체 (235/60R18)','e.g. 4 tires replaced (235/60R18)')}" style="${vehInp}"/></div>
       <div><label style="${vehLbl}">${t('정비소','Shop')}</label><input id="vl-vendor" value="${escAttr(d.vendor)}" placeholder="${t('선택','optional')}" style="${vehInp}"/></div>
       <div><label style="${vehLbl}">${t('워런티 만료','Warranty until')}</label><input id="vl-war" type="date" value="${escAttr(d.warranty_until)}" style="${vehInp}"/></div>
@@ -25336,22 +25412,34 @@ async function saveVehLog(){
     kind: val('vl-kind') || 'repair',
     title: val('vl-title') || null,
     service_date: val('vl-date') || vehToday(),
-    odometer: num('vl-odo'), cost: num('vl-cost'),
+    odometer: showToMi(val('vl-odo')), cost: num('vl-cost'),
+    //  돈은 바꿔 계산하지 않는다 — 적을 때의 통화를 같이 남긴다.
+    //  나중에 공동체 통화를 바꿔도 예전 기록은 그때 그 돈으로 읽힌다.
+    currency: (d.currency || VEH_CUR),
     vendor: val('vl-vendor') || null,
     warranty_until: val('vl-war') || null,
     note: val('vl-note') || null,
   };
   if (!row.service_date) { showUploadToast(t('날짜를 넣어주세요','Please enter a date')); return; }
   let error;
-  if (d.id) ({ error } = await sb.from('vehicle_logs').update(row).eq('id', d.id));
-  else { row.created_by = ME.id; ({ error } = await sb.from('vehicle_logs').insert(row)); }
+  const put = async (r) => d.id ? sb.from('vehicle_logs').update(r).eq('id', d.id)
+                                : sb.from('vehicle_logs').insert({ ...r, created_by: ME.id });
+  ({ error } = await put(row));
+  //  통화 칸을 아직 안 깔았으면 그것만 빼고 다시 — 기록 자체를 못 남기면 안 된다
+  let vehPartial = '';
+  if (error && /currency|column|schema cache/i.test(error.message || '')) {
+    const { currency, ...rest } = row;
+    ({ error } = await put(rest));
+    if (!error) vehPartial = t(' — 통화 표시는 빼고 넣었어요 (db/차량_단위통화_DB설치.sql 을 실행해주세요)',
+                               ' — without the currency (run db/차량_단위통화_DB설치.sql)');
+  }
   if (error) { showUploadToast(t('저장 실패: ','Save failed: ') + error.message); return; }
   // 이번 기록의 주행거리가 차량에 적힌 것보다 크면 차량 주행거리도 같이 올린다
   const v = vehicles.find(x => x.id === d.vehicle_id);
   if (v && row.odometer && (!v.odometer || row.odometer > Number(v.odometer))) {
     await sb.from('vehicles').update({ odometer: row.odometer, odometer_at: row.service_date, updated_at: new Date().toISOString() }).eq('id', v.id);
   }
-  showUploadToast(d.id ? t('✅ 수정됐어요','✅ Updated') : t('✅ 기록했어요','✅ Saved'));
+  showUploadToast((d.id ? t('✅ 수정됐어요','✅ Updated') : t('✅ 기록했어요','✅ Saved')) + vehPartial);
   vehLogDraft = null;
   await renderVehicleHub();
 }
@@ -25373,13 +25461,16 @@ async function saveVehOdometer(vid){
 
 // ── 차량 추가/수정 (정비 주기 덮어쓰기 포함) ──
 function vehNewCar(){
-  vehCarDraft = { id:null, plate:'', name:'', make:'', model:'', year:'', odometer:'', insurance_exp:'', registration_exp:'', inspection_exp:'', note:'', intervals:{} };
+  vehCarDraft = { id:null, plate:'', name:'', make:'', model:'', year:'', odometer:'',
+                  owner_name:'', insurer:'',
+                  insurance_exp:'', registration_exp:'', inspection_exp:'', note:'', intervals:{} };
   renderVehicleMain();
 }
 function vehEditCar(id){
   const v = vehicles.find(x => x.id === id); if (!v) return;
   vehCarDraft = { id:v.id, plate:v.plate||'', name:v.name||'', make:v.make||'', model:v.model||'', year:v.year||'',
-                  odometer:v.odometer||'', insurance_exp:v.insurance_exp?vehDate(v.insurance_exp):'',
+                  odometer:v.odometer||'', owner_name:v.owner_name||'', insurer:v.insurer||'',
+                  insurance_exp:v.insurance_exp?vehDate(v.insurance_exp):'',
                   registration_exp:v.registration_exp?vehDate(v.registration_exp):'',
                   inspection_exp:v.inspection_exp?vehDate(v.inspection_exp):'',
                   note:v.note||'', intervals: v.intervals || {} };
@@ -25394,8 +25485,8 @@ function vehCarFormHtml(){
     return `<div style="display:flex;align-items:center;gap:7px;padding:5px 0">
       <span style="font-size:14px;width:20px">${x.icon}</span>
       <span style="font-size:12px;color:var(--ink2);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t(x.ko,x.en)}</span>
-      <input id="vi-mi-${x.key}" type="number" value="${o.mi!==undefined&&o.mi!==null?o.mi:''}" placeholder="${x.mi||'—'}" style="width:82px;height:32px;padding:0 8px;border:1.5px solid var(--border);border-radius:8px;font:12px var(--font);text-align:right"/>
-      <span style="font-size:11px;color:var(--ink3);width:20px">mi</span>
+      <input id="vi-mi-${x.key}" type="number" value="${o.mi!==undefined&&o.mi!==null?miToShow(o.mi):''}" placeholder="${x.mi?miToShow(x.mi):'—'}" style="width:82px;height:32px;padding:0 8px;border:1.5px solid var(--border);border-radius:8px;font:12px var(--font);text-align:right"/>
+      <span style="font-size:11px;color:var(--ink3);width:24px">${vehUnitLabel()}</span>
       <input id="vi-mo-${x.key}" type="number" value="${o.mo!==undefined&&o.mo!==null?o.mo:''}" placeholder="${x.mo||'—'}" style="width:62px;height:32px;padding:0 8px;border:1.5px solid var(--border);border-radius:8px;font:12px var(--font);text-align:right"/>
       <span style="font-size:11px;color:var(--ink3);width:30px">${t('개월','mo')}</span>
     </div>`;
@@ -25408,7 +25499,9 @@ function vehCarFormHtml(){
       ${f('vc-make', t('제조사','Make'), d.make, 'text', 'Honda')}
       ${f('vc-model', t('모델','Model'), d.model, 'text', 'Odyssey')}
       ${f('vc-year', t('연식','Year'), d.year, 'number', '2019')}
-      ${f('vc-odo', t('현재 주행거리 (mi)','Odometer (mi)'), d.odometer, 'number', '')}
+      ${f('vc-odo', t(`현재 주행거리 (${vehUnitLabel()})`, `Odometer (${vehUnitLabel()})`), miToShow(d.odometer), 'number', '')}
+      ${f('vc-owner', t('명의','Registered owner'), d.owner_name, 'text', t('예: IM USA','e.g. IM USA'))}
+      ${f('vc-insurer', t('보험사','Insurer'), d.insurer, 'text', t('예: Progressive','e.g. Progressive'))}
       ${f('vc-ins', t('보험 만료','Insurance exp.'), d.insurance_exp, 'date')}
       ${f('vc-reg', t('등록 만료','Registration exp.'), d.registration_exp, 'date')}
       ${f('vc-insp', t('정기검사 만료','Inspection exp.'), d.inspection_exp, 'date')}
@@ -25435,11 +25528,12 @@ async function saveVehCar(){
   const intervals = {};
   VEH_TASKS.filter(x => x.mi || x.mo).forEach(x => {
     const mi = val('vi-mi-' + x.key), mo = val('vi-mo-' + x.key);
-    if (mi !== '' || mo !== '') intervals[x.key] = { mi: mi === '' ? null : Number(mi), mo: mo === '' ? null : Number(mo) };
+    if (mi !== '' || mo !== '') intervals[x.key] = { mi: mi === '' ? null : showToMi(mi), mo: mo === '' ? null : Number(mo) };
   });
   const row = {
     community_id: CID(), plate, name: val('vc-name') || null, make: val('vc-make') || null,
-    model: val('vc-model') || null, year: num('vc-year'), odometer: num('vc-odo'),
+    model: val('vc-model') || null, year: num('vc-year'), odometer: showToMi(val('vc-odo')),
+    owner_name: val('vc-owner') || null, insurer: val('vc-insurer') || null,
     insurance_exp: val('vc-ins') || null, registration_exp: val('vc-reg') || null,
     inspection_exp: val('vc-insp') || null, note: val('vc-note') || null,
     intervals: Object.keys(intervals).length ? intervals : null,
@@ -25447,10 +25541,20 @@ async function saveVehCar(){
   };
   if (row.odometer) row.odometer_at = vehToday();
   let error;
-  if (d.id) ({ error } = await sb.from('vehicles').update(row).eq('id', d.id));
-  else { row.sort = vehicles.length; ({ error } = await sb.from('vehicles').insert(row)); }
+  const put = async (r) => d.id ? sb.from('vehicles').update(r).eq('id', d.id)
+                                : sb.from('vehicles').insert({ ...r, sort: vehicles.length });
+  ({ error } = await put(row));
+  //  명의·보험사 칸을 아직 안 깔았으면 그것만 빼고 다시. 알림은 한 줄로
+  //  합친다 — 두 번 띄우면 뒤엣것이 앞엣것을 덮어 아무도 못 본다.
+  let vehPartial = '';
+  if (error && /owner_name|insurer|column|schema cache/i.test(error.message || '')) {
+    const { owner_name, insurer, ...rest } = row;
+    ({ error } = await put(rest));
+    if (!error) vehPartial = t(' — 명의·보험사는 빼고 넣었어요 (db/차량_단위통화_DB설치.sql 을 실행해주세요)',
+                               ' — without owner/insurer (run db/차량_단위통화_DB설치.sql)');
+  }
   if (error) { showUploadToast(t('저장 실패: ','Save failed: ') + error.message); return; }
-  showUploadToast(t('✅ 저장됐어요','✅ Saved'));
+  showUploadToast(t('✅ 저장됐어요','✅ Saved') + vehPartial);
   vehCarDraft = null;
   await renderVehicleHub();
 }
