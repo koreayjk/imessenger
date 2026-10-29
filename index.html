@@ -6237,7 +6237,9 @@ function renderPollCard(m) {
         return `<div title="${escAttr(mem.name||v.member_name||'')}" style="width:20px;height:20px;border-radius:6px;${avFill(mem,'#999')};color:#fff;display:flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:700;margin-left:-4px;border:1.5px solid var(--surface)">${avInner(mem)}</div>`;
       }).join('');
       const more = cnt > 6 ? `<span style="font-size:10.5px;color:var(--ink3);margin-left:4px">+${cnt-6}</span>` : '';
-      voterHtml = `<div style="display:flex;align-items:center;padding-left:4px;margin-top:5px">${shown}${more}</div>`;
+      voterHtml = `<div onclick="event.stopPropagation();showPollVoters('${m.id}','${opt.key}')"
+        title="${imAttr(t('누가 골랐는지 보기','See who voted'))}"
+        style="display:flex;align-items:center;padding-left:4px;margin-top:5px;cursor:pointer">${shown}${more}</div>`;
     }
     // 더한 항목은 누가 적었는지 같이 보여 준다. 누가 올린 건지 모르면
     // '○○병원' 이 왜 들어왔는지 아무도 모른다.
@@ -6264,8 +6266,11 @@ function renderPollCard(m) {
              padding:9px 12px;margin-bottom:7px;cursor:pointer;font:700 12.5px var(--font);color:var(--ink2)">
       ＋ ${t('항목 추가','Add an option')}</div>` : '');
 
-  const footer = `<div style="display:flex;align-items:center;justify-content:space-between;margin-top:4px">
-    <div style="font-size:11.5px;color:var(--ink3)">${t('참여 '+total+'명', total+' voted')}</div>
+  const footer = `<div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:4px">
+    <div style="display:flex;align-items:center;gap:7px;min-width:0">
+      <span style="font-size:11.5px;color:var(--ink3)">${t('참여 '+total+'명', total+' voted')}</span>
+      ${(!meta.anon && total) ? `<span onclick="showPollVoters('${m.id}')" style="font-size:11.5px;font-weight:700;color:var(--adeep);cursor:pointer;white-space:nowrap">📋 ${t('명단','Who voted')}</span>` : ''}
+    </div>
     ${isCreator && !closed ? `<div onclick="closePoll('${m.id}')" style="font-size:11.5px;font-weight:700;color:var(--rose);cursor:pointer;padding:3px 8px;border-radius:7px" onmouseover="this.style.background='#FEE2E2'" onmouseout="this.style.background=''">${t('투표 종료','End poll')}</div>` : ''}
     ${closed ? `<span style="font-size:11px;font-weight:700;color:var(--ink3)">${t('🔒 마감됨','🔒 Ended')}</span>` : ''}
   </div>`;
@@ -6277,6 +6282,55 @@ function renderPollCard(m) {
     ${optsHtml}
     ${footer}
   </div>`;
+}
+
+// 📋 누가 어디에 골랐나 — 선택지마다 이름을 적어 보여 준다.
+//
+//  아바타만으로는 6명까지밖에 안 보이고, 머리글자로는 누군지 모릅니다.
+//  "투표가 끝나면 선택지별 명단을 보고 싶다" 는 요청에서 나왔습니다.
+//  익명 투표에서는 절대 열리지 않습니다.
+function showPollVoters(msgId, onlyKey) {
+  const m = pollMsgCache[msgId]; if (!m) return;
+  let meta; try { meta = JSON.parse(m.text); } catch (_) { return; }
+  if (meta.anon) { showUploadToast(t('익명 투표라 누가 골랐는지 볼 수 없어요','Anonymous poll — voters stay hidden')); return; }
+  const votes = pollVotesByMsg[msgId] || [];
+  const nameOf = v => (members[v.member_id] && members[v.member_id].name) || v.member_name || t('(이름 없음)','(no name)');
+  const opts = pollOptList(msgId, meta).filter(o => !onlyKey || o.key === onlyKey);
+  const total = new Set(votes.map(v => v.member_id)).size;
+
+  const blocks = opts.map(o => {
+    const who = votes.filter(v => pollVoteKey(v) === o.key);
+    const names = who.map(v => {
+      const mem = members[v.member_id] || { initials:(v.member_name||'?')[0], color:'#999' };
+      return `<div style="display:flex;align-items:center;gap:7px;padding:5px 0">
+        <div style="width:24px;height:24px;border-radius:8px;${avFill(mem,'#999')};color:#fff;display:flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:700;flex-shrink:0">${avInner(mem)}</div>
+        <div style="font-size:13px;color:var(--ink)">${escHtml(nameOf(v))}</div></div>`;
+    }).join('');
+    return `<div style="margin-bottom:14px">
+      <div style="display:flex;align-items:baseline;gap:7px;margin-bottom:4px">
+        <div style="font-size:13.5px;font-weight:800;color:var(--ink);word-break:break-word">${escHtml(o.label)}</div>
+        <div style="font-size:11.5px;font-weight:700;color:var(--ink3);white-space:nowrap">${who.length}${t('명','')}</div>
+      </div>
+      ${names || `<div style="font-size:12.5px;color:var(--ink3);padding:4px 0">${t('아직 아무도 고르지 않았어요','No one yet')}</div>`}
+    </div>`;
+  }).join('');
+
+  document.querySelectorAll('.poll-voters-modal').forEach(x => x.remove());
+  const wrap = document.createElement('div');
+  wrap.className = 'poll-voters-modal';
+  wrap.style.cssText = 'position:fixed;inset:0;z-index:520;background:rgba(15,23,42,.5);display:flex;align-items:center;justify-content:center;padding:20px';
+  wrap.onclick = e => { if (e.target === wrap) wrap.remove(); };
+  wrap.innerHTML = `<div style="background:var(--surface);border-radius:18px;width:100%;max-width:380px;max-height:80vh;display:flex;flex-direction:column" onclick="event.stopPropagation()">
+    <div style="padding:16px 18px 10px;border-bottom:1px solid var(--border)">
+      <div style="font-size:15.5px;font-weight:800;color:var(--ink);word-break:break-word">📋 ${escHtml(meta.q || t('투표','Poll'))}</div>
+      <div style="font-size:11.5px;color:var(--ink3);margin-top:3px">${t('참여 '+total+'명', total+' voted')}${pollIsClosed(meta)?' · '+t('마감됨','ended'):''}</div>
+    </div>
+    <div style="padding:14px 18px;overflow-y:auto;flex:1">${blocks}</div>
+    <div style="padding:12px 16px;border-top:1px solid var(--border)">
+      <button onclick="this.closest('.poll-voters-modal').remove()" style="width:100%;height:42px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:11px;font:700 13px var(--font);cursor:pointer">${t('닫기','Close')}</button>
+    </div>
+  </div>`;
+  document.body.appendChild(wrap);
 }
 
 async function votePoll(messageId, key) {
