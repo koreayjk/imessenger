@@ -32,6 +32,18 @@ const bar = (pg) => pg.evaluate(() => {
     ok(!!txt && /목소리가 상대에게 가지 않던/.test(txt), '무엇이 고쳐졌는지 적는다');
     ok(!!txt && /손으로 받으시는 건 이번 한 번뿐/.test(txt), '다음부터는 저절로 된다고 알려 준다');
 
+    //  받으러 갈 자리를 내민다 — 128MB 파일을 카톡으로 보낼 수는 없다
+    const dl = await pg.evaluate(() => {
+      const a = document.getElementById('dt-get');
+      return a ? { href: a.getAttribute('href'), tgt: a.getAttribute('target'),
+                   rel: a.getAttribute('rel'), txt: a.textContent.trim() } : null;
+    });
+    ok(!!dl && /github\.com\/koreayjk\/imessenger\/releases/.test(dl.href || ''),
+       '받으러 가는 자리를 내민다');
+    ok(!!dl && dl.tgt === '_blank' && /noopener/.test(dl.rel || ''),
+       '바깥 창으로 열고, 그 창이 이 화면을 건드리지 못하게 한다');
+    ok(!!dl && /받으러 가기/.test(dl.txt), '무엇을 하는 단추인지 적혀 있다');
+
     //  '오늘은 그만' 을 누르면 접히고, 바로 다시 뜨지는 않는다
     await pg.click('#dt-bar button');
     ok(await bar(pg) === null, '오늘은 그만 을 누르면 접힌다');
