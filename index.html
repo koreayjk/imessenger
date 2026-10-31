@@ -2803,6 +2803,66 @@ function isDesktopShell() {
   catch (_) { return false; }
 }
 
+// ── 🖥 맥 앱 새 판 알리기 ─────────────────────────────────────────
+//
+//  맥 앱은 **스스로 업데이트하지 않습니다.** 이미 깔아 쓰시는 분들은 새 판이
+//  나온 줄을 알 길이 없습니다. 그런데 맥 앱은 화면을 늘 여기서 받아갑니다 —
+//  그러니 화면이 알려 주면 됩니다. 껍데기를 안 고쳐도 통합니다.
+//
+//  ⚠️ 1.0.0 은 마이크를 쓸 자격이 없습니다. 맥은 거절하지 않고 조용한
+//     마이크를 내주므로, 쓰는 분은 전화가 멀쩡한 줄 알고 상대에게만
+//     목소리가 안 갑니다. 그래서 이건 '알려주면 좋은 것' 이 아니라
+//     '알려줘야만 하는 것' 입니다.
+const DESKTOP_VER = '1.1.0';          // 지금 나눠드리는 맥 앱 판
+function desktopVer() {
+  try {
+    const m = String(navigator.userAgent || '').match(/TCSDesktop\/([0-9][0-9.]*)/);
+    return m ? m[1] : '';
+  } catch (_) { return ''; }
+}
+//  1.10 이 1.9 보다 뒤다 — 글자로 견주면 거꾸로 나온다. 마디마다 숫자로 본다.
+function verOlder(a, b) {
+  const pa = String(a).split('.'), pb = String(b).split('.');
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const x = Number(pa[i]) || 0, y = Number(pb[i]) || 0;
+    if (x !== y) return x < y;
+  }
+  return false;
+}
+function desktopOld() {
+  const v = desktopVer();
+  return !!v && verOlder(v, DESKTOP_VER);
+}
+function desktopBarHide() {
+  const b = document.getElementById('dt-bar');
+  if (b) b.remove();
+  //  하루만 접어 둔다. 영영 숨기지는 않는다 — 전화가 안 되는 채로 지냅니다.
+  try { localStorage.setItem('tcs-dtbar', String(Date.now() + 24 * 3600 * 1000)); } catch (_) {}
+}
+function showDesktopUpdateBar() {
+  if (!desktopOld()) return;
+  if (document.getElementById('dt-bar')) return;
+  try { if (Number(localStorage.getItem('tcs-dtbar') || 0) > Date.now()) return; } catch (_) {}
+  const b = document.createElement('div');
+  b.id = 'dt-bar';
+  b.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:880;'
+    + 'background:linear-gradient(135deg,#8a5a0f,#b2791f);color:#fff;'
+    + 'padding:11px 14px;padding-top:calc(11px + env(safe-area-inset-top));'
+    + 'display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:center;'
+    + 'font:600 13px var(--font);line-height:1.7;word-break:keep-all;'
+    + 'box-shadow:0 6px 18px rgba(0,0,0,.25)';
+  b.innerHTML = '<span>🖥 ' + escHtml(
+      t('맥 앱이 옛 판이에요 (' + desktopVer() + '). 새 판 ' + DESKTOP_VER
+        + ' 을 받아 다시 깔아주세요 — 전화할 때 제 목소리가 상대에게 가지 않던 것을 고쳤습니다.',
+        'Your Mac app is out of date (' + desktopVer() + '). Please install ' + DESKTOP_VER
+        + ' — it fixes your voice not reaching the other person on calls.')) + '</span>'
+    + '<button onclick="desktopBarHide()" style="height:30px;padding:0 14px;border:none;'
+    + 'border-radius:9px;background:rgba(255,255,255,.2);color:#fff;'
+    + 'font:700 12px var(--font);cursor:pointer">'
+    + escHtml(t('오늘은 그만','Not today')) + '</button>';
+  document.body.appendChild(b);
+}
+
 function pushSupported() {
   if (nativePush()) return true;          // 아이폰 앱은 애플 길로 간다
   if (isDesktopShell()) return false;     // 맥 앱은 이 길이 아예 없다
@@ -32704,6 +32764,13 @@ function callQuietWhy() {
   //  상대가 "네 말이 안 들려" 할 때, 그 사람이 아니라 **이 화면**이 말해 줘야 한다.
   const mt = c.micTrack;
   if (mt && (!mt.live || mt.muted)) {
+    //  옛 맥 앱은 마이크를 쓸 자격이 아예 없다. 설정을 아무리 봐도 안 고쳐진다.
+    if (desktopOld()) {
+      return t('맥 앱이 옛 판(' + desktopVer() + ')이라 마이크를 못 씁니다 — 새 판 ' + DESKTOP_VER
+               + ' 을 받아 다시 깔아주세요. 설정을 고쳐도 이 판으로는 안 됩니다.',
+               'This Mac app (' + desktopVer() + ') cannot use the microphone — install '
+               + DESKTOP_VER + '. No setting fixes it on this build.');
+    }
     return t('이 기기의 마이크가 잠겨 있어요 — 제 목소리가 상대에게 안 갑니다. 아이폰은 설정 → TCS → 마이크, 컴퓨터는 주소창 왼쪽 자물쇠에서 켜주세요.',
              'This device\'s microphone is locked — your voice is not going out. iPhone: Settings → TCS → Microphone. Computer: the lock icon in the address bar.');
   }
@@ -33135,6 +33202,7 @@ async function loadCallLimit() {
 function callInit() {
   subscribeCalls();
   loadCallLimit();
+  showDesktopUpdateBar();      // 옛 맥 앱은 마이크가 막혀 있다 — 알려줘야 한다
   // 벨만 울리다 아무도 안 누른 내 지난 전화를 '못 받음' 으로 정리한다
   try { sb.rpc('expire_stale_calls').then(() => {}, () => {}); } catch (_) {}
   // 창을 닫으면 상대 화면이 영영 '울리는 중' 으로 남는다. 알려만 주고 나간다.

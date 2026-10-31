@@ -102,7 +102,9 @@ async function launch() {
 
 //  as: 'teacher'(기본) | 'parent' | 'student'
 async function openApp(b, o = {}) {
-  const pg = await b.newPage({ viewport: o.viewport || { width: 1280, height: 950 } });
+  const pg = await b.newPage(Object.assign(
+    { viewport: o.viewport || { width: 1280, height: 950 } },
+    o.ua ? { userAgent: o.ua } : {}));
   pg.on('pageerror', e => console.log('  ⚠️', e.message.slice(0, 130)));
   //  🚧 바깥으로 나가는 길을 전부 막는다.
   //
