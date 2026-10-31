@@ -1128,6 +1128,31 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
         <div style="text-align:center;font-size:13px;color:var(--ink3);margin-top:4px">
           <span data-ko="계정이 없으신가요?" data-en="Don't have an account?">계정이 없으신가요?</span> <span onclick="switchTab('signup')" style="color:var(--adeep);font-weight:600;cursor:pointer" data-ko="회원가입" data-en="Sign up">회원가입</span>
         </div>
+        <div style="text-align:center;margin-top:9px">
+          <span id="si-forgot" onclick="showResetForm()" style="font-size:12.5px;color:var(--ink3);cursor:pointer;text-decoration:underline" data-ko="비밀번호를 잊으셨나요?" data-en="Forgot your password?">비밀번호를 잊으셨나요?</span>
+        </div>
+      </div>
+
+      <!-- 🔑 비밀번호 찾기 — 메일로 다시 정하는 링크를 보냅니다 -->
+      <div class="auth-form" id="form-reset" style="display:none">
+        <h2 data-ko="비밀번호 찾기 🔑" data-en="Reset your password 🔑">비밀번호 찾기 🔑</h2>
+        <div class="sub" data-ko="가입하신 이메일로 다시 정하는 링크를 보내 드려요" data-en="We'll email you a link to set a new password">가입하신 이메일로 다시 정하는 링크를 보내 드려요</div>
+        <input class="auth-input" id="rs-email" type="email" placeholder="이메일 주소" data-ko-ph="이메일 주소" data-en-ph="Email address" onkeydown="if(event.key==='Enter')sendResetEmail()"/>
+        <button class="auth-btn" onclick="sendResetEmail()" id="rs-btn" data-ko="링크 보내기" data-en="Send the link">링크 보내기</button>
+        <div class="auth-msg" id="rs-msg"></div>
+        <div style="text-align:center;font-size:13px;color:var(--ink3);margin-top:4px">
+          <span onclick="switchTab('signin')" style="color:var(--adeep);font-weight:600;cursor:pointer" data-ko="← 로그인으로 돌아가기" data-en="← Back to sign in">← 로그인으로 돌아가기</span>
+        </div>
+      </div>
+
+      <!-- 🔑 새 비밀번호 정하기 — 메일 링크를 타고 들어왔을 때 -->
+      <div class="auth-form" id="form-newpw" style="display:none">
+        <h2 data-ko="새 비밀번호 정하기 🔑" data-en="Set a new password 🔑">새 비밀번호 정하기 🔑</h2>
+        <div class="sub" data-ko="앞으로 쓰실 비밀번호를 적어주세요 (6자 이상)" data-en="Choose the password you'll use from now on (6+ characters)">앞으로 쓰실 비밀번호를 적어주세요 (6자 이상)</div>
+        <input class="auth-input" id="np-pw1" type="password" placeholder="새 비밀번호" data-ko-ph="새 비밀번호" data-en-ph="New password" onkeydown="if(event.key==='Enter')saveNewPassword()"/>
+        <input class="auth-input" id="np-pw2" type="password" placeholder="새 비밀번호 확인" data-ko-ph="새 비밀번호 확인" data-en-ph="Confirm new password" onkeydown="if(event.key==='Enter')saveNewPassword()"/>
+        <button class="auth-btn" onclick="saveNewPassword()" id="np-btn" data-ko="비밀번호 바꾸기" data-en="Change password">비밀번호 바꾸기</button>
+        <div class="auth-msg" id="np-msg"></div>
       </div>
 
       <!-- 회원가입 폼 -->
@@ -2116,6 +2141,13 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
 <script>// ── Supabase ──
 const SUPABASE_URL = 'https://bbfvnmlrdtzmcwfadjqw.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJiZnZubWxyZHR6bWN3ZmFkanF3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1Njg1OTIsImV4cCI6MjA5ODE0NDU5Mn0.nJbRfTkcjVxsb_BO6sAP_0lOxQ--wTFXVN9tBH1IPNA';
+//  🔑 비밀번호 재설정 링크로 들어왔는가 —
+//  supabase-js 는 만들어지는 순간 주소의 토큰을 먹고 주소를 지웁니다.
+//  그 전에 봐 두지 않으면, 메일 링크로 들어온 사람이 비밀번호를 새로
+//  정하지도 않고 그냥 앱으로 들어가 버립니다.
+const _AUTH_URL_SEEN = (location.hash || '') + ' ' + (location.search || '');
+const IS_RECOVERY = /type=recovery/.test(_AUTH_URL_SEEN);
+
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // 공동체 이름 — 화면 여기저기에 'IMUSA' 가 박혀 있어 다른 공동체에서도 그렇게 보였다.
@@ -3263,9 +3295,106 @@ function switchTab(t) {
   document.getElementById('tab-signup').classList.toggle('active', t==='signup');
   document.getElementById('form-signin').style.display = t==='signin' ? 'flex' : 'none';
   document.getElementById('form-signup').style.display = t==='signup' ? 'flex' : 'none';
+  //  비밀번호 관련 칸은 탭이 아니다 — 탭을 누르면 늘 닫힌다
+  const rf = document.getElementById('form-reset');  if (rf) rf.style.display = 'none';
+  const nf = document.getElementById('form-newpw');  if (nf) nf.style.display = 'none';
   if (t === 'signup') loadCommunitiesForSignup();
 }
 window.switchTab = switchTab;
+
+// ══════════════════════════════════════════════════════════════════
+//  🔑 비밀번호 찾기
+//
+//  학부모님은 직접 가입하십니다. 잊으면 들어올 길이 없었습니다 —
+//  로그인한 뒤에 바꾸는 칸만 있었고, 관리자가 대신 바꿔 줄 길도
+//  없었습니다. 메일로 다시 정하는 링크를 보냅니다.
+// ══════════════════════════════════════════════════════════════════
+function showResetForm() {
+  document.getElementById('form-signin').style.display = 'none';
+  document.getElementById('form-signup').style.display = 'none';
+  document.getElementById('form-newpw').style.display = 'none';
+  document.getElementById('form-reset').style.display = 'flex';
+  const em = (document.getElementById('si-email') || {}).value || '';
+  const el = document.getElementById('rs-email'); if (el) { el.value = em.trim(); el.focus(); }
+  const msg = document.getElementById('rs-msg'); if (msg) msg.textContent = '';
+}
+window.showResetForm = showResetForm;
+
+function showNewPwForm() {
+  const sp = document.getElementById('splash'); if (sp) sp.remove();
+  document.getElementById('auth-screen').style.display = 'flex';
+  document.getElementById('app').style.display = 'none';
+  ['form-signin','form-signup','form-reset'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.style.display = 'none'; });
+  document.getElementById('form-newpw').style.display = 'flex';
+  setTimeout(() => document.getElementById('np-pw1')?.focus(), 60);
+}
+window.showNewPwForm = showNewPwForm;
+
+async function sendResetEmail() {
+  const msg = document.getElementById('rs-msg');
+  const btn = document.getElementById('rs-btn');
+  const email = (document.getElementById('rs-email').value || '').trim();
+  const say = (text, cls) => { if (msg) { msg.className = 'auth-msg ' + (cls || ''); msg.textContent = text; } };
+  if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+    say(t('이메일 주소를 정확히 적어주세요','Please enter a valid email address'), 'error'); return;
+  }
+  btn.disabled = true; btn.textContent = t('보내는 중...','Sending...');
+  //  어디로 돌아올지 — 지금 이 주소. 공유 링크 같은 꼬리표는 떼고 보냅니다.
+  const back = location.origin + location.pathname;
+  const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: back });
+  btn.disabled = false; btn.textContent = t('링크 보내기','Send the link');
+  if (error) {
+    //  ⚠️ '그런 계정 없다' 고 알려 주면, 남의 이메일을 넣어 가입 여부를
+    //     확인할 수 있습니다. 보냈는지 아닌지는 똑같이 답합니다.
+    if (/rate|limit|too many/i.test(error.message || '')) {
+      say(t('조금 뒤에 다시 시도해 주세요 (잠깐 사이에 너무 여러 번 보냈어요)',
+            'Please try again in a little while (too many requests)'), 'error');
+      return;
+    }
+    console.warn('[reset]', error.message);
+  }
+  say(t(`📧 ${email} 으로 보냈어요. 메일의 링크를 누르시면 새 비밀번호를 정하실 수 있어요.\n메일이 안 보이면 스팸함도 확인해 주세요. 링크는 한 시간 동안만 열립니다.`,
+        `📧 Sent to ${email}. Open the link to set a new password.\nCheck your spam folder too — the link works for one hour.`), 'success');
+}
+window.sendResetEmail = sendResetEmail;
+
+async function saveNewPassword() {
+  const msg = document.getElementById('np-msg');
+  const btn = document.getElementById('np-btn');
+  const pw1 = document.getElementById('np-pw1').value;
+  const pw2 = document.getElementById('np-pw2').value;
+  const say = (text, cls) => { if (msg) { msg.className = 'auth-msg ' + (cls || ''); msg.textContent = text; } };
+  if (!pw1 || pw1.length < 6) { say(t('비밀번호는 6자 이상으로 적어주세요','Use at least 6 characters'), 'error'); return; }
+  if (pw1 !== pw2) { say(t('두 비밀번호가 서로 달라요','The two passwords do not match'), 'error'); return; }
+  btn.disabled = true; btn.textContent = t('바꾸는 중...','Changing...');
+  const { error } = await sb.auth.updateUser({ password: pw1 });
+  btn.disabled = false; btn.textContent = t('비밀번호 바꾸기','Change password');
+  if (error) {
+    say(/session|expired|invalid|token/i.test(error.message || '')
+      ? t('링크가 만료됐어요. 로그인 화면에서 다시 보내 주세요.','That link has expired — please request a new one.')
+      : t('바꾸지 못했어요: ','Could not change it: ') + error.message, 'error');
+    return;
+  }
+  //  바꾼 뒤에는 로그아웃하고 새 비밀번호로 다시 들어오게 합니다 —
+  //  그래야 새 비밀번호가 맞는지 본인이 바로 확인합니다.
+  await sb.auth.signOut().catch(() => {});
+  document.getElementById('np-pw1').value = ''; document.getElementById('np-pw2').value = '';
+  switchTab('signin');
+  const si = document.getElementById('si-msg');
+  if (si) { si.className = 'auth-msg'; si.style.color = '#15803d';
+            si.textContent = t('✅ 비밀번호를 바꿨어요. 새 비밀번호로 로그인해 주세요.',
+                               '✅ Password changed — sign in with the new one.'); }
+}
+window.saveNewPassword = saveNewPassword;
+
+//  메일 링크를 타고 들어왔을 때 — supabase 가 주소를 먹기 전에 못 봤더라도
+//  이 신호로 한 번 더 잡습니다.
+try {
+  sb.auth.onAuthStateChange((event) => {
+    if (event === 'PASSWORD_RECOVERY') { try { showNewPwForm(); } catch (_) {} }
+  });
+} catch (_) {}
 
 // ── 전역 함수 노출 (HTML onclick 사용) ──
 window.doSignIn = doSignIn;
@@ -20646,6 +20775,21 @@ window.addEventListener('load', async () => {
   if (pfMatch) {
     _pendingFeedbackId = pfMatch[1];
     try { history.replaceState(null, '', location.pathname + location.search); } catch (_) {}
+  }
+
+  //  🔑 비밀번호 재설정 링크로 들어왔으면, 세션이 있더라도 앱으로 들여보내지
+  //     않습니다. 새 비밀번호를 정하는 것이 이 방문의 목적입니다.
+  if (IS_RECOVERY) {
+    hideSplash();
+    try { history.replaceState(null, '', location.pathname); } catch (_) {}
+    //  supabase 가 토큰을 세션으로 바꿀 틈을 조금 줍니다
+    for (let i = 0; i < 20; i++) {
+      const { data: { session: s0 } } = await sb.auth.getSession();
+      if (s0) break;
+      await new Promise(r => setTimeout(r, 150));
+    }
+    showNewPwForm();
+    return;
   }
 
   // 기존 세션 복원
