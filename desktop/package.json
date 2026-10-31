@@ -40,6 +40,10 @@
         }
       ],
       "darkModeSupport": true,
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "전화를 걸고 받을 때 마이크를 씁니다. 통화는 녹음하지 않습니다.",
+        "NSCameraUsageDescription": "증명사진이나 첨부파일을 찍어서 올릴 때 카메라를 씁니다."
+      },
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",

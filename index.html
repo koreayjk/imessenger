@@ -32209,7 +32209,34 @@ async function callMic() {
     video: false,
   });
   if (CALL) CALL.mic = s; else s.getTracks().forEach(tr => tr.stop());
+  callCheckMic(s);
   return s;
+}
+
+//  🎙 마이크를 받았다고 해서 소리가 나오는 건 아니다.
+//
+//  ⚠️ 아이폰 앱(WKWebView)은 아이폰 자체의 마이크 허락이 없을 때, 거절하지 않고
+//     **조용한 마이크**를 내주는 일이 있습니다. 허락 창도 안 뜹니다. 그러면
+//     전화는 멀쩡히 붙고 내 목소리만 상대에게 안 갑니다 — 오류가 하나도 없어서
+//     찾을 길이 없었습니다. 맥에서도 다른 앱(줌·녹음기)이 마이크를 잡고 있으면
+//     같은 모습이 됩니다. 그래서 받자마자 들여다보고, 화면에 적습니다.
+function callCheckMic(st) {
+  if (!CALL) return;
+  const tr = st && st.getAudioTracks && st.getAudioTracks()[0];
+  if (!tr) {
+    CALL.micTrack = { label: '', live: false, muted: true };
+    console.warn('📞 마이크 줄이 하나도 없습니다');
+    renderCallScreen();
+    return;
+  }
+  CALL.micTrack = { label: tr.label || '', live: tr.readyState === 'live', muted: !!tr.muted };
+  console.log('📞 마이크:', (tr.label || '이름 없음'),
+              '· 살아있음=' + (tr.readyState === 'live'), '· 잠김=' + !!tr.muted);
+  //  잠겼다 풀렸다 한다 — 그때그때 화면을 고쳐 준다
+  tr.onmute = () => { if (CALL && CALL.micTrack) { CALL.micTrack.muted = true; renderCallScreen(); } };
+  tr.onunmute = () => { if (CALL && CALL.micTrack) { CALL.micTrack.muted = false; renderCallScreen(); } };
+  tr.onended = () => { if (CALL && CALL.micTrack) { CALL.micTrack.live = false; renderCallScreen(); } };
+  renderCallScreen();
 }
 
 // ── 서로를 찾는 쪽지를 주고받는 줄 (실시간 방송 — 아무것도 안 남는다) ──
@@ -32344,7 +32371,9 @@ async function callMakePc() {
   };
   pc.ontrack = (e) => {
     const st = (e.streams && e.streams[0]) || (e.track ? new MediaStream([e.track]) : null);
-    if (st) callPlayRemote(st);
+    if (!st) return;
+    if (CALL) CALL.remote = st;      // 틀을 새로 만들 때 다시 끼워야 한다
+    callPlayRemote(st);
   };
   pc.onconnectionstatechange = () => {
     if (!CALL || CALL.pc !== pc) return;
@@ -32398,8 +32427,10 @@ function callFailed() {
 //  ⚠️ display:none 으로 두면 안 된다. 아이폰은 '화면에 없는' 소리틀을
 //     틀어 주지 않는다. 안 보이게만 하고 화면에는 남겨 둔다.
 //     (맥에서 건 전화를 아이폰이 못 듣던 까닭이 이것이었다)
-function callAudioEl() {
+function callAudioEl(fresh) {
   let a = document.getElementById('call-audio');
+  //  막힌 틀은 되살릴 수가 없다. 통째로 버리고 새로 만든다.
+  if (a && fresh) { try { a.pause(); a.srcObject = null; a.remove(); } catch (_) {} a = null; }
   if (!a) {
     a = document.createElement('audio');
     a.id = 'call-audio';
@@ -32420,6 +32451,30 @@ function callAudioEl() {
   return a;
 }
 
+//  잠금을 푸는 틀은 **따로** 둔다.
+//
+//  ⚠️ 예전에는 이 둘이 한 틀이었습니다. 잠금을 풀려고 아주 짧은 wav 를
+//     한 번 틀고(src), 그 뒤에 상대 목소리를 srcObject 로 갈아 끼웠습니다.
+//     사파리·웹킷은 한 번 src 를 먹은 틀이 스트림으로 안 돌아올 때가
+//     있습니다 — play() 는 잘 되었다고 하고 paused 도 false 인데,
+//     **소리만 안 납니다.** 오류도 안 뜹니다.
+//     (내 말은 상대에게 가는데 상대 말만 안 들리던 까닭이 이것입니다)
+//     이제 잠금풀이는 이 틀이 혼자 맡고, #call-audio 는 평생 src 를
+//     모른 채 스트림만 받습니다.
+function callUnlockEl() {
+  let u = document.getElementById('call-unlock');
+  if (!u) {
+    u = document.createElement('audio');
+    u.id = 'call-unlock';
+    u.setAttribute('playsinline', '');
+    u.setAttribute('controls', '');
+    u.style.cssText = 'display:block;position:fixed;left:-9999px;top:0;'
+                    + 'width:1px;height:1px;opacity:0;pointer-events:none';
+    document.body.appendChild(u);
+  }
+  return u;
+}
+
 // 아무 소리도 안 나는 아주 짧은 소리. 잠금을 푸는 데만 쓴다.
 const CALL_SILENT = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
 
@@ -32427,19 +32482,19 @@ const CALL_SILENT = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAA
 // 적이 있어야 그 뒤로 소리를 내준다. 상대 목소리는 몇 초 뒤에 오므로
 // 그때는 이미 늦다. 걸기·받기를 누른 그 순간에 미리 풀어 둔다.
 function callUnlockAudio() {
-  const a = callAudioEl();
+  callAudioEl();                    // 미리 만들어 둔다 (화면에 있어야 아이폰이 틀어 준다)
+  const u = callUnlockEl();
   try {
-    if (!a.srcObject) { a.src = CALL_SILENT; a.load(); }
-    const p = a.play();
+    u.src = CALL_SILENT; u.load();
+    const p = u.play();
     if (p && p.catch) p.catch(() => {});
   } catch (_) {}
 }
 
 // 상대 목소리를 튼다. 막히면 화면에 '🔊 소리 켜기' 를 내민다 —
 // 조용한 채로 두면 전화가 안 되는 줄 안다.
-function callPlayRemote(stream) {
-  const a = callAudioEl();
-  try { a.removeAttribute('src'); } catch (_) {}
+function callPlayRemote(stream, fresh) {
+  const a = callAudioEl(fresh);
   a.srcObject = stream;
   a.muted = false;
   const go = () => {
@@ -32460,10 +32515,19 @@ function callPlayRemote(stream) {
 // 막혔을 때 쓰는 단추 — 누른 그 순간이 '사람이 누른 때' 라 통한다
 function callTapToHear() {
   const a = callAudioEl();
+  //  한 번 더 눌러도 안 되는 일이 있다. 그때는 틀을 통째로 새로 만든다 —
+  //  누른 바로 지금이라 새 틀도 소리를 낼 수 있다.
+  const again = () => {
+    if (!CALL || !CALL.remote) return;
+    CALL.rebuilt = (CALL.rebuilt || 0) + 1;
+    callPlayRemote(CALL.remote, true);
+    renderCallScreen();
+  };
   try {
     const p = a.play();
-    if (p && p.then) p.then(() => { if (CALL) { CALL.needTap = false; renderCallScreen(); } }, () => {});
-  } catch (_) {}
+    if (p && p.then) p.then(() => { if (CALL) { CALL.needTap = false; renderCallScreen(); } }, again);
+    else again();
+  } catch (_) { again(); }
 }
 
 async function callFlushIce() {
@@ -32605,7 +32669,12 @@ function callPollStats() {
       if (r.type === 'inbound-rtp'  && r.kind === 'audio') { inb = r.packetsReceived || 0; rlv = r.audioLevel || rlv; }
       if (r.type === 'outbound-rtp' && r.kind === 'audio') { out = r.packetsSent || 0; }
       if (r.type === 'media-source' && r.kind === 'audio') { mic = r.audioLevel || 0; }
+      //  사파리는 상대 소리 크기를 track 쪽에 적어 준다
+      if (r.type === 'track' && r.kind === 'audio' && r.remoteSource && r.audioLevel != null) rlv = r.audioLevel;
     });
+    //  '지금 조용한 것' 과 '내내 조용한 것' 은 다르다. 가장 컸던 때를 들고 있는다.
+    c.rlvMax = Math.max(c.rlvMax || 0, rlv);
+    c.micMax = Math.max(c.micMax || 0, mic);
     c.aud = { inb, out, mic, rlv };
   }, () => {});
 }
@@ -32631,12 +32700,31 @@ function callQuietWhy() {
     }
     return t('소리 길을 찾는 중이에요.', 'Finding an audio path…');
   }
+  //  이 기기의 마이크가 잠겨 있다 — 전화는 붙어도 내 목소리는 안 간다.
+  //  상대가 "네 말이 안 들려" 할 때, 그 사람이 아니라 **이 화면**이 말해 줘야 한다.
+  const mt = c.micTrack;
+  if (mt && (!mt.live || mt.muted)) {
+    return t('이 기기의 마이크가 잠겨 있어요 — 제 목소리가 상대에게 안 갑니다. 아이폰은 설정 → TCS → 마이크, 컴퓨터는 주소창 왼쪽 자물쇠에서 켜주세요.',
+             'This device\'s microphone is locked — your voice is not going out. iPhone: Settings → TCS → Microphone. Computer: the lock icon in the address bar.');
+  }
   if (!(a.inb > 0)) return t('길은 붙었는데 상대 소리가 아직 안 와요.',
                              'Connected, but no audio is arriving yet.');
   if (c.needTap)   return t('소리는 오는데 이 기기가 막았어요 — 위를 한 번 눌러주세요.',
                             'Audio is arriving but this device blocked it — tap above once.');
-  if (!(a.mic > 0.0005)) return t('상대 소리는 와요. 그런데 제 마이크가 조용해요 — 음소거나 기기 설정을 보세요.',
-                                  'Their audio is arriving, but your microphone is silent — check mute and device settings.');
+  //  꾸러미는 오는데 틀의 시계가 안 간다 — 이 기기가 안 틀고 있는 것이다
+  if (c.playing === false) {
+    return t('소리는 오는데 이 기기가 안 틀고 있어요 — 소리틀을 새로 만드는 중이에요.',
+             'Audio is arriving but this device is not playing it — rebuilding the player.');
+  }
+  //  길도 열렸고 틀도 도는데 내내 조용했다면, 조용한 쪽은 상대 마이크다
+  if (callElapsed() > 6 && !((c.rlvMax || 0) > 0.01)) {
+    return t('소리 길은 열렸는데 상대 마이크가 내내 조용해요. 상대 기기에서 음소거와 마이크 허락을 봐주세요.',
+             'The path is open but their microphone has been silent. Check their mute and microphone permission.');
+  }
+  if (callElapsed() > 6 && !((c.micMax || 0) > 0.005)) {
+    return t('상대 소리는 와요. 그런데 제 마이크가 내내 조용해요 — 음소거나 기기 설정을 보세요.',
+             'Their audio is arriving, but your microphone has been silent — check mute and device settings.');
+  }
   return '';
 }
 
@@ -32652,13 +32740,54 @@ function callDiagLine() {
              + ' · ' + t('중계','Relay') + ' ' + (c.hasTurn ? t('있음','on') : t('없음','off'))
              + ' · ' + t('상태','State') + ' ' + (c.net || '-')
              + ' · ' + t('소리','Audio') + ' ↑' + (a.out || 0) + ' ↓' + (a.inb || 0)
-             + ' · ' + t('내 마이크','Mic') + ' ' + Math.round((a.mic || 0) * 100) + '%';
+             + ' · ' + t('내 마이크','Mic') + ' ' + Math.round((c.micMax || 0) * 100) + '%'
+             + (c.micTrack ? (c.micTrack.muted || !c.micTrack.live ? '🔒' : '') : '?')
+             + ' · ' + t('상대 소리','Them') + ' ' + Math.round((c.rlvMax || 0) * 100) + '%'
+             + ' · ' + t('틀','Out') + ' ' + (c.playing === false ? '⏸' : '▶')
+             + ((c.rebuilt || 0) ? '↻' + c.rebuilt : '');
   return line;
+}
+
+//  🩺 소리는 오는데 틀이 안 도는가.
+//
+//  "내 말은 상대에게 가는데 상대 말만 안 들린다" 는 여기서 끝납니다.
+//  꾸러미(packetsReceived)는 늘어나는데 소리틀의 시계(currentTime)가
+//  안 가면, 틀이 막힌 것입니다. 사파리에서 그런 일이 있습니다 —
+//  play() 도 잘 되었다 하고 paused 도 false 인데 소리만 안 납니다.
+//  되살릴 방법이 없어서, 틀을 버리고 새로 만듭니다.
+function callWatchAudio() {
+  const c = CALL;
+  if (!c || c.status !== 'accepted' || !c.remote) return;
+  const a = document.getElementById('call-audio');
+  if (!a) return;
+  //  ⚠️ callTick 은 1초마다도 오고 화면을 다시 그릴 때마다도 옵니다. 두 번이
+  //     거의 같은 순간에 오면 시계가 안 갔다고 잘못 보게 됩니다 — 재 보고 고침.
+  const nowMs = Date.now();
+  if (nowMs - (c.watchAt || 0) < 700) return;
+  c.watchAt = nowMs;
+  const inb = (c.aud && c.aud.inb) || 0;
+  const grew = inb > (c.lastInb || 0);
+  c.lastInb = inb;
+  if (!grew) { c.stuck = 0; return; }          // 아직 소리가 안 온다 — 틀 탓이 아니다
+  const now = a.currentTime || 0;
+  const moving = !a.paused && now > (c.lastAt || 0) + 0.001;
+  c.lastAt = now;
+  c.playing = moving;
+  if (moving) { c.stuck = 0; return; }
+  c.stuck = (c.stuck || 0) + 1;
+  if (c.stuck < 3) return;                     // 3초는 봐준다
+  c.stuck = 0;
+  if ((c.rebuilt || 0) >= 3) return;           // 끝없이 다시 만들지는 않는다
+  c.rebuilt = (c.rebuilt || 0) + 1;
+  console.warn('📞 소리는 오는데 틀이 멈춰 있습니다 — 틀을 새로 만듭니다 (' + c.rebuilt + ')');
+  callPlayRemote(c.remote, true);
+  renderCallScreen();
 }
 
 function callTick() {
   if (!CALL || CALL.status !== 'accepted') return;
   callPollStats();
+  callWatchAudio();
   const dg = document.getElementById('call-diag');
   if (dg) dg.textContent = callDiagLine();
   const qw = document.getElementById('call-quiet');
@@ -32886,7 +33015,9 @@ function callTeardown() {
     try { if (c.sig) sb.removeChannel(c.sig); } catch (_) {}
   }
   const a = document.getElementById('call-audio');
-  if (a) { try { a.pause(); a.srcObject = null; a.removeAttribute('src'); } catch (_) {} }
+  if (a) { try { a.pause(); a.srcObject = null; a.remove(); } catch (_) {} }
+  const u = document.getElementById('call-unlock');
+  if (u) { try { u.pause(); u.removeAttribute('src'); } catch (_) {} }
   renderCallScreen();
 }
 

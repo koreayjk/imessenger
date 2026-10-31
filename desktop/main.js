@@ -10,7 +10,7 @@
 //  아이들이 쓰는 앱이라 이 부분은 느슨하게 두지 않습니다.
 // ════════════════════════════════════════════════════════════════════
 'use strict';
-const { app, BrowserWindow, shell, Menu, dialog } = require('electron');
+const { app, BrowserWindow, shell, Menu, dialog, systemPreferences } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 
@@ -56,6 +56,60 @@ function offlineHtml(why) {
     </div></body></html>`);
 }
 
+//  🎙 전화에 쓸 마이크 — 맥에는 문이 두 겹이다.
+//
+//  ⚠️ 하나는 화면(웹)이 묻는 허락이고, 또 하나는 맥 자체의 허락입니다.
+//     맥 쪽 허락이 없으면 맥은 거절하지 않고 **묻지도 않은 채 조용한
+//     마이크**를 내줍니다. 그러면 전화는 멀쩡히 붙고 내 목소리만 상대에게
+//     안 갑니다 — 오류가 하나도 안 나서 찾을 길이 없습니다.
+//     (실제로 "상대편은 마이크 허락 창이 안 떴다" 로 나타났습니다)
+//
+//     그래서 ① 맥에게 먼저 물어보고 ② 우리 주소일 때만 열어 줍니다.
+//     Info.plist 의 NSMicrophoneUsageDescription 과
+//     entitlements 의 com.apple.security.device.audio-input 이
+//     둘 다 있어야 이 물음이 뜹니다 — 하나라도 빠지면 조용히 막힙니다.
+async function askMacFor(kind) {
+  if (process.platform !== 'darwin') return true;
+  try {
+    if (!systemPreferences.getMediaAccessStatus) return true;
+    const st = systemPreferences.getMediaAccessStatus(kind);
+    if (st === 'granted') return true;
+    if (st === 'denied' || st === 'restricted') {
+      macBlocked(kind);
+      return false;
+    }
+    const ok = await systemPreferences.askForMediaAccess(kind);
+    if (!ok) macBlocked(kind);
+    return !!ok;
+  } catch (_) { return true; }   // 알 수 없으면 막지는 않는다
+}
+
+//  막혔으면 어디서 켜는지까지 알려 준다. '안 된다' 만으로는 못 고친다.
+let _macWarned = {};
+function macBlocked(kind) {
+  if (_macWarned[kind]) return;
+  _macWarned[kind] = true;
+  const name = kind === 'camera' ? '카메라' : '마이크';
+  try {
+    dialog.showMessageBox({
+      type: 'warning',
+      message: `맥이 TCS의 ${name} 사용을 막고 있어요`,
+      detail: `   사과 메뉴 →  시스템 설정 →  개인정보 보호 및 보안 →  ${name}
+`
+            + `에서 TCS 를 켜 주세요. 켜신 뒤 앱을 껐다 다시 열면 됩니다.
+
+`
+            + `이대로 두면 전화는 걸리는데 제 목소리가 상대에게 가지 않습니다.`,
+      buttons: ['설정 열기', '나중에'],
+      defaultId: 0,
+    }).then((r) => {
+      if (r.response !== 0) return;
+      const pane = kind === 'camera' ? 'Privacy_Camera' : 'Privacy_Microphone';
+      shell.openExternal('x-apple.systempreferences:com.apple.preference.security?' + pane);
+    }, () => {});
+  } catch (_) {}
+}
+
 function createWindow() {
   const s = loadState();
   win = new BrowserWindow({
@@ -84,6 +138,26 @@ function createWindow() {
     if (!ua.includes('TCSDesktop')) win.webContents.setUserAgent(ua + ' TCSDesktop/' + app.getVersion());
   } catch (_) {}
   if (s.max) win.maximize();
+
+  //  받아온 화면에 아무 힘이나 주지 않는다 — 우리 주소일 때만, 쓰는 것만.
+  //  (일렉트론은 아무 손잡이도 안 달면 거의 다 그냥 열어 줍니다)
+  const ses = win.webContents.session;
+  const OKAY = ['media', 'audioCapture', 'videoCapture', 'notifications',
+                'clipboard-sanitized-write', 'fullscreen'];
+  const ours = (url) => { try { return new URL(url).origin === ORIGIN; } catch (_) { return false; } };
+  ses.setPermissionRequestHandler(async (wc, perm, done, det) => {
+    const url = (det && det.requestingUrl) || (wc && wc.getURL()) || '';
+    if (!OKAY.includes(perm) || !ours(url)) return done(false);
+    //  마이크·카메라는 맥에게도 물어야 진짜로 소리가 난다
+    const kinds = (det && det.mediaTypes && det.mediaTypes.length) ? det.mediaTypes
+                : perm === 'audioCapture' ? ['audio']
+                : perm === 'videoCapture' ? ['video'] : [];
+    for (const k of kinds) {
+      if (!(await askMacFor(k === 'video' ? 'camera' : 'microphone'))) return done(false);
+    }
+    done(true);
+  });
+  ses.setPermissionCheckHandler((_wc, perm, origin) => OKAY.includes(perm) && ours(origin || ''));
 
   win.once('ready-to-show', () => win.show());
   ['resize', 'move', 'close'].forEach(e => win.on(e, () => saveState(win)));
