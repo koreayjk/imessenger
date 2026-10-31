@@ -47,10 +47,14 @@ function dbScript() {
   return `(() => {
     const DB = window.__seed();
     window.__DB = DB; window.__ins = []; window.__upd = []; window.__err = null;
+    window.__rpc = []; window.__rm = []; window.__rmResult = null;
     let seq = 0;
     const mkq = (t) => { const q = { _t:t, _eq:{} };
-      ['limit','neq','is','gte','lte','lt','gt','not','range','or','filter','contains']
+      ['neq','is','gte','lte','lt','gt','not','range','or','filter','contains']
         .forEach(k => q[k] = function(){ return this; });
+      //  limit 은 진짜로 자른다. 무시하면 '40통만 보이던 것' 같은 가정을
+      //  시험이 아예 못 재게 된다 (되돌려 보고 ❌ 가 안 나와서 들켰다).
+      q.limit = function(n){ this._lim = Number(n); return this; };
       q.order = function(k, o){ (this._ord = this._ord || []).push([k, !(o && o.ascending === false)]); return this; };
       q.in = function(k,v){ this._in=[k,v]; return this; };
       q.select = function(){ return this; };
@@ -82,14 +86,24 @@ function dbScript() {
           rows.sort((a,b) => String(a[k]||'').localeCompare(String(b[k]||'')) * (asc ? 1 : -1));
         });
         if (this._s) return Promise.resolve({ data: rows[0] || null, error:null }).then(res, rej);
+        if (Number.isFinite(this._lim)) rows = rows.slice(0, this._lim);
         return Promise.resolve({ data: rows, error:null }).then(res, rej);
       };
       return q; };
     window.supabase = { createClient: () => ({
-      from: t => mkq(t), rpc: () => mkq('_rpc'),
+      from: t => mkq(t),
+      //  rpc 는 이름마다 따로 답할 수 있게 한다 — 한 화면에서 여러 rpc 를
+      //  부르면 한 통에 몰아넣을 수 없다. DB['rpc:<이름>'] 을 먼저 본다.
+      rpc: (name, args) => { window.__rpc.push({ name, args }); return mkq('rpc:' + name); },
       channel: () => ({ on(){return this}, subscribe(){return this}, send(){return Promise.resolve('ok')} }),
       removeChannel(){},
-      storage:{ from: () => ({ getPublicUrl: () => ({ data:{ publicUrl:'' } }) }) },
+      storage:{ from: (b) => ({
+        getPublicUrl: (path) => ({ data:{ publicUrl: 'about:blank#' + path } }),
+        upload: async () => ({ data:null, error:null }),
+        remove: async (paths) => { window.__rm.push({ b, paths });
+          return window.__rmResult ? window.__rmResult(paths)
+                                   : { data: paths.map(nm => ({ name: nm })), error: null }; },
+      }) },
       functions:{ invoke: async () => ({ data:null, error:null }) },
       auth:{ getSession: async () => ({ data:{ session:null } }), onAuthStateChange(){}, signOut: async () => ({}) },
     }) };

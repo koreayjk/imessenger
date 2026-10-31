@@ -704,6 +704,18 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
 .adm-tab:hover { color:var(--ink); }
 .adm-tab.active-adm { border-bottom-color:var(--accent);color:var(--adeep);font-weight:600; }
 .adm-card { background:var(--surface);border-radius:16px;padding:18px 20px;margin-bottom:12px;box-shadow:var(--sh-1); }
+.cs-go { display:flex;flex-direction:column;align-items:flex-start;gap:3px;width:100%;
+  padding:11px 14px;border:1.5px solid var(--border);border-radius:12px;background:var(--s2);
+  color:var(--ink);font:700 13.5px var(--font);cursor:pointer;text-align:left;line-height:1.5; }
+.cs-go:hover { border-color:var(--accent);background:var(--surface); }
+.cs-go span { font:500 11.5px var(--font);color:var(--ink3); }
+.cl-row { display:flex;align-items:center;gap:9px;padding:9px 2px;border-bottom:1px solid var(--border);font-size:12.5px; }
+.cl-nav { height:34px;min-width:34px;padding:0 12px;border:1.5px solid var(--border);border-radius:10px;
+  background:var(--surface);color:var(--ink);font:700 13px var(--font);cursor:pointer; }
+.cl-nav:disabled { opacity:.35;cursor:default; }
+.sf-card { border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--surface);
+  display:flex;flex-direction:column;position:relative; }
+.sf-thumb { width:100%;aspect-ratio:1/1;object-fit:cover;background:var(--s3);display:block; }
 
 /* 홈 위젯 속 한 줄.
    예전에는 흰 카드 안에 회색 네모를 또 넣었다 — 테두리 두 겹, 여백 두 겹이라
@@ -1741,6 +1753,8 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
         <div id="adm-tab-notices" onclick="switchAdminTab('notices')" class="adm-tab" style="white-space:nowrap" data-ko="📢 공지사항" data-en="📢 Notices">📢 공지사항</div>
         <div id="adm-tab-reports" onclick="switchAdminTab('reports')" class="adm-tab" style="display:none;white-space:nowrap" data-ko="🚩 신고함" data-en="🚩 Reports">🚩 신고함</div>
         <div id="adm-tab-goals" onclick="switchAdminTab('goals')" class="adm-tab" style="white-space:nowrap" data-ko="🎯 이달의 목표" data-en="🎯 Monthly Goals">🎯 이달의 목표</div>
+        <div id="adm-tab-calls" onclick="switchAdminTab('calls')" class="adm-tab" style="display:none;white-space:nowrap" data-ko="📞 전화 기록" data-en="📞 Call Log">📞 전화 기록</div>
+        <div id="adm-tab-storage" onclick="switchAdminTab('storage')" class="adm-tab" style="display:none;white-space:nowrap" data-ko="💾 저장 용량" data-en="💾 Storage">💾 저장 용량</div>
         <div id="adm-tab-home" onclick="switchAdminTab('home')" class="adm-tab" style="display:none;white-space:nowrap" data-ko="🧩 홈 꾸미기" data-en="🧩 Edit Home">🧩 홈 꾸미기</div>
       </div></div>
       <div id="admin-content" style="flex:1;overflow-y:auto;padding:24px 28px"></div>
@@ -10807,7 +10821,7 @@ let _admSeq = 0;
 function switchAdminTab(tab) {
   adminTab = tab;
   _admSeq++;
-  ['communities','mysettings','members','channels','notices','reports','goals','home'].forEach(t => {
+  ['communities','mysettings','members','channels','notices','reports','goals','calls','storage','home'].forEach(t => {
     const el = document.getElementById('adm-tab-'+t);
     if (!el) return;
     el.classList.toggle('active-adm', t===tab);
@@ -10823,6 +10837,8 @@ function switchAdminTab(tab) {
   else if (tab==='notices') renderAdminNotices();
   else if (tab==='reports') renderAdminReports();
   else if (tab==='goals') renderAdminGoals();
+  else if (tab==='calls') renderAdminCalls();
+  else if (tab==='storage') renderAdminStorage();
   else if (tab==='home') renderAdminHome();
 }
 
@@ -11326,9 +11342,385 @@ async function csSaveQuota(commId) {
   csRenderCard(commId);
 }
 
+
+// ══════════════════════════════════════════════════════════════════
+//  📞 전화 기록 — 달마다 전부
+//
+//  미성년자가 쓰는 앱에서 통화만 아무 기록이 없으면 나중에 곤란해집니다.
+//  내용은 안 남습니다. 누가·누구에게·언제·몇 분만 남고, 아무도 지울 수
+//  없습니다 (delete 권한을 아예 주지 않았습니다).
+// ══════════════════════════════════════════════════════════════════
+let _clMonth = null;          // 보고 있는 달의 1일
+let _clFind = '';             // 이름으로 거르기
+
+function clMonthStart(d) { const x = new Date(d); x.setDate(1); x.setHours(0, 0, 0, 0); return x; }
+function clMonthLabel(d) {
+  return APP_LANG === 'en'
+    ? d.toLocaleString('en-US', { month: 'long', year: 'numeric' })
+    : d.getFullYear() + '년 ' + (d.getMonth() + 1) + '월';
+}
+function clShift(n) {
+  const x = new Date(_clMonth || new Date());
+  x.setMonth(x.getMonth() + n);
+  _clMonth = clMonthStart(x);
+  renderAdminCalls();
+}
+function clThisMonth() { _clMonth = clMonthStart(new Date()); renderAdminCalls(); }
+function clSetFind(v) { _clFind = String(v || '').trim(); clPaint(); }
+
+//  이름은 명단에서 찾고, 명단에 없는 사람(다른 공동체·나간 사람)만 물어본다
+async function clNames(rows) {
+  const need = new Set();
+  (rows || []).forEach(r => { [r.caller_id, r.callee_id].forEach(id => { if (id && !members[id]) need.add(id); }); });
+  const extra = {};
+  if (need.size) {
+    try {
+      const { data } = await sb.from('members').select('id,name').in('id', [...need]);
+      (data || []).forEach(m => { extra[m.id] = m; });
+    } catch (_) {}
+  }
+  return (id) => ((members[id] || extra[id] || {}).name) || t('알 수 없음', 'Unknown');
+}
+
+function clSecs(r) {
+  if (!r || !r.answered_at || !r.ended_at) return 0;
+  const s = Math.round((new Date(r.ended_at) - new Date(r.answered_at)) / 1000);
+  return Number.isFinite(s) && s > 0 ? s : 0;
+}
+function clHms(sec) {
+  const s = Math.max(0, Math.floor(sec));
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+  return h ? (h + t('시간 ', 'h ') + m + t('분', 'm')) : (m + t('분 ', 'm ') + (s % 60) + t('초', 's'));
+}
+function clDay(iso) {
+  const d = new Date(iso);
+  if (isNaN(d)) return '';
+  const p = (x) => String(x).padStart(2, '0');
+  return `${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+let _clRows = [], _clName = (x) => x;
+
+//  한 달치를 받아 온다
+async function renderAdminCalls() {
+  const area = document.getElementById('admin-content');
+  if (!area) return;
+  const seq = _admSeq;
+  if (!_clMonth) _clMonth = clMonthStart(new Date());
+  const from = new Date(_clMonth);
+  const to = new Date(_clMonth); to.setMonth(to.getMonth() + 1);
+  const now = clMonthStart(new Date());
+  const isNow = _clMonth.getTime() >= now.getTime();
+
+  area.innerHTML = `
+    <div class="adm-card">
+      <div style="font-size:18px;font-weight:700;margin-bottom:4px">📞 ${t('전화 기록','Call log')}</div>
+      <div style="font-size:12.5px;color:var(--ink3);line-height:1.7;margin-bottom:14px">
+        ${t('내용은 남지 않습니다 — 누가·누구에게·언제·몇 분만 남습니다. 아무도 지울 수 없어요.',
+            'Call content is never stored — only who, whom, when and how long. Nobody can delete these.')}
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+        <button class="cl-nav" onclick="clShift(-1)">◀</button>
+        <div style="font:800 16px var(--font);min-width:140px;text-align:center">${escHtml(clMonthLabel(_clMonth))}</div>
+        <button class="cl-nav" onclick="clShift(1)" ${isNow ? 'disabled' : ''}>▶</button>
+        ${isNow ? '' : `<button class="cl-nav" onclick="clThisMonth()">${t('이번 달','This month')}</button>`}
+        <input id="cl-find" oninput="clSetFind(this.value)" value="${escAttr(_clFind)}"
+               placeholder="${escAttr(t('이름으로 찾기','Find by name'))}"
+               style="flex:1;min-width:140px;height:34px;padding:0 12px;border:1.5px solid var(--border);
+                      border-radius:10px;font:600 13px var(--font);background:var(--s2);color:var(--ink);outline:none"/>
+      </div>
+      <div id="cl-sum" style="font-size:12.5px;color:var(--ink3);margin-bottom:8px"></div>
+      <div id="cl-list"><div style="font-size:12px;color:var(--ink3);padding:20px 0">${t('불러오는 중…','Loading…')}</div></div>
+    </div>`;
+
+  const { data, error } = await sb.from('calls')
+    .select('id,caller_id,callee_id,status,end_reason,answered_at,ended_at,created_at')
+    .eq('community_id', CID())
+    .gte('created_at', from.toISOString())
+    .lt('created_at', to.toISOString())
+    .order('created_at', { ascending: false })
+    .limit(2000);
+  if (seq !== _admSeq) return;
+  const list = document.getElementById('cl-list');
+  if (!list) return;
+  if (error) {
+    list.innerHTML = callSetupMissing(error)
+      ? `<div style="font-size:12.5px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:11px 13px;line-height:1.75">
+           ${t('전화 기능이 아직 설치되지 않았어요.','Calling is not installed yet.')}<br>
+           Supabase → SQL Editor → <b>db/통화_DB설치.sql</b></div>`
+      : `<div style="font-size:12.5px;color:var(--ink3)">${t('기록을 불러오지 못했어요','Could not load the log')}: ${escHtml(error.message || '')}</div>`;
+    return;
+  }
+  _clRows = data || [];
+  _clName = await clNames(_clRows);
+  if (seq !== _admSeq) return;
+  clPaint();
+}
+
+//  거르기와 합계는 받아 온 것 위에서 한다 — 글자를 칠 때마다 서버에 묻지 않는다
+function clPaint() {
+  const list = document.getElementById('cl-list');
+  const sum = document.getElementById('cl-sum');
+  if (!list) return;
+  const q = _clFind.toLowerCase();
+  const rows = q
+    ? _clRows.filter(r => (_clName(r.caller_id) + ' ' + _clName(r.callee_id)).toLowerCase().includes(q))
+    : _clRows;
+
+  if (sum) {
+    const talked = rows.filter(r => clSecs(r) > 0);
+    const total = talked.reduce((a, r) => a + clSecs(r), 0);
+    const missed = rows.filter(r => ['missed','declined','failed'].includes(r.status)).length;
+    sum.innerHTML = rows.length
+      ? `${t('모두','All')} <b style="color:var(--ink)">${rows.length}${t('통','')}</b>
+         · ${t('통화된 것','Connected')} <b style="color:var(--ink)">${talked.length}${t('건','')}</b>
+         · ${t('합계','Total')} <b style="color:var(--ink)">${escHtml(clHms(total))}</b>
+         ${missed ? `· ${t('못 받음·거절','Missed/declined')} <b style="color:#c0392b">${missed}</b>` : ''}`
+      : '';
+  }
+
+  if (!rows.length) {
+    list.innerHTML = `<div style="font-size:12.5px;color:var(--ink3);padding:20px 0">
+      ${_clFind ? t('찾는 이름이 없어요','Nobody by that name')
+                : t('이 달에는 걸린 전화가 없어요','No calls this month')}</div>`;
+    return;
+  }
+  list.innerHTML = rows.map(r => {
+    const st = CALL_STATUS_KO[r.status] || r.status || '';
+    const bad = ['declined','missed','canceled','failed'].includes(r.status);
+    const sec = clSecs(r);
+    const len = sec ? callMmSs(sec) : '';
+    const lim = r.end_reason === 'time_limit' ? ' · ' + t('시간 제한','limit') : '';
+    return `<div class="cl-row">
+      <span style="color:var(--ink3);width:78px;flex-shrink:0">${escHtml(clDay(r.created_at))}</span>
+      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+        ${escHtml(_clName(r.caller_id))} <span style="color:var(--ink3)">→</span> ${escHtml(_clName(r.callee_id))}</span>
+      <span style="font-weight:700;color:${bad ? '#c0392b' : 'var(--sage)'};flex-shrink:0;width:54px;text-align:right">${escHtml(st)}</span>
+      <span style="color:var(--ink3);width:92px;text-align:right;flex-shrink:0">${escHtml(len + lim)}</span>
+    </div>`;
+  }).join('')
+  + (_clRows.length >= 2000 ? `<div style="font-size:11.5px;color:#b45309;padding:10px 0">
+      ${t('이 달에 2,000통이 넘어서 최근 것부터 2,000통만 보여 드려요.','Over 2,000 calls this month — showing the latest 2,000.')}</div>` : '');
+}
+
+
+// ══════════════════════════════════════════════════════════════════
+//  💾 저장 용량 — 무엇이 자리를 차지하는지 보고, 지우기
+//
+//  '어디에 얼마나' 만 보여서는 가득 찼을 때 치울 길이 없었습니다.
+//  무엇이 자리를 차지하는지 눈으로 보고 지울 수 있어야 합니다.
+//
+//  ⚠️ 지우면 되돌릴 수 없습니다. 채팅에 올린 사진을 지우면 그 채팅에서는
+//     깨진 그림으로 남습니다 — 화면에 그렇게 적어 두고, 지우기 전에 한 번
+//     더 묻습니다.
+//  설치: db/저장용량_파일목록_DB설치.sql
+// ══════════════════════════════════════════════════════════════════
+const SF_KINDS = [
+  { k: null,         ko: '전체',            en: 'All' },
+  { k: 'chat',       ko: '채팅 사진·파일',  en: 'Chat files' },
+  { k: 'approvals',  ko: '전자결재 첨부',   en: 'Approvals' },
+  { k: 'students',   ko: '학생 증명사진',   en: 'Student photos' },
+  { k: 'notes',      ko: 'IM노트 첨부',     en: 'Notes' },
+  { k: 'training',   ko: '사역자교육 표지', en: 'Training' },
+  { k: 'orgs',       ko: '기관 로고',       en: 'Org logos' },
+  { k: 'community',  ko: '공동체 로고',     en: 'Community logo' },
+  { k: 'seals',      ko: '직인',            en: 'Seals' },
+  { k: 'signatures', ko: '개인 서명',       en: 'Signatures' },
+  { k: 'mockexam',   ko: '모의고사 답안',   en: 'Mock exams' },
+];
+let _sfKind = null, _sfSort = 'big', _sfPage = 0, _sfPick = new Set(), _sfRows = [];
+const SF_PER = 48;
+
+function sfIsImage(r) { return /^image\//.test((r && r['형식']) || '') || /\.(png|jpe?g|gif|webp|heic|bmp)$/i.test((r && r['경로']) || ''); }
+function sfIsVideo(r) { return /^video\//.test((r && r['형식']) || '') || /\.(mp4|mov|m4v|webm|avi)$/i.test((r && r['경로']) || ''); }
+function sfUrl(path) {
+  try { return sb.storage.from('messenger').getPublicUrl(path).data.publicUrl || ''; } catch (_) { return ''; }
+}
+function sfShortName(path) {
+  const p = String(path || '').split('/');
+  return p[p.length - 1] || path || '';
+}
+function sfWhen(iso) {
+  const d = new Date(iso);
+  if (isNaN(d)) return '';
+  const p = (x) => String(x).padStart(2, '0');
+  return `${d.getFullYear()}.${p(d.getMonth() + 1)}.${p(d.getDate())}`;
+}
+
+function sfSetKind(k) { _sfKind = k || null; _sfPage = 0; _sfPick.clear(); sfLoad(); }
+function sfSetSort(v) { _sfSort = v; _sfPage = 0; _sfPick.clear(); sfLoad(); }
+function sfMore() { _sfPage++; sfLoad(true); }
+
+async function renderAdminStorage() {
+  const area = document.getElementById('admin-content');
+  if (!area) return;
+  _sfPage = 0; _sfPick.clear(); _sfRows = [];
+  area.innerHTML = `
+    <div class="adm-card">
+      <div style="font-size:18px;font-weight:700;margin-bottom:4px">💾 ${t('저장 용량','Storage')}</div>
+      <div style="font-size:12.5px;color:var(--ink3);margin-bottom:14px">
+        ${t('이 공동체가 어디에 얼마나 쓰고 있는지','Where this storage goes')}</div>
+      <div id="cs-usage"><div style="font-size:12px;color:var(--ink3)">${t('불러오는 중…','Loading…')}</div></div>
+    </div>
+
+    <div class="adm-card">
+      <div style="font-size:16px;font-weight:700;margin-bottom:4px">🖼 ${t('올린 파일','Uploaded files')}</div>
+      <div style="font-size:12px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;
+                  padding:9px 12px;line-height:1.75;margin:8px 0 14px">
+        ${t('지우면 되돌릴 수 없어요. 채팅에 올린 사진을 지우면 그 채팅에서는 깨진 그림으로 남습니다.',
+            'Deleting cannot be undone. A chat photo you delete will show as a broken image in that chat.')}
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px" id="sf-kinds">
+        ${SF_KINDS.map(x => `<button onclick="sfSetKind(${x.k ? `'${x.k}'` : 'null'})"
+          class="sf-chip" data-k="${x.k || ''}" style="height:30px;padding:0 12px;border-radius:9px;
+          border:1.5px solid var(--border);background:var(--s2);color:var(--ink2);
+          font:600 12px var(--font);cursor:pointer;white-space:nowrap">${escHtml(t(x.ko, x.en))}</button>`).join('')}
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+        <span style="font-size:12px;color:var(--ink3);font-weight:600">${t('차례','Order')}</span>
+        <div style="display:inline-flex;gap:3px;background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:3px">
+          <button onclick="sfSetSort('big')" id="sf-s-big" style="height:28px;padding:0 12px;border:none;border-radius:7px;cursor:pointer;font:700 12px var(--font)">${t('큰 것부터','Largest')}</button>
+          <button onclick="sfSetSort('new')" id="sf-s-new" style="height:28px;padding:0 12px;border:none;border-radius:7px;cursor:pointer;font:700 12px var(--font)">${t('새것부터','Newest')}</button>
+        </div>
+        <div style="flex:1"></div>
+        <button id="sf-del" onclick="sfDeletePicked()" style="display:none;height:32px;padding:0 14px;border:none;
+          border-radius:9px;background:#b23b3b;color:#fff;font:700 12.5px var(--font);cursor:pointer"></button>
+      </div>
+      <div id="sf-list"><div style="font-size:12px;color:var(--ink3);padding:16px 0">${t('불러오는 중…','Loading…')}</div></div>
+    </div>`;
+  csRenderCard(CID());
+  sfLoad();
+}
+
+async function sfLoad(append) {
+  const box = document.getElementById('sf-list');
+  if (!box) return;
+  const seq = _admSeq;
+  SF_KINDS.forEach(x => {
+    const b = document.querySelector(`.sf-chip[data-k="${x.k || ''}"]`);
+    if (!b) return;
+    const on = (x.k || null) === _sfKind;
+    b.style.background = on ? '#1d3a5f' : 'var(--s2)';
+    b.style.color = on ? '#fff' : 'var(--ink2)';
+    b.style.borderColor = on ? '#1d3a5f' : 'var(--border)';
+  });
+  ['big','new'].forEach(v => {
+    const b = document.getElementById('sf-s-' + v);
+    if (b) { b.style.background = _sfSort === v ? '#1d3a5f' : 'transparent'; b.style.color = _sfSort === v ? '#fff' : 'var(--ink2)'; }
+  });
+
+  if (!append) box.innerHTML = `<div style="font-size:12px;color:var(--ink3);padding:16px 0">${t('불러오는 중…','Loading…')}</div>`;
+  let data, error;
+  try {
+    ({ data, error } = await sb.rpc('community_storage_files', {
+      cid: CID(), kind: _sfKind, sort: _sfSort, lim: SF_PER, off: _sfPage * SF_PER }));
+  } catch (e) { error = e; }
+  if (seq !== _admSeq) return;
+  if (error) {
+    box.innerHTML = csMissing(error)
+      ? `<div style="font-size:12.5px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:11px 13px;line-height:1.75">
+           ${t('파일 목록을 쓰려면 한 번만 설치해 주세요.','Install once to list files.')}<br>
+           Supabase → SQL Editor → <b>db/저장용량_파일목록_DB설치.sql</b></div>`
+      : `<div style="font-size:12.5px;color:var(--ink3)">${t('목록을 불러오지 못했어요','Could not load the list')}: ${escHtml(String(error.message || error))}</div>`;
+    return;
+  }
+  _sfRows = append ? _sfRows.concat(data || []) : (data || []);
+  sfPaint((data || []).length >= SF_PER);
+}
+
+function sfPaint(more) {
+  const box = document.getElementById('sf-list');
+  if (!box) return;
+  if (!_sfRows.length) {
+    box.innerHTML = `<div style="font-size:12.5px;color:var(--ink3);padding:16px 0">${t('여기에는 올린 파일이 없어요','Nothing here')}</div>`;
+    sfSyncDelBtn();
+    return;
+  }
+  box.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:10px">
+      ${_sfRows.map((r, i) => {
+        const path = r['경로'], url = sfUrl(path), big = Number(r['크기']) || 0;
+        const on = _sfPick.has(path);
+        const face = sfIsImage(r)
+          ? `<img class="sf-thumb" loading="lazy" src="${escAttr(url)}" alt="">`
+          : `<div class="sf-thumb" style="display:flex;align-items:center;justify-content:center;font-size:30px">${sfIsVideo(r) ? '🎬' : '📄'}</div>`;
+        return `<div class="sf-card" style="${on ? 'outline:3px solid #b23b3b;outline-offset:-3px' : ''}">
+          <a href="${escAttr(url)}" target="_blank" rel="noopener" style="display:block">${face}</a>
+          <div style="padding:7px 8px 8px">
+            <div style="font:700 11.5px var(--font);color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                 title="${escAttr(path)}">${escHtml(sfShortName(path))}</div>
+            <div style="font:500 10.5px var(--font);color:var(--ink3);margin-top:2px">
+              ${escHtml(csBytes(big))} · ${escHtml(sfWhen(r['올린때']))}</div>
+            <div style="font:500 10px var(--font);color:var(--ink3);margin-top:1px">${escHtml(r['갈래'] || '')}</div>
+            <label style="display:flex;align-items:center;gap:5px;margin-top:7px;font:600 11px var(--font);
+                          color:${on ? '#b23b3b' : 'var(--ink3)'};cursor:pointer">
+              <input type="checkbox" ${on ? 'checked' : ''} onchange="sfToggle(${i})" style="width:15px;height:15px;cursor:pointer">
+              ${t('고르기','Select')}</label>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+    ${more ? `<div style="text-align:center;margin-top:14px">
+       <button onclick="sfMore()" style="height:36px;padding:0 20px;border:1.5px solid var(--border);
+         border-radius:10px;background:var(--surface);color:var(--ink2);font:700 13px var(--font);cursor:pointer">
+         ${t('더 보기','Show more')}</button></div>` : ''}`;
+  sfSyncDelBtn();
+}
+
+function sfToggle(i) {
+  const r = _sfRows[i];
+  if (!r) return;
+  const p = r['경로'];
+  if (_sfPick.has(p)) _sfPick.delete(p); else _sfPick.add(p);
+  sfPaint(document.querySelector('#sf-list button') ? true : false);
+}
+
+function sfSyncDelBtn() {
+  const b = document.getElementById('sf-del');
+  if (!b) return;
+  const n = _sfPick.size;
+  b.style.display = n ? 'block' : 'none';
+  const size = _sfRows.filter(r => _sfPick.has(r['경로'])).reduce((a, r) => a + (Number(r['크기']) || 0), 0);
+  b.textContent = '🗑 ' + t(`고른 ${n}개 지우기 (${csBytes(size)})`, `Delete ${n} (${csBytes(size)})`);
+}
+
+//  지우기 — 한 번 더 묻고, 무엇이 안 지워졌는지까지 말해 준다
+async function sfDeletePicked() {
+  const paths = [..._sfPick];
+  if (!paths.length) return;
+  const size = _sfRows.filter(r => _sfPick.has(r['경로'])).reduce((a, r) => a + (Number(r['크기']) || 0), 0);
+  const chat = _sfRows.filter(r => _sfPick.has(r['경로']) && r['폴더'] === 'chat').length;
+  const ask = t(`${paths.length}개 (${csBytes(size)}) 를 지울까요?\n\n되돌릴 수 없습니다.`
+                + (chat ? `\n이 중 ${chat}개는 채팅에 올린 것이라, 그 채팅에서 깨진 그림으로 남습니다.` : ''),
+                `Delete ${paths.length} files (${csBytes(size)})?\n\nThis cannot be undone.`
+                + (chat ? `\n${chat} of them are chat uploads and will show as broken images there.` : ''));
+  if (!confirm(ask)) return;
+
+  const { data, error } = await sb.storage.from('messenger').remove(paths);
+  if (error) { showUploadToast(t('지우지 못했어요: ','Could not delete: ') + (error.message || '')); return; }
+  //  ⚠️ 규칙(RLS)에 막히면 오류 없이 **0개**가 돌아옵니다. 센 것을 믿는다.
+  const gone = new Set((data || []).map(x => x && x.name).filter(Boolean));
+  const okN = gone.size;
+  if (!okN) {
+    showUploadToast(t('하나도 안 지워졌어요 — 지울 권한이 없습니다. db/저장용량_파일목록_DB설치.sql 을 실행해 주세요.',
+                      'Nothing was deleted — no permission. Run db/저장용량_파일목록_DB설치.sql.'));
+    return;
+  }
+  _sfRows = _sfRows.filter(r => !gone.has(r['경로']));
+  _sfPick.clear();
+  _csCache = null;                       // 용량을 다시 센다
+  showUploadToast(okN < paths.length
+    ? t(`${okN}개를 지웠어요. ${paths.length - okN}개는 권한이 없어 그대로입니다.`,
+        `Deleted ${okN}. ${paths.length - okN} could not be deleted (no permission).`)
+    : t(`${okN}개를 지웠어요 · ${csBytes(size)} 를 비웠습니다`, `Deleted ${okN} files · freed ${csBytes(size)}`));
+  sfPaint(true);
+  csRenderCard(CID());
+}
+
 function showAdminTabsFor() {
   const show = (id) => { const el = document.getElementById(id); if (el) el.style.display = 'block'; };
   const label = document.getElementById('admin-role-label');
+  if (isCommunityAdmin()) { show('adm-tab-calls'); show('adm-tab-storage'); }
   if (isSuperAdmin()) {
     show('adm-tab-communities'); show('adm-tab-mysettings'); show('adm-tab-home');
     if (label) label.textContent = t('총관리자 — 공동체·멤버·채널 전체 관리','Super Admin — manage all communities, members, channels');
@@ -11344,6 +11736,11 @@ function initAdminPage() {
   // 신고함은 조정 권한이 있는 사람에게만 보인다.
   const repTab = document.getElementById('adm-tab-reports');
   if (repTab) repTab.style.display = canModerateChat() ? 'block' : 'none';
+  //  📞 전화 기록 · 💾 저장 용량 — 공동체를 맡은 분들에게만
+  ['calls','storage'].forEach(k => {
+    const el = document.getElementById('adm-tab-' + k);
+    if (el) el.style.display = isCommunityAdmin() ? 'block' : 'none';
+  });
   // 지름길로 들어왔으면 그 탭으로 연다. 안 보이는 탭이면 무시.
   const want = _adminInitialTab;
   _adminInitialTab = null;
@@ -13832,7 +14229,7 @@ function markViewHeaders(){
 }
 
 // ── 관리자 페이지 탭 (정적 마크업이라 여기서 읽어 시트로 만든다) ──
-const ADM_TAB_KEYS = ['communities','mysettings','members','channels','notices','goals','home'];
+const ADM_TAB_KEYS = ['communities','mysettings','members','channels','notices','goals','calls','storage','home'];
 function admTabItems(){
   return ADM_TAB_KEYS.map(k => {
     const el = document.getElementById('adm-tab-' + k);
@@ -15989,18 +16386,16 @@ async function renderCommunitySettings() {
       </div><!-- /left -->
 
       <div style="flex:1 1 340px;min-width:0">
-      <!-- 저장 용량 -->
+      <!-- 저장 용량 · 전화 기록 — 이제 각각 제 메뉴를 가집니다 -->
       <div class="adm-card" style="margin-bottom:16px">
-        <div style="font-size:14px;font-weight:700;margin-bottom:4px">💾 저장 용량</div>
-        <div style="font-size:12px;color:var(--ink3);margin-bottom:14px">이 공동체가 어디에 얼마나 쓰고 있는지 · Where this community's storage goes</div>
-        <div id="cs-usage"><div style="font-size:12px;color:var(--ink3)">불러오는 중...</div></div>
-      </div>
-
-      <!-- 전화 기록 -->
-      <div class="adm-card" style="margin-bottom:16px">
-        <div style="font-size:14px;font-weight:700;margin-bottom:4px">📞 전화 기록</div>
-        <div style="font-size:12px;color:var(--ink3);margin-bottom:12px">최근 40통 · 내용은 남지 않습니다 (누가·누구에게·언제·몇 분)</div>
-        <div id="cs-call-log"><div style="font-size:12px;color:var(--ink3)">불러오는 중...</div></div>
+        <div style="font-size:14px;font-weight:700;margin-bottom:4px">📂 ${t('따로 보는 곳','Their own pages')}</div>
+        <div style="font-size:12px;color:var(--ink3);margin-bottom:12px">${t('양이 많아져서 메뉴를 따로 뒀어요','These grew big enough to get their own menus')}</div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <button onclick="switchAdminTab('calls')" class="cs-go">📞 ${t('전화 기록','Call log')}
+            <span>${t('달별로 전부 · 누가·누구에게·언제·몇 분','Every month · who, whom, when, how long')}</span></button>
+          <button onclick="switchAdminTab('storage')" class="cs-go">💾 ${t('저장 용량','Storage')}
+            <span>${t('올린 사진·영상을 보고 지우기','See and delete uploaded photos and videos')}</span></button>
+        </div>
       </div>
 
       <!-- 돈 단위 -->
@@ -16130,9 +16525,8 @@ async function renderCommunitySettings() {
       </div><!-- /flex -->
     </div>`;
   renderRecordOrgsAdmin();
-  csRenderCard(comm.id);        // 저장 용량 — 서버에 물어보느라 늦으니 따로 채운다
+  //  저장 용량·전화 기록은 이제 제 메뉴에서 그립니다 (adm-tab-storage / adm-tab-calls)
   renderSealsAdmin();
-  csRenderCallLog(comm.id);     // 📞 전화 기록 — 따로 읽어 채운다
   loadGcalInfo();
   renderGcalAcl();
   wcFillPicker(comm.id, comm.welcome_channel_ids || []);
