@@ -32382,6 +32382,22 @@ function callReoffer(off) {
   };
   setTimeout(again, 2500);
 }
+//  받았다는 쪽지 한 통이 새면, 건 쪽은 제안을 시작하지도 못합니다 —
+//  벨만 울리다 45초에 죽습니다. 제안이 올 때까지 두어 번 더 알립니다.
+function callReready() {
+  const c = CALL;
+  let n = 0;
+  const again = () => {
+    if (!CALL || CALL !== c) return;
+    if (c.pc && c.pc.remoteDescription) return;      // 제안이 왔다
+    if (++n > 3) { console.warn('📞 받았다는 쪽지가 끝내 안 건너갔습니다'); return; }
+    console.warn('📞 제안이 안 와서 받았다고 다시 알립니다 (' + n + ')');
+    callSend('ready', {});
+    setTimeout(again, 2500);
+  };
+  setTimeout(again, 2500);
+}
+
 function callReanswer(ans) {
   const c = CALL;
   let n = 0;
@@ -32451,7 +32467,13 @@ async function callMakePc() {
     CALL.net = s;
     console.log('📞 길 상태:', s, '· 모은 길:', callCandSummary(),
                 '· 중계:', CALL.hasTurn ? '있음' : '없음');
-    if (s === 'connected') { CALL.linked = true; renderCallScreen(); return; }
+    if (s === 'connected') {
+      CALL.linked = true;
+      // ③ 소리 길이 붙었다 = 상대가 거기 있다. 표가 안 와도 통화로 친다.
+      if (CALL.dir === 'out') callAccepted('connected');
+      renderCallScreen();
+      return;
+    }
     if (s === 'failed') {
       // 와이파이에서 LTE 로 넘어가는 순간처럼 잠깐 엇갈린 것일 수 있다.
       // 한 번은 다시 찾아본다. 바로 끊어 버리면 까닭도 모른 채 꺼진다.
@@ -32606,6 +32628,30 @@ async function callFlushIce() {
   for (const c of q) { try { await CALL.pc.addIceCandidate(c); } catch (_) {} }
 }
 
+//  📞 상대가 받았다 — 이제부터 통화다.
+//
+//  ⚠️ 여기가 '1분도 안 돼서 그냥 끊기던' 자리였습니다.
+//     거는 쪽은 상대가 받은 것을 **표(calls)가 바뀌는 소식 하나로만**
+//     알았습니다. 그 소식 한 통을 놓치면 CALL.status 가 'ringing' 에
+//     머물고, 45초짜리 '안 받으면 끊는다' 타이머가 그대로 돌아서
+//     **소리는 멀쩡히 흐르는데** 전화를 끊어 버렸습니다.
+//
+//     받았다는 증거는 셋입니다. 어느 하나라도 오면 통화로 칩니다:
+//       ① 표가 'accepted' 로 바뀌었다
+//       ② 상대가 'ready' 쪽지를 보냈다 (받기를 눌러야만 보냅니다)
+//       ③ 소리 길이 붙었다 (상대가 없으면 붙을 수가 없습니다)
+function callAccepted(why) {
+  if (!CALL || CALL.status !== 'ringing') return;
+  callRingStop();
+  if (_callNoAnsT) { clearTimeout(_callNoAnsT); _callNoAnsT = null; }
+  CALL.status = 'accepted';
+  CALL.startedAt = Date.now();
+  CALL.acceptedBy = why;
+  callStartClock();
+  console.log('📞 통화 시작 —', why);
+  renderCallScreen();
+}
+
 // 건 쪽이 먼저 제안한다. 상대가 받은 뒤에야 한다 — 받기 전에 보내면
 // 상대는 아직 이 줄에 붙어 있지 않아 쪽지가 허공으로 간다.
 async function callStartOffer(restart) {
@@ -32634,6 +32680,7 @@ async function callOnSignal(p) {
   if (!CALL || !p || !p.type || !ME || p.from === ME.id) return;
   try {
     if (p.type === 'ready' && CALL.dir === 'out') {
+      callAccepted('ready');      // ② 받기를 눌러야만 오는 쪽지다
       await callStartOffer();
     } else if (p.type === 'offer' && CALL.dir === 'in') {
       if (!p.sdp) return;
@@ -32670,8 +32717,10 @@ async function callOnSignal(p) {
       else (CALL.iceQ = CALL.iceQ || []).push(p.c);
     } else if (p.type === 'bye') {
       // 상대가 끊었다. 표는 끊은 쪽이 적는다.
+      const len = callMmSs(callElapsed());
+      console.log('📞 끊김 — 상대가 끊음 ·', len);
       callTeardown();
-      showUploadToast(t('통화가 끝났어요','Call ended'));
+      showUploadToast(t('통화가 끝났어요 — 상대가 끊었어요 · ','Call ended — they hung up · ') + len);
     }
   } catch (e) { console.warn('📞 신호', String(e)); }
 }
@@ -32805,7 +32854,26 @@ function callQuietWhy() {
   return '';
 }
 
-//  통화 중에 늘 보이는 작은 줄. 이게 있어야 '안 들려요' 가 숫자가 됩니다.
+//  진단 줄을 언제 보일 것인가.
+//
+//  늘 띄워 두면 이 화면을 보는 분들(학부모님·학생)에게는 읽을 수 없는
+//  숫자만 남습니다. 그렇다고 숨겨 버리면 '안 들려요' 가 다시 말로만
+//  돌아옵니다. 그래서 **뭔가 잘못됐을 때만** 저절로 폅니다.
+//  잘 되는데도 숫자가 보고 싶으면 시간(0:27)을 한 번 누르면 됩니다.
+function callDiagShow() {
+  const c = CALL;
+  if (!c) return false;
+  if (c.diagOpen) return true;          // 사람이 눌러서 폈다
+  if (c.status === 'failed') return true;
+  return !!callQuietWhy();              // 어딘가 막혔다
+}
+function callDiagToggle() {
+  if (!CALL) return;
+  CALL.diagOpen = !CALL.diagOpen;
+  renderCallScreen();
+}
+
+//  '안 들려요' 를 숫자로 바꿔 주는 줄.
 function callDiagLine() {
   const c = CALL;
   if (!c) return '';
@@ -32866,7 +32934,7 @@ function callTick() {
   callPollStats();
   callWatchAudio();
   const dg = document.getElementById('call-diag');
-  if (dg) dg.textContent = callDiagLine();
+  if (dg) { dg.textContent = callDiagLine(); dg.style.display = callDiagShow() ? 'block' : 'none'; }
   const qw = document.getElementById('call-quiet');
   if (qw) { const w = callQuietWhy(); qw.textContent = w; qw.style.display = w ? 'block' : 'none'; }
   const el = document.getElementById('call-time');
@@ -32941,7 +33009,8 @@ function renderCallScreen() {
                 box-shadow:0 0 0 8px rgba(255,255,255,.08),0 18px 44px rgba(0,0,0,.35)">${avInner(m)}</div>
     <div style="font:700 23px var(--font);color:#fff;margin-top:4px">${escHtml(m.name || t('누군가','Someone'))}</div>
     <div style="font:600 13.5px var(--font);color:rgba(255,255,255,.72)">${escHtml(head)}</div>
-    ${live ? `<div id="call-time" style="font:700 30px var(--font);color:#fff;letter-spacing:.02em;margin-top:2px">0:00</div>
+    ${live ? `<div id="call-time" onclick="callDiagToggle()" title="${t('눌러서 소리가 흐르는지 보기','Tap to see the audio numbers')}"
+                   style="font:700 30px var(--font);color:#fff;letter-spacing:.02em;margin-top:2px;cursor:pointer">0:00</div>
               <div id="call-left" style="font:600 12px var(--font);color:rgba(255,255,255,.55);min-height:16px"></div>` : ''}
     ${dead ? `<div style="margin-top:12px;max-width:320px;background:rgba(0,0,0,.28);border:1px solid rgba(255,255,255,.18);
          border-radius:14px;padding:13px 15px;font:600 13px var(--font);color:#ffd7cf;line-height:1.75;word-break:keep-all">
@@ -32952,9 +33021,8 @@ function renderCallScreen() {
          padding:9px 13px;font:600 12.5px var(--font);color:#ffe0b8;line-height:1.7;
          word-break:keep-all;display:none"></div>` : ''}
     ${(live || dead) ? `<div id="call-diag" style="margin-top:8px;font:500 11px var(--font);
-         color:rgba(255,255,255,.45);line-height:1.8;max-width:330px;word-break:break-word">
-         ${escHtml(callDiagLine())}
-       </div>` : ''}
+         color:rgba(255,255,255,.45);line-height:1.8;max-width:330px;word-break:break-word;
+         display:${callDiagShow() ? 'block' : 'none'}">${escHtml(callDiagLine())}</div>` : ''}
     ${tapBar ? `<div style="display:flex;flex-direction:column;align-items:center;gap:8px;margin-top:14px">${tapBar}</div>` : ''}
     <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-top:18px">${actions}</div>
     ${live ? `<div style="font:500 11.5px var(--font);color:rgba(255,255,255,.5);line-height:1.7;margin-top:12px;max-width:300px;word-break:keep-all">
@@ -33054,6 +33122,7 @@ async function acceptCall() {
   CALL.status = 'accepted';
   CALL.startedAt = Date.now();
   callSend('ready', {});
+  callReready();
   callStartClock();
   renderCallScreen();
 }
@@ -33122,7 +33191,11 @@ async function onCallRing(row) {
   const age = Date.now() - new Date(row.created_at || Date.now()).getTime();
   if (age > 60000) return;
   if (CALL) {
-    // 통화 중이다. 자동으로 거절하되 왜 그랬는지는 남긴다.
+    //  ⚠️ 지금 하고 있는 바로 그 전화가 또 왔다. 실시간 줄이 다시
+    //     이어지면 지난 소식을 한 번 더 건네줍니다. 이걸 '통화 중' 으로
+    //     보고 거절해 버리면 **내가 내 전화를 끊습니다.**
+    if (CALL.id === row.id) return;
+    // 다른 전화다. 자동으로 거절하되 왜 그랬는지는 남긴다.
     callMark(row.id, { status: 'declined', ended_at: new Date().toISOString(), end_reason: 'busy' });
     return;
   }
@@ -33164,23 +33237,23 @@ async function callOpenFromNotification(id) {
 // 표가 바뀌었다 — 상대가 받았거나 끊었다
 function onCallChanged(row) {
   if (!CALL || !row || row.id !== CALL.id) return;
-  if (CALL.dir === 'out' && row.status === 'accepted' && CALL.status === 'ringing') {
-    callRingStop();
-    if (_callNoAnsT) { clearTimeout(_callNoAnsT); _callNoAnsT = null; }
-    CALL.status = 'accepted';
-    CALL.startedAt = Date.now();
-    callStartClock();
-    renderCallScreen();
+  if (CALL.dir === 'out' && row.status === 'accepted') {
+    callAccepted('row');       // ① 표가 바뀌었다
     callStartOffer();          // 방송('ready')이 안 닿아도 여기서 시작한다
     return;
   }
   if (['declined','missed','ended','canceled','failed'].includes(row.status)) {
+    const live = CALL.status === 'accepted';
+    const len = callMmSs(callElapsed());
     const why = row.status === 'declined'
       ? (row.end_reason === 'busy' ? t('상대가 통화 중이에요','They are on another call') : t('상대가 전화를 받지 않았어요','They declined'))
       : row.status === 'missed' ? t('상대가 받지 못했어요','No answer')
       : t('통화가 끝났어요','Call ended');
+    //  통화 중에 끊긴 것이면 '왜' 와 '얼마나' 를 남긴다 — 그냥 꺼지면
+    //  '전화가 저절로 끊긴다' 로만 남고 까닭을 영영 모른다.
+    console.log('📞 끊김 — 표:', row.status, '·', row.end_reason || '', '·', len);
     callTeardown();
-    showUploadToast(why);
+    showUploadToast(live ? why + ' (' + (row.end_reason || row.status) + ' · ' + len + ')' : why);
   }
 }
 

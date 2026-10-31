@@ -97,8 +97,11 @@ async function place(b, o = {}) {
   await B.waitForTimeout(500);
   await B.evaluate(() => acceptCall());
   await B.waitForTimeout(700);
-  //  거는 쪽은 표가 바뀐 소식으로도 제안을 시작한다 (실시간 줄 대신 바로 먹인다)
-  await A.evaluate((cid) => { onCallChanged({ id: cid, status: 'accepted', caller_id: 'me', callee_id: 's1' }); }, id);
+  //  거는 쪽은 표가 바뀐 소식으로도 제안을 시작한다 (실시간 줄 대신 바로 먹인다).
+  //  o.noRow 를 주면 그 소식이 **안 오는** 경우를 봅니다 — 그래도 살아야 합니다.
+  if (!o.noRow) {
+    await A.evaluate((cid) => { onCallChanged({ id: cid, status: 'accepted', caller_id: 'me', callee_id: 's1' }); }, id);
+  }
   return { A, B, log, id };
 }
 
@@ -392,6 +395,121 @@ const flow = async (pg) => pg.evaluate(() => {
 
     const w3 = await say({ micTrack: { label: 'x', live: true, muted: false } });
     ok(w3 === '', '마이크가 멀쩡하면 아무 말도 안 한다');
+
+    await A.close(); await B.close();
+  }
+
+  // ══ ⑨ 표가 안 와도 전화가 살아 있어야 한다 ═══════════════════════
+  //  여기가 '1분도 안 돼서 그냥 끊기던' 자리입니다. 거는 쪽이 상대가 받은
+  //  것을 표 하나로만 알면, 그 한 통을 놓쳤을 때 45초 타이머가 그대로
+  //  돌아서 **소리는 흐르는데** 전화를 끊어 버립니다.
+  console.log('\n  ── ⑨ 받았다는 표가 안 와도 — ready 쪽지만으로 통화가 된다');
+  {
+    const { A, B } = await place(b, { noRow: true });
+    await linked(A, 20);
+    await A.waitForTimeout(600);
+    const st = await A.evaluate(() => CALL && {
+      s: CALL.status, by: CALL.acceptedBy, started: CALL.startedAt > 0,
+      timer: _callNoAnsT === null, ring: _callRingT === null,
+    });
+    console.log('     거는 쪽:', JSON.stringify(st));
+    ok(!!st && st.s === 'accepted', '표가 안 와도 통화로 친다');
+    ok(!!st && st.by === 'ready', "받기를 눌러야만 오는 'ready' 쪽지로 알았다");
+    ok(!!st && st.timer, "'안 받으면 끊는다' 타이머를 껐다 (이게 45초에 끊던 것)");
+    ok(!!st && st.ring, '벨도 멈췄다');
+    ok(!!st && st.started, '통화 시간을 재기 시작했다');
+
+    //  45초를 기다릴 수는 없으니, 그 타이머가 지금 돌면 어떻게 되는지 본다
+    const alive = await A.evaluate(() => {
+      if (_callNoAnsT) return 'timer-alive';
+      return CALL ? CALL.status : 'gone';
+    });
+    ok(alive === 'accepted', '45초가 지나도 끊길 까닭이 남아 있지 않다');
+
+    const f = await flow(A);
+    ok(!!f && f.inb > 0, '소리도 그대로 흐른다');
+    await A.close(); await B.close();
+  }
+
+  // ══ ⑩ 받았다는 쪽지 한 통이 새도 전화는 붙는다 ═══════════════════
+  //  'ready' 가 새면 건 쪽은 제안을 **시작하지도 못합니다.** 벨만 울리다
+  //  45초에 죽습니다. 표까지 안 오면 되살릴 길이 하나도 없었습니다.
+  console.log('\n  ── ⑩ 받았다는 쪽지가 새고 표도 안 와도 — 다시 알려서 붙는다');
+  {
+    const { A, B } = await place(b, { noRow: true, b: { dropFirst: 'ready' } });
+    const dropped = await B.evaluate(() => window.__dropped);
+    ok(dropped === 1, '첫 ready 를 일부러 떨어뜨렸다');
+    const up = await linked(A, 25);
+    await A.waitForTimeout(800);
+    const st = await A.evaluate(() => CALL && { s: CALL.status, by: CALL.acceptedBy, timer: _callNoAnsT === null });
+    console.log('     거는 쪽:', JSON.stringify(st));
+    ok(up, '받았다고 다시 알려서 소리 길이 붙는다');
+    ok(!!st && st.s === 'accepted', '표가 끝내 안 와도 통화로 친다');
+    ok(!!st && !!st.by, '무엇으로 알았는지 적어 둔다 (' + (st && st.by) + ')');
+    ok(!!st && st.timer, "'안 받으면 끊는다' 타이머를 껐다");
+    const f = await flow(A);
+    ok(!!f && f.inb > 0, '소리도 흐른다');
+    await A.close(); await B.close();
+  }
+
+  // ══ ⑪ 같은 전화가 두 번 울려도 내가 내 전화를 끊지 않는다 ════════
+  //  실시간 줄이 다시 이어지면 지난 소식을 한 번 더 건네줍니다.
+  console.log('\n  ── ⑪ 같은 전화가 두 번 울려도 스스로 끊지 않는다');
+  {
+    const { A, B, id } = await place(b);
+    await linked(B, 20);
+    await B.evaluate(() => { window.__upd = []; });
+    await B.evaluate((cid) => {
+      onCallRing({ id: cid, caller_id: 'me', callee_id: 's1', status: 'ringing',
+                   created_at: new Date().toISOString() });
+    }, id);
+    await B.waitForTimeout(400);
+    const r = await B.evaluate(() => ({
+      alive: CALL ? CALL.status : 'gone',
+      upd: JSON.stringify(window.__upd || []),
+    }));
+    console.log('     받는 쪽:', JSON.stringify(r));
+    ok(r.alive === 'accepted', '그 전화가 그대로 살아 있다');
+    ok(!/declined/.test(r.upd) && !/busy/.test(r.upd), "'통화 중' 이라며 제 전화를 거절하지 않는다");
+    const f = await flow(B);
+    ok(!!f && f.inb > 0, '소리도 끊기지 않았다');
+    await A.close(); await B.close();
+  }
+
+  // ══ ⑫ 숫자는 잘못됐을 때만 보인다 ════════════════════════════════
+  //  이 화면을 보는 분들은 학부모님과 학생입니다. 늘 띄워 두면 읽을 수
+  //  없는 숫자만 남고, 숨겨 버리면 '안 들려요' 가 다시 말로만 돌아옵니다.
+  console.log('\n  ── ⑫ 진단 숫자는 잘못됐을 때만 저절로 보인다');
+  {
+    const { A, B } = await place(b);
+    await linked(A); await A.waitForTimeout(1500);
+    const show = () => A.evaluate(() => {
+      const d = document.getElementById('call-diag');
+      return d ? getComputedStyle(d).display : null;
+    });
+    const set = (pt) => A.evaluate((x) => { Object.assign(CALL, x); callTick(); renderCallScreen(); }, pt);
+
+    await set({ linked: true, playing: true, startedAt: Date.now() - 20000,
+                rlvMax: 0.3, micMax: 0.3, needTap: false, diagOpen: false });
+    ok(await show() === 'none', '잘 들릴 때는 숫자를 안 내민다');
+
+    await set({ playing: false });
+    ok(await show() === 'block', '뭔가 막히면 저절로 펴진다');
+
+    await set({ playing: true });
+    ok(await show() === 'none', '괜찮아지면 도로 접힌다');
+
+    //  잘 되는데도 보고 싶을 때 — 시간을 한 번 누른다
+    await A.click('#call-time');
+    ok(await show() === 'block', '시간을 누르면 펴진다');
+    const d = await A.evaluate(() => document.getElementById('call-diag').textContent.trim());
+    ok(/소리 ↑[1-9]/.test(d), '펴면 숫자가 들어 있다');
+    await A.click('#call-time');
+    ok(await show() === 'none', '한 번 더 누르면 접힌다');
+
+    //  끝내 못 붙은 화면에서는 늘 보인다 — 거기서는 그 숫자가 전부다
+    await A.evaluate(() => { CALL.status = 'failed'; CALL.why = '시험'; renderCallScreen(); });
+    ok(await show() === 'block', '못 붙은 화면에서는 늘 보인다');
 
     await A.close(); await B.close();
   }
