@@ -32116,6 +32116,7 @@ let CALL = null;              // 지금 하고 있는 통화 하나. 둘은 없�
 let CALL_LIMIT_MIN = 10;      // 통화 시간 제한(분). 공동체 설정에서 읽는다. 0 = 제한 없음
 let _callSub = null;          // 내게 오는 전화를 듣는 줄
 let _callIce = null, _callIceAt = 0;
+let _callTurnWhy = '';        // 중계가 꺼진 까닭. 화면에 그대로 적는다.
 let _callRingT = null, _callTickT = null;
 let _callLimitT = null, _callWarnT = null, _callNoAnsT = null;
 
@@ -32147,14 +32148,17 @@ async function callIceServers() {
   try {
     const { data, error } = await sb.functions.invoke('turn-credentials', { body: {} });
     if (error || !data || !Array.isArray(data.iceServers) || !data.iceServers.length) {
-      console.warn('📞 중계 없이 갑니다', (error && error.message) || (data && data.why) || '');
+      _callTurnWhy = (error && error.message) || (data && data.why) || 'turn-credentials 가 대답을 안 했습니다';
+      console.warn('📞 중계 없이 갑니다 —', _callTurnWhy);
       return FB;
     }
-    if (data.turn === false) console.warn('📞 중계 꺼짐:', data.why || '');
+    _callTurnWhy = data.turn === false ? (data.why || '까닭을 안 알려줬습니다') : '';
+    if (_callTurnWhy) console.warn('📞 중계 꺼짐:', _callTurnWhy);
     _callIce = data.iceServers; _callIceAt = Date.now();
     return _callIce;
   } catch (e) {
-    console.warn('📞 중계 자격을 못 받았습니다', String(e));
+    _callTurnWhy = String((e && e.message) || e).slice(0, 120);
+    console.warn('📞 중계 자격을 못 받았습니다', _callTurnWhy);
     return FB;
   }
 }
@@ -32209,18 +32213,91 @@ async function callMic() {
 }
 
 // ── 서로를 찾는 쪽지를 주고받는 줄 (실시간 방송 — 아무것도 안 남는다) ──
+//
+//  ⚠️ 여기가 '벨은 울리는데 소리가 안 나는' 일이 생기는 자리였습니다.
+//     벨(울린다·받았다)은 표(calls)가 바뀌는 소식으로 가고, 소리 길을 찾는
+//     쪽지(SDP·ICE)만 이 방송줄로 갑니다. 그래서 이 줄만 막히면
+//     '받아지기는 하는데 서로가 안 들리는' 모습이 그대로 됩니다.
+//
+//     셋을 고쳤습니다:
+//       ① subscribe() 는 바로 끝나지 않는다 — 붙기 전에 보낸 쪽지는 사라진다.
+//          붙을 때까지 모아 두고, 붙은 뒤에 차례대로 보낸다.
+//       ② send() 가 실패해도 아무도 모른다 — 돌려주는 약속을 받아서 센다.
+//       ③ 답이 안 오면 같은 제안·답을 다시 보낸다 (callReoffer/callReanswer).
 function callSignalJoin(id) {
   const ch = sb.channel(`call:${id}`);
-  ch.on('broadcast', { event: 'sig' }, (p) => callOnSignal((p && p.payload) || {}));
-  ch.subscribe();
+  ch.on('broadcast', { event: 'sig' }, (p) => {
+    if (CALL && CALL.id === id) CALL.sigIn = (CALL.sigIn || 0) + 1;
+    callOnSignal((p && p.payload) || {});
+  });
+  ch.subscribe((st) => {
+    console.log('📞 쪽지줄:', st);
+    if (!CALL || CALL.id !== id) return;
+    CALL.sigState = st;
+    if (st === 'SUBSCRIBED') { CALL.joined = true; callFlushOut(); }
+    renderCallScreen();
+  });
   return ch;
+}
+
+//  한 통 보낸다. 실패를 세어 둔다 — 화면에 그 수가 보인다.
+function callPush(ch, payload) {
+  let p;
+  try { p = ch.send({ type: 'broadcast', event: 'sig', payload }); }
+  catch (e) { p = Promise.reject(e); }
+  if (!p || !p.then) return;
+  p.then((r) => {
+    if (r === 'ok' || r === undefined) return;
+    if (CALL) CALL.sigErr = (CALL.sigErr || 0) + 1;
+    console.warn('📞 쪽지가 안 건너갔습니다 —', String(r));
+  }, (e) => {
+    if (CALL) CALL.sigErr = (CALL.sigErr || 0) + 1;
+    console.warn('📞 쪽지를 못 보냈습니다 —', String((e && e.message) || e));
+  });
 }
 function callSend(type, extra) {
   if (!CALL || !CALL.sig || !ME) return;
-  try {
-    CALL.sig.send({ type: 'broadcast', event: 'sig',
-                    payload: Object.assign({ type, from: ME.id }, extra || {}) });
-  } catch (_) {}
+  const payload = Object.assign({ type, from: ME.id }, extra || {});
+  CALL.sigOut = (CALL.sigOut || 0) + 1;
+  //  아직 줄에 못 붙었다 — 모아 둔다. 지금 보내면 허공으로 간다.
+  if (!CALL.joined) { (CALL.outQ = CALL.outQ || []).push(payload); return; }
+  callPush(CALL.sig, payload);
+}
+function callFlushOut() {
+  if (!CALL || !CALL.sig || !CALL.outQ || !CALL.outQ.length) return;
+  const q = CALL.outQ; CALL.outQ = null;
+  console.log('📞 모아 둔 쪽지 ' + q.length + '통을 이제 보냅니다');
+  for (const x of q) callPush(CALL.sig, x);
+}
+
+//  방송은 '닿았는지' 를 알려주지 않습니다. 답이 안 오면 같은 쪽지를
+//  두어 번 더 보냅니다 — 새로 만들지는 않습니다(새로 만들면 서로 엇갈립니다).
+function callReoffer(off) {
+  const c = CALL;
+  let n = 0;
+  const again = () => {
+    if (!CALL || CALL !== c || !c.pc) return;
+    if (c.pc.remoteDescription) return;              // 답이 왔다
+    if (++n > 3) { console.warn('📞 제안이 끝내 안 건너갔습니다'); return; }
+    console.warn('📞 답이 없어 제안을 다시 보냅니다 (' + n + ')');
+    callSend('offer', { sdp: { type: off.type, sdp: off.sdp } });
+    setTimeout(again, 2500);
+  };
+  setTimeout(again, 2500);
+}
+function callReanswer(ans) {
+  const c = CALL;
+  let n = 0;
+  const again = () => {
+    if (!CALL || CALL !== c || !c.pc) return;
+    const st = c.pc.connectionState;
+    if (st === 'connected' || st === 'completed') return;
+    if (++n > 3) { console.warn('📞 답이 끝내 안 건너갔습니다'); return; }
+    console.warn('📞 아직 안 붙어서 답을 다시 보냅니다 (' + n + ')');
+    callSend('answer', { sdp: { type: ans.type, sdp: ans.sdp } });
+    setTimeout(again, 2500);
+  };
+  setTimeout(again, 2500);
 }
 
 // 모은 길의 종류를 센다. 이게 '왜 소리가 안 나는가' 의 답이다.
@@ -32412,6 +32489,7 @@ async function callStartOffer(restart) {
     const off = await CALL.pc.createOffer({ offerToReceiveAudio: true, iceRestart: !!restart });
     await CALL.pc.setLocalDescription(off);
     callSend('offer', { sdp: { type: off.type, sdp: off.sdp } });
+    callReoffer(off);
   } catch (e) {
     console.warn('📞 제안 실패', String(e));
     endCall('offer_failed');
@@ -32426,6 +32504,12 @@ async function callOnSignal(p) {
     } else if (p.type === 'offer' && CALL.dir === 'in') {
       if (!p.sdp) return;
       CALL.pc = CALL.pc || await callMakePc();
+      // 같은 제안이 다시 온 것(건 쪽이 답을 못 받아 또 보냈다)이면 답만 다시 보낸다
+      if (CALL.lastOffer === p.sdp.sdp && CALL.pc.remoteDescription) {
+        if (CALL.lastAnswer) callSend('answer', { sdp: CALL.lastAnswer });
+        return;
+      }
+      CALL.lastOffer = p.sdp.sdp;
       await CALL.pc.setRemoteDescription(p.sdp);
       if (!CALL.added) {       // 다시 찾는 중이면 이미 올라가 있다
         const mic = await callMic();
@@ -32434,7 +32518,9 @@ async function callOnSignal(p) {
       }
       const ans = await CALL.pc.createAnswer();
       await CALL.pc.setLocalDescription(ans);
+      CALL.lastAnswer = { type: ans.type, sdp: ans.sdp };
       callSend('answer', { sdp: { type: ans.type, sdp: ans.sdp } });
+      callReanswer(ans);
       await callFlushIce();
     } else if (p.type === 'answer' && CALL.dir === 'out') {
       // ⚠️ '이미 받았으면 무시' 로 두면 안 된다. 길을 다시 찾을 때
@@ -32500,8 +32586,83 @@ function callMmSs(sec) {
   const s = Math.max(0, Math.floor(sec));
   return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
 }
+//  🔎 소리가 정말 흐르는지 센다.
+//
+//  '안 들린다' 는 세 가지가 다 똑같이 보입니다 — 길이 안 붙었다 / 길은
+//  붙었는데 소리가 안 온다 / 소리는 오는데 이 기기가 안 틀어 준다.
+//  아이폰 앱에서는 개발자도구를 못 열어서 셋을 가릴 수가 없었습니다.
+//  그래서 꾸러미 수를 세어 화면에 그대로 적습니다.
+function callPollStats() {
+  const c = CALL;
+  if (!c || !c.pc || !c.pc.getStats) return;
+  let pr;
+  try { pr = c.pc.getStats(); } catch (_) { return; }
+  if (!pr || !pr.then) return;
+  pr.then((s) => {
+    if (!CALL || CALL !== c) return;
+    let inb = 0, out = 0, mic = 0, rlv = 0;
+    s.forEach((r) => {
+      if (r.type === 'inbound-rtp'  && r.kind === 'audio') { inb = r.packetsReceived || 0; rlv = r.audioLevel || rlv; }
+      if (r.type === 'outbound-rtp' && r.kind === 'audio') { out = r.packetsSent || 0; }
+      if (r.type === 'media-source' && r.kind === 'audio') { mic = r.audioLevel || 0; }
+    });
+    c.aud = { inb, out, mic, rlv };
+  }, () => {});
+}
+
+//  소리가 안 나는 까닭을 한 줄로. 번호가 아니라 말로 적습니다 —
+//  읽는 사람은 학부모님과 선생님입니다.
+function callQuietWhy() {
+  const c = CALL;
+  if (!c || c.status !== 'accepted') return '';
+  const a = c.aud || {};
+  if (!c.linked) {
+    if ((c.sigIn || 0) === 0) {
+      return t('상대 기기와 쪽지가 아직 안 오갔어요 — 소리 길을 못 찾습니다.',
+               'No signalling has reached the other device yet — no audio path.');
+    }
+    //  아이폰은 iOS 14 부터 '같은 와이파이 안의 다른 기기' 를 따로 허락받게
+    //  합니다. 그 허락이 없으면 바로 붙는 길이 조용히 막히고, 중계까지
+    //  꺼져 있으면 소리가 갈 길이 하나도 안 남습니다.
+    if (!c.hasTurn) {
+      return t('소리 길이 하나도 없어요. 중계(TURN)가 꺼져 있습니다',
+               'There is no audio path. The TURN relay is off')
+           + (_callTurnWhy ? ' — ' + _callTurnWhy : '') + '.';
+    }
+    return t('소리 길을 찾는 중이에요.', 'Finding an audio path…');
+  }
+  if (!(a.inb > 0)) return t('길은 붙었는데 상대 소리가 아직 안 와요.',
+                             'Connected, but no audio is arriving yet.');
+  if (c.needTap)   return t('소리는 오는데 이 기기가 막았어요 — 위를 한 번 눌러주세요.',
+                            'Audio is arriving but this device blocked it — tap above once.');
+  if (!(a.mic > 0.0005)) return t('상대 소리는 와요. 그런데 제 마이크가 조용해요 — 음소거나 기기 설정을 보세요.',
+                                  'Their audio is arriving, but your microphone is silent — check mute and device settings.');
+  return '';
+}
+
+//  통화 중에 늘 보이는 작은 줄. 이게 있어야 '안 들려요' 가 숫자가 됩니다.
+function callDiagLine() {
+  const c = CALL;
+  if (!c) return '';
+  const a = c.aud || {};
+  const line = t('쪽지','Sig') + ' ↑' + (c.sigOut || 0) + ' ↓' + (c.sigIn || 0)
+             + ((c.sigErr || 0) ? ' ⚠' + c.sigErr : '')
+             + ' · ' + t('줄','Line') + ' ' + (c.sigState || '…')
+             + ' · ' + t('길','Paths') + ' ' + callCandSummary()
+             + ' · ' + t('중계','Relay') + ' ' + (c.hasTurn ? t('있음','on') : t('없음','off'))
+             + ' · ' + t('상태','State') + ' ' + (c.net || '-')
+             + ' · ' + t('소리','Audio') + ' ↑' + (a.out || 0) + ' ↓' + (a.inb || 0)
+             + ' · ' + t('내 마이크','Mic') + ' ' + Math.round((a.mic || 0) * 100) + '%';
+  return line;
+}
+
 function callTick() {
   if (!CALL || CALL.status !== 'accepted') return;
+  callPollStats();
+  const dg = document.getElementById('call-diag');
+  if (dg) dg.textContent = callDiagLine();
+  const qw = document.getElementById('call-quiet');
+  if (qw) { const w = callQuietWhy(); qw.textContent = w; qw.style.display = w ? 'block' : 'none'; }
   const el = document.getElementById('call-time');
   if (el) el.textContent = callMmSs(callElapsed());
   const lim = Number(CALL_LIMIT_MIN) || 0;
@@ -32580,11 +32741,13 @@ function renderCallScreen() {
          border-radius:14px;padding:13px 15px;font:600 13px var(--font);color:#ffd7cf;line-height:1.75;word-break:keep-all">
          ${escHtml(CALL.why || '')}
        </div>` : ''}
-    ${(dead || (live && !CALL.linked)) ? `<div style="margin-top:10px;font:500 11.5px var(--font);
-         color:rgba(255,255,255,.5);line-height:1.8;max-width:320px;word-break:keep-all">
-         ${t('찾은 길','Paths')}: ${escHtml(callCandSummary())}
-         · ${t('중계','Relay')}: ${CALL.hasTurn ? t('있음','on') : t('없음','off')}
-         · ${t('상태','State')}: ${escHtml(CALL.net || '-')}
+    ${(live || dead) ? `<div id="call-quiet" style="margin-top:10px;max-width:320px;
+         background:rgba(0,0,0,.22);border:1px solid rgba(255,255,255,.14);border-radius:12px;
+         padding:9px 13px;font:600 12.5px var(--font);color:#ffe0b8;line-height:1.7;
+         word-break:keep-all;display:none"></div>` : ''}
+    ${(live || dead) ? `<div id="call-diag" style="margin-top:8px;font:500 11px var(--font);
+         color:rgba(255,255,255,.45);line-height:1.8;max-width:330px;word-break:break-word">
+         ${escHtml(callDiagLine())}
        </div>` : ''}
     ${tapBar ? `<div style="display:flex;flex-direction:column;align-items:center;gap:8px;margin-top:14px">${tapBar}</div>` : ''}
     <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-top:18px">${actions}</div>

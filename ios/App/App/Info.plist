@@ -72,6 +72,14 @@
 	<string>전화를 걸고 받을 때 마이크를 씁니다. 통화는 녹음하지 않습니다.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>증명서나 내역서를 이미지로 저장할 때 사진 보관함에 넣습니다.</string>
+	<!-- 📞 통화에 꼭 있어야 하는 허락.
+	     아이폰은 iOS 14 부터 '같은 와이파이 안의 다른 기기' 와 말을 거는 것을
+	     따로 허락받게 합니다. 전화(WebRTC)는 같은 와이파이에서는 공유기를
+	     거치지 않고 기기끼리 바로 붙으므로, 이 줄이 없으면 아이폰이 그 길을
+	     조용히 막습니다 — 벨은 울리고 받아지는데 소리만 안 나는 모습이 됩니다.
+	     (오류도 안 뜹니다. 그래서 찾기가 어렵습니다) -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>같은 와이파이 안에서는 통화 소리를 두 기기가 바로 주고받습니다. 그래서 가까운 기기를 찾는 허락이 필요합니다. 통화는 녹음하지 않습니다.</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
