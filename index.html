@@ -2853,9 +2853,11 @@ function showDesktopUpdateBar() {
     + 'box-shadow:0 6px 18px rgba(0,0,0,.25)';
   b.innerHTML = '<span>🖥 ' + escHtml(
       t('맥 앱이 옛 판이에요 (' + desktopVer() + '). 새 판 ' + DESKTOP_VER
-        + ' 을 받아 다시 깔아주세요 — 전화할 때 제 목소리가 상대에게 가지 않던 것을 고쳤습니다.',
+        + ' 을 받아 다시 깔아주세요 — 전화할 때 제 목소리가 상대에게 가지 않던 것을 고쳤습니다. '
+        + '손으로 받으시는 건 이번 한 번뿐이에요. ' + DESKTOP_VER + ' 부터는 저절로 새 판으로 바뀝니다.',
         'Your Mac app is out of date (' + desktopVer() + '). Please install ' + DESKTOP_VER
-        + ' — it fixes your voice not reaching the other person on calls.')) + '</span>'
+        + ' — it fixes your voice not reaching the other person on calls. '
+        + 'This is the last manual install; ' + DESKTOP_VER + ' updates itself.')) + '</span>'
     + '<button onclick="desktopBarHide()" style="height:30px;padding:0 14px;border:none;'
     + 'border-radius:9px;background:rgba(255,255,255,.2);color:#fff;'
     + 'font:700 12px var(--font);cursor:pointer">'

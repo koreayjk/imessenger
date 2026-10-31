@@ -8,9 +8,10 @@
   "author": "TCS",
   "scripts": {
     "start": "electron .",
-    "dmg": "electron-builder --mac dmg --arm64",
-    "dmg:intel": "electron-builder --mac dmg --x64",
-    "dmg:all": "electron-builder --mac dmg --arm64 --x64"
+    "dmg": "electron-builder --mac",
+    "dmg:intel": "electron-builder --mac dmg zip --x64",
+    "dmg:all": "electron-builder --mac dmg zip --arm64 --x64",
+    "release": "electron-builder --mac --publish always"
   },
   "devDependencies": {
     "electron": "^44.9.0",
@@ -26,7 +27,8 @@
     },
     "files": [
       "main.js",
-      "package.json"
+      "package.json",
+      "node_modules/**/*"
     ],
     "mac": {
       "category": "public.app-category.education",
@@ -34,6 +36,12 @@
       "target": [
         {
           "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
           "arch": [
             "arm64"
           ]
@@ -64,10 +72,20 @@
           "path": "/Applications"
         }
       ]
-    }
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "koreayjk",
+        "repo": "imessenger"
+      }
+    ]
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/koreayjk/imessenger.git"
+  },
+  "dependencies": {
+    "electron-updater": "^6.6.2"
   }
 }

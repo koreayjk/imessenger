@@ -54,6 +54,61 @@ TCS 를 **응용 프로그램** 폴더로 끌어다 놓으면 끝입니다.
 > 새 판을 내실 때는 `index.html` 의 `DESKTOP_VER` 과 `desktop/package.json`
 > 의 `version` 을 같이 올리세요. 이 둘이 띠를 띄울지 말지를 정합니다.
 
+---
+
+## 🔄 1.1.0 부터는 저절로 새 판으로 바뀝니다
+
+**손으로 받으시는 건 1.1.0 한 번뿐입니다.** 그 뒤로는 앱이 스스로
+GitHub 릴리스를 보고 받아서 갈아끼웁니다. 파일을 일일이 전해 드릴 일이
+없습니다.
+
+- 앱을 켤 때 한 번, 그 뒤 **여섯 시간마다** 한 번씩 봅니다
+- 새 판이 있으면 **미리 받아 둡니다**
+- 다 받으면 묻습니다 — 「지금 다시 열기」 / 「나중에」.
+  나중에 하셔도 **앱을 끄실 때 저절로 바뀝니다**
+- 메뉴 **TCS → 업데이트 확인…** 으로 손으로도 볼 수 있습니다
+- 인터넷이 끊겨 있으면 조용히 지나갑니다 (귀찮게 하지 않습니다)
+
+### ⚠️ 저절로 되려면 이 셋이 다 있어야 합니다
+
+| | 없으면 |
+|---|---|
+| **서명 + 공증** | 맥은 **서명된 앱만** 갈아끼웁니다. 조용히 실패합니다 |
+| **`.zip` 도 같이 올리기** | 맥의 자동 업데이트는 `.dmg` 가 아니라 **`.zip` 과 `latest-mac.yml`** 을 봅니다 |
+| **응용 프로그램 폴더** | `.dmg` 안에서 바로 띄우면 제 자신을 못 바꿉니다 |
+
+`npm run dmg` 가 `.dmg` 와 `.zip` 을 **둘 다** 만듭니다. `.dmg` 는 처음
+받으실 때, `.zip` 은 저절로 바뀔 때 쓰입니다.
+
+### 새 판 올리기
+
+GitHub 릴리스에 올려야 앱이 봅니다. 토큰이 하나 필요합니다 —
+github.com → Settings → Developer settings → **Personal access tokens** →
+`repo` 권한.
+
+```bash
+cd ~/imessenger/desktop
+export GH_TOKEN='ghp_...'                    # 🔐 git 에 올리지 마세요
+export APPLE_KEYCHAIN_PROFILE="tcs-notary"
+export APPLE_TEAM_ID="H6B99PYZ8W"
+npm run release
+```
+
+`.dmg` · `.zip` · `latest-mac.yml` 이 **초안(draft) 릴리스**로 올라갑니다.
+github.com 의 Releases 에서 **Publish release** 를 누르셔야 사람들 앱에
+닿습니다. (그 전까지는 아무도 못 받습니다 — 실수로 반쯤 만든 것이
+나가지 않게 하는 안전장치입니다)
+
+올리실 때마다 **세 곳의 판 번호를 같이** 올리세요:
+
+| 어디 | 무엇 |
+|---|---|
+| `desktop/package.json` | `"version"` — 앱의 판 번호 |
+| `index.html` | `DESKTOP_VER` — 옛 판에게 띄우는 띠 |
+| 릴리스 태그 | `v1.2.0` 처럼 (electron-builder 가 알아서 붙입니다) |
+
+🔐 **`GH_TOKEN` 은 git 에 올리지 마세요.** 위 `export` 는 그 터미널 창에서만 삽니다.
+
 ### 맥이 안 묻고 조용하면
 
 맥은 **앱 하나당 답을 한 번만 기억합니다.** 예전 앱이 이미 물어본

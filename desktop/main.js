@@ -110,6 +110,80 @@ function macBlocked(kind) {
   } catch (_) {}
 }
 
+// ── 🔄 저절로 새 판으로 ───────────────────────────────────────────
+//
+//  맥 앱은 화면만 받아오므로 웬만한 고침은 다시 깔 일이 없습니다. 그런데
+//  **앱 자체**가 바뀔 때는(이번 마이크 자격처럼) 다시 깔아야 합니다. 쓰시는
+//  분들께 파일을 일일이 전해 드릴 수는 없으니, 앱이 스스로 GitHub 릴리스를
+//  보고 받아 둡니다.
+//
+//  ⚠️ 맥은 **서명된 앱만** 저절로 갈아끼웁니다. 서명·공증을 건너뛰면 조용히
+//     실패합니다. 그리고 앱이 '응용 프로그램' 폴더에 있어야 합니다 — .dmg
+//     안에서 바로 띄우면 못 바꿉니다.
+//  ⚠️ 맥의 자동 업데이트는 .dmg 가 아니라 **.zip** 과 latest-mac.yml 을 봅니다.
+//     package.json 의 mac.target 에 zip 이 같이 있어야 하는 까닭입니다.
+let updater = null;
+let _askedRestart = false;
+
+function initUpdater(force) {
+  if (!updater) {
+    if (!force && !app.isPackaged) return;     // 개발 중에는 하지 않는다
+    try { updater = require('electron-updater').autoUpdater; }
+    catch (e) {
+      //  꾸러미에 안 담겼다. 조용히 지나가면 '왜 업데이트가 안 되지' 로만 남는다.
+      console.log('업데이트 도구를 못 찾았습니다 —', String((e && e.message) || e));
+      return;
+    }
+    updater.autoDownload = true;          // 받아만 둔다. 갈아끼우는 건 아래에서 묻는다.
+    updater.autoInstallOnAppQuit = true;  // 안 물어도, 끄실 때 저절로 바뀐다
+    updater.on('error', (e) => {
+      console.log('업데이트를 못 봤습니다 —', String((e && e.message) || e));
+    });
+    updater.on('update-downloaded', (info) => askRestart((info && info.version) || ''));
+    //  켜 두고 쓰시는 분들을 위해 여섯 시간마다 한 번 더 본다
+    setInterval(() => { try { updater.checkForUpdates(); } catch (_) {} }, 6 * 3600 * 1000);
+  }
+  try { return updater.checkForUpdates(); } catch (_) {}
+}
+
+//  받아는 뒀다. 쓰는 중에 갑자기 꺼지면 안 되니 물어보고 바꿉니다.
+function askRestart(ver) {
+  if (_askedRestart) return;
+  _askedRestart = true;
+  try {
+    dialog.showMessageBox({
+      type: 'info',
+      message: `새 판 ${ver} 이 준비됐어요`,
+      detail: '지금 다시 열면 바로 쓰실 수 있습니다.\n'
+            + '나중에 하셔도 됩니다 — 앱을 끄실 때 저절로 바뀝니다.',
+      buttons: ['지금 다시 열기', '나중에'],
+      defaultId: 0, cancelId: 1,
+    }).then((r) => {
+      if (r && r.response === 0) { try { updater.quitAndInstall(); } catch (_) {} }
+    }, () => {});
+  } catch (_) {}
+}
+
+//  메뉴에서 손으로도 볼 수 있게. 기다리는 분께는 '지금 봐 주세요' 가 필요합니다.
+function checkUpdatesByHand() {
+  _askedRestart = false;
+  const p = initUpdater(true);
+  if (!p || !p.then) {
+    try { dialog.showMessageBox({ type: 'info', message: '지금은 확인할 수 없어요',
+      detail: '인터넷에 닿지 않거나, 아직 묶지 않은 앱입니다.', buttons: ['닫기'] }); } catch (_) {}
+    return;
+  }
+  p.then((r) => {
+    const v = r && r.updateInfo && r.updateInfo.version;
+    if (v && v !== app.getVersion()) return;        // 받는 중 — 다 받으면 물어본다
+    try { dialog.showMessageBox({ type: 'info', message: '이미 최신이에요',
+      detail: `맥 앱 ${app.getVersion()}`, buttons: ['닫기'] }); } catch (_) {}
+  }, (e) => {
+    try { dialog.showMessageBox({ type: 'warning', message: '확인하지 못했어요',
+      detail: String((e && e.message) || e).slice(0, 200), buttons: ['닫기'] }); } catch (_) {}
+  });
+}
+
 function createWindow() {
   const s = loadState();
   win = new BrowserWindow({
@@ -187,6 +261,7 @@ function buildMenu() {
           type: 'info', message: 'TCS — Total Care System',
           detail: `맥 앱 ${app.getVersion()}\n화면은 늘 최신으로 받아옵니다.\n${HOME}`,
           buttons: ['닫기'] }) },
+      { label: '업데이트 확인…', click: () => checkUpdatesByHand() },
       { type: 'separator' },
       { label: 'TCS 가리기', role: 'hide' },
       { label: '나머지 가리기', role: 'hideOthers' },
@@ -227,6 +302,7 @@ else {
   app.whenReady().then(() => {
     buildMenu();
     createWindow();
+    initUpdater();            // 저절로 새 판으로 — 파일을 일일이 전하지 않아도 되게
     app.on('activate', () => { if (!BrowserWindow.getAllWindows().length) createWindow(); });
   });
   // 맥에서는 창을 닫아도 앱이 남는 것이 보통이다 (독 아이콘을 다시 누르면 열린다)

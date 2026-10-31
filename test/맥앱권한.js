@@ -32,13 +32,13 @@ ok((pkg.build.mac.entitlements || '').includes('entitlements.mac.plist'),
 
 // ── ② 진짜 권한 손잡이에게 물어본다 ──────────────────────────────
 //  main.js 를 가짜 일렉트론 위에서 돌린다. 창은 안 뜬다.
-function loadMain(macStatus) {
-  const seen = { req: null, chk: null, dialogs: [], asked: [], opened: [] };
+function loadMain(macStatus, up) {
+  const seen = { req: null, chk: null, dialogs: [], asked: [], opened: [], menu: null, up: null };
   let status = macStatus || 'granted';
   const el = {
     app: {
       requestSingleInstanceLock: () => true,
-      on() {}, quit() {},
+      on() {}, quit() {}, isPackaged: true,
       whenReady: () => Promise.resolve(),
       getPath: () => '/tmp', getVersion: () => '0.0.0',
     },
@@ -58,7 +58,7 @@ function loadMain(macStatus) {
       });
     },
     shell: { openExternal: (u) => seen.opened.push(u) },
-    Menu: { buildFromTemplate: () => ({}), setApplicationMenu() {} },
+    Menu: { buildFromTemplate: (t) => { seen.menu = t; return {}; }, setApplicationMenu() {} },
     dialog: {
       showMessageBox: (o) => { seen.dialogs.push(o); return Promise.resolve({ response: 0 }); },
     },
@@ -70,6 +70,18 @@ function loadMain(macStatus) {
   el.BrowserWindow.getAllWindows = () => [{}];
   const fake = (m) => {
     if (m === 'electron') return el;
+    if (m === 'electron-updater') {
+      if (up === 'missing') throw new Error('Cannot find module');
+      const ev = {};
+      seen.up = {
+        on: (k, f) => { ev[k] = f; },
+        fire: (k, a) => ev[k] && ev[k](a),
+        checks: 0, quit: 0, autoDownload: null, autoInstallOnAppQuit: null,
+        checkForUpdates() { seen.up.checks++; return Promise.resolve({ updateInfo: { version: '1.2.0' } }); },
+        quitAndInstall() { seen.up.quit++; },
+      };
+      return { autoUpdater: seen.up };
+    }
     if (m === 'node:path') return path;
     if (m === 'node:fs') return { readFileSync() { throw new Error('없음'); }, writeFileSync() {} };
     return require(m);
@@ -119,6 +131,59 @@ const ask = (seen, perm, url, det) => new Promise((res) => {
   //  두 번 세 번 뜨면 전화를 걸 수가 없다
   await ask(d, 'media', ORIGIN + '/imessenger/', { mediaTypes: ['audio'] });
   ok(d.dialogs.length === 1, '같은 말을 두 번 띄우지는 않는다');
+
+  // ── ③ 저절로 새 판으로 ──────────────────────────────────────────
+  //  파일을 일일이 전해 드릴 수는 없습니다. 앱이 스스로 받아 갈아끼워야 합니다.
+  ok(!!(pkg.dependencies && pkg.dependencies['electron-updater']),
+     'electron-updater 가 dependencies 에 있다 (devDependencies 면 안 담긴다)');
+  ok((pkg.build.files || []).some(f => /node_modules/.test(f)),
+     '꾸러미에 node_modules 를 담는다 (안 담으면 업데이트 도구를 못 찾는다)');
+  const tg = JSON.stringify(pkg.build.mac.target || '');
+  ok(/"zip"/.test(tg), 'zip 도 같이 만든다 (맥 자동 업데이트는 dmg 가 아니라 zip 을 본다)');
+  ok(/"dmg"/.test(tg), 'dmg 도 그대로 만든다 (처음 받으실 때 쓴다)');
+  const pub = JSON.stringify(pkg.build.publish || '');
+  ok(/"github"/.test(pub) && /koreayjk/.test(pub) && /imessenger/.test(pub),
+     '어디서 새 판을 받아오는지 적혀 있다');
+  ok(/--publish/.test((pkg.scripts || {}).release || ''), '올리는 명령이 있다');
+
+  const u = loadMain('granted');
+  await new Promise(r => setTimeout(r, 30));
+  ok(u.up && u.up.checks >= 1, '앱이 켜지면 새 판이 있는지 본다');
+  ok(u.up && u.up.autoDownload === true, '있으면 미리 받아 둔다');
+  ok(u.up && u.up.autoInstallOnAppQuit === true, '안 물어봐도 끄실 때 바뀐다');
+
+  //  다 받았다 — 쓰는 중에 갑자기 꺼지면 안 되니 물어본다
+  const before = u.dialogs.length;
+  u.up.fire('update-downloaded', { version: '1.2.0' });
+  await new Promise(r => setTimeout(r, 10));
+  const up = u.dialogs[before] || {};
+  ok(/새 판 1\.2\.0 이 준비됐어요/.test(up.message || ''), '다 받으면 알려 준다');
+  ok(/나중에 하셔도 됩니다/.test(up.detail || ''), '지금 안 해도 된다고 말해 준다');
+  ok((up.buttons || [])[0] === '지금 다시 열기', '지금 바꾸는 단추가 먼저다');
+  await new Promise(r => setTimeout(r, 10));
+  ok(u.up.quit === 1, '지금 다시 열기 를 누르면 갈아끼운다');
+
+  //  두 번 세 번 물으면 일을 못 한다
+  const n = u.dialogs.length;
+  u.up.fire('update-downloaded', { version: '1.2.0' });
+  await new Promise(r => setTimeout(r, 10));
+  ok(u.dialogs.length === n, '같은 것을 두 번 묻지는 않는다');
+
+  //  인터넷이 끊겨도 앱이 죽으면 안 된다
+  let crashed = false;
+  try { u.up.fire('error', new Error('net down')); } catch (_) { crashed = true; }
+  ok(!crashed, '새 판을 못 봐도 앱은 멀쩡하다');
+  ok(u.dialogs.length === n, '못 봤다고 사람을 귀찮게 하지는 않는다');
+
+  //  메뉴에서 손으로도 볼 수 있어야 한다
+  const tcs = (u.menu || []).find(x => x.label === 'TCS');
+  ok(!!tcs && (tcs.submenu || []).some(x => /업데이트 확인/.test(x.label || '')),
+     '메뉴에 업데이트 확인 이 있다');
+
+  //  업데이트 도구가 안 담겼으면 — 조용히 지나가면 영영 모른다
+  const m = loadMain('granted', 'missing');
+  await new Promise(r => setTimeout(r, 30));
+  ok(m.up === null, '도구가 없으면 없는 대로 둔다 (앱은 그대로 돈다)');
 
   //  예전 버릇 — 손잡이가 없던 때로 돌아가지 않았는지
   const src = fs.readFileSync(path.join(D, 'main.js'), 'utf8');
