@@ -11195,6 +11195,15 @@ async function csBlocks(size) {
     api.__qg = true;
     const realUpload = api.upload.bind(api);
     api.upload = async function (path, file, opts) {
+      //  📱 여기까지 HEIC 로 왔다는 건 바꾸기가 실패했다는 뜻입니다.
+      //     그대로 올리면 **올린 사람 말고는 아무도 못 봅니다.** 막고,
+      //     어떻게 하면 되는지 알려 줍니다.
+      if (isHeic(file)) {
+        const m = t('아이폰 사진(HEIC)을 jpg 로 바꾸지 못했어요. 인터넷을 확인하고 다시 올려보세요.\n\n아이폰에서 설정 → 카메라 → 포맷 → "높은 호환성" 으로 두시면 처음부터 jpg 로 찍힙니다.',
+                    'Could not convert this iPhone photo (HEIC) to JPG. Check your connection and try again.\n\nOn iPhone: Settings → Camera → Formats → "Most Compatible" saves photos as JPG from the start.');
+        showUploadToast(m);
+        return { data: null, error: { message: m } };
+      }
       const why = await csBlocks(file && (file.size || file.byteLength) || 0);
       if (why) { showUploadToast(why); return { data: null, error: { message: why } }; }
       return realUpload(path, file, opts);
@@ -20051,27 +20060,91 @@ function clearPendingFiles() {
 //  · keepAlpha: 로고·직인처럼 배경이 투명해야 하는 그림은 PNG 로 남긴다.
 //    JPEG 로 바꾸면 투명한 곳이 검정/흰색으로 메워진다.
 //  · GIF(움직임) · SVG(벡터) 는 손대지 않는다.
+// ── 📱 아이폰 사진(HEIC) ──────────────────────────────────────────
+//
+//  아이폰은 기본으로 HEIC 로 찍습니다. 사파리는 그걸 그대로 그릴 수 있어서
+//  여기 줄이기가 통했지만, **크롬·엣지·파이어폭스는 못 읽습니다.** 그러면
+//  아래 catch 로 떨어져 **원본이 그대로 올라갔습니다** — 압축도 안 되고,
+//  올린 사람 말고는 아무도 못 보는 파일이 자리만 차지했습니다.
+//  (사진이 그대로 올라간다던 말씀과 아이폰 사진 말씀이 같은 일이었습니다)
+function isHeic(file) {
+  const ty = String((file && file.type) || '');
+  const nm = String((file && file.name) || '');
+  return /hei[cf]/i.test(ty) || /\.(heic|heif)$/i.test(nm);
+}
+
+//  못 읽는 브라우저에서만 받아 옵니다. 사파리·아이폰 앱에서는 안 받습니다.
+let _heic2any = null;
+async function heicLib() {
+  if (_heic2any) return _heic2any;
+  if (window.heic2any) return (_heic2any = window.heic2any);
+  await new Promise((res, rej) => {
+    const sc = document.createElement('script');
+    sc.src = 'https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js';
+    sc.onload = res;
+    sc.onerror = () => rej(new Error('heic2any 를 못 받았습니다'));
+    document.head.appendChild(sc);
+  });
+  if (!window.heic2any) throw new Error('heic2any 가 안 올라왔습니다');
+  return (_heic2any = window.heic2any);
+}
+async function heicToJpeg(file) {
+  const lib = await heicLib();
+  const out = await lib({ blob: file, toType: 'image/jpeg', quality: 0.9 });
+  const blob = Array.isArray(out) ? out[0] : out;
+  if (!blob || !blob.size) throw new Error('바꾸지 못했습니다');
+  return new File([blob], String(file.name || 'photo').replace(/\.[^.]+$/, '') + '.jpg',
+                  { type: 'image/jpeg' });
+}
+
+//  그림을 읽어 온다. 못 읽는데 아이폰 사진이면 jpg 로 바꿔 한 번 더 해본다.
+//  돌려주는 것: { img, file } — file 은 바뀌었을 수도 있다.
+async function loadForShrink(file) {
+  const read = (f) => new Promise((res, rej) => {
+    const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(f);
+  });
+  const draw = (url) => new Promise((res, rej) => {
+    const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = url;
+  });
+  try {
+    const img = await draw(await read(file));
+    //  사파리는 HEIC 를 그대로 읽습니다. 그래도 **jpg 로 내보냅니다** —
+    //  안 그러면 받는 사람 쪽에서 또 못 엽니다.
+    return { img, file };
+  } catch (e) {
+    if (!isHeic(file)) throw e;
+    console.warn('📱 이 브라우저는 아이폰 사진을 못 읽습니다 — jpg 로 바꿉니다');
+    const jpg = await heicToJpeg(file);
+    return { img: await draw(await read(jpg)), file: jpg };
+  }
+}
+
 async function shrinkImage(file, opt) {
   const o = opt || {};
   const maxDim = o.maxDim || 1600, quality = o.quality || 0.82;
   const floor = o.minSize === undefined ? 300 * 1024 : o.minSize;
   try {
-    if (!file || !file.type || !file.type.startsWith('image/')) return file;
+    const heic = isHeic(file);
+    if (!file || (!heic && (!file.type || !file.type.startsWith('image/')))) return file;
     if (file.type === 'image/gif' || file.type === 'image/svg+xml') return file;
-    const dataUrl = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); });
-    const img = await new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = dataUrl; });
+    const got = await loadForShrink(file);
+    const img = got.img;
+    file = got.file;                              // 아이폰 사진이면 여기서 이미 jpg 다
     let w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
     if (!w || !h) return file;
     const over = Math.max(w, h) > maxDim;
-    if (!over && file.size < floor) return file;   // 작고 이미 작은 파일은 건드릴 이득이 없다
+    //  아이폰 사진은 작아도 반드시 다시 그린다 — jpg 로 내보내야 한다
+    if (!heic && !over && file.size < floor) return file;   // 작고 이미 작은 파일은 건드릴 이득이 없다
     if (over) { const sc = maxDim / Math.max(w, h); w = Math.round(w * sc); h = Math.round(h * sc); }
     const c = document.createElement('canvas'); c.width = w; c.height = h;
     const ctx = c.getContext('2d');
-    const png = !!o.keepAlpha && /png|webp/.test(file.type);
+    const png = !heic && !!o.keepAlpha && /png|webp/.test(file.type);
     if (!png) { ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h); }   // JPEG 는 투명을 못 쓴다 — 흰 바탕을 깐다
     ctx.drawImage(img, 0, 0, w, h);
     const blob = await new Promise(res => png ? c.toBlob(res, 'image/png') : c.toBlob(res, 'image/jpeg', quality));
-    if (!blob || blob.size >= file.size) return file;   // 더 커지면 원본 유지
+    //  더 커지면 원본을 둔다. 단, 아이폰 사진은 커지더라도 jpg 를 쓴다 —
+    //  크기보다 '열리는가' 가 먼저다.
+    if (!blob || (!heic && blob.size >= file.size)) return file;
     const ext = png ? 'png' : 'jpg';
     return new File([blob], String(file.name || 'image').replace(/\.[^.]+$/, '') + '.' + ext,
                     { type: png ? 'image/png' : 'image/jpeg' });
