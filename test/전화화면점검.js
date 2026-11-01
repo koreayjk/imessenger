@@ -73,7 +73,19 @@ ok(/ckEnd\(CALL && CALL\.id\)/.test(WEB), '통화가 끝나면 전화 화면도 
 ok(/ckConnected\(CALL\.id\)/.test(WEB), '소리가 붙으면 전화 화면의 시간이 돈다');
 ok(/_ckRang !== row\.id/.test(WEB), '전화 화면이 울리는 중이면 앱이 겹쳐 울리지 않는다');
 
-// ── ⑦ 아이폰이 아닌 곳에서는 아무 일도 없어야 한다 ──────────────
+// ── ⑦ Xcode 가 이 파일들을 아는가 ───────────────────────────────
+//  ⚠️ 파일이 디스크에 있어도 **프로젝트에 등록 안 되면 컴파일이 안 됩니다.**
+//     그러면 전화 화면이 영영 안 뜨는데, 빌드는 멀쩡히 성공합니다.
+//     cap sync 는 이걸 안 해 줍니다 — 실제로 여기서 한 번 걸렸습니다.
+const PBX = R('ios/App/App.xcodeproj/project.pbxproj');
+for (const f of ['TCSCallKit.swift', 'CallKitPlugin.swift']) {
+  ok(new RegExp(`/\\* ${f} \\*/ = \\{isa = PBXFileReference`).test(PBX),
+     `Xcode 프로젝트가 ${f} 을 안다`);
+  ok(new RegExp(`${f} in Sources \\*/,`).test(PBX),
+     `${f} 이 **컴파일 목록(Sources)** 에 들어 있다`);
+}
+
+// ── ⑧ 아이폰이 아닌 곳에서는 아무 일도 없어야 한다 ──────────────
 (async () => {
   const b = await launch();
   const pg = await openApp(b, { as: 'teacher' });
