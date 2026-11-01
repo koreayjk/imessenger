@@ -80,6 +80,13 @@
 	     (오류도 안 뜹니다. 그래서 찾기가 어렵습니다) -->
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>같은 와이파이 안에서는 통화 소리를 두 기기가 바로 주고받습니다. 그래서 가까운 기기를 찾는 허락이 필요합니다. 통화는 녹음하지 않습니다.</string>
+	<!-- 📞 전화 — 앱이 꺼져 있어도 전화가 오면 깨어나야 합니다 (VoIP 푸시).
+	     이게 없으면 잠금화면 전화 화면(CallKit)이 아예 안 뜹니다.
+	     심사에서 '진짜 통화 기능이 있는가' 를 봅니다 — TCS 는 있습니다. -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>voip</string>
+	</array>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>UIViewControllerBasedStatusBarAppearance</key>

@@ -33350,6 +33350,7 @@ async function callMakePc() {
                 '· 중계:', CALL.hasTurn ? '있음' : '없음');
     if (s === 'connected') {
       CALL.linked = true;
+      ckConnected(CALL.id);    // 아이폰 전화 화면의 시간이 돌기 시작한다
       // ③ 소리 길이 붙었다 = 상대가 거기 있다. 표가 안 와도 통화로 친다.
       if (CALL.dir === 'out') callAccepted('connected');
       renderCallScreen();
@@ -34031,6 +34032,7 @@ async function endCall(reason) {
 }
 
 function callTeardown() {
+  ckEnd(CALL && CALL.id);      // 아이폰 전화 화면도 같이 내린다
   callRingStop();
   callStopClock();
   if (_callNoAnsT) { clearTimeout(_callNoAnsT); _callNoAnsT = null; }
@@ -34092,7 +34094,8 @@ async function onCallRing(row) {
   if (CALL) return;                    // 이름을 찾는 동안 다른 통화가 시작됐다
   CALL = { id: row.id, dir: 'in', peer: m || { name: t('누군가','Someone') }, status: 'ringing', startedAt: 0 };
   CALL.sig = callSignalJoin(row.id);
-  callRingStart(true);
+  //  아이폰 전화 화면이 이미 시스템 벨소리로 울리고 있으면 겹쳐 울리지 않는다
+  if (_ckRang !== row.id) callRingStart(true);
   renderCallScreen();
   try { if (document.hidden || (document.hasFocus && !document.hasFocus())) callNotify(CALL.peer); } catch (_) {}
   const mine = row.id;
@@ -34163,7 +34166,86 @@ async function loadCallLimit() {
   } catch (_) {}
 }
 
+// ── 🍎 아이폰 전화 화면 (CallKit) ────────────────────────────────
+//
+//  아이폰 앱에서는 전화가 오면 **잠금화면에 전체화면 전화 화면**이 뜨고
+//  시스템 벨소리로 계속 울립니다. 받기를 누르면 앱이 앞으로 올라오고,
+//  그때부터 소리는 지금까지처럼 웹뷰가 주고받습니다.
+//
+//  ⚠️ CallKit 은 '벨 울리고 받는 화면' 까지만 맡습니다. 소리에는 손대지
+//     않습니다 — 둘이 소리를 서로 가져가려 하면 '받았는데 안 들리는'
+//     그 증상이 다시 납니다.
+let _ckVoip = null;            // 애플이 준 VoIP 기기 표
+let _ckRang = null;            // CallKit 이 띄운 전화의 번호
+
+function callKit() {
+  try {
+    const C = window.Capacitor;
+    if (!C || !C.isNativePlatform || !C.isNativePlatform()) return null;
+    return (C.Plugins || {}).CallKit || null;
+  } catch (_) { return null; }
+}
+
+//  VoIP 표를 서버에 둔다. 알림 표와 **다른 표** 입니다 — 애플이 둘을
+//  따로 줍니다. 한 줄에 같이 둘 수 없어서 kind 로 가립니다.
+async function ckSaveToken(tok) {
+  if (!ME || !tok) return false;
+  const { error } = await sb.from('push_subscriptions').upsert({
+    member_id: ME.id, endpoint: tok, kind: 'ios_voip', p256dh: null, auth: null,
+    ua: 'ios-voip', enabled: true, only_mention: false, preview: true, mutes: '', fail_count: 0,
+  }, { onConflict: 'endpoint' });
+  if (error) { console.warn('📞 VoIP 표를 못 저장했습니다 —', error.message); return false; }
+  console.log('📞 VoIP 표를 저장했습니다');
+  return true;
+}
+
+async function callKitInit() {
+  const CK = callKit();
+  if (!CK || callKitInit._done) return;
+  callKitInit._done = true;
+  try {
+    CK.addListener('voipToken', (e) => {
+      _ckVoip = (e && e.token) || null;
+      if (_ckVoip) ckSaveToken(_ckVoip);
+    });
+    //  받기를 눌렀다 — 그 전화를 찾아 열고 받는다.
+    //  잠금화면에서 바로 받으면 화면이 아직 없을 수 있어, 네이티브가
+    //  모아 뒀다가 start() 때 한꺼번에 넘겨 줍니다.
+    CK.addListener('answer', async (e) => {
+      const id = (e && e.callId) || '';
+      console.log('📞 전화 화면에서 받기를 눌렀습니다 —', id);
+      _ckRang = id;
+      if (!CALL && id) { try { await callOpenFromNotification(id); } catch (_) {} }
+      if (CALL && CALL.status === 'ringing' && CALL.dir === 'in') acceptCall();
+    });
+    CK.addListener('ended', (e) => {
+      const id = (e && e.callId) || '';
+      console.log('📞 전화 화면에서 끊었습니다 —', id);
+      _ckRang = null;
+      if (CALL && (!id || CALL.id === id)) endCall('declined');
+    });
+    CK.addListener('muted', (e) => {
+      if (!CALL || !CALL.mic) return;
+      CALL.muted = !!(e && e.muted);
+      try { CALL.mic.getAudioTracks().forEach(tr => { tr.enabled = !CALL.muted; }); } catch (_) {}
+      renderCallScreen();
+    });
+    CK.addListener('incoming', (e) => { _ckRang = (e && e.callId) || null; });
+    await CK.start();
+    //  앱이 꺼져 있다 전화로 깨어난 길 — 이미 울리고 있는 전화가 있나
+    try {
+      const p = await CK.pending();
+      if (p && p.callId && !CALL) callOpenFromNotification(p.callId);
+    } catch (_) {}
+  } catch (e) { console.warn('📞 전화 화면을 켜지 못했습니다 —', String(e)); }
+}
+
+//  통화가 끝났다 / 붙었다 — 전화 화면에도 알려 줘야 그 화면이 내려갑니다.
+function ckEnd(id) { const CK = callKit(); if (CK) { try { CK.endCall({ callId: id || '' }); } catch (_) {} } }
+function ckConnected(id) { const CK = callKit(); if (CK) { try { CK.connected({ callId: id || '' }); } catch (_) {} } }
+
 function callInit() {
+  callKitInit();
   subscribeCalls();
   loadCallLimit();
   showDesktopUpdateBar();      // 옛 맥 앱은 마이크가 막혀 있다 — 알려줘야 한다

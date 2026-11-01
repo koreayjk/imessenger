@@ -7,7 +7,12 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
+        // 📞 전화 화면(CallKit)·VoIP 푸시를 여기서 켠다.
+        //  ⚠️ 플러그인이 만들어질 때까지 기다리면 늦습니다. 꺼져 있던 앱이
+        //     VoIP 푸시로 깨어날 때, 푸시가 플러그인보다 **먼저** 옵니다.
+        //     그때 전화를 못 알리면 iOS 가 앱을 죽이고, 몇 번 반복되면
+        //     VoIP 푸시를 아예 안 보내 줍니다.
+        TCSCallKit.shared.start()
         return true
     }
 

@@ -130,6 +130,43 @@ async function apnsJwt(): Promise<string> {
   return tok;
 }
 
+// 📞 VoIP 푸시 — 전화 화면(CallKit)을 띄우는 푸시
+//
+//  보통 알림과 **다른 길**입니다. 주소 뒤에 .voip 가 붙고, 종류도 voip 입니다.
+//  열쇠는 같은 .p8 을 씁니다 — 따로 받을 것이 없습니다.
+//
+//  ⚠️ 이 푸시를 받으면 앱은 **그 자리에서** 전화를 알려야 합니다. 안 그러면
+//     iOS 가 앱을 죽이고, 몇 번 반복되면 VoIP 푸시를 아예 끊습니다.
+//     그래서 '혹시 모르니 미리 보내두기' 같은 건 절대 하면 안 됩니다 —
+//     진짜로 전화가 울릴 때만 보냅니다.
+async function apnsVoip(device: string, callId: string, callerName: string): Promise<boolean | 'dead'> {
+  const jwt = await apnsJwt();
+  let last: boolean | 'dead' = false;
+  for (const host of apnsHosts()) {
+    try {
+      const r = await fetch(`https://${host}/3/device/${device}`, {
+        method: 'POST',
+        headers: {
+          authorization: `bearer ${jwt}`,
+          'apns-topic': `${APNS_BUNDLE_ID}.voip`,
+          'apns-push-type': 'voip',
+          'apns-priority': '10',
+          'apns-expiration': String(Math.floor(Date.now() / 1000) + 60),
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ callId, callerName }),
+      });
+      if (r.status === 200) return true;
+      const txt = await r.text();
+      // 표가 죽었다 — 지운다
+      if (r.status === 410 || /BadDeviceToken|Unregistered/i.test(txt)) { last = 'dead'; continue; }
+      console.error('📞 VoIP 푸시', r.status, txt.slice(0, 200));
+      last = false;
+    } catch (e) { console.error('📞 VoIP 던짐', String(e)); }
+  }
+  return last;
+}
+
 async function apnsPost(host: string, device: string, jwt: string, payload: unknown,
                         opts?: { priority?: string }) {
   const r = await fetch(`${host}/3/device/${device}`, {
@@ -376,6 +413,9 @@ Deno.serve(async (req) => {
     if (!cSubs || !cSubs.length) return json({ sent: 0 });
 
     if (HAS_WEB) webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC, VAPID_PRIVATE);
+    //  이 사람의 아이폰이 전화 화면을 쓸 수 있나. 쓸 수 있으면 보통 알림은
+    //  건너뜁니다 — 전화 화면이 뜨는데 알림까지 오면 두 번 울립니다.
+    const hasVoip = cSubs.some((x) => x.kind === 'ios_voip' && x.enabled);
     const title = '📞 전화가 왔어요';
     const bodyText = callerName + ' 님';
     let cSent = 0;
@@ -384,8 +424,21 @@ Deno.serve(async (req) => {
       // 전화는 방별 알림 끄기(mutes)와 '멘션만' 설정을 따르지 않습니다 —
       // 방이 아니라 사람에게 거는 것이고, 놓치면 연락이 안 됩니다.
       if (!s.enabled) return;
+      //  📞 아이폰 전화 화면(CallKit) — 잠금화면에 전체화면으로 뜨고 계속 울린다
+      if (s.kind === 'ios_voip') {
+        if (!HAS_IOS) return;
+        try {
+          const r = await apnsVoip(String(s.endpoint), String(call.id), callerName);
+          if (r === true) cSent++;
+          else if (r === 'dead') cDead.push(String(s.id));
+        } catch (e) { console.error('📞 VoIP 던짐', String(e)); }
+        return;
+      }
       if (s.kind === 'ios') {
         if (!HAS_IOS) return;
+        //  이 기기가 전화 화면을 쓸 수 있으면 보통 알림은 보내지 않는다 —
+        //  전화 화면이 뜨는데 알림까지 같이 오면 두 번 울린다.
+        if (hasVoip) return;
         try {
           const r = await apnsSend(String(s.endpoint), {
             aps: { alert: { title, body: bodyText }, sound: 'default', 'interruption-level': 'time-sensitive' },
