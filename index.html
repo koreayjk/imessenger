@@ -11529,7 +11529,31 @@ const SF_KINDS = [
   { k: 'mockexam',   ko: '모의고사 답안',   en: 'Mock exams' },
 ];
 let _sfKind = null, _sfSort = 'big', _sfPage = 0, _sfPick = new Set(), _sfRows = [];
+let _sfRoom = null;            // 방 하나만 볼 때 그 채널 id
+let _sfRooms = [];             // 방마다 얼마나 쓰고 있나
+let _sfMode = 'grid';          // 'grid' 미리보기 · 'list' 리스트
+let _sfMore = false;           // 더 있는가 (보기를 바꿔도 단추가 남아야 한다)
 const SF_PER = 48;
+
+//  타입을 사람 말로. 'image/jpeg' 만 적어 두면 읽는 사람이 모릅니다.
+function sfTypeLabel(r) {
+  const m = String((r && r['형식']) || '');
+  const p = String((r && r['경로']) || '');
+  const ext = (p.split('.').pop() || '').toLowerCase().slice(0, 5);
+  const head = sfIsImage(r) ? t('사진','Photo')
+             : sfIsVideo(r) ? t('영상','Video')
+             : /^audio\//.test(m) || /\.(mp3|m4a|wav|aac|ogg)$/i.test(p) ? t('소리','Audio')
+             : /pdf/.test(m) || /\.pdf$/i.test(p) ? 'PDF'
+             : /sheet|excel|csv/.test(m) || /\.(xlsx?|csv)$/i.test(p) ? t('표','Sheet')
+             : /word|document/.test(m) || /\.(docx?|hwpx?)$/i.test(p) ? t('문서','Doc')
+             : t('파일','File');
+  return ext && !/^[0-9]+$/.test(ext) ? head + ' · ' + ext : head;
+}
+//  방 이름. 1:1 대화는 이름이 비어 있을 수 있습니다.
+function sfRoomName(r) {
+  if (!r || !r['방']) return '';
+  return r['방이름'] || (r['방종류'] === 'dm' ? t('1:1 대화','Direct message') : t('이름 없는 방','Unnamed'));
+}
 
 function sfIsImage(r) { return /^image\//.test((r && r['형식']) || '') || /\.(png|jpe?g|gif|webp|heic|bmp)$/i.test((r && r['경로']) || ''); }
 function sfIsVideo(r) { return /^video\//.test((r && r['형식']) || '') || /\.(mp4|mov|m4v|webm|avi)$/i.test((r && r['경로']) || ''); }
@@ -11626,7 +11650,12 @@ async function renderAdminStorage() {
           border:1.5px solid var(--border);background:var(--s2);color:var(--ink2);
           font:600 12px var(--font);cursor:pointer;white-space:nowrap">${escHtml(t(x.ko, x.en))}</button>`).join('')}
       </div>
+      <div id="sf-rooms" style="margin-bottom:12px"></div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+        <div style="display:inline-flex;gap:3px;background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:3px">
+          <button onclick="sfSetMode('grid')" id="sf-m-grid" style="height:28px;padding:0 12px;border:none;border-radius:7px;cursor:pointer;font:700 12px var(--font)">▦ ${t('미리보기','Preview')}</button>
+          <button onclick="sfSetMode('list')" id="sf-m-list" style="height:28px;padding:0 12px;border:none;border-radius:7px;cursor:pointer;font:700 12px var(--font)">☰ ${t('리스트','List')}</button>
+        </div>
         <span style="font-size:12px;color:var(--ink3);font-weight:600">${t('차례','Order')}</span>
         <div style="display:inline-flex;gap:3px;background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:3px">
           <button onclick="sfSetSort('big')" id="sf-s-big" style="height:28px;padding:0 12px;border:none;border-radius:7px;cursor:pointer;font:700 12px var(--font)">${t('큰 것부터','Largest')}</button>
@@ -11639,7 +11668,54 @@ async function renderAdminStorage() {
       <div id="sf-list"><div style="font-size:12px;color:var(--ink3);padding:16px 0">${t('불러오는 중…','Loading…')}</div></div>
     </div>`;
   csRenderCard(CID());
+  sfLoadRooms();
   sfLoad();
+}
+
+function sfSetMode(m) { _sfMode = m; sfPaint(_sfMore); }
+function sfSetRoom(id) {
+  _sfRoom = id || null;
+  _sfKind = id ? 'chat' : _sfKind;
+  _sfPage = 0; _sfPick.clear();
+  sfLoad();
+  sfLoadRooms();      // 고른 방에 표시가 가고, '모든 방 보기' 단추가 생긴다
+}
+
+// ── 방마다 얼마나 쓰고 있나 ───────────────────────────────────────
+//  '채팅 2.87GB' 로만 보여서는 어느 방을 치워야 할지 알 수가 없습니다.
+async function sfLoadRooms() {
+  const box = document.getElementById('sf-rooms');
+  if (!box) return;
+  const seq = _admSeq;
+  let data, error;
+  try { ({ data, error } = await sb.rpc('community_storage_rooms', { cid: CID() })); }
+  catch (e) { error = e; }
+  if (seq !== _admSeq || !document.getElementById('sf-rooms')) return;
+  if (error || !data || !data.length) { _sfRooms = []; box.innerHTML = ''; return; }
+  _sfRooms = data;
+  const top = Number(data[0]['사용 바이트']) || 1;
+  box.innerHTML = `
+    <div style="font:700 13px var(--font);margin-bottom:7px">💬 ${t('방마다','By room')}
+      <span style="font:500 11.5px var(--font);color:var(--ink3)">${t('— 눌러서 그 방만 보기','— tap to see one room')}</span></div>
+    <div style="display:flex;flex-direction:column;gap:4px;max-height:218px;overflow-y:auto;padding-right:2px">
+      ${data.map(r => {
+        const b = Number(r['사용 바이트']) || 0;
+        const on = _sfRoom === r['방'];
+        return `<button onclick="sfSetRoom('${escJs(r['방'])}')" style="display:flex;align-items:center;gap:8px;
+          width:100%;padding:6px 9px;border:1.5px solid ${on ? '#1d3a5f' : 'var(--border)'};border-radius:9px;
+          background:${on ? 'rgba(29,58,95,.08)' : 'var(--s2)'};cursor:pointer;text-align:left">
+          <span style="flex:0 0 42%;min-width:0;font:700 12px var(--font);color:var(--ink);
+                       overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(sfRoomName(r))}</span>
+          <span style="flex:1;height:7px;border-radius:99px;background:var(--s3);overflow:hidden">
+            <span style="display:block;height:100%;width:${Math.max(2, b / top * 100)}%;background:var(--accent);border-radius:99px"></span></span>
+          <span style="flex:0 0 68px;text-align:right;font:700 11.5px var(--font);color:var(--ink)">${escHtml(csBytes(b))}</span>
+          <span style="flex:0 0 44px;text-align:right;font:500 11px var(--font);color:var(--ink3)">${Number(r['파일 수']).toLocaleString()}${t('개','')}</span>
+        </button>`;
+      }).join('')}
+    </div>
+    ${_sfRoom ? `<button onclick="sfSetRoom(null)" style="margin-top:7px;height:30px;padding:0 13px;border:1.5px solid var(--border);
+       border-radius:9px;background:var(--surface);color:var(--ink2);font:700 12px var(--font);cursor:pointer">
+       ✕ ${t('모든 방 보기','All rooms')}</button>` : ''}`;
 }
 
 async function sfLoad(append) {
@@ -11663,7 +11739,7 @@ async function sfLoad(append) {
   let data, error;
   try {
     ({ data, error } = await sb.rpc('community_storage_files', {
-      cid: CID(), kind: _sfKind, sort: _sfSort, lim: SF_PER, off: _sfPage * SF_PER }));
+      cid: CID(), kind: _sfKind, sort: _sfSort, lim: SF_PER, off: _sfPage * SF_PER, room: _sfRoom }));
   } catch (e) { error = e; }
   if (seq !== _admSeq) return;
   if (error) {
@@ -11676,6 +11752,7 @@ async function sfLoad(append) {
   }
   _sfRows = append ? _sfRows.concat(data || []) : (data || []);
   const more = (data || []).length >= SF_PER;
+  _sfMore = more;
   sfPaint(more);
   //  원래 이름은 늦게 와도 됩니다 — 목록을 먼저 보여 주고 뒤에 채웁니다
   if (await sfFetchNames(data || [])) { if (seq === _admSeq) sfPaint(more); }
@@ -11684,48 +11761,94 @@ async function sfLoad(append) {
 function sfPaint(more) {
   const box = document.getElementById('sf-list');
   if (!box) return;
+  if (more !== undefined) _sfMore = more;
+  ['grid','list'].forEach(v => {
+    const b = document.getElementById('sf-m-' + v);
+    if (b) { b.style.background = _sfMode === v ? '#1d3a5f' : 'transparent'; b.style.color = _sfMode === v ? '#fff' : 'var(--ink2)'; }
+  });
   if (!_sfRows.length) {
     box.innerHTML = `<div style="font-size:12.5px;color:var(--ink3);padding:16px 0">${t('여기에는 올린 파일이 없어요','Nothing here')}</div>`;
     sfSyncDelBtn();
     return;
   }
-  box.innerHTML = `
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:10px">
-      ${_sfRows.map((r, i) => {
-        const path = r['경로'], url = sfUrl(path), big = Number(r['크기']) || 0;
-        const on = _sfPick.has(path);
-        //  ⚠️ 영상은 #t=0.1 을 붙여야 첫 장면을 그려 줍니다. preload=metadata 만
-        //     주면 브라우저에 따라 까만 칸만 나옵니다.
-        const face = sfIsImage(r)
-          ? `<img class="sf-thumb" loading="lazy" src="${escAttr(url)}" alt="">`
-          : sfIsVideo(r)
-          ? `<video class="sf-thumb" preload="metadata" muted playsinline src="${escAttr(url)}#t=0.1"></video>
-             <div style="position:absolute;top:0;left:0;right:0;aspect-ratio:1/1;display:flex;
-                         align-items:center;justify-content:center;pointer-events:none">
-               <span style="width:38px;height:38px;border-radius:99px;background:rgba(0,0,0,.45);
-                            color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px">▶</span></div>`
-          : `<div class="sf-thumb" style="display:flex;align-items:center;justify-content:center;font-size:30px">📄</div>`;
-        return `<div class="sf-card" style="${on ? 'outline:3px solid #b23b3b;outline-offset:-3px' : ''}">
-          <div onclick="sfOpen(${i})" style="display:block;cursor:${sfCanShow(r) ? 'zoom-in' : 'pointer'};position:relative">${face}</div>
-          <div style="padding:7px 8px 8px">
-            <div style="font:700 11.5px var(--font);color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
-                 title="${escAttr(path)}">${escHtml(sfRealName(r))}</div>
-            <div style="font:500 10.5px var(--font);color:var(--ink3);margin-top:2px">
-              ${escHtml(csBytes(big))} · ${escHtml(sfWhen(r['올린때']))}</div>
-            <div style="font:500 10px var(--font);color:var(--ink3);margin-top:1px">${escHtml(r['갈래'] || '')}</div>
-            <label style="display:flex;align-items:center;gap:5px;margin-top:7px;font:600 11px var(--font);
-                          color:${on ? '#b23b3b' : 'var(--ink3)'};cursor:pointer">
-              <input type="checkbox" ${on ? 'checked' : ''} onchange="sfToggle(${i})" style="width:15px;height:15px;cursor:pointer">
-              ${t('고르기','Select')}</label>
-          </div>
-        </div>`;
-      }).join('')}
-    </div>
-    ${more ? `<div style="text-align:center;margin-top:14px">
-       <button onclick="sfMore()" style="height:36px;padding:0 20px;border:1.5px solid var(--border);
-         border-radius:10px;background:var(--surface);color:var(--ink2);font:700 13px var(--font);cursor:pointer">
-         ${t('더 보기','Show more')}</button></div>` : ''}`;
+  box.innerHTML = (_sfMode === 'list' ? sfListHtml() : sfGridHtml()) + sfMoreHtml();
   sfSyncDelBtn();
+}
+
+function sfMoreHtml() {
+  return _sfMore ? `<div style="text-align:center;margin-top:14px">
+     <button onclick="sfMore()" style="height:36px;padding:0 20px;border:1.5px solid var(--border);
+       border-radius:10px;background:var(--surface);color:var(--ink2);font:700 13px var(--font);cursor:pointer">
+       ${t('더 보기','Show more')}</button></div>` : '';
+}
+
+//  ▦ 미리보기 — 눈으로 고를 때
+function sfGridHtml() {
+  return `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:10px">
+    ${_sfRows.map((r, i) => {
+      const path = r['경로'], url = sfUrl(path), big = Number(r['크기']) || 0;
+      const on = _sfPick.has(path);
+      //  ⚠️ 영상은 #t=0.1 을 붙여야 첫 장면을 그려 줍니다. preload=metadata 만
+      //     주면 브라우저에 따라 까만 칸만 나옵니다.
+      const face = sfIsImage(r)
+        ? `<img class="sf-thumb" loading="lazy" src="${escAttr(url)}" alt="">`
+        : sfIsVideo(r)
+        ? `<video class="sf-thumb" preload="metadata" muted playsinline src="${escAttr(url)}#t=0.1"></video>
+           <div style="position:absolute;top:0;left:0;right:0;aspect-ratio:1/1;display:flex;
+                       align-items:center;justify-content:center;pointer-events:none">
+             <span style="width:38px;height:38px;border-radius:99px;background:rgba(0,0,0,.45);
+                          color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px">▶</span></div>`
+        : `<div class="sf-thumb" style="display:flex;align-items:center;justify-content:center;font-size:30px">📄</div>`;
+      return `<div class="sf-card" style="${on ? 'outline:3px solid #b23b3b;outline-offset:-3px' : ''}">
+        <div onclick="sfOpen(${i})" style="display:block;cursor:${sfCanShow(r) ? 'zoom-in' : 'pointer'};position:relative">${face}</div>
+        <div style="padding:7px 8px 8px">
+          <div style="font:700 11.5px var(--font);color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+               title="${escAttr(path)}">${escHtml(sfRealName(r))}</div>
+          <div style="font:500 10.5px var(--font);color:var(--ink3);margin-top:2px">
+            ${escHtml(csBytes(big))} · ${escHtml(sfWhen(r['올린때']))}</div>
+          <div style="font:500 10px var(--font);color:var(--ink3);margin-top:1px;overflow:hidden;
+                      text-overflow:ellipsis;white-space:nowrap">${escHtml(sfRoomName(r) || r['갈래'] || '')}</div>
+          <label style="display:flex;align-items:center;gap:5px;margin-top:7px;font:600 11px var(--font);
+                        color:${on ? '#b23b3b' : 'var(--ink3)'};cursor:pointer">
+            <input type="checkbox" ${on ? 'checked' : ''} onchange="sfToggle(${i})" style="width:15px;height:15px;cursor:pointer">
+            ${t('고르기','Select')}</label>
+        </div>
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+
+//  ☰ 리스트 — 한눈에 훑고 견줄 때. 방·날짜·제목·용량·타입.
+function sfListHtml() {
+  const th = (w, txt, right) => `<span style="flex:${w};min-width:0;text-align:${right ? 'right' : 'left'};
+    font:700 11px var(--font);color:var(--ink3)">${escHtml(txt)}</span>`;
+  return `<div style="border:1px solid var(--border);border-radius:12px;overflow:hidden">
+    <div style="display:flex;align-items:center;gap:9px;padding:9px 11px;background:var(--s2);border-bottom:1px solid var(--border)">
+      <span style="flex:0 0 18px"></span>
+      ${th('0 0 86px', t('방','Room'))}
+      ${th('0 0 74px', t('날짜','Date'))}
+      ${th('1 1 auto', t('제목','Name'))}
+      ${th('0 0 70px', t('용량','Size'), true)}
+      ${th('0 0 84px', t('타입','Type'), true)}
+    </div>
+    ${_sfRows.map((r, i) => {
+      const on = _sfPick.has(r['경로']);
+      return `<div class="sf-li" style="display:flex;align-items:center;gap:9px;padding:8px 11px;
+          border-bottom:1px solid var(--border);background:${on ? 'rgba(178,59,59,.07)' : 'transparent'}">
+        <input type="checkbox" ${on ? 'checked' : ''} onchange="sfToggle(${i})"
+               style="flex:0 0 18px;width:16px;height:16px;cursor:pointer">
+        <span style="flex:0 0 86px;min-width:0;font:600 11.5px var(--font);color:var(--ink3);
+                     overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(sfRoomName(r) || '—')}</span>
+        <span style="flex:0 0 74px;font:500 11.5px var(--font);color:var(--ink3)">${escHtml(sfWhen(r['올린때']))}</span>
+        <span onclick="sfOpen(${i})" title="${escAttr(r['경로'])}"
+              style="flex:1 1 auto;min-width:0;font:700 12.5px var(--font);color:var(--ink);cursor:pointer;
+                     overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(sfRealName(r))}</span>
+        <span style="flex:0 0 70px;text-align:right;font:700 11.5px var(--font);color:var(--ink)">${escHtml(csBytes(Number(r['크기']) || 0))}</span>
+        <span style="flex:0 0 84px;text-align:right;font:500 11px var(--font);color:var(--ink3);
+                     overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(sfTypeLabel(r))}</span>
+      </div>`;
+    }).join('')}
+  </div>`;
 }
 
 function sfToggle(i) {
@@ -11733,7 +11856,7 @@ function sfToggle(i) {
   if (!r) return;
   const p = r['경로'];
   if (_sfPick.has(p)) _sfPick.delete(p); else _sfPick.add(p);
-  sfPaint(document.querySelector('#sf-list button') ? true : false);
+  sfPaint();
 }
 
 function sfSyncDelBtn() {

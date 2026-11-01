@@ -56,17 +56,69 @@ $$;
 grant execute on function public.storage_kind_label(text) to authenticated;
 
 
+-- ── ①-2 방(채널)마다 얼마나 쓰고 있나 ──────────────────────────
+--  채팅 사진·파일이 거의 전부를 차지합니다. 그런데 '채팅 2.87GB' 로만
+--  보여서는 어느 방을 치워야 할지 알 수가 없습니다.
+--  ⚠️ 돌려주는 칸이 바뀌면 create or replace 가 **거부합니다.** 그런데 거부만
+--    하고 멈추지 않아서, 옛 몸통이 그대로 남은 채로 설치가 끝납니다.
+--    (재 보고 알았습니다 — 칸을 늘렸는데 옛것이 계속 돌고 있었습니다)
+--    칸을 바꿀 때마다 서명이 늘어나 하나씩 적어 두면 또 어긋나므로,
+--    이름이 같은 것은 모두 지웁니다.
+do $$
+declare r record;
+begin
+  for r in select p.oid::regprocedure as sig
+             from pg_proc p
+            where p.pronamespace = 'public'::regnamespace
+              and p.proname in ('community_storage_rooms','community_storage_files')
+  loop execute 'drop function ' || r.sig; end loop;
+end $$;
+
+create or replace function public.community_storage_rooms(cid uuid default null)
+returns table ("방" uuid, "방이름" text, "방종류" text, "사용 바이트" bigint, "파일 수" bigint)
+language plpgsql security definer stable
+set search_path = public, storage as $$
+declare target uuid := coalesce(cid, public.my_community_id());
+begin
+  if target is null then return; end if;
+  if target <> public.my_community_id() and not public.can_view_all_communities() then return; end if;
+  if not exists (select 1 from public.members
+                  where id = auth.uid()
+                    and community_role in ('super_admin','vice_admin','community_admin')) then
+    return;
+  end if;
+
+  return query
+  select c.id, c.name, c.kind,
+         coalesce(sum(coalesce(nullif(o.metadata->>'size','')::bigint, 0)), 0)::bigint,
+         count(o.id)::bigint
+    from public.channels c
+    join storage.objects o
+      on o.bucket_id = 'messenger'
+     and split_part(o.name,'/',1) = 'chat'
+     and split_part(o.name,'/',2) = c.id::text
+   where c.community_id = target
+   group by c.id, c.name, c.kind
+  having count(o.id) > 0
+   order by 4 desc;
+end $$;
+grant execute on function public.community_storage_rooms(uuid) to authenticated;
+
+
 -- ── ② 올린 파일 목록 ─────────────────────────────────────────────
 --  sort: 'big' 큰 것부터 (자리를 치우려면 이쪽) · 'new' 새것부터
+--  room: 채널 하나만 보고 싶을 때
 create or replace function public.community_storage_files(
   cid   uuid default null,
   kind  text default null,
   sort  text default 'big',
   lim   int  default 60,
-  off   int  default 0
+  off   int  default 0,
+  room  uuid default null
 )
 returns table ("경로" text, "폴더" text, "갈래" text,
-               "크기" bigint, "형식" text, "올린때" timestamptz)
+               "크기" bigint, "형식" text, "올린때" timestamptz,
+               "방" uuid, "방이름" text, "방종류" text)
 language plpgsql security definer stable
 set search_path = public, storage as $$
 declare target uuid := coalesce(cid, public.my_community_id());
@@ -88,10 +140,21 @@ begin
          public.storage_kind_label(split_part(o.name,'/',1)),
          coalesce(nullif(o.metadata->>'size','')::bigint, 0),
          coalesce(o.metadata->>'mimetype',''),
-         o.created_at
+         o.created_at,
+         ch.id,
+         ch.name,
+         ch.kind
     from storage.objects o
+    left join public.channels ch
+      on split_part(o.name,'/',1) = 'chat'
+     and ch.id::text = split_part(o.name,'/',2)
    where o.bucket_id = 'messenger'
-     and (kind is null or split_part(o.name,'/',1) = kind)
+     --  ⚠️ 그냥 kind 라고 쓰면 안 됩니다. channels 를 붙인 뒤로는 ch.kind 와
+     --     이름이 부딪혀 'column reference kind is ambiguous' 로 **목록이
+     --     통째로 안 나옵니다.** 함수 이름을 앞에 붙여 가립니다.
+     and (community_storage_files.kind is null
+          or split_part(o.name,'/',1) = community_storage_files.kind)
+     and (community_storage_files.room is null or ch.id = community_storage_files.room)
      and public.storage_file_community(o.name) = target
    order by case when sort = 'new' then o.created_at end desc nulls last,
             case when sort <> 'new'
@@ -99,7 +162,7 @@ begin
    limit greatest(1, least(coalesce(lim, 60), 200))
   offset greatest(0, coalesce(off, 0));
 end $$;
-grant execute on function public.community_storage_files(uuid, text, text, int, int) to authenticated;
+grant execute on function public.community_storage_files(uuid, text, text, int, int, uuid) to authenticated;
 
 
 -- ── ③ 지울 수 있는 사람인가 ──────────────────────────────────────
@@ -128,9 +191,13 @@ notify pgrst, 'reload schema';
 
 
 -- ── 확인 ─────────────────────────────────────────────────────────
+--  방마다 얼마나 쓰고 있나
+select "방이름", round(("사용 바이트"/1048576.0)::numeric, 1) as "MB", "파일 수"
+  from public.community_storage_rooms();
+
 --  내 공동체에서 가장 자리를 많이 차지하는 파일 열 개
-select "갈래", "경로", round(("크기"/1048576.0)::numeric, 2) as "MB", "올린때"
-  from public.community_storage_files(null, null, 'big', 10, 0);
+select "갈래", "방이름", "경로", round(("크기"/1048576.0)::numeric, 2) as "MB", "올린때"
+  from public.community_storage_files(null, null, 'big', 10, 0, null);
 
 --  지우기 정책이 달렸나
 select policyname as "정책", cmd as "대상"

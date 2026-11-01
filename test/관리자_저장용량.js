@@ -8,10 +8,15 @@
 const { launch, openApp, ok, done } = require('./_harness.js');
 
 const FILES = [
-  { '경로':'chat/ch1/1762_a1b2c_me.mp4', '폴더':'chat', '갈래':'채팅 사진·파일', '크기':91000000, '형식':'video/mp4',  '올린때':'2026-10-02T03:00:00Z' },
-  { '경로':'chat/ch1/1763_d4e5f_me.jpg', '폴더':'chat', '갈래':'채팅 사진·파일', '크기':2400000,  '형식':'image/jpeg', '올린때':'2026-10-20T03:00:00Z' },
-  { '경로':'orgs/c1/logo.png',   '폴더':'orgs', '갈래':'기관 로고',      '크기':675000,   '형식':'image/png',  '올린때':'2026-09-01T03:00:00Z' },
-  { '경로':'notes/me/memo.pdf',  '폴더':'notes','갈래':'IM노트 첨부',    '크기':120000,   '형식':'application/pdf', '올린때':'2026-08-01T03:00:00Z' },
+  { '경로':'chat/ch1/1762_a1b2c_me.mp4', '폴더':'chat', '갈래':'채팅 사진·파일', '크기':91000000, '형식':'video/mp4',  '올린때':'2026-10-02T03:00:00Z', '방':'ch1', '방이름':'ReNewGen', '방종류':'channel' },
+  { '경로':'chat/ch1/1763_d4e5f_me.jpg', '폴더':'chat', '갈래':'채팅 사진·파일', '크기':2400000,  '형식':'image/jpeg', '올린때':'2026-10-20T03:00:00Z', '방':'ch1', '방이름':'ReNewGen', '방종류':'channel' },
+  { '경로':'orgs/c1/logo.png',   '폴더':'orgs', '갈래':'기관 로고',      '크기':675000,   '형식':'image/png',  '올린때':'2026-09-01T03:00:00Z', '방':null, '방이름':null, '방종류':null },
+  { '경로':'notes/me/memo.pdf',  '폴더':'notes','갈래':'IM노트 첨부',    '크기':120000,   '형식':'application/pdf', '올린때':'2026-08-01T03:00:00Z', '방':null, '방이름':null, '방종류':null },
+];
+const ROOMS = [
+  { '방':'ch1', '방이름':'ReNewGen', '방종류':'channel', '사용 바이트':93400000, '파일 수':2 },
+  { '방':'ch2', '방이름':'IntoGen',  '방종류':'channel', '사용 바이트':12000000, '파일 수':5 },
+  { '방':'ch3', '방이름':null,       '방종류':'dm',      '사용 바이트':300000,   '파일 수':1 },
 ];
 
 //  올릴 때 이름을 바꿔 저장하므로, **원래 이름은 그 메시지 안에** 있습니다
@@ -25,11 +30,13 @@ const MSGS = [
 
 const seed = (pg) => pg.evaluate((f) => {
   window.__DB['rpc:community_storage_files']  = f;
+  window.__DB['rpc:community_storage_rooms']  = window.__ROOMS;
   window.__DB['rpc:community_storage_one']    = [{ '사용 바이트': 94195000, '한도 MB': 5120, '볼 수 있음': true }];
   window.__DB['rpc:community_storage_detail'] = [{ '갈래':'채팅 사진·파일', '사용 바이트':93400000, '파일 수':2 },
                                                  { '갈래':'기관 로고', '사용 바이트':675000, '파일 수':1 }];
 }, FILES);
 const seedMsgs = (pg) => pg.evaluate((m) => { window.__DB.messages = m; }, MSGS);
+const seedRooms = (pg) => pg.evaluate((r) => { window.__ROOMS = r; }, ROOMS);
 
 const cards = (pg) => pg.evaluate(() => [...document.querySelectorAll('#sf-list .sf-card')].map(c => ({
   txt: c.textContent.replace(/\s+/g, ' ').trim(),
@@ -42,10 +49,35 @@ const cards = (pg) => pg.evaluate(() => [...document.querySelectorAll('#sf-list 
   const pg = await openApp(b, { as: 'teacher' });
   let asked = '';
   pg.on('dialog', (d) => { asked = d.message(); d.accept(); });
-  await seed(pg); await seedMsgs(pg);
+  await seedRooms(pg); await seed(pg); await seedMsgs(pg);
 
   await pg.evaluate(() => switchAdminTab('storage'));
   await pg.waitForTimeout(600);
+
+  // ── 방마다 ──────────────────────────────────────────────────────
+  //  '채팅 2.87GB' 로만 보여서는 어느 방을 치워야 할지 알 수가 없습니다.
+  const rooms = await pg.evaluate(() => {
+    const b = document.getElementById('sf-rooms');
+    return b ? { txt: b.textContent.replace(/\s+/g, ' ').trim(), n: b.querySelectorAll('button').length } : null;
+  });
+  console.log('     방별:', rooms && rooms.txt);
+  ok(!!rooms && rooms.n === 3, '방 세 개를 다 보여 준다');
+  ok(/ReNewGen/.test(rooms.txt) && /IntoGen/.test(rooms.txt), '방 이름을 적는다');
+  ok(/89\.1 MB/.test(rooms.txt), '방마다 얼마나 쓰는지 적는다');
+  ok(/1:1 대화/.test(rooms.txt), '이름 없는 1:1 방도 알아볼 수 있게 적는다');
+  ok(rooms.txt.indexOf('ReNewGen') < rooms.txt.indexOf('IntoGen'), '많이 쓰는 방이 위에 온다');
+
+  //  방을 누르면 그 방만 본다
+  await pg.evaluate(() => sfSetRoom('ch1'));
+  await pg.waitForTimeout(400);
+  const asked2 = await pg.evaluate(() => window.__rpc.filter(x => x.name === 'community_storage_files').pop());
+  ok(asked2 && asked2.args && asked2.args.room === 'ch1', '방을 누르면 그 방만 물어본다');
+  ok(/모든 방 보기/.test(await pg.evaluate(() => document.getElementById('sf-rooms').textContent)),
+     '한 방만 보는 중이면 되돌아올 단추가 생긴다');
+  await pg.evaluate(() => sfSetRoom(null));
+  await pg.waitForTimeout(400);
+  ok((await pg.evaluate(() => window.__rpc.filter(x => x.name === 'community_storage_files').pop())).args.room === null,
+     '모든 방 보기로 되돌아온다');
 
   // ── 얼마나 쓰고 있는지 ──────────────────────────────────────────
   const use = await pg.evaluate(() => (document.getElementById('cs-usage') || {}).textContent || '');
@@ -58,7 +90,8 @@ const cards = (pg) => pg.evaluate(() => [...document.querySelectorAll('#sf-list 
   ok(c.length === 4, '올린 파일을 낱낱이 보여 준다');
   ok(/86\.8 MB/.test(c[0].txt), '크기를 적는다');
   ok(/2026\.10\.0?2/.test(c[0].txt), '언제 올렸는지 적는다');
-  ok(/채팅 사진·파일/.test(c[0].txt), '어느 갈래인지 적는다');
+  ok(/ReNewGen/.test(c[0].txt), '칸에도 어느 방 것인지 적는다');
+  ok(/기관 로고/.test(c[2].txt), '방이 없는 파일은 갈래를 적는다');
   ok(c[1].img === true, '사진은 그림으로 보여 준다');
   ok(c[0].vid === true, '영상도 첫 장면을 보여 준다 (🎬 글자가 아니라)');
   ok(c[3].img === false && c[3].vid === false, '문서는 표시로 보여 준다');
@@ -69,6 +102,40 @@ const cards = (pg) => pg.evaluate(() => [...document.querySelectorAll('#sf-list 
   ok(/예배 영상\.mp4/.test(c[0].txt), '원래 올린 이름을 찾아와 보여 준다 (영상)');
   ok(/가을수련회 단체사진\.jpg/.test(c[1].txt), '원래 올린 이름을 찾아와 보여 준다 (사진)');
   ok(/logo\.png/.test(c[2].txt), '못 찾은 것은 저장된 이름 그대로 보여 준다');
+
+  // ── ☰ 리스트로 보기 ────────────────────────────────────────────
+  //  한눈에 훑고 견주려면 방·날짜·제목·용량·타입이 줄로 보여야 합니다.
+  await pg.evaluate(() => sfSetMode('list'));
+  await pg.waitForTimeout(250);
+  const li = await pg.evaluate(() => {
+    const head = document.querySelector('#sf-list > div > div');
+    const rows = [...document.querySelectorAll('#sf-list .sf-li')].map(x => x.textContent.replace(/\s+/g, ' ').trim());
+    return { head: head ? head.textContent.replace(/\s+/g, ' ').trim() : '', rows,
+             grid: document.querySelectorAll('#sf-list .sf-card').length };
+  });
+  console.log('     머리글:', li.head, '\n     첫 줄:', li.rows[0]);
+  ok(li.grid === 0, '리스트로 바꾸면 미리보기 칸은 사라진다');
+  ok(li.rows.length === 4, '파일마다 한 줄씩');
+  ok(/방/.test(li.head) && /날짜/.test(li.head) && /제목/.test(li.head)
+     && /용량/.test(li.head) && /타입/.test(li.head), '머리글에 방·날짜·제목·용량·타입이 있다');
+  ok(/ReNewGen/.test(li.rows[0]), '줄에 방 이름이 있다');
+  ok(/2026\.10\.0?2/.test(li.rows[0]), '줄에 날짜가 있다');
+  ok(/예배 영상\.mp4/.test(li.rows[0]), '줄에 원래 제목이 있다');
+  ok(/86\.8 MB/.test(li.rows[0]), '줄에 용량이 있다');
+  ok(/영상 · mp4/.test(li.rows[0]), '줄에 타입이 사람 말로 적힌다');
+  ok(/PDF/.test(li.rows[3]), 'PDF 도 알아본다');
+  ok(/—/.test(li.rows[2]), '방이 없는 파일은 방 칸을 비운다');
+
+  //  리스트에서도 고르고, 눌러서 바로 본다
+  await pg.evaluate(() => sfToggle(0));
+  await pg.waitForTimeout(150);
+  ok(/1개/.test(await pg.evaluate(() => document.getElementById('sf-del').textContent)), '리스트에서도 고를 수 있다');
+  ok((await pg.evaluate(() => document.querySelectorAll('#sf-list .sf-li').length)) === 4, '골라도 리스트 모양 그대로다');
+  await pg.evaluate(() => sfToggle(0));
+
+  await pg.evaluate(() => sfSetMode('grid'));
+  await pg.waitForTimeout(250);
+  ok((await pg.evaluate(() => document.querySelectorAll('#sf-list .sf-card').length)) === 4, '미리보기로 돌아온다');
 
   // ── 지우기 전에 먼저 알려 주는가 ────────────────────────────────
   const warn = await pg.evaluate(() => document.getElementById('admin-content').textContent);
@@ -98,7 +165,7 @@ const cards = (pg) => pg.evaluate(() => [...document.querySelectorAll('#sf-list 
 
   // ── 🔍 미리보기 ────────────────────────────────────────────────
   //  새 탭으로 던지면 '이게 뭐였지' 하고 돌아와서 다시 찾아야 합니다.
-  await seed(pg); await seedMsgs(pg);
+  await seedRooms(pg); await seed(pg); await seedMsgs(pg);
   await pg.evaluate(() => switchAdminTab('storage'));
   await pg.waitForTimeout(600);
   const view = () => pg.evaluate(() => {
@@ -167,7 +234,7 @@ const cards = (pg) => pg.evaluate(() => [...document.querySelectorAll('#sf-list 
 
   // ── 규칙에 막혀 0개가 돌아올 때 ─────────────────────────────────
   //  오류가 아니라 **빈 답**이 온다. '지웠습니다' 라고 하면 안 된다.
-  await seed(pg);
+  await seedRooms(pg); await seed(pg);
   await pg.evaluate(() => { window.__rmResult = () => ({ data: [], error: null }); });
   await pg.evaluate(() => switchAdminTab('storage'));
   await pg.waitForTimeout(500);
