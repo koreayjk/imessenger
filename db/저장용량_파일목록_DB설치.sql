@@ -149,18 +149,20 @@ begin
       on split_part(o.name,'/',1) = 'chat'
      and ch.id::text = split_part(o.name,'/',2)
    where o.bucket_id = 'messenger'
-     --  ⚠️ 그냥 kind 라고 쓰면 안 됩니다. channels 를 붙인 뒤로는 ch.kind 와
-     --     이름이 부딪혀 'column reference kind is ambiguous' 로 **목록이
-     --     통째로 안 나옵니다.** 함수 이름을 앞에 붙여 가립니다.
+     --  ⚠️ 맨 이름으로 쓰면 안 됩니다. channels 를 붙인 뒤로는 그 표의
+     --     칸(kind · sort · name …)과 이름이 부딪혀
+     --     'column reference ... is ambiguous' 로 **목록이 통째로 안 나옵니다.**
+     --     두 번 데었습니다(kind, 그 다음 sort). 그래서 이제 파라미터는
+     --     하나도 빼지 않고 전부 함수 이름을 앞에 붙여 가립니다.
      and (community_storage_files.kind is null
           or split_part(o.name,'/',1) = community_storage_files.kind)
      and (community_storage_files.room is null or ch.id = community_storage_files.room)
      and public.storage_file_community(o.name) = target
-   order by case when sort = 'new' then o.created_at end desc nulls last,
-            case when sort <> 'new'
+   order by case when community_storage_files.sort = 'new' then o.created_at end desc nulls last,
+            case when community_storage_files.sort <> 'new'
                  then coalesce(nullif(o.metadata->>'size','')::bigint, 0) end desc nulls last
-   limit greatest(1, least(coalesce(lim, 60), 200))
-  offset greatest(0, coalesce(off, 0));
+   limit greatest(1, least(coalesce(community_storage_files.lim, 60), 200))
+  offset greatest(0, coalesce(community_storage_files.off, 0));
 end $$;
 grant execute on function public.community_storage_files(uuid, text, text, int, int, uuid) to authenticated;
 
