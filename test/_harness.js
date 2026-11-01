@@ -65,8 +65,13 @@ function dbScript() {
       q.update = function(v){ this._u=v; return this; };
       q.delete = function(){ this._d=1; return this; };
       q.then = function(res, rej){
-        if (window.__err && window.__err.table === this._t)
-          return Promise.resolve({ data:null, error: window.__err.e }).then(res, rej);
+        if (window.__err && window.__err.table === this._t) {
+          const e = window.__err.e;
+          //  times 를 주면 그 횟수만 실패한다 — '한 번 실패하고 다시 해보는 길'
+          //  을 재려면 이게 있어야 한다.
+          if (window.__err.times != null && --window.__err.times <= 0) window.__err = null;
+          return Promise.resolve({ data:null, error: e }).then(res, rej);
+        }
         if (this._i) {
           const arr = Array.isArray(this._i) ? this._i : [this._i];
           const rows = arr.map(x => Object.assign({ id: this._t+'-'+(++seq), created_at:new Date().toISOString() }, x));

@@ -32339,6 +32339,63 @@ const BOOK_QS = [
   { key:'q5', q:t('⑤ 앞으로 어떻게 적용하고 싶나요?','⑤ How do you want to apply it going forward?'),      hint:t('내 삶에 적용하고 싶은 점이나 다짐을 적어보세요. (끝·마무리)','Write what you want to apply to your life or a resolution. (End · Conclusion)') },
 ];
 
+// 활동 후기 안내 질문 — 답변만 이어 붙이면 한 편의 글이 되도록 짰습니다.
+//  다녀온 곳 → 가기 전 마음 → 한 일 → 기억에 남는 장면 → 배운 것 → 앞으로.
+//  ⚠️ 질문 문구는 **저장하지 않습니다.** 답만 이어 붙입니다. 그래서 질문이
+//     '다음은…' 처럼 앞뒤를 가리키면 안 됩니다. 각 답이 제 발로 서야 합니다.
+const ACT_QS = [
+  { key:'a1', q:t('① 어디에, 언제, 누구와 다녀왔나요?','① Where did you go, when, and with whom?'),
+    hint:t('첫 문장이 됩니다. “지난 7월, 교회 친구들과 멕시코에 다녀왔다” 처럼 적어보세요. (처음·도입)',
+           'This becomes your first sentence. e.g. "Last July I went to Mexico with friends from church." (Beginning)') },
+  { key:'a2', q:t('② 가기 전에는 어떤 마음이었나요?','② How did you feel before going?'),
+    hint:t('기대했던 것, 걱정됐던 것을 적어보세요. (처음·기대)','What you expected, what worried you. (Beginning · Expectation)') },
+  { key:'a3', q:t('③ 거기서 무엇을 했나요?','③ What did you do there?'),
+    hint:t('하루가 어떻게 흘러갔는지 차례대로 적어보세요. (가운데·한 일)','Walk through how a day went. (Middle · What you did)') },
+  { key:'a4', q:t('④ 가장 기억에 남는 한 장면은? 그때 어떤 마음이 들었나요?','④ The most memorable moment, and how did it feel?'),
+    hint:t('본 것·들은 것을 그대로 적고, 그때 든 생각을 이어 붙여보세요. (가운데·인상)',
+           'Describe what you saw and heard, then what you thought. (Middle · Impression)') },
+  { key:'a5', q:t('⑤ 새로 알게 되었거나 달라진 생각이 있나요?','⑤ What did you newly learn, or what changed in your thinking?'),
+    hint:t('가기 전과 다녀온 뒤가 어떻게 달라졌는지 적어보세요. (가운데·배움)',
+           'How you differ now from before you went. (Middle · Learning)') },
+  { key:'a6', q:t('⑥ 앞으로 어떻게 해보고 싶나요?','⑥ What do you want to do going forward?'),
+    hint:t('내 자리에서 이어서 해볼 일을 적어보세요. (끝·마무리)','Something you can carry on where you are. (End · Conclusion)') },
+];
+
+// 📣 준비한 쪽에 주는 말 — 간사 이상만 봅니다.
+//  '좋았어요' 로 끝나면 다음 활동이 나아지지 않습니다. 근거를 대고,
+//  대안을 내고, 그러면 무엇이 좋아지는지까지 묻습니다.
+const ACT_FB_QS = [
+  { key:'f1', q:t('① 이번 활동에서 가장 잘 됐다고 생각하는 것 하나는? 왜 그렇게 생각하나요?',
+                  '① One thing that went well — and why do you think so?'),
+    hint:t('“좋았다” 로 끝내지 말고, 그렇게 생각한 까닭을 같이 적어주세요.',
+           'Do not stop at "it was good" — give the reason.') },
+  { key:'f2', q:t('② 준비나 진행에서 아쉬웠던 것 하나만 꼽는다면? 무엇 때문이었을까요?',
+                  '② One thing that fell short — what caused it?'),
+    hint:t('사람을 탓하지 말고 무엇이 그렇게 만들었는지 짚어주세요.',
+           'Point at what caused it, not at a person.') },
+  { key:'f3', q:t('③ 내가 준비하는 사람이었다면 무엇을 다르게 했을까요?',
+                  '③ If you had been the one organizing it, what would you do differently?'),
+    hint:t('아쉬운 점을 말했다면, 대신 어떻게 했을지도 같이 말해주세요.',
+           'If you named a problem, name what you would do instead.') },
+  { key:'f4', q:t('④ 다음에 또 한다면 꼭 바꿔야 할 것 하나와, 그러면 무엇이 좋아질까요?',
+                  '④ One thing to change next time — and what would improve?'),
+    hint:t('바꾸면 누구에게 무엇이 나아지는지까지 적어주세요.',
+           'Say who benefits and how.') },
+];
+
+//  분류 이름은 데이터베이스에 한글로 들어 있습니다. 영어로 보는 분에게
+//  목록만 한글로 나오던 것을 고칩니다 — **저장되는 값은 그대로 한글**이고,
+//  보여 줄 때만 바꿉니다. 직접 넣은 분류는 적힌 그대로 둡니다.
+const REVIEW_CAT_EN = {
+  '선교':'Mission', '봉사활동':'Volunteering', '수련회/캠프':'Retreat · Camp',
+  '예배/집회':'Worship · Gathering', '체험학습':'Hands-on learning', '견학/탐방':'Field trip',
+  '특강/세미나':'Lecture · Seminar', '문화체험':'Cultural experience',
+  '스포츠/야외활동':'Sports · Outdoors', '기타':'Other',
+};
+function reviewCatLabel(name) {
+  return APP_LANG === 'en' ? (REVIEW_CAT_EN[name] || name) : name;
+}
+
 let writingKind = 'book';        // 'book'(독후감) | 'activity'(활동후기)
 let writingEntries = [];
 let writingReadReports = [];     // 독후감: Triple School reading_logs
@@ -32480,7 +32537,7 @@ function renderWriting() {
   const myCards = writingEntries.map(e => `
     <div style="border:1px solid var(--border);border-radius:12px;padding:13px 15px;margin-bottom:10px;background:var(--surface)">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;flex-wrap:wrap">
-        ${e.category?`<span style="font-size:11px;font-weight:700;color:#1d3a5f;background:var(--asoft);padding:2px 8px;border-radius:6px">${escHtml(e.category)}</span>`:''}
+        ${e.category?`<span style="font-size:11px;font-weight:700;color:#1d3a5f;background:var(--asoft);padding:2px 8px;border-radius:6px">${escHtml(reviewCatLabel(e.category))}</span>`:''}
         ${e.title?`<span style="font-size:14px;font-weight:700;color:var(--ink)">${escHtml(e.title)}</span>`:''}
         ${writingKind==='book'?readPeriod(e):''}
         <span style="font-size:11px;color:var(--ink3)">${writingKind==='book'?'✍️ ':''}${e.date||''}</span>
@@ -32488,6 +32545,13 @@ function renderWriting() {
         <button onclick="deleteWriting('${e.id}')" title="${t('삭제','Delete')}" style="border:none;background:transparent;cursor:pointer;color:var(--ink3);font-size:14px">✕</button>
       </div>
       ${e.body?`<div style="font-size:13px;color:var(--ink2);line-height:1.7;white-space:pre-wrap">${escHtml(e.body)}</div>`:''}
+      ${(e.feedback && (isStaffMember(ME) || e.member_id === (ME && ME.id))) ? `
+        <div style="margin-top:10px;padding:10px 12px;background:#fffbeb;border:1px solid #fde68a;border-radius:9px">
+          <div style="font-size:11px;font-weight:800;color:#92400e;margin-bottom:4px">
+            📣 ${t('준비한 쪽에 주는 말','Feedback to the organizers')}
+            <span style="font-weight:600">· ${isStaffMember(ME) ? t('간사·선생님만 보임','staff only') : t('선생님만 봅니다','only teachers see this')}</span></div>
+          <div style="font-size:12.5px;color:#7c2d12;line-height:1.7;white-space:pre-wrap">${escHtml(e.feedback)}</div>
+        </div>` : ''}
     </div>`).join('');
 
   if (writingKind === 'book') {
@@ -32575,7 +32639,7 @@ function renderWriting() {
       </div>
     </div>`;
   } else {
-    const catOpts = reviewCats.map(c=>`<option value="${escAttr(c.name)}">${escHtml(c.name)}</option>`).join('') + `<option value="__custom__">＋ ${t('직접 입력','Enter manually')}</option>`;
+    const catOpts = reviewCats.map(c=>`<option value="${escAttr(c.name)}">${escHtml(reviewCatLabel(c.name))}</option>`).join('') + `<option value="__custom__">＋ ${t('직접 입력','Enter manually')}</option>`;
     main.innerHTML = `<div class="page" style="display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap">
       <div style="flex:1.35 1 440px;min-width:0">
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px">
@@ -32585,9 +32649,33 @@ function renderWriting() {
           <input id="wr-cat-custom" placeholder="${t('분류 직접 입력','Enter category')}" style="${inp};display:${reviewCatCustom?'block':'none'}"/>
           <input id="wr-date" type="date" value="${attTodayStr()}" style="${inp}"/>
         </div>
-        <input id="wr-title" placeholder="${t('제목 (예: 여름 단기선교 후기)','Title (e.g. Summer short-term mission review)')}" style="${inp};width:100%;margin-bottom:8px"/>
-        <textarea id="wr-body" placeholder="${t('어디에 다녀왔는지, 무엇을 배우고 느꼈는지 자유롭게 적어보세요','Freely write where you went and what you learned and felt')}" style="${ta};min-height:200px;margin-bottom:8px"></textarea>
-        <div style="display:flex;justify-content:flex-end"><button onclick="addWriting()" style="height:36px;padding:0 18px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 13px var(--font)">＋ ${t('후기 저장','Save review')}</button></div>
+        <input id="wr-title" placeholder="${t('제목 (예: 여름 단기선교 후기)','Title (e.g. Summer short-term mission review)')}" style="${inp};width:100%;margin-bottom:10px"/>
+        <div style="font-size:11.5px;color:var(--ink2);line-height:1.7;margin-bottom:12px;padding:11px 13px;background:var(--asoft);border-radius:9px">
+          ✍️ ${t('<b>질문에 답하면 한 편의 글이 됩니다.</b> 저장할 때 <b>질문은 빠지고 쓴 글만</b> 남아요. 빈칸은 그냥 두셔도 됩니다.',
+                 '<b>Answer the questions and they become one piece of writing.</b> When you save, <b>the questions drop out and only your writing stays.</b> Blanks are fine.')}
+        </div>
+        ${ACT_QS.map(x => `
+          <div style="margin-bottom:12px">
+            <div style="font-size:12.5px;font-weight:700;color:var(--ink);margin-bottom:3px">${x.q}</div>
+            <div style="font-size:11px;color:var(--ink3);margin-bottom:5px;line-height:1.6">${x.hint}</div>
+            <textarea id="wr-${x.key}" style="${ta};min-height:76px"></textarea>
+          </div>`).join('')}
+
+        <div style="margin-top:18px;padding:14px 15px;border:1.5px solid #fde68a;background:#fffbeb;border-radius:12px">
+          <div style="font-size:13px;font-weight:800;color:#92400e;margin-bottom:3px">📣 ${t('준비한 쪽에 주는 말','Feedback to the organizers')}</div>
+          <div style="font-size:11.5px;color:#92400e;line-height:1.7;margin-bottom:11px">
+            ${t('이 칸은 <b>간사·선생님만 봅니다.</b> 다른 학생에게는 보이지 않아요. 솔직하게 적어도 괜찮습니다 — 다음에 이 활동을 준비하는 사람에게 쓰입니다.',
+                'This part is <b>seen only by staff and teachers.</b> Other students never see it. Be honest — it goes to whoever runs this next time.')}
+          </div>
+          ${ACT_FB_QS.map(x => `
+            <div style="margin-bottom:11px">
+              <div style="font-size:12.5px;font-weight:700;color:#7c2d12;margin-bottom:3px">${x.q}</div>
+              <div style="font-size:11px;color:#a16207;margin-bottom:5px;line-height:1.6">${x.hint}</div>
+              <textarea id="wr-${x.key}" style="${ta};min-height:62px;background:var(--surface)"></textarea>
+            </div>`).join('')}
+        </div>
+
+        <div style="display:flex;justify-content:flex-end;margin-top:12px"><button onclick="addWriting()" style="height:36px;padding:0 18px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 13px var(--font)">＋ ${t('후기 저장','Save review')}</button></div>
       </div>
       </div>
       <div style="flex:1 1 340px;min-width:0">
@@ -32829,13 +32917,21 @@ async function addWriting() {
     body = BOOK_QS.map(x => stripPastedHtml(document.getElementById('wr-'+x.key)?.value || ''))
                   .filter(Boolean).join('\n\n');
   } else {
-    body = stripPastedHtml(document.getElementById('wr-body')?.value || '');
+    // 질문별 답변만 이어 붙인다 — 질문 문구는 저장하지 않는다
+    body = ACT_QS.map(x => stripPastedHtml(document.getElementById('wr-'+x.key)?.value || ''))
+                 .filter(Boolean).join('\n\n');
     const sel = document.getElementById('wr-cat').value;
     category = sel === '__custom__' ? (document.getElementById('wr-cat-custom').value || '').trim() : sel;
     if (!category) { showUploadToast(t('분류를 선택하거나 입력하세요','Select or enter a category')); return; }
   }
   if (!title && !body) { showUploadToast(writingKind==='book'?t('책 제목이나 답변을 하나 이상 적어주세요','Enter a book title or at least one answer'):t('제목이나 내용을 입력하세요','Enter a title or content')); return; }
   const row = { member_id: ME.id, community_id: CID(), kind: writingKind, category, title, body, date };
+  if (writingKind === 'activity') {
+    //  📣 준비한 쪽에 주는 말 — 질문 문구는 빼고 답만. 답이 하나도 없으면 안 담는다.
+    const fb = ACT_FB_QS.map(x => stripPastedHtml(document.getElementById('wr-'+x.key)?.value || ''))
+                        .filter(Boolean).join('\n\n');
+    if (fb) row.feedback = fb;
+  }
   if (writingKind === 'book') {
     row.read_start = document.getElementById('wr-rstart')?.value || null;
     row.read_end   = document.getElementById('wr-rend')?.value || null;
@@ -32846,7 +32942,20 @@ async function addWriting() {
       row.book_desc = bookPick.desc || null;
     }
   }
-  const { error } = await sb.from('student_writings').insert(row);
+  let { error } = await sb.from('student_writings').insert(row);
+  //  feedback 칸이 아직 없는 데이터베이스 — 후기까지 통째로 잃으면 안 된다.
+  //  글은 살리고, 왜 피드백이 안 갔는지는 또렷이 말한다.
+  if (error && row.feedback && /feedback|column|schema|PGRST204/i.test(error.message || '')) {
+    const keep = row.feedback; delete row.feedback;
+    ({ error } = await sb.from('student_writings').insert(row));
+    if (!error) {
+      showUploadToast(t('후기는 저장했어요. 다만 피드백 칸이 아직 없어서 그 내용은 못 담았습니다 — db/활동후기_피드백_DB설치.sql 을 실행해 주세요.',
+                        'Saved the review, but the feedback column does not exist yet — run db/활동후기_피드백_DB설치.sql.'));
+      console.warn('📣 못 담은 피드백 길이:', keep.length);
+      await initWritingPage();
+      return;
+    }
+  }
   if (error) { if (schoolTableMissing(error)) { document.getElementById('writing-main').innerHTML = writingSetupHtml(); return; } showUploadToast('저장 실패: ' + error.message); return; }
   // 직접 입력한 새 분류는 마스터 목록에도 시도(학생은 RLS로 자동 무시, 교사·관리자만 추가됨)
   if (writingKind === 'activity' && category && !reviewCats.some(c=>c.name===category)) {
