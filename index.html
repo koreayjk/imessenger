@@ -18378,8 +18378,11 @@ async function renderAdminMembers() {
           <button class="adm-btn sage" onclick="approveMember('${m.id}')">✅ ${t('승인','Approve')}</button>
           <button class="adm-btn danger" onclick="rejectMember('${m.id}')">❌ ${t('거절','Reject')}</button>
         ` : `
-          ${(m.community_role === 'super_admin' && !isSuperAdmin())
-            ? `<span style="font-size:11px;font-weight:700;padding:6px 12px;border-radius:99px;background:#1d3a5f18;color:#1d3a5f">${t('총관리자','Super Admin')} 🔒</span>`
+          ${/*  총관리자·부총관리자 자리는 총관리자만 건드린다. 목록에 그 칸이
+                  없는 채로 <select> 를 그리면 브라우저가 맨 앞(학생)을 고른 것처럼
+                  보여 준다 — 부총관리자가 '학생'으로 보이던 까닭이다. */''}
+          ${(['super_admin','vice_admin'].includes(m.community_role) && !isSuperAdmin())
+            ? `<span style="font-size:11px;font-weight:700;padding:6px 12px;border-radius:99px;background:#1d3a5f18;color:#1d3a5f">${m.community_role === 'super_admin' ? t('총관리자','Super Admin') : t('부총관리자','Deputy Admin')} 🔒</span>`
             : `<select onchange="changeMemberCommunityRole('${m.id}',this.value)"
             style="height:30px;padding:0 10px;border-radius:9px;border:1.5px solid var(--border);font:12px var(--font);background:white;cursor:pointer;outline:none">
             <option value="student"          ${m.community_role==='student'?'selected':''}>${t('학생','Student')}</option>
@@ -18397,7 +18400,11 @@ async function renderAdminMembers() {
             ${(tcsGroups||[]).map(g => `<option value="${g.id}" ${m.group_id===g.id?'selected':''}>${escHtml(g.name)}</option>`).join('')}
           </select>` : ''}
           ${(isSuperAdmin() && m.community_role !== 'super_admin') ? `<button class="adm-btn ghost" title="${t('다른 공동체로 옮기기','Move to another community')}" onclick="showMoveCommunityModal('${m.id}')">🏛️</button>` : ''}
-          ${m.community_role !== 'super_admin' ? `<button class="adm-btn danger" onclick="deleteMember('${escJs(m.id)}','${escJs(m.name || '')}')">${t('탈퇴','Remove')}</button>` : `<span style="font-size:11px;color:var(--ink3)">${t('총관리자','Super Admin')}</span>`}
+          ${m.community_role === 'super_admin'
+              ? `<span style="font-size:11px;color:var(--ink3)">${t('총관리자','Super Admin')}</span>`
+              : (m.community_role === 'vice_admin' && !isSuperAdmin())
+                ? ''
+                : `<button class="adm-btn danger" onclick="deleteMember('${escJs(m.id)}','${escJs(m.name || '')}')">${t('탈퇴','Remove')}</button>`}
         `}
       </div>
     </div>`;
