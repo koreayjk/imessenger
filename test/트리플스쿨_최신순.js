@@ -112,6 +112,35 @@ console.log('\n④ 교직원 — 그 학생이 읽은 책');
   await pg.close();
 }
 
+// ── ⑤ 책 안의 매일 메모도 최신이 위로 ─────────────────────────
+console.log('\n⑤ 매일 메모(읽으며 쌓은 기록)');
+{
+  const pg = await openApp(b, { as:'student' });
+  const r = await pg.evaluate(async (d) => {
+    window.__DB.reading_books = d.BOOKS.slice();
+    window.__DB.reading_logs  = d.LOGS.slice();
+    //  쓴 차례(1 → 2 → 3)와 읽은 날(2 → 3 → 1)을 어긋나게 둔다
+    window.__DB.reading_notes = [
+      { id:'n1', member_id:'s1', book_id:'bkA', community_id:'c1', date:'2026-03-01', content:'메모하나', created_at:'2026-03-01T00:00:00Z' },
+      { id:'n2', member_id:'s1', book_id:'bkA', community_id:'c1', date:'2026-05-20', content:'메모둘',   created_at:'2026-05-20T00:00:00Z' },
+      { id:'n3', member_id:'s1', book_id:'bkA', community_id:'c1', date:'2026-04-10', content:'메모셋',   created_at:'2026-04-10T00:00:00Z' },
+    ];
+    readingLang = 'en';
+    await initReadingPage();
+    await openReadingLog('bkA');
+    const page = document.getElementById('reading-page');
+    const ids = [...page.querySelectorAll('[onclick^="deleteReadingNote"]')]
+      .map(x => (x.getAttribute('onclick').match(/deleteReadingNote\('([^']+)'/) || [])[1]);
+    return { ids, 순서글: /최근 것부터|newest shows first/.test(page.textContent) };
+  }, { BOOKS, LOGS });
+
+  ok(r.ids.length === 3, '메모 세 개가 그려진다 (' + r.ids.length + ')');
+  ok(JSON.stringify(r.ids) === JSON.stringify(['n2','n3','n1']),
+     '메모도 최신이 위로 — 5/20 → 4/10 → 3/1 · 지금: ' + r.ids.join(' → '));
+  ok(r.순서글, "'최근 것부터 쌓여요' 라고 안내한다 (전엔 '순서대로' 였다)");
+  await pg.close();
+}
+
 await b.close();
 done();
 })();

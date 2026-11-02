@@ -14863,8 +14863,13 @@ async function openReadingLog(bookId) {
   page.innerHTML = `<div style="text-align:center;padding:40px;color:var(--ink3);font-size:13px">${t('불러오는 중...','Loading...')}</div>`;
   readingNotes = [];
   try {
+    //  📅 최신이 위로. 메모가 쌓일수록 방금 쓴 것이 저 아래로 밀려
+    //     내려가 날짜가 뒤죽박죽으로 보였습니다.
+    //     ⚠️ 이 목록은 독후감 본문으로 이어 붙이는 데가 없습니다. 붙이는
+    //        데가 생기면 거기서는 반드시 날짜순(오래된 것부터)으로 다시
+    //        세워야 합니다 — 안 그러면 글이 거꾸로 됩니다.
     const { data } = await sb.from('reading_notes').select('*').eq('member_id', ME.id).eq('book_id', bookId)
-      .order('date', { ascending: true }).order('created_at', { ascending: true });
+      .order('date', { ascending: false }).order('created_at', { ascending: false });
     readingNotes = data || [];
   } catch(_) { readingNotes = []; }
   // 선생님 피드백(댓글) — 학생은 자기 것만 읽을 수 있음
@@ -14916,7 +14921,7 @@ function renderReadingLog(bookId) {
 
       <div style="border-top:2px solid var(--border);padding-top:16px;margin-bottom:16px">
         <div style="font-size:12.5px;font-weight:800;color:var(--ink);margin-bottom:4px">📖 ${t('읽으며 쌓은 기록','Reading Notes')} <span style="color:var(--ink3);font-weight:600">(${readingNotes.length})</span></div>
-        <div style="font-size:11px;color:var(--ink3);margin-bottom:12px">${t('읽은 날마다 메모를 남기면 순서대로 쌓여요.','Leave a note each day you read and they stack up in order.')}</div>
+        <div style="font-size:11px;color:var(--ink3);margin-bottom:12px">${t('읽은 날마다 메모를 남기면 최근 것부터 쌓여요.','Leave a note each day you read — the newest shows first.')}</div>
         ${readingNotes.length ? noteItems : `<div style="font-size:12.5px;color:var(--ink3);padding:2px 0 12px">${t('아직 메모가 없어요. 아래에서 읽은 만큼 적어보세요 👇','No notes yet. Write as much as you read below 👇')}</div>`}
         ${addForm}
       </div>
@@ -14995,7 +15000,7 @@ async function addReadingNote(bookId) {
     showUploadToast(t('추가 실패: ','Add failed: ') + error.message); return;
   }
   if (data) readingNotes.push(data);
-  readingNotes.sort((a,b)=> (a.date||'').localeCompare(b.date||'') || (a.created_at||'').localeCompare(b.created_at||''));
+  readingNotes.sort((a,b)=> (b.date||'').localeCompare(a.date||'') || (b.created_at||'').localeCompare(a.created_at||''));
   showUploadToast(t('✅ 메모가 쌓였어요','✅ Note added'));
   renderReadingLog(bookId);
 }
