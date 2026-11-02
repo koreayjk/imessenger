@@ -14755,6 +14755,21 @@ async function reloadMyReadingLogs() {
 
 function setReadingCat(c) { readingStudentFilter.cat = c; renderReadingStudent(); }
 
+//  📅 낸 것은 최신이 위로.
+//
+//  '읽은 책' 을 책 목록 차례(Step · 분류)대로 두면, 칸마다 읽은 날이
+//  적혀 있어서 날짜가 뒤죽박죽으로 보입니다. 아직 안 읽은 책은 차례대로
+//  두는 게 맞지만(그건 읽을 순서니까), 낸 것은 기록이라 최신이 위로
+//  와야 합니다.
+//  날짜가 같으면 나중에 고친 것을 위로 올립니다.
+function readingNewestFirst(books, readMap) {
+  const key = (b) => {
+    const l = readMap[b.id] || {};
+    return (l.read_date || '') + ' ' + (l.updated_at || l.created_at || '');
+  };
+  return books.slice().sort((a, b) => key(b).localeCompare(key(a)));
+}
+
 function renderReadingList() {
   const box = document.getElementById('reading-list');
   if (!box) return;
@@ -14788,7 +14803,10 @@ function renderReadingList() {
   let html = `<div onclick="readingShowUnread=!readingShowUnread;renderReadingList()" style="font-size:13px;font-weight:700;color:var(--adeep);margin:6px 0 8px;cursor:pointer;display:flex;align-items:center;gap:6px">📖 ${t('읽지 않은 책','Unread Books')} (${unread.length}) <span style="font-size:11px;font-weight:500;color:var(--ink3)">${showUnread ? t('▲ 접기','▲ Collapse') : t('▼ 펼치기','▼ Expand')}</span></div>`;
   if (showUnread) html += unread.length ? renderGroup(unread) : `<div style="font-size:12px;color:var(--ink3);padding:8px 0">${(q || cat !== 'all') ? t('조건에 맞는 책이 없어요','No matching books') : t('모든 책을 다 읽었어요! 🎉','You have read every book! 🎉')}</div>`;
   html += `<div onclick="readingShowRead=!readingShowRead;renderReadingList()" style="font-size:13px;font-weight:700;color:var(--adeep);margin:20px 0 8px;cursor:pointer;display:flex;align-items:center;gap:6px">✅ ${t('읽은 책','Read Books')} (${read.length}) <span style="font-size:11px;font-weight:500;color:var(--ink3)">${showRead ? t('▲ 접기','▲ Collapse') : t('▼ 펼치기','▼ Expand')}</span></div>`;
-  if (showRead) html += read.length ? renderGroup(read) : `<div style="font-size:12px;color:var(--ink3);padding:8px 0">${t('아직 읽은 책이 없어요','No books read yet')}</div>`;
+  //  낸 것은 Step 으로 묶지 않고 최신 순으로 죽 늘어놓는다
+  if (showRead) html += read.length
+    ? readingNewestFirst(read, readMap).map(b => readingBookRow(b, readMap[b.id])).join('')
+    : `<div style="font-size:12px;color:var(--ink3);padding:8px 0">${t('아직 읽은 책이 없어요','No books read yet')}</div>`;
   box.innerHTML = html;
 }
 
@@ -15190,7 +15208,7 @@ async function renderTcsReadingUnified() {
   const catStat = c => { const list = langBooks.filter(b => b.category === c); const r = list.filter(b => readMap[b.id]).length; return { total: list.length, read: r, pct: list.length ? Math.round(r / list.length * 100) : 0 }; };
   const catCards = READING_CATEGORIES.map(c => { const s = catStat(c); return `<div style="flex:1;min-width:0;background:var(--s2);border-radius:11px;padding:11px 12px"><div style="font-size:12px;font-weight:700;color:var(--adeep)">${READING_CAT_SHORT[c] || c}</div><div style="font-size:16px;font-weight:800;color:var(--ink);margin:2px 0 6px">${s.read}<span style="font-size:12px;font-weight:500;color:var(--ink3)">/${s.total}</span></div><div style="background:var(--s3);border-radius:99px;height:6px;overflow:hidden"><div style="height:100%;width:${s.pct}%;background:#2a5298"></div></div></div>`; }).join('');
 
-  const readBooks = langBooks.filter(b => readMap[b.id]);
+  const readBooks = readingNewestFirst(langBooks.filter(b => readMap[b.id]), readMap);
   const readRows = readBooks.length ? readBooks.map(b => {
     const l = readMap[b.id];
     const wc = countWords(l.report || '');
