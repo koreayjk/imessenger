@@ -27378,6 +27378,7 @@ const FIN_TABS = [
   { key:'tuition',   icon:'💰', ko:'학비',   en:'Tuition',   admin:true },
   { key:'allowance', icon:'🐷', ko:'용돈',   en:'Allowance' },
   { key:'deposit',   icon:'🏦', ko:'예치금', en:'Deposit' },
+  { key:'offering',  icon:'🙏', ko:'헌금',   en:'Offerings', admin:true },
   { key:'ledger',    icon:'📒', ko:'입출금', en:'Cash Book', admin:true },
 ];
 let finTab = 'tuition';      // 재정 허브 하위탭: 'tuition' | 'allowance' | 'deposit' | 'ledger'
@@ -28149,6 +28150,7 @@ async function renderTuitionHub() {
   if (!finClampTab()) { main.innerHTML = `<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px">${t('권한이 없어요','No access')}</div>`; return; }
   if (finTab === 'allowance') return renderFinBalances('allowance');
   if (finTab === 'deposit')   return renderFinBalances('deposit');
+  if (finTab === 'offering')  return renderOfferingHub();
   if (finTab === 'ledger')    return renderLedgerHub();
   main.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink3);font-size:13px">'+t('불러오는 중...','Loading...')+'</div>';
   try { await loadTuition(); }
@@ -28158,6 +28160,381 @@ async function renderTuitionHub() {
     return;
   }
   renderTuition();
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  🙏 헌금관리 — 예배 때 봉투로 들어온 헌금
+//
+//  '입출금(ledger)' 과 겹치지 않습니다.
+//    · 입출금 = 은행 내역을 불러와 분류 (계좌를 거친 돈)
+//    · 헌금   = 봉투로 들어온 것 (계좌를 거치기 전의 돈)
+//
+//  행정담당자 이상만 봅니다. 화면에서 탭을 숨기는 것(admin:true)만으로는
+//  모자라서, 서버에서도 막습니다(db/헌금관리_DB설치.sql).
+//  누가 얼마를 드렸는지는 민감한 정보입니다.
+// ══════════════════════════════════════════════════════════════════
+const OFFERING_KINDS = ['주일헌금','십일조','감사헌금','선교헌금','건축헌금','절기헌금','특별헌금','기타'];
+const OFFERING_KIND_EN = {
+  '주일헌금':'Sunday Offering', '십일조':'Tithe', '감사헌금':'Thanksgiving',
+  '선교헌금':'Mission', '건축헌금':'Building Fund', '절기헌금':'Seasonal',
+  '특별헌금':'Special', '기타':'Other',
+};
+//  ⚠️ 저장되는 값은 한글 그대로입니다. 보여 줄 때만 바꿉니다.
+//     (활동후기 분류에서 영어 화면에 한글이 나왔던 것과 같은 자리)
+function offKindLabel(k) { return APP_LANG === 'en' ? (OFFERING_KIND_EN[k] || k) : k; }
+const OFFERING_METHODS = [
+  ['cash','현금','Cash'], ['check','수표','Check'], ['transfer','계좌이체','Transfer'],
+  ['card','카드','Card'], ['other','기타','Other'],
+];
+function offMethodLabel(m) {
+  const f = OFFERING_METHODS.find(x => x[0] === m);
+  return f ? t(f[1], f[2]) : m;
+}
+
+let ofMode    = 'list';   // 'list' = 내역 · 'person' = 사람별 합계
+let ofMonth   = '';       // 'YYYY-MM'
+let ofYear    = '';       // 'YYYY'
+let ofRows    = [];
+let ofMembers = [];
+let ofFind    = '';
+let ofKindF   = '';
+let ofEditId  = null;
+let ofBusy    = false;
+
+function ofNextMonth(ym) {
+  const [y, m] = ym.split('-').map(Number);
+  return m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`;
+}
+function ofName(r) {
+  if (r.member_id) {
+    const m = ofMembers.find(x => x.id === r.member_id);
+    if (m && m.name) return m.name;
+  }
+  return (r.donor_name || '').trim() || t('무명','Anonymous');
+}
+function ofCur(r) { return (r && r.currency) || COMM_CUR; }
+
+async function renderOfferingHub() {
+  const main = document.getElementById('school-main');
+  if (!main) return;
+  if (!ofMonth) ofMonth = attTodayStr().slice(0, 7);
+  if (!ofYear)  ofYear  = attTodayStr().slice(0, 4);
+  main.innerHTML = finTabBar() + `<div style="text-align:center;padding:40px;color:var(--ink3);font-size:13px">${t('불러오는 중...','Loading...')}</div>`;
+  try { await ofLoad(); }
+  catch (e) {
+    if (schoolTableMissing(e)) {
+      main.innerHTML = finTabBar() + `<div style="max-width:560px;margin:30px auto;text-align:center">
+        <div style="font-size:40px;margin-bottom:12px">🗄️</div>
+        <div style="font-size:16px;font-weight:700;margin-bottom:8px">${t('데이터베이스 설정이 필요해요','Database setup required')}</div>
+        <div style="font-size:13px;color:var(--ink3);line-height:1.8">${t('<b>db/헌금관리_DB설치.sql</b> 을 Supabase → SQL Editor 에 붙여넣고 실행해주세요.','Paste <b>db/헌금관리_DB설치.sql</b> into Supabase → SQL Editor and run it.')}</div></div>`;
+      return;
+    }
+    main.innerHTML = finTabBar() + `<div style="color:#b91c1c;padding:30px;text-align:center;font-size:13px">${t('불러오기 실패: ','Failed to load: ')}${escHtml(e.message || String(e))}</div>`;
+    return;
+  }
+  ofPaint();
+}
+
+async function ofLoad() {
+  const start = ofMode === 'list' ? `${ofMonth}-01` : `${ofYear}-01-01`;
+  const end   = ofMode === 'list' ? ofNextMonth(ofMonth) : `${Number(ofYear) + 1}-01-01`;
+  const { data, error } = await sb.from('offerings').select('*')
+    .eq('community_id', CID()).gte('date', start).lt('date', end)
+    .order('date', { ascending: false }).order('created_at', { ascending: false })
+    .limit(3000);
+  if (error) throw error;
+  ofRows = data || [];
+  if (!ofMembers.length) {
+    try {
+      const { data: ms } = await sb.from('members').select('id,name,community_role')
+        .eq('community_id', CID()).order('name');
+      ofMembers = (ms || []).filter(m => m.status !== 'removed');
+    } catch (_) { ofMembers = []; }
+  }
+}
+
+function ofSetMode(m)  { ofMode = m; ofEditId = null; renderOfferingHub(); }
+function ofShift(n)    { const [y,m] = ofMonth.split('-').map(Number); const d = new Date(y, m-1+n, 1);
+                         ofMonth = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; renderOfferingHub(); }
+function ofSetYear(v)  { ofYear = v; renderOfferingHub(); }
+function ofSetFind(v)  { ofFind = v; ofPaint(); }
+function ofSetKindF(v) { ofKindF = v; ofPaint(); }
+function ofEdit(id)    { ofEditId = id; ofPaint(); }
+function ofCancelEdit(){ ofEditId = null; ofPaint(); }
+
+//  분류 칸에서 '직접 입력' 을 고르면 글 적는 칸을 띄운다
+function ofKindPick(prefix) {
+  const sel = document.getElementById(prefix + '-kind');
+  const box = document.getElementById(prefix + '-kind-custom');
+  if (sel && box) box.style.display = sel.value === '__custom__' ? '' : 'none';
+}
+function ofWhoPick(prefix) {
+  const sel = document.getElementById(prefix + '-who');
+  const box = document.getElementById(prefix + '-who-name');
+  if (sel && box) box.style.display = sel.value === '__name__' ? '' : 'none';
+}
+function ofReadForm(prefix) {
+  const g = (k) => { const el = document.getElementById(prefix + '-' + k); return el ? el.value : ''; };
+  let kind = g('kind');
+  if (kind === '__custom__') kind = (g('kind-custom') || '').trim();
+  const who = g('who');
+  const amount = Number(String(g('amount')).replace(/[^0-9.\-]/g, ''));
+  return {
+    date: g('date') || attTodayStr(),
+    kind,
+    member_id: (who && who !== '__name__') ? who : null,
+    donor_name: who === '__name__' ? ((g('who-name') || '').trim() || null) : null,
+    amount,
+    method: g('method') || 'cash',
+    memo: (g('memo') || '').trim() || null,
+  };
+}
+function ofValid(row) {
+  if (!row.kind) { showUploadToast(t('분류를 고르거나 적어주세요','Pick or enter a category')); return false; }
+  if (!(row.amount > 0)) { showUploadToast(t('금액을 올바로 적어주세요','Enter a valid amount')); return false; }
+  return true;
+}
+
+async function ofAdd() {
+  if (ofBusy) return;
+  const row = ofReadForm('of-new');
+  if (!ofValid(row)) return;
+  ofBusy = true;
+  const { error } = await sb.from('offerings').insert({
+    ...row, community_id: CID(), currency: COMM_CUR, created_by: ME.id,
+  });
+  ofBusy = false;
+  if (error) { showUploadToast(t('저장 실패: ','Save failed: ') + (error.message || '')); return; }
+  showUploadToast(t('✅ 헌금을 적었어요','✅ Offering recorded'));
+  //  적은 날이 보고 있는 달과 다르면 그 달로 옮겨 준다 — 안 그러면
+  //  방금 적은 것이 어디로 갔는지 알 수가 없다.
+  const ym = String(row.date).slice(0, 7);
+  if (ofMode === 'list' && ym !== ofMonth) ofMonth = ym;
+  await renderOfferingHub();
+}
+
+async function ofSave(id) {
+  if (ofBusy) return;
+  const row = ofReadForm('of-ed');
+  if (!ofValid(row)) return;
+  ofBusy = true;
+  const { data, error } = await sb.from('offerings').update(row).eq('id', id).select('id');
+  ofBusy = false;
+  if (error) { showUploadToast(t('수정 실패: ','Update failed: ') + (error.message || '')); return; }
+  //  RLS 가 막으면 error 없이 0행이 온다. 조용히 넘어가면 안 된다.
+  if (!data || !data.length) { showUploadToast(t('고칠 권한이 없어요','You do not have permission to edit this')); return; }
+  ofEditId = null;
+  showUploadToast(t('✅ 고쳤어요','✅ Updated'));
+  await renderOfferingHub();
+}
+
+async function ofDelete(id) {
+  const r = ofRows.find(x => x.id === id);
+  if (!confirm(t(`이 헌금 기록을 지울까요?\n${r ? ofName(r) + ' · ' + cmoney(r.amount) : ''}`,
+                 `Delete this offering?\n${r ? ofName(r) + ' · ' + cmoney(r.amount) : ''}`))) return;
+  const { data, error } = await sb.from('offerings').delete().eq('id', id).select('id');
+  if (error) { showUploadToast(t('삭제 실패: ','Delete failed: ') + (error.message || '')); return; }
+  if (!data || !data.length) { showUploadToast(t('지울 권한이 없어요','You do not have permission to delete this')); return; }
+  showUploadToast(t('🗑 지웠어요','🗑 Deleted'));
+  await renderOfferingHub();
+}
+
+function ofShown() {
+  const q = ofFind.trim().toLowerCase();
+  return ofRows.filter(r => {
+    if (ofKindF && (r.kind || '') !== ofKindF) return false;
+    if (!q) return true;
+    return [ofName(r), r.kind, r.memo].some(x => String(x || '').toLowerCase().includes(q));
+  });
+}
+
+function ofFormHtml(prefix, r) {
+  const inp = 'height:34px;padding:0 10px;border:1.5px solid var(--border);border-radius:9px;font:600 12.5px var(--font);color:var(--ink);background:var(--surface)';
+  const kinds = [...new Set([...OFFERING_KINDS, ...ofRows.map(x => x.kind).filter(Boolean)])];
+  const cur = r ? ofCur(r) : COMM_CUR;
+  const known = r && r.kind && kinds.includes(r.kind);
+  return `
+    <input id="${prefix}-date" type="date" value="${escAttr((r && r.date) || attTodayStr())}" style="${inp}"/>
+    <select id="${prefix}-kind" onchange="ofKindPick('${prefix}')" style="${inp};cursor:pointer">
+      ${kinds.map(k => `<option value="${escAttr(k)}" ${r && r.kind === k ? 'selected' : ''}>${escHtml(offKindLabel(k))}</option>`).join('')}
+      <option value="__custom__" ${r && r.kind && !known ? 'selected' : ''}>${t('직접 입력…','Enter…')}</option>
+    </select>
+    <input id="${prefix}-kind-custom" value="${escAttr(r && !known ? r.kind : '')}" placeholder="${t('분류 이름','Category')}"
+      style="${inp};display:${r && r.kind && !known ? '' : 'none'};width:110px"/>
+    <select id="${prefix}-who" onchange="ofWhoPick('${prefix}')" style="${inp};cursor:pointer;max-width:170px">
+      <option value="">${t('무명','Anonymous')}</option>
+      ${ofMembers.map(m => `<option value="${escAttr(m.id)}" ${r && r.member_id === m.id ? 'selected' : ''}>${escHtml(m.name || '')}</option>`).join('')}
+      <option value="__name__" ${r && !r.member_id && r.donor_name ? 'selected' : ''}>${t('이름 직접 적기…','Type a name…')}</option>
+    </select>
+    <input id="${prefix}-who-name" value="${escAttr((r && !r.member_id && r.donor_name) || '')}" placeholder="${t('드린 분 이름','Donor name')}"
+      style="${inp};display:${r && !r.member_id && r.donor_name ? '' : 'none'};width:130px"/>
+    <input id="${prefix}-amount" inputmode="decimal" value="${escAttr(r ? r.amount : '')}" placeholder="${curSign(cur)}0"
+      style="${inp};width:110px;text-align:right;font-weight:800"/>
+    <select id="${prefix}-method" style="${inp};cursor:pointer">
+      ${OFFERING_METHODS.map(([v, ko, en]) => `<option value="${v}" ${r && r.method === v ? 'selected' : ''}>${t(ko, en)}</option>`).join('')}
+    </select>
+    <input id="${prefix}-memo" value="${escAttr((r && r.memo) || '')}" placeholder="${t('비고(선택)','Note (optional)')}"
+      style="${inp};flex:1;min-width:110px"/>`;
+}
+
+function ofPaint() {
+  const main = document.getElementById('school-main');
+  if (!main) return;
+  const btn  = (on) => `height:34px;padding:0 14px;border:1.5px solid ${on ? 'var(--accent)' : 'var(--border)'};background:${on ? 'var(--accent)' : 'var(--surface)'};color:${on ? '#fff' : 'var(--ink2)'};border-radius:9px;cursor:pointer;font:700 12.5px var(--font)`;
+  const ghost = 'height:30px;padding:0 10px;border:1px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:8px;cursor:pointer;font:700 11.5px var(--font)';
+  const inp  = 'height:34px;padding:0 10px;border:1.5px solid var(--border);border-radius:9px;font:600 12.5px var(--font);color:var(--ink);background:var(--surface)';
+  const canWrite = !isGuestViewing();
+
+  const modeBar = `<div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
+    <button onclick="ofSetMode('list')"   style="${btn(ofMode === 'list')}">📒 ${t('내역','Records')}</button>
+    <button onclick="ofSetMode('person')" style="${btn(ofMode === 'person')}">🧾 ${t('사람별 합계','By person')}</button>
+  </div>`;
+
+  if (ofMode === 'person') return ofPaintPerson(main, modeBar);
+
+  const rows = ofShown();
+  const total = rows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+  const byKind = {};
+  rows.forEach(r => { byKind[r.kind || '?'] = (byKind[r.kind || '?'] || 0) + (Number(r.amount) || 0); });
+
+  const rowHtml = (r) => {
+    if (ofEditId === r.id) return `
+      <div data-of="${escAttr(r.id)}" style="border:1.5px solid var(--accent);border-radius:11px;padding:10px 12px;margin-bottom:8px;background:var(--asoft)">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${ofFormHtml('of-ed', r)}</div>
+        <div style="display:flex;gap:6px;justify-content:flex-end;margin-top:8px">
+          <button onclick="ofCancelEdit()" style="${ghost}">${t('취소','Cancel')}</button>
+          <button onclick="ofSave('${escJs(r.id)}')" style="height:30px;padding:0 14px;border:none;background:#1d3a5f;color:#fff;border-radius:8px;cursor:pointer;font:700 12px var(--font)">${t('저장','Save')}</button>
+        </div>
+      </div>`;
+    return `
+      <div data-of="${escAttr(r.id)}" style="display:flex;align-items:center;gap:10px;border:1px solid var(--border);border-radius:11px;padding:10px 13px;margin-bottom:7px;background:var(--surface);flex-wrap:wrap">
+        <span style="font-size:11.5px;color:var(--ink3);width:82px;flex-shrink:0">${escHtml(r.date || '')}</span>
+        <span style="font-size:11px;font-weight:700;color:#1d3a5f;background:var(--asoft);padding:2px 8px;border-radius:6px;flex-shrink:0">${escHtml(offKindLabel(r.kind || ''))}</span>
+        <span style="font-size:13px;font-weight:600;color:var(--ink);flex:1;min-width:90px">${escHtml(ofName(r))}</span>
+        <span style="font-size:11px;color:var(--ink3);flex-shrink:0">${escHtml(offMethodLabel(r.method))}</span>
+        ${r.memo ? `<span style="font-size:11.5px;color:var(--ink3);flex:1;min-width:80px">${escHtml(r.memo)}</span>` : ''}
+        <span style="font-size:13.5px;font-weight:800;color:var(--ink);text-align:right;min-width:92px">${allowMoney(r.amount, ofCur(r))}</span>
+        ${canWrite ? `<span style="display:flex;gap:4px;flex-shrink:0">
+          <button onclick="ofEdit('${escJs(r.id)}')" title="${t('고치기','Edit')}" style="${ghost}">✏️</button>
+          <button onclick="ofDelete('${escJs(r.id)}')" title="${t('삭제','Delete')}" style="${ghost};color:#b91c1c">✕</button>
+        </span>` : ''}
+      </div>`;
+  };
+
+  main.innerHTML = `<div class="spage" style="max-width:980px">
+    ${finTabBar()}
+    ${modeBar}
+    <div class="adm-card" style="margin-bottom:14px">
+      <div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+        <button onclick="ofShift(-1)" style="${ghost};height:34px">‹</button>
+        <div style="font-size:14.5px;font-weight:800;color:var(--ink);min-width:96px;text-align:center">${escHtml(ofMonth)}</div>
+        <button onclick="ofShift(1)" style="${ghost};height:34px">›</button>
+        <select style="${inp};cursor:pointer" onchange="ofSetKindF(this.value)">
+          <option value="" ${ofKindF === '' ? 'selected' : ''}>${t('모든 분류','All categories')}</option>
+          ${[...new Set(ofRows.map(r => r.kind).filter(Boolean))].map(k =>
+            `<option value="${escAttr(k)}" ${ofKindF === k ? 'selected' : ''}>${escHtml(offKindLabel(k))}</option>`).join('')}
+        </select>
+        <input value="${escAttr(ofFind)}" oninput="ofSetFind(this.value)" placeholder="${t('이름 · 비고 찾기','Find by name or note')}"
+          style="${inp};flex:1;min-width:140px"/>
+        <button onclick="ofCsv()" style="${ghost};height:34px">⬇ CSV</button>
+      </div>
+      <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:baseline;border-top:1px dashed var(--border);padding-top:10px">
+        <div><span style="font-size:11.5px;color:var(--ink3)">${t('이 달 합계','Month total')}</span>
+          <span style="font-size:19px;font-weight:800;color:var(--ink);margin-left:7px">${allowMoney(total, COMM_CUR)}</span>
+          <span style="font-size:11.5px;color:var(--ink3);margin-left:5px">· ${rows.length}${t('건','')}</span></div>
+      </div>
+      ${Object.keys(byKind).length ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:9px">
+        ${Object.entries(byKind).sort((a,b) => b[1]-a[1]).map(([k,v]) =>
+          `<span style="font-size:11.5px;color:var(--ink2);background:var(--s2);border-radius:8px;padding:4px 9px">${escHtml(offKindLabel(k))} <b>${allowMoney(v, COMM_CUR)}</b></span>`).join('')}
+      </div>` : ''}
+    </div>
+
+    ${canWrite ? `<div class="adm-card" style="margin-bottom:14px">
+      <div style="font-size:12.5px;font-weight:800;color:var(--ink);margin-bottom:9px">＋ ${t('헌금 적기','Add an offering')}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${ofFormHtml('of-new', null)}
+        <button onclick="ofAdd()" style="height:34px;padding:0 16px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 12.5px var(--font)">${t('＋ 추가','＋ Add')}</button>
+      </div>
+      <div style="font-size:11px;color:var(--ink3);margin-top:8px">${t('앱에 없는 분은 「이름 직접 적기」 를 고르세요. 이름을 안 남기려면 「무명」 그대로 두면 됩니다.','For someone not in the app choose “Type a name”. Leave “Anonymous” to record without a name.')}</div>
+    </div>` : ''}
+
+    ${rows.length ? rows.map(rowHtml).join('') : `<div style="padding:42px;text-align:center;color:var(--ink3);font-size:13px">${
+      ofRows.length ? t('이 조건에 맞는 기록이 없어요','Nothing matches these filters')
+                    : t('이 달에는 적은 헌금이 없어요','No offerings recorded this month')}</div>`}
+  </div>`;
+}
+
+//  🧾 사람별 합계 — 연말 기부금 영수증을 떼려면 사람별 한 해 합계가 필요하다
+function ofPaintPerson(main, modeBar) {
+  const ghost = 'height:30px;padding:0 10px;border:1px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:8px;cursor:pointer;font:700 11.5px var(--font)';
+  const inp = 'height:34px;padding:0 10px;border:1.5px solid var(--border);border-radius:9px;font:600 12.5px var(--font);color:var(--ink);background:var(--surface)';
+  const thisYear = Number(attTodayStr().slice(0, 4));
+  const years = [];
+  for (let y = thisYear; y >= thisYear - 6; y--) years.push(String(y));
+
+  //  무명은 사람별로 묶지 않는다 — 영수증을 뗄 수 없고, 묶으면 금액만 부풀어 보인다
+  const named = ofRows.filter(r => r.member_id || (r.donor_name || '').trim());
+  const anon  = ofRows.filter(r => !(r.member_id || (r.donor_name || '').trim()));
+  const by = {};
+  named.forEach(r => {
+    const key = r.member_id || ('name:' + (r.donor_name || '').trim());
+    (by[key] = by[key] || { name: ofName(r), n: 0, sum: 0, member: !!r.member_id })
+      .n++;
+    by[key].sum += Number(r.amount) || 0;
+  });
+  const list = Object.values(by).sort((a, b) => b.sum - a.sum);
+  const namedSum = list.reduce((s, x) => s + x.sum, 0);
+  const anonSum  = anon.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+
+  main.innerHTML = `<div class="spage" style="max-width:860px">
+    ${finTabBar()}
+    ${modeBar}
+    <div class="adm-card" style="margin-bottom:14px">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <select style="${inp};cursor:pointer" onchange="ofSetYear(this.value)">
+          ${years.map(y => `<option value="${y}" ${ofYear === y ? 'selected' : ''}>${y}${t('년','')}</option>`).join('')}
+        </select>
+        <div style="flex:1"></div>
+        <button onclick="ofCsv()" style="${ghost};height:34px">⬇ CSV</button>
+      </div>
+      <div style="border-top:1px dashed var(--border);margin-top:10px;padding-top:10px;font-size:12px;color:var(--ink3);line-height:1.9">
+        ${t('한 해 합계','Year total')} <b style="font-size:16px;color:var(--ink)">${allowMoney(namedSum + anonSum, COMM_CUR)}</b>
+        · ${t('이름 남긴 분','Named')} <b>${list.length}</b>${t('명','')} ${allowMoney(namedSum, COMM_CUR)}
+        ${anon.length ? ` · ${t('무명','Anonymous')} ${anon.length}${t('건','')} ${allowMoney(anonSum, COMM_CUR)}` : ''}
+        <br><span style="font-size:11px">${t('연말 기부금 영수증을 뗄 때 쓰세요. 무명은 사람별로 묶지 않습니다.','Use this for year-end donation receipts. Anonymous gifts are not grouped by person.')}</span>
+      </div>
+    </div>
+    ${list.length ? list.map((x, i) => `
+      <div data-ofp="${escAttr(x.name)}" style="display:flex;align-items:center;gap:10px;border:1px solid var(--border);border-radius:11px;padding:11px 14px;margin-bottom:7px;background:var(--surface)">
+        <span style="font-size:11.5px;color:var(--ink3);width:26px;flex-shrink:0">${i + 1}</span>
+        <span style="font-size:13.5px;font-weight:700;color:var(--ink);flex:1;min-width:90px">${escHtml(x.name)}${x.member ? '' : ` <span style="font-size:10.5px;font-weight:600;color:var(--ink3)">${t('(앱 밖)','(not in app)')}</span>`}</span>
+        <span style="font-size:11.5px;color:var(--ink3);flex-shrink:0">${x.n}${t('건','')}</span>
+        <span style="font-size:14px;font-weight:800;color:var(--ink);min-width:100px;text-align:right">${allowMoney(x.sum, COMM_CUR)}</span>
+      </div>`).join('')
+    : `<div style="padding:42px;text-align:center;color:var(--ink3);font-size:13px">${t('이 해에는 적은 헌금이 없어요','No offerings recorded this year')}</div>`}
+  </div>`;
+}
+
+//  엑셀에서 한글이 깨지지 않게 BOM 을 붙인다 (입출금 CSV 와 같은 방식)
+function ofCsv() {
+  const rows = ofMode === 'list' ? ofShown() : ofRows;
+  if (!rows.length) { showUploadToast(t('내보낼 기록이 없어요','Nothing to export')); return; }
+  const q = (v) => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
+  const head = [t('날짜','Date'), t('분류','Category'), t('드린 분','Donor'),
+                t('앱 안','In app'), t('방법','Method'), t('금액','Amount'),
+                t('통화','Currency'), t('비고','Note')];
+  const body = rows.slice()
+    .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')))
+    .map(r => [r.date || '', r.kind || '', ofName(r), r.member_id ? 'Y' : 'N',
+               offMethodLabel(r.method), Number(r.amount) || 0,
+               ofCur(r), r.memo || ''].map(q).join(','));
+  const csv = [head.map(q).join(','), ...body].join('\r\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `${t('헌금','offerings')}_${ofMode === 'list' ? ofMonth : ofYear}.csv`;
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 0);
+  showUploadToast(t(`⬇ ${rows.length}건 내려받았어요`, `⬇ Exported ${rows.length} rows`));
 }
 
 // ══════════════════════════════════════════════════════════════════

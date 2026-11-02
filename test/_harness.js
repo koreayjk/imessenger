@@ -49,9 +49,15 @@ function dbScript() {
     window.__DB = DB; window.__ins = []; window.__upd = []; window.__err = null;
     window.__rpc = []; window.__rm = []; window.__rmResult = null;
     let seq = 0;
-    const mkq = (t) => { const q = { _t:t, _eq:{} };
-      ['neq','is','gte','lte','lt','gt','not','range','or','filter','contains']
+    const mkq = (t) => { const q = { _t:t, _eq:{}, _cmp:[] };
+      ['is','not','range','or','filter','contains']
         .forEach(k => q[k] = function(){ return this; });
+      //  ⚠️ gte/lt 를 그냥 넘기면 '이 달 것만 보이는지' 를 잴 수가 없다.
+      //     달을 걸러도 지난달 것이 같이 나오는데 시험은 통과해 버린다
+      //     (limit 때와 똑같은 자리에서 또 데었다). 진짜로 거른다.
+      ['gte','gt','lte','lt','neq'].forEach(op => {
+        q[op] = function(k, v){ this._cmp.push([op, k, v]); return this; };
+      });
       //  limit 은 진짜로 자른다. 무시하면 '40통만 보이던 것' 같은 가정을
       //  시험이 아예 못 재게 된다 (되돌려 보고 ❌ 가 안 나와서 들켰다).
       q.limit = function(n){ this._lim = Number(n); return this; };
@@ -82,6 +88,20 @@ function dbScript() {
         let rows = (DB[this._t] || []).slice();
         Object.entries(this._eq).forEach(([k,v]) => { rows = rows.filter(x => String(x[k]) === String(v)); });
         if (this._in) { const [k,vs] = this._in; rows = rows.filter(x => vs.map(String).includes(String(x[k]))); }
+        //  숫자끼리면 숫자로, 아니면 글자로 견준다 ('2026-11-01' 같은 날짜는 글자로 맞다)
+        const cmp = (a, b) => {
+          const na = Number(a), nb = Number(b);
+          if (a !== null && a !== '' && b !== null && b !== '' && !isNaN(na) && !isNaN(nb)) return na - nb;
+          return String(a == null ? '' : a).localeCompare(String(b == null ? '' : b));
+        };
+        this._cmp.forEach(([op, k, v]) => {
+          rows = rows.filter(x => {
+            if (op === 'neq') return String(x[k]) !== String(v);
+            if (x[k] == null) return false;       // 비어 있으면 견줄 수 없다 → 빠진다
+            const c = cmp(x[k], v);
+            return op === 'gte' ? c >= 0 : op === 'gt' ? c > 0 : op === 'lte' ? c <= 0 : c < 0;
+          });
+        });
         if (this._u) { window.__upd.push({ t:this._t, eq:{...this._eq}, u:this._u });
           rows.forEach(r => Object.assign(r, this._u));
           return Promise.resolve({ data: rows.map(r => ({ id:r.id })), error:null }).then(res, rej); }
