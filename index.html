@@ -22447,6 +22447,7 @@ const SCHOOL_TABS = [
   { id:'reading',    icon:'📖', label:t('트리플스쿨','Triple School'), group:'student', section:'school' },
   { id:'memory',     icon:'📜', label:t('성구암송','Memory'),          group:'student', section:'school' },
   { id:'daily',      icon:'📋', label:t('일일기록','Daily log'),        group:'student', section:'school' },
+  { id:'review',     icon:'✍️', label:t('활동후기','Reviews'),          group:'student', section:'school' },
   { id:'feedback',   icon:'📬', label:t('주간 피드백','Weekly'),         group:'student', section:'school' },
   { id:'timetable',  icon:'🗓', label:t('시간표','Timetable'),        group:'class',   section:'school' },
   { id:'attendance', icon:'✅', label:t('출석부','Attendance'),       group:'class',   section:'school' },
@@ -22600,6 +22601,7 @@ function renderSchoolMain() {
   // 👤 학생 · 🗂 생활기록부 · 📖 트리플스쿨 · 📜 성구암송 — 왼쪽 사람 목록을 함께 쓴다
   if (['student','record','reading','memory'].includes(schoolSubMode)) return renderStudent360();
   if (schoolSubMode === 'daily')      return renderDailyHub();
+  if (schoolSubMode === 'review')     return renderReviewHub();
   if (schoolSubMode === 'feedback')   return renderFeedbackHub();
   if (schoolSubMode === 'attendance') return renderAttendanceHub();
   if (schoolSubMode === 'leave')      return renderApprovalHub();
@@ -32594,6 +32596,179 @@ async function initWritingPage() {
     return;
   }
   renderWriting();
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  ✍️ 활동후기 — 교직원이 학생 글을 읽는 자리
+//
+//  이게 없었습니다. 쓰는 쪽(학생)만 만들고 읽는 쪽을 안 만들어서,
+//  이미 아홉 편이 쌓여 있는데 아무도 못 보고 있었습니다.
+//  '📣 준비한 쪽에 주는 말' 도 '간사·선생님만 보임' 이라고 걸어 뒀지만,
+//  그 코드가 들어 있는 목록이 학생 본인 것만 불러오니(initWritingPage)
+//  실제로는 아무에게도 안 보였습니다.
+//
+//  읽기 전용입니다 — 코멘트는 달지 않습니다.
+//  누가 무엇을 볼 수 있는지는 서버(RLS)가 정합니다:
+//  담임은 자기 반 학생, 관리자급은 공동체 전체.
+//  그래서 여기서는 거르지 않고, 서버가 준 것을 그대로 보여 줍니다.
+// ════════════════════════════════════════════════════════════════════
+let rvKind  = 'activity';   // 'activity' = 활동후기 · 'book' = 독후감
+let rvMonth = '';           // '' = 전체 기간
+let rvCat   = '';           // '' = 모든 분류
+let rvFind  = '';
+let rvRows  = [];
+let rvNames = {};
+let rvOpen  = {};           // 글 id → 펼쳤나
+
+async function renderReviewHub() {
+  const main = document.getElementById('school-main');
+  if (!main) return;
+  main.innerHTML = `<div style="text-align:center;padding:40px;color:var(--ink3);font-size:13px">${t('불러오는 중...','Loading...')}</div>`;
+  try { await rvLoad(); }
+  catch (e) {
+    if (schoolTableMissing(e)) { main.innerHTML = writingSetupHtml(); return; }
+    main.innerHTML = `<div style="color:#b91c1c;padding:30px;text-align:center;font-size:13px">${t('불러오기 실패: ','Failed to load: ')}${escHtml(e.message || String(e))}</div>`;
+    return;
+  }
+  rvPaint();
+}
+
+async function rvLoad() {
+  //  달로 거르는 건 화면에서 합니다. 서버에서 걸러 버리면 '어느 달에
+  //  글이 있는지' 를 알 수 없어 달 고르는 칸을 만들 수가 없습니다.
+  const { data, error } = await sb.from('student_writings')
+    .select('id,member_id,kind,category,title,body,feedback,date,created_at')
+    .eq('community_id', CID()).eq('kind', rvKind)
+    .order('date', { ascending:false }).order('created_at', { ascending:false })
+    .limit(500);
+  if (error) throw error;
+  rvRows = data || [];
+  if (!reviewCats.length) {
+    try {
+      const { data: c } = await sb.from('review_categories').select('*')
+        .eq('community_id', CID()).order('sort').order('name');
+      reviewCats = c || [];
+    } catch (_) {}
+  }
+  await rvFetchNames();
+}
+
+//  이름 — 이미 아는 사람은 다시 묻지 않는다
+async function rvFetchNames() {
+  const need = [...new Set(rvRows.map(r => r.member_id).filter(Boolean))]
+    .filter(id => !rvNames[id]);
+  need.forEach(id => {
+    const m = (typeof members === 'object' && members && members[id])
+           || (schoolStudents || []).find(s => s.id === id);
+    if (m && m.name) rvNames[id] = m.name;
+  });
+  const left = need.filter(id => !rvNames[id]);
+  if (!left.length) return;
+  try {
+    const { data } = await sb.from('members').select('id,name').in('id', left);
+    (data || []).forEach(m => { rvNames[m.id] = m.name || ''; });
+  } catch (_) {}
+}
+function rvName(id) { return rvNames[id] || t('(이름 모름)','(unknown)'); }
+
+function rvMonths() {
+  return [...new Set(rvRows.map(r => (r.date || '').slice(0, 7)).filter(Boolean))].sort().reverse();
+}
+function rvShown() {
+  const q = rvFind.trim().toLowerCase();
+  return rvRows.filter(r => {
+    if (rvMonth && (r.date || '').slice(0, 7) !== rvMonth) return false;
+    if (rvCat && (r.category || '') !== rvCat) return false;
+    if (!q) return true;
+    return [rvName(r.member_id), r.title, r.category, r.body]
+      .some(x => String(x || '').toLowerCase().includes(q));
+  });
+}
+
+function rvSetKind(k)  { rvKind = k; rvCat = ''; rvOpen = {}; renderReviewHub(); }
+function rvSetMonth(v) { rvMonth = v; rvPaint(); }
+function rvSetCat(v)   { rvCat = v; rvPaint(); }
+function rvSetFind(v)  { rvFind = v; rvPaint(); }
+function rvToggle(id)  { rvOpen[id] = !rvOpen[id]; rvPaint(); }
+function rvOpenAll(on) { rvShown().forEach(r => { rvOpen[r.id] = !!on; }); rvPaint(); }
+
+function rvPaint() {
+  const main = document.getElementById('school-main');
+  if (!main) return;
+  const rows  = rvShown();
+  const isAct = rvKind === 'activity';
+
+  //  아직 안 쓴 학생 — 관리자가 제일 먼저 묻는 것
+  const wrote = new Set(rows.map(r => r.member_id));
+  const silent = (schoolStudents || []).filter(s => !wrote.has(s.id));
+
+  const sel = 'height:34px;padding:0 10px;border:1.5px solid var(--border);border-radius:9px;font:600 12.5px var(--font);color:var(--ink);background:var(--surface);cursor:pointer';
+  const tabBtn = (k, icon, ko, en) => `
+    <button onclick="rvSetKind('${k}')" style="height:34px;padding:0 14px;border:1.5px solid ${rvKind===k?'var(--accent)':'var(--border)'};
+      background:${rvKind===k?'var(--accent)':'var(--surface)'};color:${rvKind===k?'#fff':'var(--ink2)'};
+      border-radius:9px;cursor:pointer;font:700 12.5px var(--font)">${icon} ${t(ko,en)}</button>`;
+
+  const cards = rows.map(r => {
+    const open = !!rvOpen[r.id];
+    const body = String(r.body || '');
+    const peek = body.length > 150 ? body.slice(0, 150) + '…' : body;
+    return `
+    <div data-rv="${escAttr(r.id)}" style="border:1px solid var(--border);border-radius:12px;padding:13px 15px;margin-bottom:10px;background:var(--surface)">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
+        <span style="font-size:13.5px;font-weight:800;color:var(--ink)">${escHtml(rvName(r.member_id))}</span>
+        ${r.category?`<span style="font-size:11px;font-weight:700;color:#1d3a5f;background:var(--asoft);padding:2px 8px;border-radius:6px">${escHtml(reviewCatLabel(r.category))}</span>`:''}
+        ${r.title?`<span style="font-size:13px;font-weight:600;color:var(--ink2)">${escHtml(r.title)}</span>`:''}
+        <span style="font-size:11px;color:var(--ink3)">${escHtml(r.date || '')}</span>
+        ${(r.feedback && String(r.feedback).trim())?`<span style="font-size:10.5px;font-weight:800;color:#92400e;background:#fffbeb;border:1px solid #fde68a;padding:2px 7px;border-radius:6px">📣 ${t('개선 의견 있음','has feedback')}</span>`:''}
+        <div style="flex:1"></div>
+        ${body?`<button onclick="rvToggle('${escJs(r.id)}')" style="height:26px;padding:0 10px;border:1px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:7px;cursor:pointer;font:700 11.5px var(--font)">${open?t('접기','Collapse'):t('펼치기','Expand')}</button>`:''}
+      </div>
+      ${body?`<div style="font-size:13px;color:var(--ink2);line-height:1.75;white-space:pre-wrap">${escHtml(open ? body : peek)}</div>`:`<div style="font-size:12.5px;color:var(--ink3)">${t('내용이 비어 있어요','Empty')}</div>`}
+      ${(r.feedback && String(r.feedback).trim()) ? `
+        <div style="margin-top:10px;padding:10px 12px;background:#fffbeb;border:1px solid #fde68a;border-radius:9px">
+          <div style="font-size:11px;font-weight:800;color:#92400e;margin-bottom:4px">
+            📣 ${t('준비한 쪽에 주는 말','Feedback to the organizers')}
+            <span style="font-weight:600">· ${t('학생에게는 안 보입니다','students cannot see this')}</span></div>
+          <div style="font-size:12.5px;color:#7c2d12;line-height:1.75;white-space:pre-wrap">${escHtml(String(r.feedback))}</div>
+        </div>` : ''}
+    </div>`;
+  }).join('');
+
+  main.innerHTML = `<div class="spage" style="max-width:900px">
+    <div class="adm-card" style="margin-bottom:14px">
+      <div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+        ${tabBtn('activity','✍️','활동후기','Reviews')}
+        ${tabBtn('book','📖','독후감','Book reports')}
+      </div>
+      <div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center">
+        <select style="${sel}" onchange="rvSetMonth(this.value)">
+          <option value="" ${rvMonth===''?'selected':''}>${t('전체 기간','All time')}</option>
+          ${rvMonths().map(m => `<option value="${escAttr(m)}" ${rvMonth===m?'selected':''}>${escHtml(m)}</option>`).join('')}
+        </select>
+        ${isAct ? `<select style="${sel}" onchange="rvSetCat(this.value)">
+          <option value="" ${rvCat===''?'selected':''}>${t('모든 분류','All categories')}</option>
+          ${[...new Set(rvRows.map(r => r.category).filter(Boolean))].map(c =>
+            `<option value="${escAttr(c)}" ${rvCat===c?'selected':''}>${escHtml(reviewCatLabel(c))}</option>`).join('')}
+        </select>` : ''}
+        <input value="${escAttr(rvFind)}" oninput="rvSetFind(this.value)" placeholder="${t('이름 · 제목 · 내용 찾기','Find by name, title or text')}"
+          style="flex:1;min-width:150px;height:34px;padding:0 11px;border:1.5px solid var(--border);border-radius:9px;font:500 12.5px var(--font);color:var(--ink);background:var(--surface)"/>
+        <button onclick="rvOpenAll(true)" style="height:34px;padding:0 12px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:9px;cursor:pointer;font:700 12px var(--font)">${t('모두 펼치기','Expand all')}</button>
+        <button onclick="rvOpenAll(false)" style="height:34px;padding:0 12px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:9px;cursor:pointer;font:700 12px var(--font)">${t('모두 접기','Collapse all')}</button>
+      </div>
+      <div style="font-size:12px;color:var(--ink3);margin-top:10px;line-height:1.8">
+        📄 ${t('글','Entries')} <b>${rows.length}</b>${t('편','')} ·
+        🙋 ${t('쓴 사람','Writers')} <b>${wrote.size}</b>${t('명','')}
+        ${silent.length ? ` · 💤 ${t('아직 안 쓴 학생','Not yet')} <b>${silent.length}</b>${t('명','')}` : ''}
+        <br><span style="font-size:11px">${t('담임 선생님은 자기 반 학생만, 관리자·행정담당자는 공동체 전체가 보입니다.','Homeroom teachers see their own class; admins and officers see the whole community.')}</span>
+      </div>
+      ${silent.length ? `<div style="font-size:11.5px;color:var(--ink3);margin-top:7px;line-height:1.8;border-top:1px dashed var(--border);padding-top:7px">
+        💤 ${escHtml(silent.slice(0, 30).map(s => s.name || '').filter(Boolean).join(' · '))}${silent.length > 30 ? ' …' : ''}
+      </div>` : ''}
+    </div>
+    ${rows.length ? cards : `<div style="padding:46px;text-align:center;color:var(--ink3);font-size:13px">${
+      rvRows.length ? t('이 조건에 맞는 글이 없어요','Nothing matches these filters')
+                    : t('아직 올라온 글이 없어요','Nothing has been written yet')}</div>`}
+  </div>`;
 }
 
 function writingSetupHtml() {
