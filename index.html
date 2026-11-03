@@ -1180,7 +1180,7 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
           </div>
           <div>
             <div class="auth-label" data-ko="생년월일 (태어난 날)" data-en="Date of birth">생년월일 (태어난 날)</div>
-            <input class="auth-input" id="su-birth" type="date" data-ko-ph="생년월일" data-en-ph="Date of birth" style="color:var(--ink2)"/>
+            <div id="su-birth"></div>
           </div>
         </div>
         <!-- 공동체 선택 -->
@@ -1221,7 +1221,7 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
             </div>
             <div>
               <div class="auth-label" data-ko="아이 생년월일" data-en="Child's date of birth">아이 생년월일</div>
-              <input class="auth-input" id="su-child-birth" type="date" style="color:var(--ink2)" onchange="suParentReset()"/>
+              <div id="su-child-birth"></div>
             </div>
           </div>
           <div style="display:flex;gap:8px;align-items:center;margin-top:8px">
@@ -3487,14 +3487,91 @@ window.doLogout = doLogout;
 window.loadCommunitiesForSignup = loadCommunitiesForSignup;
 window.enterCommunity = enterCommunity;
 
+// ── 🎂 생년월일 고르개 (년 · 월 · 일 따로) ─────────────────────────
+//
+//  <input type="date"> 는 폰에서 **오늘**부터 열립니다. 2008년생을 적으려면
+//  화살표를 20번 넘게 눌러야 합니다 — 가입하신 분께 실제로 그 말을
+//  들었습니다("2026년부터 2008년1월까지 20번이상은 계속 눌러야 하네요").
+//  연도를 목록으로 두면 한 번에 갑니다.
+//
+//  value 는 전과 똑같이 'YYYY-MM-DD' 입니다. 읽을 때는 birthValue(base) 를
+//  쓰세요 — 세 칸 중 하나라도 비면 '' 을 돌려줍니다.
+function birthYears() {
+  const now = new Date().getFullYear();
+  const out = [];
+  for (let y = now; y >= now - 120; y--) out.push(y);
+  return out;
+}
+function birthDaysIn(y, m) {
+  if (!y || !m) return 31;
+  return new Date(Number(y), Number(m), 0).getDate();   // m 은 1부터
+}
+//  달·해가 바뀌면 '일' 칸을 다시 짠다. 2월 30일 같은 것이 남으면 안 된다.
+function birthSyncDays(base) {
+  const y = document.getElementById(base + '-y'), m = document.getElementById(base + '-m'),
+        d = document.getElementById(base + '-d');
+  if (!y || !m || !d) return;
+  const n = birthDaysIn(y.value, m.value);
+  const keep = d.value;
+  let h = `<option value="">${t('일','Day')}</option>`;
+  for (let i = 1; i <= n; i++) h += `<option value="${String(i).padStart(2,'0')}">${i}</option>`;
+  d.innerHTML = h;
+  //  고른 날이 그 달에 없으면(2/30 → 2/28) 마지막 날로 당긴다
+  if (keep) d.value = Number(keep) <= n ? keep : String(n).padStart(2, '0');
+}
+function birthPickerHtml(base, opts) {
+  const o = opts || {};
+  const cls = o.cls == null ? 'auth-input' : o.cls;
+  const extra = o.onchange ? (';' + o.onchange) : '';
+  const sel = `class="${cls}" style="flex:1;min-width:0;cursor:pointer;${o.style || ''}"`;
+  const ys = birthYears().map(y => `<option value="${y}">${y}</option>`).join('');
+  const ms = Array.from({length:12}, (_,i) => i+1)
+    .map(m => `<option value="${String(m).padStart(2,'0')}">${m}</option>`).join('');
+  //  '일' 은 처음부터 31일까지 넣어 둔다. 창이 뜨자마자 바로 고를 수 있어야 하고,
+  //  2월을 고르면 birthSyncDays 가 알아서 줄인다.
+  const ds = Array.from({length:31}, (_,i) => i+1)
+    .map(d => `<option value="${String(d).padStart(2,'0')}">${d}</option>`).join('');
+  return `<div id="${base}" style="display:flex;gap:6px">
+    <select id="${base}-y" ${sel} onchange="birthSyncDays('${base}')${extra}"><option value="">${t('년','Year')}</option>${ys}</select>
+    <select id="${base}-m" ${sel} onchange="birthSyncDays('${base}')${extra}"><option value="">${t('월','Month')}</option>${ms}</select>
+    <select id="${base}-d" ${sel} onchange="void 0${extra}"><option value="">${t('일','Day')}</option>${ds}</select>
+  </div>`;
+}
+function birthValue(base) {
+  const y = document.getElementById(base + '-y'), m = document.getElementById(base + '-m'),
+        d = document.getElementById(base + '-d');
+  if (!y || !m || !d) {
+    //  아직 옛 <input type="date"> 인 자리 — 그대로 읽어 준다
+    const old = document.getElementById(base);
+    return (old && old.value) || '';
+  }
+  if (!y.value || !m.value || !d.value) return '';
+  return `${y.value}-${m.value}-${d.value}`;
+}
+function birthFocus(base) {
+  const y = document.getElementById(base + '-y');
+  if (!y) return;
+  try { y.focus(); y.scrollIntoView({ block:'center', behavior:'smooth' }); } catch (_) {}
+}
+//  빈 자리에 고르개를 끼운다 (가입 화면처럼 HTML 에 미리 적어 둔 곳)
+function birthMount(base, opts) {
+  const box = document.getElementById(base);
+  if (!box || box.dataset.birthReady) return;
+  const wrap = document.createElement('div');
+  wrap.innerHTML = birthPickerHtml(base, opts);
+  const made = wrap.firstElementChild;
+  made.dataset.birthReady = '1';
+  box.replaceWith(made);
+  birthSyncDays(base);
+}
+
 // 달력에서 고를 수 있는 범위를 아래 검사와 똑같이 맞춰 둔다.
 // (달력은 1900년까지 열어 두고 검사에선 막으면, 고른 뒤에야 퇴짜를 맞는다)
 function suBirthLimit() {
-  const el = document.getElementById('su-birth');
-  if (!el) return;
-  const now = new Date();
-  el.max = ymdStr(now);
-  el.min = ymdStr(new Date(now.getFullYear() - 120, now.getMonth(), now.getDate()));
+  //  이제 달력이 아니라 년·월·일 고르개를 끼웁니다. 연도 목록이 올해까지만
+  //  있어서, 아래 suBirthProblem 과 범위가 저절로 맞습니다.
+  birthMount('su-birth');
+  birthMount('su-child-birth', { onchange: 'suParentReset()' });
 }
 
 // 생년월일이 말이 되는지. 폰이 '오늘'을 채워 둔 걸 그대로 보내는 일이 잦다.
@@ -3551,7 +3628,7 @@ async function suCheckChild() {
   const btn  = document.getElementById('su-child-btn');
   const cid  = document.getElementById('su-community').value;
   const name = (document.getElementById('su-child-name').value || '').trim();
-  const birth= document.getElementById('su-child-birth').value;
+  const birth= birthValue('su-child-birth');
   const say = (text, color) => { if (msg) { msg.textContent = text; msg.style.color = color; } };
   suChildOk = false;
   if (!cid)   { say(t('먼저 공동체를 선택해주세요','Please select a community first'), '#c0392b'); return; }
@@ -3586,7 +3663,7 @@ async function doSignUp() {
   const email = document.getElementById('su-email').value.trim();
   const pw    = document.getElementById('su-pw').value;
   const nick  = document.getElementById('su-nick').value.trim();
-  const birth = document.getElementById('su-birth').value;
+  const birth = birthValue('su-birth');
   const communityId = document.getElementById('su-community').value;
   const roleEl = document.querySelector('input[name="su-role"]:checked');
   const role = roleEl ? roleEl.value : 'student';
@@ -3597,8 +3674,7 @@ async function doSignUp() {
   const birthBad = suBirthProblem(birth);
   if (birthBad) {
     msg.className='auth-msg error'; msg.textContent = birthBad;
-    const be = document.getElementById('su-birth');
-    if (be) { try { be.focus(); be.scrollIntoView({ block:'center', behavior:'smooth' }); } catch(_) {} }
+    birthFocus('su-birth');
     return;
   }
   if (!communityId) { msg.className='auth-msg error'; msg.textContent=t('소속 공동체를 선택해주세요','Please select your community'); return; }
@@ -3606,7 +3682,7 @@ async function doSignUp() {
 
   // 학부모는 어느 아이의 보호자인지 적어야 한다
   const childName  = (document.getElementById('su-child-name')?.value || '').trim();
-  const childBirth = document.getElementById('su-child-birth')?.value || '';
+  const childBirth = birthValue('su-child-birth');
   const childRel   = document.getElementById('su-child-rel')?.value || '보호자';
   if (role === 'parent' && (!childName || !childBirth)) {
     msg.className='auth-msg error';
@@ -31985,7 +32061,7 @@ function openAddChildModal() {
       <div style="flex:1.2"><label style="font-size:12px;font-weight:700;color:var(--ink3);display:block;margin-bottom:5px">${t('아이 이름','Child\'s name')}</label>
         <input id="ac-name" oninput="addChildReset()" placeholder="${t('예) 홍길동','e.g. Jane Doe')}" style="${inp}"/></div>
       <div style="flex:1"><label style="font-size:12px;font-weight:700;color:var(--ink3);display:block;margin-bottom:5px">${t('아이 생년월일','Date of birth')}</label>
-        <input id="ac-birth" type="date" onchange="addChildReset()" style="${inp}"/></div>
+        ${birthPickerHtml('ac-birth', { cls:'', style:inp, onchange:'addChildReset()' })}</div>
     </div>
     <div style="display:flex;gap:8px;align-items:flex-end;margin-bottom:6px">
       <div style="flex:0 0 auto"><label style="font-size:12px;font-weight:700;color:var(--ink3);display:block;margin-bottom:5px">${t('관계','Relation')}</label>
@@ -32006,7 +32082,7 @@ function addChildReset() { addChildOk = false; const m = document.getElementById
 async function addChildFind() {
   const msg = document.getElementById('ac-msg'), btn = document.getElementById('ac-find');
   const name = (document.getElementById('ac-name').value || '').trim();
-  const birth = document.getElementById('ac-birth').value;
+  const birth = birthValue('ac-birth');
   const say = (x, c) => { if (msg) { msg.innerHTML = x; msg.style.color = c; } };
   addChildOk = false;
   if (!name || !birth) { say(t('아이 이름과 생년월일을 모두 적어주세요','Enter both the name and the date of birth'), '#c0392b'); return; }
@@ -32039,7 +32115,7 @@ async function addChildFind() {
 async function addChildRequest() {
   const msg = document.getElementById('ac-msg');
   const name = (document.getElementById('ac-name').value || '').trim();
-  const birth = document.getElementById('ac-birth').value;
+  const birth = birthValue('ac-birth');
   const rel = document.getElementById('ac-rel').value || '보호자';
   if (!name || !birth) { if (msg) { msg.textContent = t('아이 이름과 생년월일을 모두 적어주세요','Enter both the name and the date of birth'); msg.style.color = '#c0392b'; } return; }
   if (!addChildOk) { if (msg) { msg.textContent = t('먼저 아이 확인하기를 눌러주세요','Press "Find my child" first'); msg.style.color = '#c0392b'; } return; }

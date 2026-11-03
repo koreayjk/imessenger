@@ -1,6 +1,8 @@
 // 👨‍👩‍👧 '내 아이' 에 ＋ 아이 추가 — 선생님 승인 뒤 연결
 const { launch, openApp, ok, done } = require('./_harness');
 
+
+
 const asParent = `(async () => {
   ME.parent_claim_name = null; ME.parent_claim_birth = null; ME.parent_claim_rel = null;
   members['t2'] = { id:'t2', name:'박교사', community_id:'c1', community_role:'teacher', status:'approved' };
@@ -35,7 +37,8 @@ console.log('\n② 확인 없이는 신청되지 않는다');
   const r = await pg.evaluate(`(async () => {
     openAddChildModal();
     document.getElementById('ac-name').value = '홍길순';
-    document.getElementById('ac-birth').value = '2014-05-06';
+    (function(){ const g = k => document.getElementById('ac-birth-' + k);
+       g('y').value = '2014'; g('m').value = '05'; birthSyncDays('ac-birth'); g('d').value = '06'; })()
     await addChildRequest();                      // 확인 안 누르고 바로 신청
     await new Promise(r => setTimeout(r, 200));
     return { msg: document.getElementById('ac-msg').textContent,
@@ -52,7 +55,8 @@ console.log('\n③ 이미 연결된 아이는 다시 못 더한다');
   const r = await pg.evaluate(`(async () => {
     openAddChildModal();
     document.getElementById('ac-name').value = '홍길동';
-    document.getElementById('ac-birth').value = '2011-03-04';
+    (function(){ const g = k => document.getElementById('ac-birth-' + k);
+       g('y').value = '2011'; g('m').value = '03'; birthSyncDays('ac-birth'); g('d').value = '04'; })()
     await addChildFind();
     await new Promise(r => setTimeout(r, 200));
     return { msg: document.getElementById('ac-msg').textContent, okFlag: addChildOk };
@@ -67,7 +71,8 @@ console.log('\n④ 확인하고 신청하면 — 바로 잇지 않고 신청만 
   const r = await pg.evaluate(`(async () => {
     openAddChildModal();
     document.getElementById('ac-name').value = '홍길순';
-    document.getElementById('ac-birth').value = '2014-05-06';
+    (function(){ const g = k => document.getElementById('ac-birth-' + k);
+       g('y').value = '2014'; g('m').value = '05'; birthSyncDays('ac-birth'); g('d').value = '06'; })()
     document.getElementById('ac-rel').value = '모';
     addChildOk = true;                            // parent-verify 가 찾았다고 치고
     await addChildRequest();
