@@ -4,7 +4,8 @@
 //  맥이 거절 대신 **조용한 마이크**를 내줍니다 — 쓰는 분은 전화가 멀쩡한 줄
 //  알고 상대에게만 목소리가 안 갑니다. 그러니 '알려주면 좋은 것' 이 아니라
 //  '알려줘야만 하는 것' 입니다. 알림이 조용히 사라지지 않게 못 박아 둡니다.
-const { launch, openApp, ok, done } = require('./_harness.js');
+const fs = require('fs'), path = require('path');
+const { launch, openApp, ok, done, ROOT } = require('./_harness.js');
 
 const UA = (v) => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 '
                 + '(KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36'
@@ -108,6 +109,28 @@ const bar = (pg) => pg.evaluate(() => {
     const w2 = await pg.evaluate(() => { CALL.micTrack = { label: 'x', live: true, muted: false }; return callQuietWhy(); });
     ok(w2 === '', '마이크가 멀쩡하면 옛 판이어도 통화 중에 떠들지 않는다');
     await pg.close();
+  }
+
+  // ── ⑤ 두 가지 맥을 다 만드나 ─────────────────────────────────
+  //  arm64 만 만들면 2020년 이전 **인텔 맥**을 쓰시는 분은 아예 설치가
+  //  안 됩니다. 설치가 안 되는 건 화면에 아무 말도 안 뜨고 그냥 안 되는
+  //  것이라, 그분은 왜 안 되는지도 모릅니다. 그래서 글로 못 박습니다.
+  {
+    const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'desktop', 'package.json'), 'utf8'));
+    const targets = ((pkg.build || {}).mac || {}).target || [];
+    const archOf = (name) => {
+      const hit = targets.find(x => (typeof x === 'string' ? x : x.target) === name);
+      return (hit && hit.arch) || [];
+    };
+    const dmg = archOf('dmg'), zip = archOf('zip');
+    console.log('     dmg:', dmg.join(', ') || '(없음)', '· zip:', zip.join(', ') || '(없음)');
+
+    ok(dmg.includes('arm64'), 'dmg — 애플 실리콘(arm64) 을 만든다');
+    ok(dmg.includes('x64'),   'dmg — 인텔(x64) 도 만든다 (없으면 옛 맥은 설치 자체가 안 된다)');
+    ok(zip.includes('arm64') && zip.includes('x64'),
+       'zip 도 둘 다 — 자동 업데이트는 dmg 가 아니라 zip 을 쓴다');
+    ok(/--publish always/.test(((pkg.scripts || {}).release) || ''),
+       'release 는 만든 것을 그대로 올린다');
   }
 
   await b.close();
