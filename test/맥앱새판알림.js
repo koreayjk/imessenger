@@ -131,6 +131,21 @@ const bar = (pg) => pg.evaluate(() => {
        'zip 도 둘 다 — 자동 업데이트는 dmg 가 아니라 zip 을 쓴다');
     ok(/--publish always/.test(((pkg.scripts || {}).release) || ''),
        'release 는 만든 것을 그대로 올린다');
+
+    //  export 는 그 터미널 창에서만 산다. 창을 새로 열고 돌리면 10분 빌드가
+    //  끝난 뒤에야 '공증 건너뜀' 과 'GH_TOKEN 없음' 이 뜬다 — 실제로 한 번
+    //  날렸다. 돌기 전에 막는 자리가 있어야 한다.
+    ok(/release-check/.test(((pkg.scripts || {}).prerelease) || ''),
+       'release 전에 먼저 막아 보는 단계가 있다 (prerelease)');
+    const chk = fs.readFileSync(path.join(ROOT, 'desktop', 'scripts', 'release-check.mjs'), 'utf8');
+    ok(/GH_TOKEN/.test(chk), '깃허브 열쇠가 있는지 본다 (없으면 올라가지 않는다)');
+    ok(/APPLE_KEYCHAIN_PROFILE/.test(chk) && /APPLE_APP_SPECIFIC_PASSWORD/.test(chk),
+       '공증 설정이 있는지 본다 (없으면 "손상되었습니다" 로 안 열린다)');
+    ok(/process\.exit\(1\)/.test(chk), '없으면 빌드를 아예 시작하지 않는다');
+    //  🔐 값이 로그에 찍히면 열쇠가 새어 나간다. 길이만 본다.
+    ok(!/console\.(log|error)\([^)]*\$\{?env\.GH_TOKEN/.test(chk)
+       && !/console\.(log|error)\([^)]*APPLE_APP_SPECIFIC_PASSWORD\}/.test(chk),
+       '열쇠 값 자체는 절대 찍지 않는다 (길이만)');
   }
 
   await b.close();

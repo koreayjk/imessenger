@@ -93,11 +93,28 @@ github.com → Settings → Developer settings → **Personal access tokens** �
 
 ```bash
 cd ~/imessenger/desktop
-export GH_TOKEN='ghp_...'                    # 🔐 git 에 올리지 마세요
+export GH_TOKEN="$(security find-generic-password -a "$USER" -s tcs-gh-token -w)"
 export APPLE_KEYCHAIN_PROFILE="tcs-notary"
 export APPLE_TEAM_ID="H6B99PYZ8W"
 npm run release
 ```
+
+⚠️ **이 네 줄은 한 창에서 이어서 치셔야 합니다.** `export` 는 **그 터미널
+창에서만** 삽니다. 창을 새로 열면 다시 쳐야 합니다.
+
+한 번 그냥 돌렸다가 10분 빌드를 통째로 날렸습니다 — 끝에 가서야
+`skipped macOS notarization`(공증 안 됨) 과 `GH_TOKEN is not set`(안 올라감)
+이 떴습니다. 그래서 지금은 **돌기 전에** 먼저 막습니다
+(`scripts/release-check.mjs`). 빠진 게 있으면 빌드를 시작조차 안 하고
+무엇이 없는지 적어 줍니다.
+
+열쇠를 열쇠고리에 아직 안 넣으셨으면 한 번만:
+
+```bash
+security add-generic-password -a "$USER" -s tcs-gh-token -w
+```
+
+(치면 값을 물어봅니다. 화면에 안 보이게 받아서 넣습니다.)
 
 `.dmg` · `.zip` · `latest-mac.yml` 이 **초안(draft) 릴리스**로 올라갑니다.
 github.com 의 Releases 에서 **Publish release** 를 누르셔야 사람들 앱에
