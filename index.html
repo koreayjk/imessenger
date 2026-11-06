@@ -32997,6 +32997,8 @@ function reviewCatLabel(name) {
 }
 
 let writingKind = 'book';        // 'book'(독후감) | 'activity'(활동후기)
+//  활동후기를 고치는 중이면 그 글의 id. 왼쪽 쓰는 칸이 '고치기' 로 바뀐다.
+let actEditId = null;
 let writingEntries = [];
 let writingReadReports = [];     // 독후감: Triple School reading_logs
 let bookNotes = [];              // 독후감 이어쓰기 진행 메모 (전체 로드)
@@ -33315,6 +33317,8 @@ function renderWriting() {
         ${writingKind==='book'?readPeriod(e):''}
         <span style="font-size:11px;color:var(--ink3)">${writingKind==='book'?'✍️ ':''}${e.date||''}</span>
         <div style="flex:1"></div>
+        ${(writingKind === 'activity' && e.member_id === (ME && ME.id)) ? `<button onclick="editWriting('${escJs(e.id)}')" title="${escAttr(t('고치기','Edit'))}"
+          style="border:none;background:transparent;cursor:pointer;color:var(--ink3);font-size:13px;margin-right:2px">✏️</button>` : ''}
         <button onclick="deleteWriting('${e.id}')" title="${t('삭제','Delete')}" style="border:none;background:transparent;cursor:pointer;color:var(--ink3);font-size:14px">✕</button>
       </div>
       ${e.body?`<div style="font-size:13px;color:var(--ink2);line-height:1.7;white-space:pre-wrap">${escHtml(e.body)}</div>`:''}
@@ -33412,17 +33416,26 @@ function renderWriting() {
       </div>
     </div>`;
   } else {
-    const catOpts = reviewCats.map(c=>`<option value="${escAttr(c.name)}">${escHtml(reviewCatLabel(c.name))}</option>`).join('') + `<option value="__custom__">＋ ${t('직접 입력','Enter manually')}</option>`;
+    //  고치는 중인 글 — 있으면 칸을 그 글로 채우고 단추를 바꾼다
+    const ed = actEditId ? writingEntries.find(x => x.id === actEditId) : null;
+    if (actEditId && !ed) actEditId = null;          // 그새 지워졌다
+    const pre = actPrefill(ed);
+    const catKnown = !ed || !ed.category || reviewCats.some(c => c.name === ed.category);
+    const catOpts = reviewCats.map(c=>`<option value="${escAttr(c.name)}" ${ed && ed.category === c.name ? 'selected' : ''}>${escHtml(reviewCatLabel(c.name))}</option>`).join('')
+      + `<option value="__custom__" ${ed && !catKnown ? 'selected' : ''}>＋ ${t('직접 입력','Enter manually')}</option>`;
     main.innerHTML = `<div class="page" style="display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap">
       <div style="flex:1.35 1 440px;min-width:0">
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px">
-        <div style="font-size:13px;font-weight:700;color:var(--ink);margin-bottom:8px">✍️ ${t('활동 후기 쓰기','Write an activity review')}</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <div style="font-size:13px;font-weight:700;color:var(--ink)">${ed ? '✏️ ' + t('후기 고치기','Edit this review') : '✍️ ' + t('활동 후기 쓰기','Write an activity review')}</div>
+          ${ed ? `<button onclick="cancelWritingEdit()" style="height:26px;padding:0 10px;border:1px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:8px;cursor:pointer;font:700 11.5px var(--font)">${t('취소','Cancel')}</button>` : ''}
+        </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;align-items:center">
           <select id="wr-cat" onchange="onReviewCatChange(this.value)" style="${inp}">${catOpts}</select>
-          <input id="wr-cat-custom" placeholder="${t('분류 직접 입력','Enter category')}" style="${inp};display:${reviewCatCustom?'block':'none'}"/>
-          <input id="wr-date" type="date" value="${attTodayStr()}" style="${inp}"/>
+          <input id="wr-cat-custom" value="${escAttr(ed && !catKnown ? ed.category : '')}" placeholder="${t('분류 직접 입력','Enter category')}" style="${inp};display:${(reviewCatCustom || (ed && !catKnown))?'block':'none'}"/>
+          <input id="wr-date" type="date" value="${escAttr((ed && ed.date) || attTodayStr())}" style="${inp}"/>
         </div>
-        <input id="wr-title" placeholder="${t('제목 (예: 여름 단기선교 후기)','Title (e.g. Summer short-term mission review)')}" style="${inp};width:100%;margin-bottom:10px"/>
+        <input id="wr-title" value="${escAttr((ed && ed.title) || '')}" placeholder="${t('제목 (예: 여름 단기선교 후기)','Title (e.g. Summer short-term mission review)')}" style="${inp};width:100%;margin-bottom:10px"/>
         <div style="font-size:11.5px;color:var(--ink2);line-height:1.7;margin-bottom:12px;padding:11px 13px;background:var(--asoft);border-radius:9px">
           ✍️ ${t('<b>질문에 답하면 한 편의 글이 됩니다.</b> 저장할 때 <b>질문은 빠지고 쓴 글만</b> 남아요. 빈칸은 그냥 두셔도 됩니다.',
                  '<b>Answer the questions and they become one piece of writing.</b> When you save, <b>the questions drop out and only your writing stays.</b> Blanks are fine.')}
@@ -33431,7 +33444,7 @@ function renderWriting() {
           <div style="margin-bottom:12px">
             <div style="font-size:12.5px;font-weight:700;color:var(--ink);margin-bottom:3px">${x.q}</div>
             <div style="font-size:11px;color:var(--ink3);margin-bottom:5px;line-height:1.6">${x.hint}</div>
-            <textarea id="wr-${x.key}" style="${ta};min-height:76px"></textarea>
+            <textarea id="wr-${x.key}" style="${ta};min-height:76px">${escTa(pre.a[ACT_QS.indexOf(x)] || '')}</textarea>
           </div>`).join('')}
 
         <div style="margin-top:18px;padding:14px 15px;border:1.5px solid #fde68a;background:#fffbeb;border-radius:12px">
@@ -33444,11 +33457,11 @@ function renderWriting() {
             <div style="margin-bottom:11px">
               <div style="font-size:12.5px;font-weight:700;color:#7c2d12;margin-bottom:3px">${x.q}</div>
               <div style="font-size:11px;color:#a16207;margin-bottom:5px;line-height:1.6">${x.hint}</div>
-              <textarea id="wr-${x.key}" style="${ta};min-height:62px;background:var(--surface)"></textarea>
+              <textarea id="wr-${x.key}" style="${ta};min-height:62px;background:var(--surface)">${escTa(pre.f[ACT_FB_QS.indexOf(x)] || '')}</textarea>
             </div>`).join('')}
         </div>
 
-        <div style="display:flex;justify-content:flex-end;margin-top:12px"><button onclick="addWriting()" style="height:36px;padding:0 18px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 13px var(--font)">＋ ${t('후기 저장','Save review')}</button></div>
+        <div style="display:flex;justify-content:flex-end;margin-top:12px"><button onclick="${ed ? 'saveWritingEdit()' : 'addWriting()'}" style="height:36px;padding:0 18px;border:none;background:${ed ? '#2a7a5a' : '#1d3a5f'};color:#fff;border-radius:9px;cursor:pointer;font:700 13px var(--font)">${ed ? t('고친 내용 저장','Save changes') : '＋ ' + t('후기 저장','Save review')}</button></div>
       </div>
       </div>
       <div style="flex:1 1 340px;min-width:0">
@@ -33680,6 +33693,87 @@ function printBookReport(kind, key) {
   });
 }
 
+
+// ── ✏️ 활동후기 고치기 (개선창 · Christine, Lisa L) ────────────────
+//
+//  DB 는 처음부터 본인 글을 고칠 수 있게 열려 있었는데(writings_update),
+//  화면에 단추가 없어서 아무도 못 고쳤습니다.
+//
+//  고칠 때 질문별 칸을 되살리려면 **답을 따로 남겨 둬야** 합니다.
+//  본문은 답을 빈 줄로 이어 붙인 것이라, 답 안에 빈 줄이 있으면
+//  쪼개서 되살릴 때 칸이 밀립니다. 그래서 final_answers 를 씁니다.
+//  (예전 글은 그 칸이 없으니 그때만 빈 줄로 쪼개 봅니다 — 어긋나도
+//   글은 그대로 보이고, 저장하면 그다음부터는 제대로 남습니다.)
+function actPrefill(e) {
+  const out = { a: [], f: [] };
+  if (!e) return out;
+  let fa = null;
+  try { fa = JSON.parse(e.final_answers || 'null'); } catch (_) {}
+  if (fa && !Array.isArray(fa) && typeof fa === 'object') {
+    out.a = Array.isArray(fa.a) ? fa.a.slice() : [];
+    out.f = Array.isArray(fa.f) ? fa.f.slice() : [];
+  } else if (Array.isArray(fa)) {
+    out.a = fa.slice();
+  }
+  if (!out.a.length) out.a = String(e.body || '').split('\n\n');
+  if (!out.f.length) out.f = String(e.feedback || '').split('\n\n');
+  return out;
+}
+
+function editWriting(id) {
+  const e = writingEntries.find(x => x.id === id);
+  if (!e) return;
+  if (e.member_id !== (ME && ME.id)) { showUploadToast(t('내 글만 고칠 수 있어요','You can only edit your own')); return; }
+  actEditId = id;
+  reviewCatCustom = false;
+  renderWriting();
+  try { document.getElementById('wr-title')?.scrollIntoView({ block:'center', behavior:'smooth' }); } catch (_) {}
+}
+function cancelWritingEdit() { actEditId = null; renderWriting(); }
+
+async function saveWritingEdit() {
+  const id = actEditId;
+  const e = writingEntries.find(x => x.id === id);
+  if (!e) { actEditId = null; renderWriting(); return; }
+
+  const answers = ACT_QS.map(x => stripPastedHtml(document.getElementById('wr-' + x.key)?.value || ''));
+  const fbAll   = ACT_FB_QS.map(x => stripPastedHtml(document.getElementById('wr-' + x.key)?.value || ''));
+  const body    = answers.filter(Boolean).join('\n\n');
+  const fb      = fbAll.filter(Boolean).join('\n\n');
+  const title   = (document.getElementById('wr-title')?.value || '').trim();
+  const date    = document.getElementById('wr-date')?.value || e.date;
+  const sel     = document.getElementById('wr-cat')?.value || '';
+  const category = sel === '__custom__'
+    ? ((document.getElementById('wr-cat-custom')?.value || '').trim())
+    : sel;
+
+  if (!category) { showUploadToast(t('분류를 선택하거나 입력하세요','Select or enter a category')); return; }
+  if (!title && !body) { showUploadToast(t('제목이나 내용을 입력하세요','Enter a title or content')); return; }
+
+  const patch = { title, body, date, category,
+                  feedback: fb || null,
+                  final_answers: JSON.stringify({ a: answers, f: fbAll }) };
+
+  let { data, error } = await sb.from('student_writings').update(patch).eq('id', id).select('id');
+  //  칸이 아직 없는 데이터베이스 — 글은 살리고 무엇이 못 갔는지 또렷이 말한다
+  if (error && /final_answers|feedback|column|schema|PGRST204/i.test(error.message || '')) {
+    const keep = { ...patch };
+    delete patch.final_answers; delete patch.feedback;
+    ({ data, error } = await sb.from('student_writings').update(patch).eq('id', id).select('id'));
+    if (!error) showUploadToast(t('고쳤어요. 다만 피드백 칸이 아직 없어서 그 내용은 못 담았습니다 — db/활동후기_피드백_DB설치.sql 을 실행해 주세요.',
+                                  'Saved, but the feedback column does not exist yet — run db/활동후기_피드백_DB설치.sql.'));
+    void keep;
+  }
+  if (error) { showUploadToast(t('고치기 실패: ','Update failed: ') + (error.message || '')); return; }
+  //  RLS 가 막으면 error 없이 0행이 온다. 조용히 넘어가면 안 된다.
+  if (!data || !data.length) { showUploadToast(t('고칠 권한이 없어요 — 내 글만 고칠 수 있어요','You can only edit your own review')); return; }
+
+  Object.assign(e, patch);
+  actEditId = null;
+  showUploadToast(t('✅ 고쳤어요','✅ Updated'));
+  renderWriting();
+}
+
 async function addWriting() {
   const title = (document.getElementById('wr-title')?.value || '').trim();
   const date  = document.getElementById('wr-date')?.value || attTodayStr();
@@ -33701,9 +33795,15 @@ async function addWriting() {
   const row = { member_id: ME.id, community_id: CID(), kind: writingKind, category, title, body, date };
   if (writingKind === 'activity') {
     //  📣 준비한 쪽에 주는 말 — 질문 문구는 빼고 답만. 답이 하나도 없으면 안 담는다.
-    const fb = ACT_FB_QS.map(x => stripPastedHtml(document.getElementById('wr-'+x.key)?.value || ''))
-                        .filter(Boolean).join('\n\n');
+    const fbAll = ACT_FB_QS.map(x => stripPastedHtml(document.getElementById('wr-'+x.key)?.value || ''));
+    const fb = fbAll.filter(Boolean).join('\n\n');
     if (fb) row.feedback = fb;
+    //  질문별 답을 그대로 남겨 둔다. 이게 없으면 고칠 때 글을 빈 줄로
+    //  쪼개 어느 질문의 답인지 **짐작**해야 한다 — 답에 빈 줄이 있으면 어긋난다.
+    row.final_answers = JSON.stringify({
+      a: ACT_QS.map(x => stripPastedHtml(document.getElementById('wr-'+x.key)?.value || '')),
+      f: fbAll,
+    });
   }
   if (writingKind === 'book') {
     row.read_start = document.getElementById('wr-rstart')?.value || null;
