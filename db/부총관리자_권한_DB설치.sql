@@ -153,9 +153,15 @@ begin
     execute format(
       'create policy %I on public.%I as restrictive for insert to authenticated with check (%s)',
       r.tbl || '_vice_comm_ins', r.tbl, guard);
-    execute format(
-      'create policy %I on public.%I as restrictive for update to authenticated using (%s) with check (%s)',
-      r.tbl || '_vice_comm_upd', r.tbl, guard, guard);
+    --  members 의 '고치기' 만 뺀다. 부총관리자는 남의 공동체에서도 **역할**은
+    --  바꿀 수 있어야 하고(요청), 그 범위는 members_vice_other_comm_role_only
+    --  가 따로 지킨다. 여기서 울타리를 치면 그게 먼저 걸려 버린다.
+    --  (db/부총관리자_타공동체_역할변경_DB설치.sql 을 보세요)
+    if r.tbl <> 'members' then
+      execute format(
+        'create policy %I on public.%I as restrictive for update to authenticated using (%s) with check (%s)',
+        r.tbl || '_vice_comm_upd', r.tbl, guard, guard);
+    end if;
     execute format(
       'create policy %I on public.%I as restrictive for delete to authenticated using (%s)',
       r.tbl || '_vice_comm_del', r.tbl, guard);

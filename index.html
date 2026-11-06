@@ -3905,6 +3905,11 @@ function inHomeCommunity() { return !VIEW_CID || VIEW_CID === (ME && ME.communit
 // 부총관리자가 남의 공동체를 들여다보는 중 — 이때는 읽기와 채팅만
 function isGuestViewing() { return isViceAdmin() && !inHomeCommunity(); }
 
+//  다른 공동체를 보는 중인 부총관리자도 '관리자 ▸ 멤버' 는 연다.
+//  거기서 **역할 칸만** 쓸 수 있다 (나머지는 아래에서 숨기고, 서버도 막는다).
+function canOpenAdmin() { return isCommunityAdmin() || isGuestViewing(); }
+//  역할을 바꿀 수 있는 자리인가 — 내 공동체면 관리자, 남의 공동체면 부총관리자
+function canChangeRoleHere() { return isCommunityAdmin() || isGuestViewing(); }
 function isCommunityAdmin() {
   if (!ME) return false;
   if (ME.community_role === 'super_admin' || ME.community_role === 'community_admin') return true;
@@ -4212,8 +4217,8 @@ function applyGuestBar() {
 
   const txt = document.getElementById('guest-bar-text');
   const nm = COMM_NAME || '다른 공동체';
-  if (txt) txt.textContent = t(`${nm}${eul(nm)} 보는 중이에요 — 보기와 채팅만 가능합니다`,
-                               `Viewing ${COMM_NAME || 'another community'} — read and chat only`);
+  if (txt) txt.textContent = t(`${nm}${eul(nm)} 보는 중이에요 — 보기·채팅과 역할 바꾸기만 됩니다`,
+                               `Viewing ${COMM_NAME || 'another community'} — read, chat and role changes only`);
   // #app 은 height:100dvh + flex 라서 body 에 여백을 줘도 안 밀린다.
   // box-sizing:border-box 로 #app 안쪽에 띠 자리를 만든다.
   // 높이를 34px 로 박아 두면 안 된다 — 좁은 화면에서는 글자가 두 줄이 되어
@@ -4246,6 +4251,10 @@ function backToHomeCommunity() { switchToCommunity(homeCID()); }
 // 채팅은 열어 둔다 (부총관리자도 대화는 해야 하니까).
 const GUEST_WRITABLE = new Set([
   'messages', 'message_reads', 'message_reactions', 'channel_reads', 'poll_votes',
+  //  부총관리자가 남의 공동체에서 **역할만** 바꿀 수 있다. 무엇을 바꿀 수
+  //  있는지는 여기서 정하지 않고 서버(RLS)가 정한다 — 이름·사진·가입상태·
+  //  소속을 바꾸려 하면 거기서 거절된다.
+  'members',
 ]);
 (function installGuestWriteGuard() {
   if (!sb || !sb.from || sb.__guestGuard) return;
@@ -4415,7 +4424,7 @@ function enterApp() {
   const mnAdmin = document.getElementById('mn-admin');
   if (mnAdmin) mnAdmin.style.display = 'none';
 
-  if (isSuperAdmin() || isCommunityAdmin()) {
+  if (isSuperAdmin() || canOpenAdmin()) {
     document.getElementById('sb-admin').style.display = 'flex';
     if (mnAdmin) mnAdmin.style.display = 'flex';
   }
@@ -4553,7 +4562,7 @@ function moreMenuItems() {
     items.push({ icon:'📋', label:t('결재','Approval'), act:"setMode('approval')" });
   }
   if (canViewAllCommunities()) items.push({ icon:'🔄', label:t('공동체','Community'), act:"showCommunitySwitcher()" });
-  if (isCommunityAdmin()) items.push({ icon:'⚙️', label:t('관리','Admin'), act:"setMode('admin')" });
+  if (canOpenAdmin()) items.push({ icon:'⚙️', label:t('관리','Admin'), act:"setMode('admin')" });
   if (!isParent()) items.push({ icon:'📜', label:t('성구암송','Memory'), act:"setMode('memory')" });
   items.push({ icon:'📝', label:t('IM노트','IM Notes'), act:"setMode('note')" });
   items.push({ icon:'💡', label:t('개선창','Ideas'), act:"setMode('improve')" });
@@ -4897,7 +4906,7 @@ function setMode(m, opts) {
   const go = fn => { if (!boot) fn(); };
   // 권한 없는 화면은 홈으로 — 새로고침 복원이나 공동체 전환으로
   // 예전 화면이 남아 있을 때 (부총관리자가 남의 공동체를 볼 때 포함)
-  if (m === 'admin' && !isCommunityAdmin()) m = 'home';
+  if (m === 'admin' && !canOpenAdmin()) m = 'home';
   // 학부모는 학생 개인 화면에 들어갈 일이 없다 — '내 아이' 로 보낸다.
   // (사이드바에는 안 보이지만 새로고침 복원으로 들어올 수 있다)
   if (isParent() && ['tcs','mock','gishome','allowance','deposit','mytt','leave',
@@ -4964,7 +4973,7 @@ function setMode(m, opts) {
   if (m==='home') go(renderHome);
   if (m==='chat') { go(renderPanel); if (!boot) sessionStorage.removeItem('last_channel_id'); }
   if (m==='calendar') { go(loadCalendar); }
-  if (m==='admin') { if(isCommunityAdmin()) go(initAdminPage); else setMode('home', opts); return; }
+  if (m==='admin') { if(canOpenAdmin()) go(initAdminPage); else setMode('home', opts); return; }
   if (m==='tcs') { if(isTeacher()){ tcsSubMode='record'; go(initTcsPage); } else setMode('gishome', opts); return; }
   if (m==='gishome') { if(isTeacher()){ setMode('tcs', opts); return; } go(initGisHome); }
   if (m==='mock') { if(isTeacher()){ tcsSubMode='mock'; go(initTcsPage); } else setMode('home', opts); return; }
@@ -12161,6 +12170,15 @@ function initAdminPage() {
     const label = document.getElementById('admin-role-label');
     if (label) label.textContent = t('공동체 관리자 — 공동체 설정 및 멤버 관리','Community Admin — community settings & member management');
     switchAdminTab('mysettings');
+  } else if (isGuestViewing()) {
+    //  남의 공동체를 보는 중 — 멤버 말고는 다 숨긴다. 여기서 할 수 있는 건
+    //  '역할 바꾸기' 하나뿐이다.
+    ['channels','notices','reports','goals','calls','storage','home','mysettings','communities']
+      .forEach(k => { const el = document.getElementById('adm-tab-' + k); if (el) el.style.display = 'none'; });
+    const label = document.getElementById('admin-role-label');
+    if (label) label.textContent = t('부총관리자 — 다른 공동체에서는 역할만 바꿀 수 있어요',
+                                     'Deputy Admin — in another community you can only change roles');
+    switchAdminTab('members');
   } else {
     switchAdminTab('members');
   }
@@ -18480,7 +18498,7 @@ async function renderAdminMembers() {
       <div style="flex:1;min-width:0">
         <div style="display:flex;align-items:center;gap:8px">
           <span style="font-size:14px;font-weight:600">${escHtml(m.name || '')}</span>
-          ${isCommunityAdmin() ? `<button class="adm-btn ghost" title="${t('이름 고치기','Rename')}"
+          ${(isCommunityAdmin() && !isGuestViewing()) ? `<button class="adm-btn ghost" title="${t('이름 고치기','Rename')}"
             onclick="renameMember('${escJs(m.id)}')"
             style="height:24px;padding:0 7px;font-size:12px;line-height:1">✏️</button>` : ''}
           <span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:99px;background:${roleColor[m.community_role]||'#6b728022'}22;color:${roleColor[m.community_role]||'#6b7280'}">${roleLabel[m.community_role]||m.community_role||t('멤버','Member')}</span>
@@ -18512,17 +18530,19 @@ async function renderAdminMembers() {
             ${isSuperAdmin()?`<option value="vice_admin" ${m.community_role==='vice_admin'?'selected':''}>${t('부총관리자','Deputy Admin')}</option>`:''}
             ${isSuperAdmin()?`<option value="super_admin" ${m.community_role==='super_admin'?'selected':''}>${t('총관리자','Super Admin')}</option>`:''}
           </select>`}
-          ${admGroupBy === 'group' ? `<select onchange="admSetMemberGroup('${m.id}',this.value)" title="${t('소속 그룹','Group')}"
+          ${(admGroupBy === 'group' && !isGuestViewing()) ? `<select onchange="admSetMemberGroup('${m.id}',this.value)" title="${t('소속 그룹','Group')}"
             style="height:30px;padding:0 10px;border-radius:9px;border:1.5px solid var(--border);font:12px var(--font);background:white;cursor:pointer;outline:none">
             <option value="">${t('그룹 없음','No group')}</option>
             ${(tcsGroups||[]).map(g => `<option value="${g.id}" ${m.group_id===g.id?'selected':''}>${escHtml(g.name)}</option>`).join('')}
           </select>` : ''}
-          ${(isSuperAdmin() && m.community_role !== 'super_admin') ? `<button class="adm-btn ghost" title="${t('다른 공동체로 옮기기','Move to another community')}" onclick="showMoveCommunityModal('${m.id}')">🏛️</button>` : ''}
-          ${m.community_role === 'super_admin'
-              ? `<span style="font-size:11px;color:var(--ink3)">${t('총관리자','Super Admin')}</span>`
-              : (m.community_role === 'vice_admin' && !isSuperAdmin())
-                ? ''
-                : `<button class="adm-btn danger" onclick="deleteMember('${escJs(m.id)}','${escJs(m.name || '')}')">${t('탈퇴','Remove')}</button>`}
+          ${(isSuperAdmin() && !isGuestViewing() && m.community_role !== 'super_admin') ? `<button class="adm-btn ghost" title="${t('다른 공동체로 옮기기','Move to another community')}" onclick="showMoveCommunityModal('${m.id}')">🏛️</button>` : ''}
+          ${isGuestViewing()
+              ? ''
+              : m.community_role === 'super_admin'
+                ? `<span style="font-size:11px;color:var(--ink3)">${t('총관리자','Super Admin')}</span>`
+                : (m.community_role === 'vice_admin' && !isSuperAdmin())
+                  ? ''
+                  : `<button class="adm-btn danger" onclick="deleteMember('${escJs(m.id)}','${escJs(m.name || '')}')">${t('탈퇴','Remove')}</button>`}
         `}
       </div>
     </div>`;
@@ -18544,9 +18564,9 @@ async function renderAdminMembers() {
 
     ${storageHtml}
 
-    ${bulkStudentCardHtml()}
+    ${isGuestViewing() ? '' : bulkStudentCardHtml()}
 
-    ${pending.length ? `
+    ${(pending.length && !isGuestViewing()) ? `
     <div style="background:#FFF8E7;border:1.5px solid #F0D080;border-radius:16px;padding:16px 20px;margin-bottom:20px">
       <div style="font-size:14px;font-weight:700;color:#8B6914;margin-bottom:12px;display:flex;align-items:center;gap:8px">
         ⏳ ${t('승인 대기 중','Pending Approval')} <span style="background:#F0D080;color:#8B6914;padding:2px 8px;border-radius:999px;font-size:12px">${t(pending.length+'명', pending.length+'')}</span>
