@@ -1511,10 +1511,10 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
       <div id="chat-header" style="position:static">
         <div class="chat-header-icon">🤲</div>
         <div class="chat-header-info">
-          <div class="chat-header-name">기도제목</div>
-          <div class="chat-header-desc">함께 기도해요</div>
+          <div class="chat-header-name" data-ko="기도제목" data-en="Prayer Requests">기도제목</div>
+          <div class="chat-header-desc" data-ko="함께 기도해요" data-en="Let's pray together">함께 기도해요</div>
         </div>
-        <button onclick="showPrayerForm()" style="margin-left:auto;height:34px;padding:0 16px;border-radius:10px;border:none;background:var(--sage);color:white;font:600 13px var(--font);cursor:pointer">+ 기도제목 올리기</button>
+        <button onclick="showPrayerForm()" data-ko="+ 기도제목 올리기" data-en="+ New prayer request" style="margin-left:auto;height:34px;padding:0 16px;border-radius:10px;border:none;background:var(--sage);color:white;font:600 13px var(--font);cursor:pointer">+ 기도제목 올리기</button>
       </div>
       <div id="prayer-list" style="flex:1;overflow-y:auto;padding:clamp(16px,2vw,32px) clamp(16px,3vw,40px)"></div>
     </div>
@@ -9314,12 +9314,16 @@ function togglePrayerCmt(pid) {
 
 // 한 마디 거들기가 쉽도록. 빈 칸 앞에서 무슨 말을 쓸지 고민하다
 // 그냥 넘어가는 일이 많다.
-const PRAYER_QUICK = [
-  ['🙏', '함께 기도할게요'],
-  ['💪', '힘내세요!'],
-  ['✝️', '하나님이 붙드시길 기도합니다'],
-  ['💛', '응원하고 있어요'],
-];
+//  ⚠️ const 배열로 두면 **파일을 읽을 때 한 번** 말이 정해집니다. 그 뒤
+//     언어를 바꿔도 이 네 마디만 옛 말로 남습니다. 그릴 때마다 부릅니다.
+function prayerQuick() {
+  return [
+    ['🙏', t('함께 기도할게요','I am praying with you')],
+    ['💪', t('힘내세요!','Stay strong!')],
+    ['✝️', t('하나님이 붙드시길 기도합니다','Praying that God holds you')],
+    ['💛', t('응원하고 있어요','I am cheering for you')],
+  ];
+}
 function prayerQuickFill(pid, text) {
   const ta = document.getElementById('pc-input-' + pid);
   if (!ta) return;
@@ -9371,7 +9375,9 @@ function prayerCmtHtml(pid) {
     let when = '';
     try { const d = new Date(c.created_at); when = APP_LANG === 'en'
       ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-      : `${d.getMonth()+1}월 ${d.getDate()}일`; } catch (_) {}
+      : (APP_LANG === 'en'
+          ? d.toLocaleDateString('en-US', { month:'short', day:'numeric' })
+          : `${d.getMonth()+1}월 ${d.getDate()}일`); } catch (_) {}
     return `<div style="display:flex;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">
       <div style="flex:1;min-width:0">
         <div style="font-size:11px;color:var(--ink3);margin-bottom:2px">
@@ -9385,7 +9391,7 @@ function prayerCmtHtml(pid) {
   return head + `<div style="margin-top:6px">
     ${items || `<div style="font-size:12px;color:var(--ink3);padding:6px 0 10px">${t('첫 마디를 남겨보세요. 짧아도 큰 힘이 됩니다.','Leave the first word — even a short one helps.')}</div>`}
     <div style="display:flex;gap:5px;flex-wrap:wrap;margin:9px 0 7px">
-      ${PRAYER_QUICK.map(([e, w]) => `<button onclick="prayerQuickFill('${pid}','${escJs(w)}')"
+      ${prayerQuick().map(([e, w]) => `<button onclick="prayerQuickFill('${pid}','${escJs(w)}')"
         style="height:28px;padding:0 10px;border-radius:99px;border:1.5px solid var(--border);background:var(--surface);
                color:var(--ink2);font:600 11.5px var(--font);cursor:pointer">${e} ${escHtml(w)}</button>`).join('')}
     </div>
@@ -9401,15 +9407,27 @@ function prayerCmtHtml(pid) {
   </div>`;
 }
 
+//  범위와 사람 수를 화면 말로 바꾼다.
+//  ⚠️ 저장되는 값은 '전체' 그대로입니다 — 보여 줄 때만 바꿉니다.
+//     (data-scope 선택자와 DB 의 scope 값이 이 글자에 걸려 있습니다)
+function prayerScopeLabel(scope) {
+  const s = String(scope == null ? '' : scope);
+  return (APP_LANG === 'en' && s === '전체') ? 'Everyone' : s;
+}
+function prayerCountLabel(n) {
+  const c = Number(n) || 0;
+  return APP_LANG === 'en' ? String(c) : (c + '명');
+}
+
 function renderPrayerPanel() {
   const colors = ['#2a5298','#60794E','#52707E','#7B6BA0','#2a7ab8'];
   let html = '';
   document.getElementById('panel-body').innerHTML = prayers.length
     ? prayers.map((p,i) => `<div class="ch-row${false?' active':''}" onclick="scrollToPrayer('${p.id}')">
         <div class="ch-icon" style="background:${colors[i%colors.length]};color:white;font-size:13px">${p.member_name?.[0]||'?'}</div>
-        <div class="ch-info"><div class="ch-name">${p.title}</div><div class="ch-preview">${p.member_name} · ${p.scope}</div></div>
+        <div class="ch-info"><div class="ch-name">${p.title}</div><div class="ch-preview">${escHtml(p.member_name || '')} · ${escHtml(prayerScopeLabel(p.scope))}</div></div>
       </div>`).join('')
-    : '<div style="padding:20px;text-align:center;color:var(--ink3);font-size:13px">기도제목이 없어요</div>';
+    : `<div style="padding:20px;text-align:center;color:var(--ink3);font-size:13px">${t('기도제목이 없어요','No prayer requests yet')}</div>`;
 }
 
 function renderPrayerContent() {
@@ -9417,24 +9435,24 @@ function renderPrayerContent() {
   const area = document.getElementById('prayer-list');
   if (!area) return;
   if (!prayers.length) {
-    area.innerHTML = `<div style="text-align:center;color:var(--ink3);padding:60px 0"><div style="font-size:40px;margin-bottom:12px">🙏</div><div style="font-size:15px;font-weight:600;color:var(--ink)">기도제목이 없어요</div><div style="font-size:13px;margin-top:6px">첫 번째 기도제목을 올려보세요</div></div>`;
+    area.innerHTML = `<div style="text-align:center;color:var(--ink3);padding:60px 0"><div style="font-size:40px;margin-bottom:12px">🙏</div><div style="font-size:15px;font-weight:600;color:var(--ink)">${t('기도제목이 없어요','No prayer requests yet')}</div><div style="font-size:13px;margin-top:6px">${t('첫 번째 기도제목을 올려보세요','Be the first to share one')}</div></div>`;
     return;
   }
   area.innerHTML = prayers.map((p,i) => `
     <div class="prayer-card fade" id="prayer-${p.id}">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
         <div style="width:32px;height:32px;border-radius:10px;background:${colors[i%colors.length]};color:white;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600">${(p.member_name||'?')[0]}</div>
-        <div><div style="font-size:13.5px;font-weight:600">${p.member_name}</div><div style="font-size:11.5px;color:var(--ink3)">${p.scope} · ${new Date(p.created_at).toLocaleDateString('ko-KR')}</div></div>
+        <div><div style="font-size:13.5px;font-weight:600">${p.member_name}</div><div style="font-size:11.5px;color:var(--ink3)">${escHtml(prayerScopeLabel(p.scope))} · ${new Date(p.created_at).toLocaleDateString(APP_LANG === 'en' ? 'en-US' : 'ko-KR')}</div></div>
       </div>
       <h4>${p.title}</h4>
       <p>${p.body||''}</p>
       <div class="pray-btn">
-        <div style="font-size:12.5px;color:var(--ink2)"><b style="color:var(--ink);font-weight:600" id="cnt-${p.id}">${p.prayer_count||0}명</b> 함께 기도 중</div>
+        <div style="font-size:12.5px;color:var(--ink2)"><b style="color:var(--ink);font-weight:600" id="cnt-${p.id}">${prayerCountLabel(p.prayer_count||0)}</b> ${t('함께 기도 중','praying together')}</div>
         <div style="display:flex;align-items:center;gap:8px">
           ${(p.member_id === ME.id || isCommunityAdmin()) ? `<button onclick="deletePrayer('${p.id}')" title="${t('지우기','Delete')}"
             style="border:none;background:transparent;cursor:pointer;color:var(--ink3);font-size:13px;padding:4px 6px">🗑</button>` : ''}
           <div class="pray-action${prayerJoined[p.id]?' joined':''}" onclick="togglePrayer('${p.id}',${p.prayer_count||0})" id="pbtn-${p.id}">
-            ${prayerJoined[p.id]?'✓ 함께 기도 중':'🙏 함께 기도'}
+            ${prayerJoined[p.id] ? t('✓ 함께 기도 중','✓ Praying') : t('🙏 함께 기도','🙏 Pray with them')}
           </div>
         </div>
       </div>
@@ -9449,8 +9467,9 @@ async function togglePrayer(id, currentCount) {
   await sb.from('prayers').update({ prayer_count: newCount }).eq('id', id);
   const cnt = document.getElementById('cnt-'+id);
   const btn = document.getElementById('pbtn-'+id);
-  if (cnt) cnt.textContent = newCount+'명';
-  if (btn) { btn.className = 'pray-action'+(prayerJoined[id]?' joined':''); btn.textContent = prayerJoined[id]?'✓ 함께 기도 중':'🙏 함께 기도'; }
+  if (cnt) cnt.textContent = prayerCountLabel(newCount);
+  if (btn) { btn.className = 'pray-action'+(prayerJoined[id]?' joined':'');
+             btn.textContent = prayerJoined[id] ? t('✓ 함께 기도 중','✓ Praying') : t('🙏 함께 기도','🙏 Pray with them'); }
   // count 업데이트
   const p = prayers.find(x=>x.id===id);
   if (p) p.prayer_count = newCount;
@@ -9465,14 +9484,14 @@ async function showPrayerForm() {
   form.className = 'prayer-card fade';
   form.style.marginBottom = '14px';
   form.innerHTML = `
-    <div style="font-size:14px;font-weight:600;margin-bottom:12px">기도제목 올리기</div>
-    <input id="ptitle" placeholder="제목" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font:14px var(--font);outline:none;margin-bottom:8px"/>
-    <textarea id="pbody" placeholder="기도 내용을 나눠주세요..." rows="3" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font:14px var(--font);outline:none;resize:none;margin-bottom:8px"></textarea>
-    <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">${['전체'].concat((tcsGroups||[]).map(g=>g.name)).map(s=>`<div onclick="selectScope(this,'${escJs(s)}')" data-scope="${escAttr(s)}" style="height:28px;padding:0 12px;border-radius:999px;font-size:12px;display:flex;align-items:center;background:var(--s3);color:var(--ink2);cursor:pointer">${escHtml(s)}</div>`).join('')}
+    <div style="font-size:14px;font-weight:600;margin-bottom:12px">${t('기도제목 올리기','New prayer request')}</div>
+    <input id="ptitle" placeholder="${escAttr(t('제목','Title'))}" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font:14px var(--font);outline:none;margin-bottom:8px"/>
+    <textarea id="pbody" placeholder="${escAttr(t('기도 내용을 나눠주세요...','Share what you would like prayer for...'))}" rows="3" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font:14px var(--font);outline:none;resize:none;margin-bottom:8px"></textarea>
+    <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">${['전체'].concat((tcsGroups||[]).map(g=>g.name)).map(s=>`<div onclick="selectScope(this,'${escJs(s)}')" data-scope="${escAttr(s)}" style="height:28px;padding:0 12px;border-radius:999px;font-size:12px;display:flex;align-items:center;background:var(--s3);color:var(--ink2);cursor:pointer">${escHtml(prayerScopeLabel(s))}</div>`).join('')}
       ${isCommunityAdmin() ? `<div onclick="setMode('admin');setTimeout(()=>{switchAdminTab('members');setAdmGroupBy('group');},150)" title="${t('그룹 만들기·고치기','Manage groups')}" style="height:28px;padding:0 11px;border-radius:999px;font-size:12px;display:flex;align-items:center;background:var(--surface);border:1.5px dashed var(--border);color:var(--ink3);cursor:pointer">${t('＋ 그룹','＋ Group')}</div>` : ''}</div>
     <div style="display:flex;gap:8px">
-      <div onclick="this.closest('.prayer-card').remove()" style="flex:1;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;background:var(--s3);font-size:13.5px;color:var(--ink2);cursor:pointer">취소</div>
-      <div onclick="submitPrayer(this)" style="flex:2;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;background:var(--sage);color:white;font-size:13.5px;font-weight:600;cursor:pointer">올리기</div>
+      <div onclick="this.closest('.prayer-card').remove()" style="flex:1;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;background:var(--s3);font-size:13.5px;color:var(--ink2);cursor:pointer">${t('취소','Cancel')}</div>
+      <div onclick="submitPrayer(this)" style="flex:2;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;background:var(--sage);color:white;font-size:13.5px;font-weight:600;cursor:pointer">${t('올리기','Post')}</div>
     </div>`;
   area.prepend(form);
   // 기본 범위 선택
