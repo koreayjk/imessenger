@@ -22566,6 +22566,7 @@ const SCHOOL_TABS = [
   { id:'memory',     icon:'📜', label:t('성구암송','Memory'),          group:'student', section:'school' },
   { id:'daily',      icon:'📋', label:t('일일기록','Daily log'),        group:'student', section:'school' },
   { id:'review',     icon:'✍️', label:t('활동후기','Reviews'),          group:'student', section:'school' },
+  { id:'parents',    icon:'👨‍👩‍👧', label:t('학부모','Parents'),           group:'student', section:'school' },
   { id:'feedback',   icon:'📬', label:t('주간 피드백','Weekly'),         group:'student', section:'school' },
   { id:'timetable',  icon:'🗓', label:t('시간표','Timetable'),        group:'class',   section:'school' },
   { id:'attendance', icon:'✅', label:t('출석부','Attendance'),       group:'class',   section:'school' },
@@ -22720,6 +22721,7 @@ function renderSchoolMain() {
   if (['student','record','reading','memory'].includes(schoolSubMode)) return renderStudent360();
   if (schoolSubMode === 'daily')      return renderDailyHub();
   if (schoolSubMode === 'review')     return renderReviewHub();
+  if (schoolSubMode === 'parents')    return renderParentsHub();
   if (schoolSubMode === 'feedback')   return renderFeedbackHub();
   if (schoolSubMode === 'attendance') return renderAttendanceHub();
   if (schoolSubMode === 'leave')      return renderApprovalHub();
@@ -33116,6 +33118,153 @@ async function initWritingPage() {
     return;
   }
   renderWriting();
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  👨‍👩‍👧 학부모 명단 (개선창 · 홍예원 간사)
+//
+//    "간사 & 교사도 학부모 명단을 확인하며 체크 할 수 있게 해주셨으면"
+//
+//  서버는 이미 열려 있었습니다 — 같은 공동체 사람이면 학부모가 보입니다.
+//  막혀 있던 건 **화면**이었습니다. 명단이 관리자 페이지 안에만 있어서,
+//  간사·교사는 그 페이지에 못 들어가니 볼 길이 없었습니다.
+//
+//  그래서 학사 탭에 둡니다 — canAccessSchool() 이 열어 주는 자리라
+//  간사·교사·행정담당자·관리자가 들어오고, 학생·학부모는 못 들어옵니다.
+//
+//  ✔ 체크는 **그 사람 기기에만** 남습니다(브라우저). 서로 보이지 않습니다.
+//    "누가 연락했는지 다 같이 보자" 가 필요하면 표를 하나 만들어야 합니다.
+// ══════════════════════════════════════════════════════════════════
+let parRows = [];
+let parKids = {};      // 학부모 id → '아이1 · 아이2'
+let parFind = '';
+let parOnlyUnlinked = false;
+let parChecked = {};   // 내 기기에만 남는 표시
+
+function parCheckKey() { return 'tcs_par_check_' + CID(); }
+function parLoadChecks() {
+  try { parChecked = JSON.parse(localStorage.getItem(parCheckKey()) || '{}') || {}; }
+  catch (_) { parChecked = {}; }
+}
+function parSaveChecks() {
+  try { localStorage.setItem(parCheckKey(), JSON.stringify(parChecked)); } catch (_) {}
+}
+function parToggle(id) {
+  if (parChecked[id]) delete parChecked[id]; else parChecked[id] = 1;
+  parSaveChecks(); parPaint();
+}
+function parClearChecks() {
+  if (!Object.keys(parChecked).length) return;
+  if (!confirm(t('표시를 전부 지울까요?','Clear all your marks?'))) return;
+  parChecked = {}; parSaveChecks(); parPaint();
+}
+function parSetFind(v) { parFind = v; parPaint(); }
+function parToggleUnlinked() { parOnlyUnlinked = !parOnlyUnlinked; parPaint(); }
+
+async function renderParentsHub() {
+  const main = document.getElementById('school-main');
+  if (!main) return;
+  main.innerHTML = `<div style="text-align:center;padding:40px;color:var(--ink3);font-size:13px">${t('불러오는 중...','Loading...')}</div>`;
+  parLoadChecks();
+  try { await parLoad(); }
+  catch (e) {
+    main.innerHTML = `<div style="color:#b91c1c;padding:30px;text-align:center;font-size:13px">${t('불러오기 실패: ','Failed to load: ')}${escHtml(e.message || String(e))}</div>`;
+    return;
+  }
+  parPaint();
+}
+
+async function parLoad() {
+  const { data, error } = await sb.from('members')
+    .select('id,name,email,phone,photo_url,community_role,status,community_id')
+    .eq('community_id', CID()).eq('community_role', 'parent').order('name');
+  if (error) throw error;
+  parRows = (data || []).filter(m => (m.status || 'approved') !== 'removed');
+
+  //  어느 아이의 보호자인지 — 이름은 이미 아는 것부터 쓰고, 모르면 물어본다
+  parKids = {};
+  try {
+    const { data: sp } = await sb.from('student_parents').select('parent_id,student_id');
+    const rows = sp || [];
+    const names = {};
+    (schoolStudents || []).forEach(x => { if (x) names[x.id] = x.name; });
+    Object.values(members || {}).forEach(x => { if (x) names[x.id] = x.name; });
+    const missing = [...new Set(rows.map(r => r.student_id).filter(id => !names[id]))];
+    if (missing.length) {
+      const { data: ms } = await sb.from('members').select('id,name').in('id', missing);
+      (ms || []).forEach(m => { names[m.id] = m.name; });
+    }
+    rows.forEach(r => {
+      const nm = names[r.student_id]; if (!nm) return;
+      const cur = parKids[r.parent_id];
+      parKids[r.parent_id] = cur ? (cur.split(' · ').includes(nm) ? cur : cur + ' · ' + nm) : nm;
+    });
+  } catch (_) {}
+}
+
+function parShown() {
+  const q = parFind.trim().toLowerCase();
+  return parRows.filter(m => {
+    if (parOnlyUnlinked && parKids[m.id]) return false;
+    if (!q) return true;
+    return [m.name, m.email, m.phone, parKids[m.id]]
+      .some(x => String(x || '').toLowerCase().includes(q));
+  });
+}
+
+function parPaint() {
+  const main = document.getElementById('school-main');
+  if (!main) return;
+  const rows = parShown();
+  const unlinked = parRows.filter(m => !parKids[m.id]).length;
+  const inp = 'height:34px;padding:0 11px;border:1.5px solid var(--border);border-radius:9px;font:600 12.5px var(--font);color:var(--ink);background:var(--surface)';
+  const ghost = 'height:30px;padding:0 10px;border:1px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:8px;cursor:pointer;font:700 11.5px var(--font)';
+
+  const card = (m) => {
+    const on = !!parChecked[m.id];
+    const kids = parKids[m.id] || '';
+    const contact = [m.phone, m.email].filter(Boolean).join(' · ');
+    return `
+    <div data-par="${escAttr(m.id)}" style="display:flex;align-items:center;gap:11px;border:1px solid ${on ? '#7ec9a3' : 'var(--border)'};
+      background:${on ? '#f2fbf6' : 'var(--surface)'};border-radius:11px;padding:11px 13px;margin-bottom:7px;flex-wrap:wrap">
+      <label style="display:flex;align-items:center;cursor:pointer;flex-shrink:0" title="${escAttr(t('나만 보이는 표시','A mark only you see'))}">
+        <input type="checkbox" ${on ? 'checked' : ''} onchange="parToggle('${escJs(m.id)}')" style="width:17px;height:17px;cursor:pointer"/>
+      </label>
+      <div style="width:32px;height:32px;border-radius:10px;${avFill(m, '#be5b2a')};color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0">${avInner(m)}</div>
+      <div style="flex:1;min-width:120px">
+        <div style="font-size:13.5px;font-weight:700;color:var(--ink)">${escHtml(m.name || '')}</div>
+        ${contact ? `<div style="font-size:11.5px;color:var(--ink3)">${escHtml(contact)}</div>` : ''}
+      </div>
+      <div style="flex:1;min-width:120px;font-size:12px">
+        ${kids
+          ? `<span style="color:#8a4a22;background:#FDF1E7;border:1px solid #F0D5BE;border-radius:8px;padding:3px 9px">👨‍👩‍👧 ${escHtml(kids)}</span>`
+          : `<span style="color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:3px 9px">${t('아직 아이와 연결 안 됨','Not linked to a child yet')}</span>`}
+      </div>
+      ${canDmMember(m) ? `<button onclick="openDMwith('${escJs(m.id)}')" style="${ghost};flex-shrink:0">💬 ${t('1:1','Chat')}</button>` : ''}
+    </div>`;
+  };
+
+  main.innerHTML = `<div class="spage" style="max-width:900px">
+    <div class="adm-card" style="margin-bottom:14px">
+      <div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center">
+        <input value="${escAttr(parFind)}" oninput="parSetFind(this.value)" placeholder="${t('이름 · 연락처 · 아이 이름 찾기','Find by name, contact or child')}"
+          style="${inp};flex:1;min-width:150px"/>
+        <button onclick="parToggleUnlinked()" style="height:34px;padding:0 13px;border:1.5px solid ${parOnlyUnlinked ? 'var(--accent)' : 'var(--border)'};
+          background:${parOnlyUnlinked ? 'var(--accent)' : 'var(--surface)'};color:${parOnlyUnlinked ? '#fff' : 'var(--ink2)'};
+          border-radius:9px;cursor:pointer;font:700 12.5px var(--font)">${t('연결 안 된 분만','Unlinked only')}${unlinked ? ' ' + unlinked : ''}</button>
+        ${Object.keys(parChecked).length ? `<button onclick="parClearChecks()" style="${ghost};height:34px">${t('표시 지우기','Clear marks')}</button>` : ''}
+      </div>
+      <div style="font-size:12px;color:var(--ink3);margin-top:10px;line-height:1.8">
+        👨‍👩‍👧 ${t('학부모','Parents')} <b>${rows.length}</b>${t('명','')}
+        ${unlinked ? ` · ⚠️ ${t('아이와 연결 안 된 분','Not linked')} <b>${unlinked}</b>${t('명','')}` : ''}
+        ${Object.keys(parChecked).length ? ` · ✔ ${t('내 표시','My marks')} <b>${Object.keys(parChecked).length}</b>` : ''}
+        <br><span style="font-size:11px">${t('✔ 표시는 <b>내 기기에만</b> 남습니다. 다른 분께는 보이지 않아요. · 아이 연결은 <b>관리자</b>가 합니다.',
+                                            '✔ marks are stored <b>on your device only</b> and are not shared. · Linking a child is done by an admin.')}</span>
+      </div>
+    </div>
+    ${rows.length ? rows.map(card).join('') : `<div style="padding:42px;text-align:center;color:var(--ink3);font-size:13px">${
+      parRows.length ? t('이 조건에 맞는 분이 없어요','Nobody matches') : t('등록된 학부모가 없어요','No parents registered yet')}</div>`}
+  </div>`;
 }
 
 // ════════════════════════════════════════════════════════════════════
