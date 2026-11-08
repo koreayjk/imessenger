@@ -48,6 +48,7 @@ function dbScript() {
     const DB = window.__seed();
     window.__DB = DB; window.__ins = []; window.__upd = []; window.__err = null;
     window.__rpc = []; window.__rm = []; window.__rmResult = null;
+    window.__fn = []; window.__fnResult = {};
     let seq = 0;
     const mkq = (t) => { const q = { _t:t, _eq:{}, _cmp:[] };
       ['is','not','range','or','filter','contains']
@@ -129,7 +130,18 @@ function dbScript() {
           return window.__rmResult ? window.__rmResult(paths)
                                    : { data: paths.map(nm => ({ name: nm })), error: null }; },
       }) },
-      functions:{ invoke: async () => ({ data:null, error:null }) },
+      //  ⚠️ 예전에는 엣지 함수를 부르면 늘 빈 답을 줬다. 그러면 '자료실이
+      //     scope 를 보내는지' 같은 걸 아예 잴 수가 없다 (limit·gte 때와
+      //     같은 자리에서 세 번째로 데었다). 부른 것을 적어 두고,
+      //     __fnResult['이름'] 으로 이름마다 따로 답하게 한다.
+      functions:{ invoke: async (name, opts) => {
+        const body = (opts && opts.body) || null;
+        window.__fn.push({ name, body });
+        const ans = (window.__fnResult || {})[name];
+        if (typeof ans === 'function') return ans(body || {});
+        if (ans !== undefined) return ans;
+        return { data:null, error:null };
+      } },
       auth:{ getSession: async () => ({ data:{ session:null } }), onAuthStateChange(){}, signOut: async () => ({}) },
     }) };
   })();`;
