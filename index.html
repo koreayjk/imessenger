@@ -628,6 +628,12 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
       또 주면 두 번 들어가서 화면마다 시작 자리가 달라집니다.
    ═══════════════════════════════════════════════════════════════ */
 .pg-narrow { width:100%; max-width:760px;  margin:0 auto; }
+/*  기도 카드 — 글이 길어서, 넓은 화면에서는 나란히 놓아 줄을 짧게 유지한다.
+    한 칸이 420px 보다 넓어지지 않게 하면 한 줄이 읽기 좋은 길이로 남는다. */
+.pray-grid { display:grid; gap:14px; align-items:start;
+             grid-template-columns:repeat(auto-fill, minmax(min(100%, 420px), 1fr)); }
+@media (max-width:700px) { .pray-grid { grid-template-columns:1fr; gap:12px; } }
+
 .pg-grid   { display:grid; gap:12px; align-items:start;
              grid-template-columns:repeat(auto-fill, minmax(min(100%, 300px), 1fr)); }
 .pg-grid.pg-grid-sm { grid-template-columns:repeat(auto-fill, minmax(min(100%, 240px), 1fr)); }
@@ -663,7 +669,7 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
 #content-area::-webkit-scrollbar-thumb { background: rgba(0,0,0,.1); border-radius: 3px; }
 .prayer-card {
   background: var(--surface); border-radius: 16px;
-  padding: 18px; margin-bottom: 14px;
+  padding: 18px; margin-bottom: 0;
   box-shadow: 0 1px 3px rgba(70,50,20,.06);
 }
 .prayer-card h4 { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
@@ -9995,10 +10001,13 @@ function renderPrayerContent() {
   const area = document.getElementById('prayer-list');
   if (!area) return;
   if (!prayers.length) {
-    area.innerHTML = `<div style="text-align:center;color:var(--ink3);padding:60px 0"><div style="font-size:40px;margin-bottom:12px">🙏</div><div style="font-size:15px;font-weight:600;color:var(--ink)">${t('기도제목이 없어요','No prayer requests yet')}</div><div style="font-size:13px;margin-top:6px">${t('첫 번째 기도제목을 올려보세요','Be the first to share one')}</div></div>`;
+    area.innerHTML = `<div class="pg"><div class="pray-grid"></div><div style="text-align:center;color:var(--ink3);padding:60px 0"><div style="font-size:40px;margin-bottom:12px">🙏</div><div style="font-size:15px;font-weight:600;color:var(--ink)">${t('기도제목이 없어요','No prayer requests yet')}</div><div style="font-size:13px;margin-top:6px">${t('첫 번째 기도제목을 올려보세요','Be the first to share one')}</div></div></div>`;
     return;
   }
-  area.innerHTML = prayers.map((p,i) => `
+  //  넓은 화면에서는 카드를 나란히 놓는다.
+  //  한 줄로 쌓으면 카드가 1492px 가 되어 글 한 줄이 너무 길어진다
+  //  (채팅 말풍선은 770px 에서 멈춘다 — 재 보고 맞췄다).
+  area.innerHTML = `<div class="pg"><div class="pray-grid">` + prayers.map((p,i) => `
     <div class="prayer-card fade" id="prayer-${p.id}">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
         <div style="width:32px;height:32px;border-radius:10px;background:${colors[i%colors.length]};color:white;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600">${(p.member_name||'?')[0]}</div>
@@ -10017,7 +10026,7 @@ function renderPrayerContent() {
         </div>
       </div>
       ${prayerCmtHtml(p.id)}
-    </div>`).join('');
+    </div>`).join('') + `</div></div>`;
 }
 
 async function togglePrayer(id, currentCount) {
@@ -10053,7 +10062,9 @@ async function showPrayerForm() {
       <div onclick="this.closest('.prayer-card').remove()" style="flex:1;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;background:var(--s3);font-size:13.5px;color:var(--ink2);cursor:pointer">${t('취소','Cancel')}</div>
       <div onclick="submitPrayer(this)" style="flex:2;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;background:var(--sage);color:white;font-size:13.5px;font-weight:600;cursor:pointer">${t('올리기','Post')}</div>
     </div>`;
-  area.prepend(form);
+  //  서식도 카드와 같은 자리에서 시작해야 한다 — 격자 안에 넣는다
+  const grid = area.querySelector('.pray-grid');
+  if (grid) grid.prepend(form); else area.prepend(form);
   // 기본 범위 선택
   form.querySelector('[data-scope="전체"]').style.background = 'var(--sage)';
   form.querySelector('[data-scope="전체"]').style.color = 'white';
