@@ -375,14 +375,20 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
 .bubble.sticker-bubble { background: none !important; border: none !important;
   box-shadow: none !important; padding: 2px 0 !important; }
 
-.spage { margin-left: max(0px, calc((100% - 1200px) / 2)); margin-right: 0; }
-
 /* 페이지 틀 — 폭과 자리는 여기 한 곳에서만 정한다.
    예전엔 쪽마다 1120 / 920 / 760 / 640 / 1320 … 으로 제각각이었고
    어떤 건 가운데, 어떤 건 왼쪽이었다. 그래서 위 메뉴를 누를 때마다
-   글의 왼쪽 끝이 이리저리 옮겨 다녔다. 한 줄로 묶는다. */
-:root { --page-w: 1180px; }
-.page { width: 100%; max-width: var(--page-w); margin-left: auto; margin-right: auto; }
+   글의 왼쪽 끝이 이리저리 옮겨 다녔다. 한 줄로 묶는다.
+
+   ⚠️ 그래 놓고 또 늘어났습니다. 재 보니 틀이 **세 개** 였습니다 —
+      .page(1180 가운데) · .spage(1200, 왼쪽으로만 밀림) · .pg(1600).
+      게다가 .spage 는 쓰는 자리마다 720~1200px 를 따로 덧붙여서,
+      메뉴를 누를 때마다 내용 시작 자리가 옮겨 다니고 오른쪽은 늘
+      비어 있었습니다. 셋을 같은 틀로 묶습니다. */
+:root { --page-w: 1600px; }
+.page, .spage, .pg {
+  width: 100%; max-width: var(--page-w); margin-left: auto; margin-right: auto;
+}
 
 /* ── 사역자 교육 ── */
 .trprog { display:flex; flex-wrap:wrap; gap:7px; margin-bottom:12px; }
@@ -604,8 +610,55 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
 .member-name { font-size: 13px; font-weight: 500; }
 .member-role { font-size: 11px; color: var(--ink3); }
 
-/* 기도 / 홈 패널 */
-#content-area { flex: 1; overflow-y: auto; padding: 24px; }
+/* ═══════════════════════════════════════════════════════════════
+   화면 틀 — 한 군데서 정합니다
+   ───────────────────────────────────────────────────────────────
+   예전에는 화면마다 max-width 를 460·680·820·960·1080·1100px 로
+   따로 적어 두었습니다. 그래서 (1) 넓은 화면에서 가운데 좁은 단만
+   쓰고 좌우가 텅 비었고, (2) 같은 화면의 윗줄과 아랫줄이 서로 다른
+   자리에서 시작했습니다.
+
+   .pg        : 보통 화면. 화면을 다 쓰되 아주 넓으면 1600 에서 멈춘다.
+                (끝까지 늘리면 글줄이 너무 길어져 읽기 힘들다)
+   .pg-narrow : 글·서식처럼 좁아야 읽히는 것. 760.
+   .pg-grid   : 카드가 늘어서는 곳. 화면이 넓으면 칸 수가 늘어난다.
+   .pg-head   : 화면 맨 위 제목줄.
+
+   ⚠️ 바깥 여백은 **스크롤 칸** 이 가집니다(.scroll-page). 안쪽 상자에
+      또 주면 두 번 들어가서 화면마다 시작 자리가 달라집니다.
+   ═══════════════════════════════════════════════════════════════ */
+.pg-narrow { width:100%; max-width:760px;  margin:0 auto; }
+.pg-grid   { display:grid; gap:12px; align-items:start;
+             grid-template-columns:repeat(auto-fill, minmax(min(100%, 300px), 1fr)); }
+.pg-grid.pg-grid-sm { grid-template-columns:repeat(auto-fill, minmax(min(100%, 240px), 1fr)); }
+.pg-grid.pg-grid-lg { grid-template-columns:repeat(auto-fill, minmax(min(100%, 380px), 1fr)); }
+.pg-head   { margin-bottom:16px; }
+
+/*  왼쪽 명단 + 본문 으로 나뉜 화면 (TCS기록·독서)
+    ⚠️ 휴대폰에서 명단이 220px 를 그대로 먹어서, 390px 화면에서 본문에
+       **170px 밖에 안 남았습니다.** 재 보고 알았습니다. 좁은 화면에서는
+       명단을 위쪽 가로 줄로 눕히고 본문이 폭을 다 쓰게 합니다. */
+.side-list { width:220px; flex-shrink:0; }
+@media (max-width:700px) {
+  .side-split { flex-direction:column; }
+  .side-list  { width:100%; max-height:92px; border-right:none;
+                border-bottom:1px solid var(--border);
+                display:flex; gap:8px; overflow-x:auto; overflow-y:hidden;
+                -webkit-overflow-scrolling:touch; padding:10px 12px; }
+  .side-list > * { flex:0 0 auto; }
+}
+
+/*  모든 화면의 스크롤 칸이 같은 여백을 쓰게 한다.
+    폭이 좁아지면 여백도 같이 줄어든다 — 휴대폰에서 16px. */
+.scroll-page { flex:1; overflow-y:auto;
+               padding: clamp(14px, 2vw, 32px) clamp(16px, 3vw, 40px); }
+@media (max-width:700px) {
+  .scroll-page { padding: 14px 16px calc(14px + var(--sab)); }
+  .pg-grid, .pg-grid.pg-grid-sm, .pg-grid.pg-grid-lg { grid-template-columns:1fr; gap:10px; }
+}
+
+/* 기도 / 홈 패널 — 틀은 .scroll-page 가 가진다.
+   여기에 padding 을 또 적으면 id 가 class 보다 세서 공통 틀을 덮어쓴다. */
 #content-area::-webkit-scrollbar { width: 6px; }
 #content-area::-webkit-scrollbar-thumb { background: rgba(0,0,0,.1); border-radius: 3px; }
 .prayer-card {
@@ -929,8 +982,8 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
   #s360-split.show-detail > #s360-list { display: none; }
   #s360-split.show-detail > .s360-mobile-back { display: inline-flex !important; }
   #s360-split > #s360-list > div:last-child { max-height: none !important; }
-  /* 재정 허브 그룹 필터가 좁은 화면에서 줄바꿈되도록 */
-  #school-main { padding: 16px 14px !important; }
+  /* 여백은 .scroll-page 한 곳에서만 정한다.
+     여기서 또 !important 로 덮어써서 이 화면만 2px 어긋나 있었다 (재서 찾음). */
 }
 
 /* ============================================================
@@ -1005,7 +1058,7 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
   #daily-word-modal > div, #event-modal > div { max-width: 94vw !important; }
   /* 카드·컨텐츠 패딩 축소로 실내폭 확보 */
   .adm-card { padding: 15px !important; }
-  #content-area { padding: 14px !important; }
+  /* #content-area 의 여백도 .scroll-page 가 가진다 */
   /* flex 자식이 긴 텍스트로 부모 밖으로 밀려나지 않게(축소 허용) — 넘침 방지 안전망 */
   #main [style*="display:flex"] > * { min-width: 0; }
   .adm-row { min-width: 0; }
@@ -1516,7 +1569,7 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
         </div>
         <button onclick="showPrayerForm()" data-ko="+ 기도제목 올리기" data-en="+ New prayer request" style="margin-left:auto;height:34px;padding:0 16px;border-radius:10px;border:none;background:var(--sage);color:white;font:600 13px var(--font);cursor:pointer">+ 기도제목 올리기</button>
       </div>
-      <div id="prayer-list" style="flex:1;overflow-y:auto;padding:clamp(16px,2vw,32px) clamp(16px,3vw,40px)"></div>
+      <div id="prayer-list" class="scroll-page"></div>
     </div>
 
     <!-- 홈 뷰 -->
@@ -1524,7 +1577,7 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
       <div style="height:56px;padding:0 20px;display:flex;align-items:center;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0">
         <div style="font-size:16px;font-weight:700">홈</div>
       </div>
-      <div id="content-area" style="flex:1;overflow-y:auto;padding:clamp(16px,2vw,32px) clamp(16px,3vw,40px)"></div>
+      <div id="content-area" class="scroll-page"></div>
     </div>
 
     <!-- 캘린더 뷰 -->
@@ -1572,7 +1625,7 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
           <div style="font-size:11px;color:var(--ink3)" id="child-header-sub">예치금·매점·학비를 볼 수 있어요</div>
         </div>
       </div>
-      <div id="child-main" style="flex:1;overflow-y:auto;padding:24px 28px"></div>
+      <div id="child-main" class="scroll-page"></div>
     </div>
 
     <!-- 용돈기입장 뷰 -->
@@ -1585,7 +1638,7 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
         </div>
         <div id="subnav-allowance" class="subnav-center"></div>
       </div>
-      <div id="allowance-main" style="flex:1;overflow-y:auto;padding:24px 28px"></div>
+      <div id="allowance-main" class="scroll-page"></div>
     </div>
 
     <!-- 예치금 (학생 조회) -->
@@ -1598,7 +1651,7 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
         </div>
         <div id="subnav-deposit" class="subnav-center"></div>
       </div>
-      <div id="deposit-main" style="flex:1;overflow-y:auto;padding:24px 28px"></div>
+      <div id="deposit-main" class="scroll-page"></div>
     </div>
 
     <!-- 개인 시간표 뷰 (대학 수업 등) -->
@@ -1611,7 +1664,7 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
         </div>
         <div id="subnav-mytt" class="subnav-center"></div>
       </div>
-      <div id="mytt-main" style="flex:1;overflow-y:auto;padding:24px 28px"></div>
+      <div id="mytt-main" class="scroll-page"></div>
     </div>
 
     <!-- 출결 신청(전자결재) 뷰 -->
@@ -1624,7 +1677,7 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
         </div>
         <div id="subnav-leave" class="subnav-center"></div>
       </div>
-      <div id="leave-main" style="flex:1;overflow-y:auto;padding:24px 28px"></div>
+      <div id="leave-main" class="scroll-page"></div>
     </div>
 
     <!-- 생기부 홈 대시보드 (학생) -->
@@ -1637,7 +1690,7 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
         </div>
         <div id="subnav-gishome" class="subnav-center"></div>
       </div>
-      <div id="gishome-main" style="flex:1;overflow-y:auto;padding:24px 28px"></div>
+      <div id="gishome-main" class="scroll-page"></div>
     </div>
 
     <!-- 개선 제안 게시판 (전역 · 모든 사용자) -->
@@ -1681,7 +1734,7 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
         <div style="flex:1"></div>
         <button onclick="initDrivePage()" title="새로고침" style="height:32px;padding:0 12px;border:1.5px solid var(--border);background:white;border-radius:9px;cursor:pointer;font:600 12px var(--font);color:var(--ink2)">↻</button>
       </div>
-      <div id="drive-main" style="flex:1;overflow-y:auto;padding:20px 24px"></div>
+      <div id="drive-main" class="scroll-page"></div>
     </div>
 
     <div id="improve-view" style="display:none;flex-direction:column;height:100%;background:var(--bg)">
@@ -1692,7 +1745,7 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
           <div style="font-size:11px;color:var(--ink3)">모두가 함께 보는 TCS 개선 제안 게시판</div>
         </div>
       </div>
-      <div id="improve-main" style="flex:1;overflow-y:auto;padding:24px 28px"></div>
+      <div id="improve-main" class="scroll-page"></div>
     </div>
 
     <!-- 매점 현황 (교사·관리자) -->
@@ -1705,7 +1758,7 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
         </div>
         <div id="subnav-store" class="subnav-center"></div>
       </div>
-      <div id="store-main" style="flex:1;overflow-y:auto;padding:24px 28px"></div>
+      <div id="store-main" class="scroll-page"></div>
     </div>
 
     <!-- 전자결재(서류 결재) 뷰 -->
@@ -1718,7 +1771,7 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
         </div>
         <div id="subnav-approval" class="subnav-center"></div>
       </div>
-      <div id="approval-main" style="flex:1;overflow-y:auto;padding:24px 28px"></div>
+      <div id="approval-main" class="scroll-page"></div>
     </div>
 
     <!-- 독후감 / 활동후기 뷰 -->
@@ -1731,7 +1784,7 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
         </div>
         <div id="subnav-writing" class="subnav-center"></div>
       </div>
-      <div id="writing-main" style="flex:1;overflow-y:auto;padding:24px 28px"></div>
+      <div id="writing-main" class="scroll-page"></div>
     </div>
 
     <!-- 관리자 뷰 -->
@@ -1757,7 +1810,7 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
         <div id="adm-tab-storage" onclick="switchAdminTab('storage')" class="adm-tab" style="display:none;white-space:nowrap" data-ko="💾 저장 용량" data-en="💾 Storage">💾 저장 용량</div>
         <div id="adm-tab-home" onclick="switchAdminTab('home')" class="adm-tab" style="display:none;white-space:nowrap" data-ko="🧩 홈 꾸미기" data-en="🧩 Edit Home">🧩 홈 꾸미기</div>
       </div></div>
-      <div id="admin-content" style="flex:1;overflow-y:auto;padding:24px 28px"></div>
+      <div id="admin-content" class="scroll-page"></div>
     </div>
 
     <!-- 내 프로필 뷰 -->
@@ -1770,7 +1823,7 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
         </div>
         <div id="subnav-profile" class="subnav-center"></div>
       </div>
-      <div id="profile-content" style="flex:1;overflow-y:auto;padding:24px 28px"></div>
+      <div id="profile-content" class="scroll-page"></div>
     </div>
 
     <!-- TCS 기록부 뷰 -->
@@ -1788,11 +1841,11 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
         <div style="display:flex;gap:8px" id="tcs-header-actions"></div>
       </div>
       <!-- 콘텐츠 -->
-      <div style="display:flex;flex:1;overflow:hidden">
-        <!-- 학생 목록 사이드 -->
-        <div id="tcs-student-panel" style="width:220px;flex-shrink:0;background:var(--surface);border-right:1px solid var(--border);overflow-y:auto;padding:12px 8px"></div>
+      <div class="side-split" style="display:flex;flex:1;overflow:hidden">
+        <!-- 학생 목록 사이드 — 휴대폰에서는 위쪽 가로 줄로 바뀐다 -->
+        <div id="tcs-student-panel" class="side-list" style="background:var(--surface);border-right:1px solid var(--border);overflow-y:auto;padding:12px 8px"></div>
         <!-- 메인 영역 -->
-        <div id="tcs-main" style="flex:1;overflow-y:auto;padding:24px 28px"></div>
+        <div id="tcs-main" class="scroll-page"></div>
       </div>
     </div>
 
@@ -1809,7 +1862,7 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
         <div id="subnav-school" class="subnav-center"></div>
         <div style="display:flex;gap:8px" id="school-header-actions"></div>
       </div>
-      <div id="school-main" style="flex:1;overflow-y:auto;padding:24px 28px"></div>
+      <div id="school-main" class="scroll-page"></div>
     </div>
 
     <!-- 모의고사 분석 뷰 (독립 탭) -->
@@ -1824,7 +1877,7 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
         </div>
         <div id="subnav-mock" class="subnav-center"></div>
       </div>
-      <div id="mock-page" style="flex:1;overflow-y:auto;padding:24px 28px"></div>
+      <div id="mock-page" class="scroll-page"></div>
     </div>
 
     <!-- 필독서 현황 뷰 (독립 탭) -->
@@ -1839,7 +1892,7 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
         </div>
         <div id="subnav-reading" class="subnav-center"></div>
       </div>
-      <div id="reading-page" style="flex:1;overflow-y:auto;padding:24px 28px"></div>
+      <div id="reading-page" class="scroll-page"></div>
     </div>
 
     <!-- 성구암송 (독립 탭) — 학사란은 선생님만 들어가므로 학생용 입구를 따로 둔다 -->
@@ -1854,7 +1907,7 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
         </div>
         <div id="subnav-memory" class="subnav-center"></div>
       </div>
-      <div id="memory-page" style="flex:1;overflow-y:auto;padding:24px 28px"></div>
+      <div id="memory-page" class="scroll-page"></div>
     </div>
   </div>
 
@@ -7167,7 +7220,8 @@ async function driveFnError(error) {
 function renderDriveError(msg) {
   const main = document.getElementById('drive-main');
   const notSetup = /DRIVE_API_KEY|GOOGLE_API_KEY|드라이브 API 키|DRIVE_ROOT_FOLDER_ID|Failed to send|non-2xx|구버전|outdated/i.test(msg);
-  main.innerHTML = `${driveTabsHtml()}<div style="max-width:620px;margin:30px auto;text-align:center">
+  main.innerHTML = `<div class="pg">${driveTabsHtml()}
+    <div style="max-width:620px;margin:30px auto;text-align:center">
     <div style="font-size:40px;margin-bottom:12px">📁</div>
     <div style="font-size:16px;font-weight:700;margin-bottom:8px">${notSetup ? t('자료실 연결 설정이 필요해요','Files setup required') : t('불러오지 못했어요','Could not load')}</div>
     <div style="font-size:12.5px;color:#b91c1c;background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:11px 13px;margin-bottom:14px;text-align:left;word-break:break-word">${escHtml(msg).slice(0,600)}</div>
@@ -7177,7 +7231,7 @@ function renderDriveError(msg) {
       2. ${t('폴더 주소의 마지막 부분(폴더 ID)을 복사','Copy the folder ID from its URL')}<br>
       3. ${t('<b>관리자 → 공동체 설정</b> 의 구글 드라이브 폴더 ID 칸에 붙여넣기<br>&nbsp;&nbsp;&nbsp;(폴더는 공동체마다 따로 지정합니다)','Paste it into the Google Drive folder ID field under <b>Admin → Community settings</b><br>&nbsp;&nbsp;&nbsp;(each community has its own folder)')}
     </div>
-  </div>`;
+  </div></div>`;
 }
 
 // 공동체에 폴더가 지정되지 않았을 때
@@ -7188,7 +7242,8 @@ function renderDriveNoFolder() {
   const canFix = shared
     ? (typeof isSuperAdmin === 'function' && isSuperAdmin())
     : (typeof isCommunityAdmin === 'function' && isCommunityAdmin());
-  main.innerHTML = `${driveTabsHtml()}<div style="max-width:560px;margin:40px auto;background:var(--surface);border:1.5px solid var(--border);border-radius:16px;padding:26px 28px;text-align:center">
+  main.innerHTML = `<div class="pg">${driveTabsHtml()}
+    <div style="max-width:560px;margin:40px auto;background:var(--surface);border:1.5px solid var(--border);border-radius:16px;padding:26px 28px;text-align:center">
     <div style="font-size:40px;margin-bottom:12px">${shared ? '\u{1F310}' : '\u{1F4C1}'}</div>
     <div style="font-size:16px;font-weight:800;color:var(--ink);margin-bottom:8px">${shared
       ? t('전체 공용 자료실 폴더가 아직 없어요','No shared files folder yet')
@@ -7206,7 +7261,7 @@ function renderDriveNoFolder() {
       : `<div style="margin-top:14px;font-size:12px;color:var(--ink3)">${shared
         ? t('총관리자에게 전체 공용 폴더 지정을 요청해 주세요.','Please ask a super admin to set the shared folder.')
         : t('공동체 관리자에게 폴더 지정을 요청해 주세요.','Please ask a community admin to set the folder.')}</div>`}
-  </div>`;
+  </div></div>`;
 }
 
 function renderDrivePage() {
@@ -7228,7 +7283,7 @@ function renderDrivePage() {
   const files = driveItems.filter(x => !x.isFolder);
 
   const folderRow = (it) => `
-    <div onclick="driveOpenFolder('${it.id}')" style="display:flex;align-items:center;gap:11px;padding:11px 13px;border:1.5px solid var(--border);background:white;border-radius:11px;margin-bottom:7px;cursor:pointer" onmouseover="this.style.borderColor='#2a5298'" onmouseout="this.style.borderColor='var(--border)'">
+    <div onclick="driveOpenFolder('${it.id}')" data-drive-folder="${escAttr(it.id)}" style="display:flex;align-items:center;gap:11px;padding:13px 14px;border:1.5px solid var(--border);background:var(--surface);border-radius:12px;cursor:pointer;min-width:0" onmouseover="this.style.borderColor='#2a5298'" onmouseout="this.style.borderColor='var(--border)'">
       <span style="font-size:19px;flex-shrink:0">📁</span>
       <div style="flex:1;min-width:0">
         <div style="font-size:13.5px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(it.name)}</div>
@@ -7237,7 +7292,7 @@ function renderDrivePage() {
     </div>`;
 
   const fileRow = (it) => `
-    <div style="display:flex;align-items:center;gap:11px;padding:10px 13px;border:1px solid var(--border);background:white;border-radius:11px;margin-bottom:6px">
+    <div data-drive-file="${escAttr(it.id)}" style="display:flex;align-items:center;gap:11px;padding:11px 13px;border:1px solid var(--border);background:var(--surface);border-radius:12px;min-width:0">
       <span style="font-size:18px;flex-shrink:0">${driveIcon(it)}</span>
       <div style="flex:1;min-width:0">
         <div style="font-size:13px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(it.name)}</div>
@@ -7250,7 +7305,7 @@ function renderDrivePage() {
   const empty = `<div style="text-align:center;padding:36px;color:var(--ink3);font-size:13px">${
     searching ? t('검색 결과가 없어요','No results') : t('이 폴더는 비어 있어요','This folder is empty')}</div>`;
 
-  main.innerHTML = `<div style="max-width:820px;margin:0 auto">
+  main.innerHTML = `<div class="pg">
     ${driveTabsHtml()}
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
       <div style="position:relative;flex:1;min-width:180px;max-width:380px">
@@ -7265,8 +7320,10 @@ function renderDrivePage() {
     <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-bottom:12px;min-height:18px">${crumbs}</div>
 
     ${(!folders.length && !files.length) ? empty : `
-      ${folders.length ? `<div style="font-size:11.5px;font-weight:800;color:var(--ink3);margin:4px 0 7px">${t('폴더','Folders')} (${folders.length})</div>${folders.map(folderRow).join('')}` : ''}
-      ${files.length ? `<div style="font-size:11.5px;font-weight:800;color:var(--ink3);margin:${folders.length?'16px':'4px'} 0 7px">${t('파일','Files')} (${files.length})</div>${files.map(fileRow).join('')}` : ''}
+      ${folders.length ? `<div style="font-size:11.5px;font-weight:800;color:var(--ink3);margin:4px 0 8px">${t('폴더','Folders')} (${folders.length})</div>
+        <div class="pg-grid pg-grid-lg" data-drive-folders>${folders.map(folderRow).join('')}</div>` : ''}
+      ${files.length ? `<div style="font-size:11.5px;font-weight:800;color:var(--ink3);margin:${folders.length?'20px':'4px'} 0 8px">${t('파일','Files')} (${files.length})</div>
+        <div class="pg-grid pg-grid-lg" data-drive-files>${files.map(fileRow).join('')}</div>` : ''}
     `}
     <div style="font-size:11px;color:var(--ink3);margin-top:14px;line-height:1.6">${t('※ 구글 드라이브 공유 폴더와 연결되어 있어요. 드라이브에 파일을 올리면 여기에 바로 나타납니다.','※ Connected to a shared Google Drive folder. Files added there appear here right away.')}</div>
   </div>`;
@@ -17257,7 +17314,7 @@ async function renderCommunitySettings() {
 
   if (_seq !== _admSeq) return;   // 늦게 끝났다 — 지금 보고 있는 탭이 아니다
   area.innerHTML = `
-    <div style="max-width:1100px;margin:0 auto">
+    <div class="pg">
       <div style="font-size:18px;font-weight:700;color:var(--adeep);margin-bottom:6px">⚙️ 공동체 설정</div>
       <div style="font-size:13px;color:var(--ink3);margin-bottom:22px">공동체의 이름, 로고, 색상을 설정할 수 있어요</div>
 
@@ -18388,7 +18445,7 @@ async function renderAdminCommunities() {
 
   if (_seq !== _admSeq) return;   // 늦게 끝났다 — 지금 보고 있는 탭이 아니다
   area.innerHTML = `
-    <div style="max-width:1100px;margin:0 auto">
+    <div class="pg">
       ${totalPending ? `<div style="background:#fee2e2;border:1.5px solid #fca5a5;border-radius:12px;padding:12px 15px;margin-bottom:16px;display:flex;align-items:center;gap:10px">
         <span style="font-size:20px">🔔</span>
         <span style="font-size:13.5px;font-weight:700;color:#b91c1c">승인 대기 ${totalPending}명 — 아래 빨간 배지가 있는 공동체의 "멤버 보기"에서 승인하세요</span>
@@ -24505,7 +24562,7 @@ function renderApprNew() {
       </div>
       <div style="font-size:12px;color:var(--ink3);line-height:1.5">${escHtml(t.description||t.category||'')}</div>
     </button>`;
-  main.innerHTML = `<div class="spage" style="max-width:1000px">
+  main.innerHTML = `<div class="spage">
     <div style="font-size:16px;font-weight:800;color:var(--ink);margin-bottom:4px">${t('어떤 서류를 올릴까요?','Which document would you like to submit?')}</div>
     <div style="font-size:12.5px;color:var(--ink3);margin-bottom:16px">${t('양식을 고르면 내용을 채우고 결재선을 지정해 상신할 수 있어요. 새 양식은 ','Pick a form to fill in the details and set an approval line. Add new forms in ')}<b>${t('양식 관리','Forms')}</b>${t('에서 추가하세요.','.')}</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px">${all.map(card).join('')}</div>
@@ -24591,7 +24648,7 @@ function renderApprCompose() {
   const memList = Object.values(members).filter(m => m.id!==ME.id && m.community_role!=='store_bot' && m.community_role!=='student' && m.status!=='removed');
   const approverCands = memList;
   const fieldsHtml = t.fields.map(f => `<div style="margin-bottom:12px"><label style="font-size:12px;font-weight:700;color:var(--ink3);display:block;margin-bottom:5px">${escHtml(f.label)}</label>${apprFieldHtml(f, vals[f.key] || '')}</div>`).join('');
-  main.innerHTML = `<div class="spage" style="max-width:1000px">
+  main.innerHTML = `<div class="spage">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
       <button onclick="${redo ? `apprDraft=null;openApprDoc('${escJs(apprDraft.editId)}')` : 'apprDraft=null;renderApprMain()'}" style="height:34px;padding:0 12px;border:1.5px solid var(--border);background:var(--surface);border-radius:9px;cursor:pointer;font:600 12px var(--font);color:var(--ink2)">${redo ? window.t('← 문서로','← Back') : window.t('← 양식 선택','← Back')}</button>
       <div style="font-size:16px;font-weight:800;color:var(--ink)">${redo ? '✏️' : '📝'} ${escHtml(t.name)} ${redo ? window.t('고치기','— edit') : window.t('작성','')}</div>
@@ -24986,7 +25043,7 @@ async function renderApprList(kind, useCache){
       </div>
     </div>`;
   }).join('');
-  main.innerHTML = `<div class="spage" style="max-width:1000px">
+  main.innerHTML = `<div class="spage">
     <div style="font-size:16px;font-weight:800;color:var(--ink);margin-bottom:${kind==='archive'?'8px':'14px'}">${title} <span style="font-size:12px;color:var(--ink3)">${shown.length}${t('건',' items')}</span></div>
     ${hint}${chips}
     ${shown.length ? rows : `<div style="text-align:center;padding:50px;color:var(--ink3);font-size:13px">${
@@ -25466,7 +25523,7 @@ function renderApprTemplates(){
     ${t.file_url?`<a href="${t.file_url}" target="_blank" style="font-size:12px;color:var(--accent);text-decoration:none">${window.t('파일','File')}</a>`:''}
     <button onclick="deleteApprTemplate('${t.id}','${escJs(t.name)}')" style="border:none;background:transparent;color:#c0392b;cursor:pointer;font-size:13px">${window.t('삭제','Delete')}</button>
   </div>`).join('') : `<div style="font-size:12.5px;color:var(--ink3);padding:8px 0">${t('등록한 양식이 없어요.','No registered forms.')}</div>`;
-  main.innerHTML = `<div class="spage" style="max-width:1000px">
+  main.innerHTML = `<div class="spage">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
       <div style="font-size:16px;font-weight:800;color:var(--ink)">${t('양식 관리','Manage forms')}</div>
       <button onclick="openApprTemplateModal()" style="height:38px;padding:0 16px;border:none;background:linear-gradient(135deg,#1d3a5f,#2a5298);color:#fff;border-radius:10px;cursor:pointer;font:700 12.5px var(--font)">${t('＋ 양식 추가','＋ Add form')}</button>
@@ -25866,7 +25923,7 @@ async function renderApprovalHub() {
     </div>`;
   };
 
-  main.innerHTML = `<div class="spage" style="max-width:920px">
+  main.innerHTML = `<div class="spage">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap">
       ${fBtn('pending', `${t('승인 대기','Pending')}${pendingCount?` (${pendingCount})`:''}`)}
       ${fBtn('all',t('전체','All'))}
@@ -26418,7 +26475,7 @@ function renderAttDaily() {
     </div>`;
   }).join('');
 
-  main.innerHTML = `<div class="spage" style="max-width:920px">
+  main.innerHTML = `<div class="spage">
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px">
       ${attViewToggleHtml()}
       <button onclick="shiftAttDate(-1)" title="${t('이전 날','Previous day')}" style="height:34px;width:34px;border:1px solid var(--border);background:var(--surface);border-radius:9px;cursor:pointer;font-size:16px;color:var(--ink2)">‹</button>
@@ -26509,7 +26566,7 @@ function renderAttMonthly() {
   const headCells = [t('이름','Name'),t('학년','Grade'),t('수업일수','Days'),t('출석','Present'),t('지각','Late'),t('조퇴','Early'),t('결석','Absent'),t('병결','Sick'),t('공결','Excused'),t('출석률','Rate'),'']
     .map(h => `<th style="padding:9px 6px;font-size:11px;color:var(--ink3);font-weight:700;text-align:center;white-space:nowrap">${h}</th>`).join('');
 
-  main.innerHTML = `<div class="spage" style="max-width:920px">
+  main.innerHTML = `<div class="spage">
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px">
       ${attViewToggleHtml()}
       <div style="display:inline-flex;gap:2px;background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:3px">${periodBtn('month', t('이번 달','This Month'))}${periodBtn('year', t('올해','This Year'))}</div>
@@ -26648,7 +26705,7 @@ function renderTimetableTeacher() {
     body += `</tr>`;
   }
 
-  main.innerHTML = `<div class="spage" style="max-width:1000px">
+  main.innerHTML = `<div class="spage">
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
       ${ttViewToggleHtml()}
       <select onchange="changeTtTeacher(this.value)" style="height:34px;padding:0 10px;border:1px solid var(--border);border-radius:9px;font:600 13px var(--font);background:var(--surface);color:var(--ink)">${teacherOpts}</select>
@@ -26722,7 +26779,7 @@ function renderTimetableGrid() {
     body += `</tr>`;
   }
 
-  main.innerHTML = `<div class="spage" style="max-width:1000px">
+  main.innerHTML = `<div class="spage">
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
       ${ttViewToggleHtml()}
       <select onchange="changeTtGroup(this.value)" style="${inputStyle};height:34px;max-width:200px">${groupOpts}</select>
@@ -26922,7 +26979,7 @@ async function renderVehicleHub(){
 }
 function renderVehicleMain(){
   const main = document.getElementById('school-main'); if (!main) return;
-  main.innerHTML = `<div class="spage" style="max-width:1200px">${vehSelId ? vehDetailHtml() : vehListHtml()}</div>`;
+  main.innerHTML = `<div class="spage">${vehSelId ? vehDetailHtml() : vehListHtml()}</div>`;
 }
 function vehOpen(id){ vehSelId = id; vehTabMode = 'due'; vehLogDraft = null; renderVehicleMain(); }
 function vehBack(){ vehSelId = null; vehLogDraft = null; vehCarDraft = null; renderVehicleMain(); }
@@ -26974,7 +27031,7 @@ function vehListHtml(){
     ${sub ? `<div style="font-size:11px;color:var(--ink3);margin-top:1px">${sub}</div>` : ''}
   </div>`;
 
-  return `<div style="max-width:1080px;margin:0 auto">
+  return `<div class="pg">
     ${vehCarDraft ? vehCarFormHtml() : ''}
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:11px;margin-bottom:18px">
       ${stat(t('관리 차량','Vehicles'), vehicles.length + t('대',''))}
@@ -27001,7 +27058,7 @@ function vehDetailHtml(){
   const today = vehToday();
   const expSoon = d => d && vehDays(today, vehDate(d)) <= 30;
 
-  return `<div style="max-width:960px;margin:0 auto">
+  return `<div class="pg">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
       <button onclick="vehBack()" style="height:34px;padding:0 12px;border:1.5px solid var(--border);background:var(--surface);border-radius:9px;cursor:pointer;font:600 12px var(--font);color:var(--ink2)">${t('← 차량 목록','← Vehicles')}</button>
       <div style="font-size:19px;font-weight:800;color:var(--ink);letter-spacing:.02em">${escHtml(v.plate||'')}</div>
@@ -27490,11 +27547,11 @@ function renderTrainingMain() {
   const main = document.getElementById('school-main'); if (!main) return;
   if (trainSel) {
     const x = trainings.find(v => v.id === trainSel);
-    if (x) { main.innerHTML = `<div class="spage" style="max-width:1200px">${trainDetailHtml(x)}</div>`; return; }
+    if (x) { main.innerHTML = `<div class="spage">${trainDetailHtml(x)}</div>`; return; }
     trainSel = null;
   }
-  if (trainMode === 'status') { main.innerHTML = `<div class="spage" style="max-width:1200px">${trainStatusHtml()}</div>`; return; }
-  main.innerHTML = `<div class="spage" style="max-width:1200px">${trainListHtml()}</div>`;
+  if (trainMode === 'status') { main.innerHTML = `<div class="spage">${trainStatusHtml()}</div>`; return; }
+  main.innerHTML = `<div class="spage">${trainListHtml()}</div>`;
 }
 
 function setTrainMode(m) { trainMode = m; trainSel = null; trainDraft = null; renderTrainingMain(); }
@@ -27951,7 +28008,7 @@ async function openTraining(id) {
   trainSel = id; trainDraft = null; trainStars = 0;
   const main = document.getElementById('school-main');
   const x = trainings.find(v => v.id === id);
-  if (main && x) main.innerHTML = `<div class="spage" style="max-width:1200px">${trainDetailHtml(x, true)}</div>`;
+  if (main && x) main.innerHTML = `<div class="spage">${trainDetailHtml(x, true)}</div>`;
   const { data, error } = await sb.from('training_notes').select('*')
     .eq('training_id', id).order('created_at', { ascending:false });
   trainNotes = error ? [] : (data || []);
@@ -28820,7 +28877,7 @@ async function renderFinBalances(kind) {
     </div>`;
   }).join('');
 
-  main.innerHTML = `<div class="spage" style="max-width:1200px">
+  main.innerHTML = `<div class="spage">
     ${finTabBar()}
     <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px">
       <div>
@@ -29238,7 +29295,7 @@ function ofPaint() {
       </div>`;
   };
 
-  main.innerHTML = `<div class="spage" style="max-width:980px">
+  main.innerHTML = `<div class="spage">
     ${finTabBar()}
     ${modeBar}
     <div class="adm-card" style="margin-bottom:14px">
@@ -29726,7 +29783,7 @@ function ledgerRenderInto() {
     </tr>`;
   }).join('') : `<tr><td colspan="5" style="padding:26px;text-align:center;color:var(--ink3);font-size:13px">${(filtered || ledgerSearch.trim()) ? t('조건에 맞는 거래가 없어요.','No transactions match your filter/search.') : t('이 달의 거래내역이 없어요. 은행 엑셀을 올리거나 직접 추가하세요.','No transactions this month. Upload a bank Excel or add one manually.')}</td></tr>`;
 
-  main.innerHTML = `<div class="spage" style="max-width:1200px">${finTabBar()}
+  main.innerHTML = `<div class="spage">${finTabBar()}
     <!-- 뷰 전환 + 월 이동 + 업로드 -->
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:14px">
       ${ledgerViewToggle()}
@@ -29833,7 +29890,7 @@ function ledgerRenderDay() {
     </tr>`;
   }).join('') : `<tr><td colspan="4" style="padding:26px;text-align:center;color:var(--ink3);font-size:13px">${(filtered || ledgerSearch.trim()) ? t('조건에 맞는 거래가 없어요.','No transactions match your filter/search.') : t('이 날의 거래내역이 없어요.','No transactions on this day.')}</td></tr>`;
 
-  main.innerHTML = `<div class="spage" style="max-width:1200px">${finTabBar()}
+  main.innerHTML = `<div class="spage">${finTabBar()}
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:14px">
       ${ledgerViewToggle()}
       <div style="display:flex;align-items:center;gap:8px">
@@ -29922,7 +29979,7 @@ function ledgerRenderYear() {
     rowHtml(t('지출 합계','Expense total'), exp, true) +
     netRow();
 
-  main.innerHTML = `<div class="spage" style="max-width:1200px">${finTabBar()}
+  main.innerHTML = `<div class="spage">${finTabBar()}
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:14px">
       ${ledgerViewToggle()}
       <div style="display:flex;align-items:center;gap:8px">
@@ -30476,7 +30533,7 @@ function renderTuition() {
   const groupChips = `<div style="display:inline-flex;gap:5px;flex-wrap:wrap;align-items:center">${chip('all',t('전체','All'))}${tcsGroups.map(g=>chip(g.id,g.name)).join('')}${chip('none',t('미지정','Unassigned'))}${exemptChip}</div>`;
   const headMonths = TUI_MONTHS.map(mo=>`<th style="padding:7px 2px;font-size:11px;font-weight:700;color:${(tuiYear===nowY&&mo===nowM)?'#1d3a5f':'var(--ink3)'};text-align:center;border:1px solid var(--border);background:${(tuiYear===nowY&&mo===nowM)?'#e7f0fb':'var(--s2)'}">${t(mo+'월',TUI_MON_EN[mo])}</th>`).join('');
 
-  main.innerHTML = `<div class="spage" style="max-width:1200px">
+  main.innerHTML = `<div class="spage">
     ${finTabBar()}
     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px">
       <div>
@@ -30839,7 +30896,7 @@ async function renderPublicNewsletter(id) {
       <div style="font-size:13px;color:var(--ink3);line-height:1.8">${t('링크가 만료되었거나 공유가 해제되었어요.<br>학교에 문의해 주세요.','The link has expired or sharing was disabled.<br>Please contact the school.')}</div></div>`;
     return;
   }
-  box.innerHTML = `<div style="max-width:680px;margin:0 auto">
+  box.innerHTML = `<div class="pg-narrow">
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px 30px;box-shadow:0 4px 20px rgba(29,58,95,.08)">
       <div style="text-align:center;border-bottom:2px solid #1d3a5f;padding-bottom:14px;margin-bottom:18px">
         <div style="font-size:12px;font-weight:600;color:var(--ink3);letter-spacing:2px">${t('가 정 통 신 문','NEWSLETTER')}</div>
@@ -31914,7 +31971,7 @@ async function renderStudent360() {
   const list = s360List();
   if (!s360Id || !schoolStudents.find(s=>s.id===s360Id)) s360Id = (list[0]||schoolStudents[0]).id;
   if (list.length && !list.find(s=>s.id===s360Id)) s360Id = list[0].id;
-  main.innerHTML = `<div id="s360-split" class="spage" style="max-width:1200px;display:flex;gap:18px;align-items:flex-start">
+  main.innerHTML = `<div id="s360-split" class="spage" style="display:flex;gap:18px;align-items:flex-start">
     <button class="s360-mobile-back" onclick="s360BackToList()" style="align-items:center;gap:6px;height:36px;padding:0 14px;border:1px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:9px;cursor:pointer;font:700 13px var(--font);margin-bottom:2px">${t('‹ 학생 목록','‹ Student list')}</button>
     <div id="s360-list" style="width:228px;flex-shrink:0;position:sticky;top:0"></div>
     <div id="s360-detail" style="flex:1;min-width:0"><div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px">${t('불러오는 중...','Loading...')}</div></div>
@@ -33964,7 +34021,7 @@ function parPaint() {
     </div>`;
   };
 
-  main.innerHTML = `<div class="spage" style="max-width:900px">
+  main.innerHTML = `<div class="spage">
     <div class="adm-card" style="margin-bottom:14px">
       <div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center">
         <input value="${escAttr(parFind)}" oninput="parSetFind(this.value)" placeholder="${t('이름 · 연락처 · 아이 이름 찾기','Find by name, contact or child')}"
@@ -34123,7 +34180,7 @@ function rvPaint() {
     </div>`;
   }).join('');
 
-  main.innerHTML = `<div class="spage" style="max-width:900px">
+  main.innerHTML = `<div class="spage">
     <div class="adm-card" style="margin-bottom:14px">
       <div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
         ${tabBtn('activity','✍️','활동후기','Reviews')}
