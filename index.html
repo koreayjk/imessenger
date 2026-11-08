@@ -13064,6 +13064,92 @@ async function pickMyPhoto(input) {
   }
 }
 
+// ── 관리자가 멤버 사진 올리기 ────────────────────────────────────
+//
+//  예전에는 사진을 **자기 것만** 올릴 수 있었습니다(`.eq('id', ME.id)`).
+//  그래서 "아이들 사진을 업로드 했는데 이름 옆에 안 보인다" 는 말이
+//  나왔습니다 — 올릴 자리가 아예 없었던 것입니다. 재 보니 서버는
+//  공동체 관리자에게 열려 있었고, 막힌 건 화면뿐이었습니다.
+let _admPhotoFor = null;
+function admPickPhoto(id, name) {
+  if (!isCommunityAdmin() || isGuestViewing()) return;
+  _admPhotoFor = { id, name };
+  let inp = document.getElementById('adm-photo-file');
+  if (!inp) {
+    inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = 'image/*'; inp.id = 'adm-photo-file';
+    inp.style.display = 'none';
+    inp.onchange = () => admUploadPhoto(inp);
+    document.body.appendChild(inp);
+  }
+  //  이미 사진이 있으면 내릴 수도 있어야 한다
+  const m = (admMembers || []).find(x => x.id === id);
+  if (m && avPhoto(m)) {
+    if (confirm(t(`${name} 님의 사진을 바꿀까요?\n\n[확인] 새 사진 고르기\n[취소] 그대로 두기`,
+                  `Change ${name}'s photo?`))) inp.click();
+    return;
+  }
+  inp.click();
+}
+
+async function admUploadPhoto(input) {
+  const file = (input.files || [])[0]; input.value = '';
+  const who = _admPhotoFor; _admPhotoFor = null;
+  if (!file || !who) return;
+  if (!/^image\//.test(file.type)) { showUploadToast(t('이미지 파일을 올려주세요','Please choose an image file')); return; }
+  const cut = await pfpAdjust(file);
+  if (!cut) return;
+  showUploadToast(t('사진 올리는 중...','Uploading photo...'));
+  try {
+    //  올릴 때마다 새 이름 — 같은 이름으로 덮으면 옛 사진이 브라우저에 남는다
+    const rnd = (crypto && crypto.randomUUID) ? crypto.randomUUID().replace(/-/g, '')
+                : String(Date.now()) + Math.random().toString(36).slice(2);
+    const path = `avatars/${who.id}/${rnd}.jpg`;
+    const { error: upErr } = await sb.storage.from('messenger')
+      .upload(path, cut, { cacheControl: '31536000', upsert: false, contentType: 'image/jpeg' });
+    if (upErr) throw upErr;
+    const { data: pub } = sb.storage.from('messenger').getPublicUrl(path);
+    const url = pub && pub.publicUrl;
+    if (!url) throw new Error(t('사진 주소를 받지 못했어요','Could not get the photo URL'));
+
+    const { data, error } = await sb.from('members')
+      .update({ photo_url: url }).eq('id', who.id).select('id');
+    if (error) throw error;
+    //  규칙에 막히면 오류 대신 '0줄 고침' 이 온다. 조용히 넘어가면 안 된다.
+    if (!data || !data.length) {
+      showUploadToast(t('사진을 저장할 권한이 없어요 (공동체 관리자만)','No permission to set this photo'));
+      return;
+    }
+    admPhotoApplied(who.id, url);
+    showUploadToast(t(`✅ ${who.name} 님의 사진을 올렸어요`, `✅ Photo set for ${who.name}`));
+  } catch (e) {
+    showUploadToast(t('사진 올리기 실패: ','Photo upload failed: ') + (e.message || e));
+  }
+}
+
+async function admClearPhoto(id, name) {
+  if (!isCommunityAdmin() || isGuestViewing()) return;
+  if (!confirm(t(`${name} 님의 사진을 내릴까요?\n다시 글자 아이콘으로 돌아갑니다.`,
+                 `Remove ${name}'s photo?`))) return;
+  const { data, error } = await sb.from('members')
+    .update({ photo_url: null }).eq('id', id).select('id');
+  if (error) { showUploadToast(t('내리지 못했어요 — ','Could not remove — ') + error.message); return; }
+  if (!data || !data.length) { showUploadToast(t('내릴 권한이 없어요','You do not have permission')); return; }
+  admPhotoApplied(id, null);
+  showUploadToast(t('사진을 내렸어요','Photo removed'));
+}
+
+//  바뀐 것을 들고 있는 곳마다 반영하고 목록을 다시 그린다.
+//  자리만 손으로 고치려다 보면 '사진 내리기' 단추가 남거나 사라지는 것을
+//  따로 챙겨야 해서, 그냥 다시 그리는 편이 확실하다.
+function admPhotoApplied(id, url) {
+  const m = (admMembers || []).find(x => x.id === id);
+  if (m) m.photo_url = url;
+  if (members[id]) members[id].photo_url = url;
+  if (ME && ME.id === id) { ME.photo_url = url; try { applyMyPhoto(url); } catch (_) {} }
+  try { renderAdminMembers(); } catch (_) {}
+}
+
 async function clearMyPhoto() {
   if (!ME || !ME.photo_url) return;
   if (!confirm(t('프로필 사진을 내릴까요?\n다시 이모지·글자 아이콘으로 돌아갑니다.',
@@ -13561,6 +13647,16 @@ async function changeProfilePassword() {
 // ══════════════════════════════════════════════════════════════════
 const TCS_LEVELS = { elem:'초등학교', middle:'중학교', high:'고등학교' };
 
+//  학생의 학년을 숫자로. K=0, G7=7 … 모르면 null.
+//  (세 군데에 같은 글이 흩어져 있던 것을 한 곳으로 모았다)
+function tcsGradeNum(stu) {
+  const g = ((stu && stu.grade) || '').toString().trim();
+  if (!g) return null;
+  if (g === 'K' || g === 'k') return 0;
+  const m = g.match(/(\d+)/);
+  return m ? parseInt(m[1], 10) : null;
+}
+
 // 학년(K~12)으로 학교급을 정한다. K~6 초 · 7~9 중 · 10~12 고
 function tcsLevelOfGrade(gradeNum) {
   if (gradeNum === null || gradeNum === undefined) return null;
@@ -13574,7 +13670,11 @@ const TCS_SECTIONS = [
   { id:'school',     icon:'🏫', label:'학적 변동',       labelEn:'Enrollment History' },
   { id:'attendance', icon:'📅', label:'출결상황',        labelEn:'Attendance' },
   { id:'awards',     icon:'🏆', label:'수상경력',        labelEn:'Awards', levels:['middle','high'] },
-  { id:'certs',      icon:'📜', label:'자격증·NCS',      labelEn:'Certificates & NCS', levels:['high'] },
+  //  📜 자격증 — 교육부 서식에는 **고등학교**에만 있는 항목입니다.
+  //  그런데 중학생도 자격증을 따 옵니다 (개선창 · 김환경 간사).
+  //  중학교에도 엽니다. 다만 공식 서식에 없는 학교급이라는 것은
+  //  그 화면에 적어 둡니다 — 모르고 공식 서류인 줄 알면 안 됩니다.
+  { id:'certs',      icon:'📜', label:'자격증·NCS',      labelEn:'Certificates & NCS', levels:['middle','high'] },
   { id:'violence',   icon:'⚖️',  label:'학교폭력 조치상황', labelEn:'School Violence Measures' },
   { id:'activities', icon:'🏃', label:'창의적 체험활동',  labelEn:'Creative Activities' },
   { id:'service',    icon:'🤝', label:'봉사활동 실적',    labelEn:'Volunteer Record' },
@@ -13680,8 +13780,9 @@ const TCS_LIST_SPECS = {
     {key:'org', label:t('수여기관','Awarded by'), type:'text', w:'130px'},
     {key:'scope', label:t('참가대상(참가인원)','Participants'), type:'text', w:'150px'},
   ]},
-  // 자격증 취득 및 국가직무능력표준(NCS) 이수상황 — 고등학교
-  certs: { prefix:'crt', max:12, columns:[
+  // 자격증 취득 및 국가직무능력표준(NCS) 이수상황 — 중·고등학교
+  //  (공식 서식은 고등학교만. 중학교는 우리 공동체 기록으로 둡니다)
+  certs: { prefix:'crt', max:12, noteLevels:{ middle:'공식 생기부 서식에는 고등학교에만 있는 항목이에요. 중학교는 우리 공동체 기록으로 남습니다.' }, columns:[
     {key:'kind', label:t('구분','Type'), type:'select', options:['자격증','NCS 이수'], w:'104px'},
     {key:'title', label:t('명칭 또는 종류','Name or type'), type:'text', flex:true},
     {key:'no', label:t('번호 또는 내용','No. or detail'), type:'text', w:'140px'},
@@ -14706,6 +14807,10 @@ function renderListEditor() {
     </div>`).join('');
 
   const guideline = spec.columns.map(c => c.label).join(' · ');
+  //  학교급마다 따로 일러 줄 말이 있으면 띄운다.
+  //  (자격증은 공식 서식에 고등학교만 있는데 중학교에도 열어 두었다)
+  const lv = tcsLevelOfGrade(tcsGradeNum(tcsCurrentStudent));
+  const lvNote = (spec.noteLevels && lv) ? (spec.noteLevels[lv] || '') : '';
 
   main.innerHTML = `
     <div style="max-width:680px">
@@ -14714,9 +14819,12 @@ function renderListEditor() {
         <div style="font-size:22px">${sec.icon}</div>
         <div style="font-size:16px;font-weight:700;color:var(--ink)">${APP_LANG==='en' ? sec.labelEn : sec.label}</div>
       </div>
-      <div style="background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:10px;padding:9px 13px;margin-bottom:16px;font-size:12px;color:#1d4ed8">
+      <div style="background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:10px;padding:9px 13px;margin-bottom:${lvNote ? '8px' : '16px'};font-size:12px;color:#1d4ed8">
         ${t('📋 입력 항목:','📋 Fields:')} <b>${guideline}</b>
       </div>
+      ${lvNote ? `<div data-lv-note style="background:#fff8ec;border:1.5px solid #f0dfba;border-radius:10px;padding:9px 13px;margin-bottom:16px;font-size:12px;color:#9a6b12;line-height:1.65">
+        ⚠️ ${escHtml(lvNote)}
+      </div>` : ''}
 
       <div class="adm-card">
         <div id="list-entries">${entryCards || `<div style="text-align:center;color:var(--ink3);font-size:13px;padding:16px 0">${t('아직 항목이 없어요. 아래 버튼으로 추가하세요.','No entries yet. Add one with the button below.')}</div>`}</div>
@@ -19247,6 +19355,7 @@ function admGroupedHtml(list, row, roleLabel, roleColor) {
     ${b.members.map(m => row(m, false)).join('')}`).join('');
 }
 
+let admMembers = [];   // 지금 그려 둔 멤버 목록 (사진을 바꾼 뒤 그 자리만 고치려고)
 async function renderAdminMembers() {
   const _seq = _admSeq;
   const area = document.getElementById('admin-content');
@@ -19264,6 +19373,7 @@ async function renderAdminMembers() {
 
   const { data } = await query;
   const list = data || [];
+  admMembers = list;
   // 그룹별로 묶을 때 이름이 필요하다 (아직 안 읽었으면 지금 읽는다)
   if (!tcsGroups.length) { try { await loadStudentGroups(); } catch (_) {} }
   // 학부모가 어느 아이와 이어졌는지 (아직 표가 없는 공동체는 조용히 넘어간다)
@@ -19290,15 +19400,24 @@ async function renderAdminMembers() {
          </div>
        </div>`
     : '';
+  //  사진은 공동체 관리자 이상이 올립니다. 서버도 같은 규칙입니다
+  //  (교사·간사는 남의 사진을 못 바꿉니다 — 재서 확인했습니다).
+  const canPhoto = isCommunityAdmin() && !isGuestViewing();
   const memberRow = (m, showApproval=false) => `
     <div class="adm-row" style="padding:14px 20px;flex-wrap:wrap;gap:10px">
-      <div style="width:38px;height:38px;border-radius:12px;${avFill(m, '#999')};color:white;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;flex-shrink:0">${avInner(m)}</div>
+      <div data-adm-av="${escAttr(m.id)}" ${canPhoto ? `onclick="admPickPhoto('${escJs(m.id)}','${escJs(m.name||'')}')" title="${escAttr(t('눌러서 사진 올리기','Tap to set a photo'))}"` : ''}
+        style="position:relative;width:38px;height:38px;border-radius:12px;${avFill(m, '#999')};color:white;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;flex-shrink:0;${canPhoto?'cursor:pointer':''}">${avInner(m)}
+        ${canPhoto ? `<span style="position:absolute;right:-3px;bottom:-3px;width:17px;height:17px;border-radius:50%;background:var(--surface);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:9px;line-height:1">📷</span>` : ''}
+      </div>
       <div style="flex:1;min-width:0">
         <div style="display:flex;align-items:center;gap:8px">
           <span style="font-size:14px;font-weight:600">${escHtml(m.name || '')}</span>
           ${(isCommunityAdmin() && !isGuestViewing()) ? `<button class="adm-btn ghost" title="${t('이름 고치기','Rename')}"
             onclick="renameMember('${escJs(m.id)}')"
             style="height:24px;padding:0 7px;font-size:12px;line-height:1">✏️</button>` : ''}
+          ${(canPhoto && avPhoto(m)) ? `<button class="adm-btn ghost" data-adm-rmphoto="${escAttr(m.id)}" title="${escAttr(t('사진 내리기','Remove photo'))}"
+            onclick="admClearPhoto('${escJs(m.id)}','${escJs(m.name||'')}')"
+            style="height:24px;padding:0 7px;font-size:11px;line-height:1">🚫📷</button>` : ''}
           <span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:99px;background:${roleColor[m.community_role]||'#6b728022'}22;color:${roleColor[m.community_role]||'#6b7280'}">${roleLabel[m.community_role]||m.community_role||t('멤버','Member')}</span>
         </div>
         <div style="font-size:12px;color:var(--ink3);margin-top:2px">${m.email||''} ${m.birth_date?'· '+m.birth_date:''}</div>
