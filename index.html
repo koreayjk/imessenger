@@ -5859,9 +5859,15 @@ async function openChannel(id) {
   markChannelRead(id);
 
   // 메시지 로드 — 최신 200개를 가져와 오래된→최신 순으로 표시
+  //  더 옛날 글은 맨 위 [이전 글 더 보기] 로 한 묶음씩 가져온다.
+  //  처음부터 다 가져오면 글이 많은 방은 열리는 데만 한참 걸린다.
   const { data: msgsDesc } = await sb.from('messages').select('*')
-    .eq('channel_id', id).order('created_at', {ascending:false}).limit(200);
+    .eq('channel_id', id).order('created_at', {ascending:false}).limit(MSG_PAGE);
   const msgs = (msgsDesc || []).slice().reverse();
+  //  한 묶음을 꽉 채워 왔으면 더 있을 수 있다
+  olderMaybe = (msgsDesc || []).length >= MSG_PAGE;
+  oldestAt = msgs.length ? msgs[0].created_at : null;
+  olderBusy = false;
 
   // 리액션 로드
   const msgIds = (msgs||[]).map(m=>m.id);
@@ -6108,6 +6114,92 @@ async function refreshReadCounts() {
 }
 
 // ── 메시지 렌더 ──
+// ── 이전 글 더 보기 ─────────────────────────────────────────────
+//
+//    "좀 챗이 많거나 하면 그 전에 봣던 것들을 다시 보는 데에 좀 제한이
+//     있네요.. 혹시 범위를 좀만 더 늘려주실 수 있을까요?" (박유빈)
+//
+//  최신 200개만 불러오고 끝이었습니다. 숫자만 키우면 글이 많은 방은
+//  열리는 데만 한참 걸립니다. 맨 위에서 한 묶음씩 더 가져옵니다.
+const MSG_PAGE = 200;
+let olderMaybe = false;   // 더 옛날 글이 있을 수 있나
+let oldestAt = null;      // 지금 화면에서 제일 오래된 글의 시각
+let olderBusy = false;
+
+async function loadOlderMessages() {
+  if (olderBusy || !olderMaybe || !currentChannel || !oldestAt) return;
+  olderBusy = true;
+  const btn = document.getElementById('msg-older-btn');
+  if (btn) btn.textContent = t('불러오는 중…', 'Loading…');
+  const chId = currentChannel.id;
+  try {
+    const { data } = await sb.from('messages').select('*')
+      .eq('channel_id', chId)
+      .lt('created_at', oldestAt)
+      .order('created_at', { ascending: false })
+      .limit(MSG_PAGE);
+    //  불러오는 사이에 다른 방으로 갔으면 버린다
+    if (!currentChannel || currentChannel.id !== chId) return;
+    const older = (data || []).slice().reverse();
+    olderMaybe = (data || []).length >= MSG_PAGE;
+    if (!older.length) { paintOlderBar(); return; }
+    oldestAt = older[0].created_at;
+
+    //  이모지·읽음도 같이 (없으면 그 글들만 반응이 사라진 것처럼 보인다)
+    const ids = older.map(m => m.id);
+    const [rx, rd] = await Promise.all([
+      sb.from('message_reactions').select('*').in('message_id', ids),
+      sb.from('message_reads').select('message_id, member_id').in('message_id', ids),
+    ]);
+    const rmap = {};
+    (rx.data || []).forEach(r => { (rmap[r.message_id] = rmap[r.message_id] || []).push(r); });
+    (rd.data || []).forEach(r => {
+      if (!_lastReadMap[r.message_id]) _lastReadMap[r.message_id] = new Set();
+      _lastReadMap[r.message_id].add(r.member_id);
+    });
+
+    const area = document.getElementById('msg-area');
+    if (!area) return;
+    //  ⚠️ 위에 글을 끼워 넣으면 보던 자리가 아래로 밀린다.
+    //     넣기 전후의 높이 차이만큼 다시 내려 준다 — 그래야 읽던 자리에 머문다.
+    const before = area.scrollHeight, top = area.scrollTop;
+    let html = '';
+    let lastDateStr = '';
+    older.forEach((m, i) => {
+      const dStr = msgDateStr(m.created_at);
+      if (dStr !== lastDateStr) { lastDateStr = dStr; html += `<div class="date-divider">${msgDateLabel(m.created_at)}</div>`; }
+      const prev = i > 0 && msgDateStr(older[i-1].created_at) === dStr ? older[i-1] : null;
+      html += msgHtml({ ...m, reactions: rmap[m.id] || [] }, prev, _lastReadMap);
+    });
+    const bar = document.getElementById('msg-older-bar');
+    if (bar) bar.insertAdjacentHTML('afterend', html);
+    else area.insertAdjacentHTML('afterbegin', html);
+    paintOlderBar();
+    area.scrollTop = top + (area.scrollHeight - before);
+  } catch (e) {
+    showUploadToast(t('이전 글을 불러오지 못했어요','Could not load older messages'));
+  } finally {
+    olderBusy = false;
+    const b2 = document.getElementById('msg-older-btn');
+    if (b2) b2.textContent = t('↑ 이전 글 더 보기', '↑ Load older messages');
+  }
+}
+
+//  맨 위 띠 — 더 있으면 단추, 없으면 '맨 처음이에요'
+function olderBarHtml() {
+  return `<div id="msg-older-bar" style="display:flex;justify-content:center;padding:10px 0 4px">
+    ${olderMaybe
+      ? `<button id="msg-older-btn" onclick="loadOlderMessages()"
+           style="height:32px;padding:0 15px;border-radius:99px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);font:700 12.5px var(--font);cursor:pointer">${t('↑ 이전 글 더 보기','↑ Load older messages')}</button>`
+      : `<span style="font:600 11.5px var(--font);color:var(--ink3)">${t('— 대화의 맨 처음이에요 —','— Beginning of the conversation —')}</span>`}
+  </div>`;
+}
+function paintOlderBar() {
+  const bar = document.getElementById('msg-older-bar');
+  if (!bar) return;
+  bar.outerHTML = olderBarHtml();
+}
+
 function renderMessages(msgs, readMap={}) {
   _lastReadMap = readMap;
   const area = document.getElementById('msg-area');
@@ -6120,7 +6212,7 @@ function renderMessages(msgs, readMap={}) {
     return;
   }
 
-  let html = '';
+  let html = olderBarHtml();
   let lastDateStr = '';
   msgs.forEach((m, i) => {
     const dStr = msgDateStr(m.created_at);
@@ -13196,7 +13288,33 @@ async function saveMyAvatar(val) {
 }
 
 // 아바타 배경색 저장
+//  색 글자가 제대로 된 #rrggbb 인가. 아무 글자나 저장하면 화면이 깨진다.
+function avHexOk(c) { return /^#[0-9a-fA-F]{6}$/.test(String(c || '').trim()); }
+//  견줄 때는 대소문자를 무시한다 (#1D3A5F 와 #1d3a5f 는 같은 색)
+function avSameColor(a, b) {
+  return String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
+}
+//  열두 색 중에 없는 색인가 (직접 고른 색)
+function avCustomColor(c) {
+  if (!avHexOk(c)) return false;
+  return !AVATAR_COLORS.some(x => avSameColor(x, c));
+}
+//  고르개에 넣을 값 — 제대로 된 색이 아니면 기본색
+function avHexOf(c) { return avHexOk(c) ? String(c).trim() : '#1d3a5f'; }
+
+//  고르는 동안 미리 보여만 준다 (저장은 손을 뗄 때 한 번)
+function previewMyAvatarColor(c) {
+  if (!avHexOk(c)) return;
+  const pv = document.getElementById('av-preview'); if (pv) pv.style.background = c;
+  const lab = document.querySelector('[data-avc-pick]');
+  if (lab) { lab.style.background = c; const sp = lab.querySelector('span'); if (sp) sp.remove(); }
+}
+
 async function saveMyAvatarColor(c) {
+  //  ⚠️ 색 글자를 그대로 믿지 않는다. 엉뚱한 글자가 들어가면 그 사람
+  //     얼굴 자리가 모든 화면에서 깨진다.
+  if (!avHexOk(c)) { showUploadToast(t('색을 알아보지 못했어요','Could not read that color')); return; }
+  c = String(c).trim().toLowerCase();
   const { error } = await sb.from('members').update({ color: c }).eq('id', ME.id);
   if (error) { showUploadToast('저장 실패: ' + error.message); return; }
   ME.color = c;
@@ -13208,8 +13326,19 @@ async function saveMyAvatarColor(c) {
   if (!pv) { renderProfilePage(); return; }
   pv.style.background = c;
   document.querySelectorAll('#av-picker [data-avc]').forEach(b => {
-    b.style.borderColor = b.getAttribute('data-avc') === c ? '#111' : 'transparent';
+    b.style.borderColor = avSameColor(b.getAttribute('data-avc'), c) ? '#111' : 'transparent';
   });
+  //  직접 고른 색이면 🎨 자리에 그 색을 칠하고 테두리를 준다
+  const lab = document.querySelector('[data-avc-pick]');
+  if (lab) {
+    const mine = avCustomColor(c);
+    lab.style.borderColor = mine ? '#111' : 'transparent';
+    lab.style.background = mine ? c : 'conic-gradient(#ef4444,#f59e0b,#10b981,#3b82f6,#8b5cf6,#ef4444)';
+    const sp = lab.querySelector('span');
+    if (mine && sp) sp.remove();
+    else if (!mine && !sp) lab.insertAdjacentHTML('beforeend', '<span style="font-size:14px;pointer-events:none">🎨</span>');
+    const inp = document.getElementById('av-color-pick'); if (inp) inp.value = avHexOf(c);
+  }
 }
 
 async function renderProfilePage() {
@@ -13289,9 +13418,20 @@ async function renderProfilePage() {
             ${AVATAR_EMOJIS.map(e => `<button data-av="${e}" onclick="saveMyAvatar('${e}')" style="height:46px;border:1.5px solid ${ME.initials===e?'#1d3a5f':'var(--border)'};background:${ME.initials===e?'var(--asoft)':'var(--surface)'};border-radius:12px;font-size:24px;cursor:pointer">${e}</button>`).join('')}
           </div>
           <div style="font-size:12px;font-weight:700;color:var(--ink2);margin:16px 0 8px">${t('배경 색','Background color')}</div>
-          <div style="display:flex;gap:9px;flex-wrap:wrap">
-            ${AVATAR_COLORS.map(c => `<button data-avc="${c}" onclick="saveMyAvatarColor('${c}')" title="${t('배경색','Background color')}" style="width:36px;height:36px;border-radius:11px;background:${c};border:3px solid ${ME.color===c?'#111':'transparent'};cursor:pointer;box-shadow:0 0 0 1px var(--border)"></button>`).join('')}
+          <div style="display:flex;gap:9px;flex-wrap:wrap;align-items:center">
+            ${AVATAR_COLORS.map(c => `<button data-avc="${c}" onclick="saveMyAvatarColor('${c}')" title="${t('배경색','Background color')}" style="width:36px;height:36px;border-radius:11px;background:${c};border:3px solid ${avSameColor(ME.color, c)?'#111':'transparent'};cursor:pointer;box-shadow:0 0 0 1px var(--border)"></button>`).join('')}
+            ${/*  🎨 직접 고르기 — 열두 색 말고 아무 색이나 (개선창 · 김가은)  */''}
+            <label data-avc-pick title="${escAttr(t('직접 고르기','Pick any color'))}"
+              style="position:relative;width:36px;height:36px;border-radius:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;
+              border:3px solid ${avCustomColor(ME.color)?'#111':'transparent'};box-shadow:0 0 0 1px var(--border);
+              background:${avCustomColor(ME.color) ? escAttr(ME.color) : 'conic-gradient(#ef4444,#f59e0b,#10b981,#3b82f6,#8b5cf6,#ef4444)'}">
+              <input type="color" id="av-color-pick" value="${escAttr(avHexOf(ME.color))}"
+                oninput="previewMyAvatarColor(this.value)" onchange="saveMyAvatarColor(this.value)"
+                style="position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;border:none;padding:0"/>
+              ${avCustomColor(ME.color) ? '' : '<span style="font-size:14px;pointer-events:none">🎨</span>'}
+            </label>
           </div>
+          <div style="font-size:11.5px;color:var(--ink3);margin-top:7px">${t('🎨 를 누르면 원하는 색을 직접 고를 수 있어요','Tap 🎨 to pick any color you like')}</div>
         </div>
       </div>
 
