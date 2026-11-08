@@ -5225,7 +5225,10 @@ function openGroupKindModal() {
     <div style="padding:17px 20px;border-bottom:1px solid var(--border);font:700 15.5px var(--font);color:var(--ink)">\u{1F4C2} ${t('새 그룹 만들기','New group')}</div>
     <div style="padding:16px 20px">
       <input id="gk-name" placeholder="${escAttr(t('그룹 이름 (예: 사역팀)','Group name'))}"
-        style="width:100%;padding:11px 13px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none;margin-bottom:14px"/>
+        oninput="gkClearWarn()" onkeydown="if(event.key==='Enter')submitGroupKind()"
+        style="width:100%;padding:11px 13px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none"/>
+      <div id="gk-warn" style="display:none;font:600 12px var(--font);color:#b91c1c;margin:6px 2px 0"></div>
+      <div style="height:14px"></div>
       <div style="display:flex;flex-direction:column;gap:8px">
         ${GROUP_KINDS.map(k => `
           <div onclick="pickGroupKind('${k.v}')" data-gk="${k.v}"
@@ -5258,10 +5261,26 @@ function pickGroupKind(v) {
     x.style.background  = on ? 'var(--asoft)' : 'transparent';
   });
 }
+function gkClearWarn() {
+  const el = document.getElementById('gk-name');
+  const w  = document.getElementById('gk-warn');
+  if (el) el.style.borderColor = 'var(--border)';
+  if (w) w.style.display = 'none';
+}
 async function submitGroupKind() {
   const el = document.getElementById('gk-name');
   const name = (el ? el.value : '').trim();
-  if (!name) { if (el) el.style.borderColor = 'var(--rose)'; return; }
+  //  ⚠️ 예전에는 테두리만 빨갛게 바꾸고 말았다. 그랬더니 '만들기 눌러도
+  //     그대로야, 안 눌려' 라는 말이 나왔다 — 왜 안 되는지 적어준다.
+  if (!name) {
+    const w = document.getElementById('gk-warn');
+    if (el) { el.style.borderColor = 'var(--rose)'; el.focus(); }
+    if (w) {
+      w.textContent = t('그룹 이름을 먼저 적어주세요', 'Please enter a group name first');
+      w.style.display = '';
+    }
+    return;
+  }
   const kind = _gkPick;
   document.querySelector('.group-kind-modal')?.remove();
   if (kind === 'mine') { await addMyChannelGroup(name); return; }

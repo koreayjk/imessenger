@@ -187,6 +187,19 @@ console.log('\n⑤ 그룹 만들기');
     out.modal = !!m;
     out.kinds = m ? [...m.querySelectorAll('[data-gk]')].map(x => x.dataset.gk) : [];
     out.txt = m ? m.innerText : '';
+    //  이름을 비운 채로 만들기 — 왜 안 되는지 말해줘야 한다
+    document.getElementById('gk-name').value = '';
+    window.__ins = [];
+    await submitGroupKind();
+    const w = document.getElementById('gk-warn');
+    out.emptyWarn = !!(w && w.style.display !== 'none' && /이름/.test(w.textContent));
+    out.emptySent = JSON.stringify(window.__ins);
+    out.stillOpen = !!document.querySelector('.group-kind-modal');
+    //  적기 시작하면 빨간 글씨가 사라진다
+    document.getElementById('gk-name').value = '연';
+    gkClearWarn();
+    out.warnGone = document.getElementById('gk-warn').style.display === 'none';
+
     //  🌐 를 골라 만들면 깃발이 간다
     document.getElementById('gk-name').value = '연합청년';
     pickGroupKind('cross');
@@ -210,6 +223,9 @@ console.log('\n⑤ 그룹 만들기');
   ok(/모든 공동체/.test(r.txt) && /어느 공동체 사람이든/.test(r.txt),
      '🌐 를 고르면 어떻게 되는지 적어 놓았다');
   ok(/"cross_community":true/.test(r.sent), '🌐 를 고르면 깃발이 간다');
+  ok(r.emptyWarn, '이름을 안 적고 만들기를 누르면 왜 안 되는지 알려준다 ← 단추가 고장난 줄 알았다는 말이 나왔다');
+  ok(r.emptySent === '[]', '이름이 비면 아무것도 보내지 않는다');
+  ok(r.warnGone, '이름을 적기 시작하면 빨간 글씨가 사라진다');
   ok(/"name":"연합청년"/.test(r.sent), '이름도 간다');
   ok(!/cross_community/.test(r.sentComm),
      '우리 공동체 그룹은 깃발을 아예 보내지 않는다 ← 기본은 소속공동체만');
