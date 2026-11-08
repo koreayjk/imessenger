@@ -3915,6 +3915,26 @@ function isCommunityAdmin() {
   if (ME.community_role === 'super_admin' || ME.community_role === 'community_admin') return true;
   return isViceAdmin() && inHomeCommunity();
 }
+// ── 공동체 종류 (2가지) ─────────────────────────────────────────
+//  ① 리뉴젠 공동체(community)   ② 리뉴젠 아카데미(academy)
+//
+//  칸이 없는 옛 DB 에서도 조용히 ①로 봅니다 (설치 전 호환).
+//  종류는 **총관리자만** 바꿉니다 — 서버에서도 막아 뒀습니다.
+const COMM_KINDS = [
+  { v: 'community', ko: '리뉴젠 공동체',   en: 'Renewgen Communities', emoji: '\u{1F3DB}\u{FE0F}' },
+  { v: 'academy',   ko: '리뉴젠 아카데미', en: 'Renewgen Academy',     emoji: '\u{1F393}' },
+];
+function commKind(c) { return (c && c.kind === 'academy') ? 'academy' : 'community'; }
+function commKindInfo(v) { return COMM_KINDS.find(k => k.v === v) || COMM_KINDS[0]; }
+function commKindLabel(c) { const k = commKindInfo(commKind(c)); return k.emoji + ' ' + t(k.ko, k.en); }
+//  목록을 종류별로 묶는다. 빈 종류는 내놓지 않는다.
+//  → 아직 아무것도 아카데미로 옮기지 않았으면 묶음이 1개라, 화면은 전과 똑같다.
+function groupByCommKind(list) {
+  return COMM_KINDS
+    .map(k => ({ kind: k, items: (list || []).filter(c => commKind(c) === k.v) }))
+    .filter(g => g.items.length);
+}
+
 function isTeacher() {
   if (!ME) return false;
   if (['super_admin','community_admin','teacher','admin_officer'].includes(ME.community_role)) return true;
@@ -4367,7 +4387,12 @@ function showCommunitySelect(communities) {
   document.getElementById('auth-screen').style.display = 'none';
   document.getElementById('community-select-screen').style.display = 'flex';
   const list = document.getElementById('community-list');
-  list.innerHTML = communities.map(c => `
+  const groups = groupByCommKind(communities);
+  //  묶음이 하나면 머리글 없이 전과 똑같이 늘어놓는다.
+  //  그리드 안에 머리글을 넣으면 줄이 깨지므로 한 칸을 통째로 쓴다.
+  list.innerHTML = groups.map(g => `
+    ${groups.length > 1 ? `<div data-comm-kind-head="${g.kind.v}" style="grid-column:1/-1;font-size:11.5px;font-weight:800;color:var(--ink3);letter-spacing:.04em;padding:6px 2px 0">${g.kind.emoji} ${t(g.kind.ko, g.kind.en)}</div>` : ''}
+    ${g.items.map(c => `
     <div onclick="enterCommunity('${c.id}')"
       style="background:var(--surface);border:1.5px solid var(--border);border-radius:16px;
       padding:14px 10px;text-align:center;cursor:pointer;transition:border-color .15s var(--ease-out),transform .15s var(--ease-out);
@@ -4380,7 +4405,7 @@ function showCommunitySelect(communities) {
         </div>
       <div style="font-size:13.5px;font-weight:700;color:var(--ink);margin-bottom:3px;word-break:keep-all">${c.name}</div>
       ${c.description ? `<div style="font-size:11px;color:var(--ink3);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${c.description}</div>` : ''}
-    </div>`).join('');
+    </div>`).join('')}`).join('');
 }
 
 async function enterCommunity(communityId) {
@@ -16413,6 +16438,7 @@ async function showCommunitySwitcher() {
   const list = communities || [];
   const currentId = CID();              // 부총관리자는 '보고 있는 곳'이 현재
   const myHome = ME.community_id || '';   // 관리 권한이 있는 내 소속
+  const groups = groupByCommKind(list);   // 리뉴젠 공동체 / 리뉴젠 아카데미
 
   const overlay = document.createElement('div');
   overlay.id = 'community-switcher-overlay';
@@ -16426,7 +16452,9 @@ async function showCommunitySwitcher() {
           : '입장할 공동체를 선택하세요'}</div>
       </div>
       <div style="padding:12px;max-height:400px;overflow-y:auto">
-        ${list.map(c => `
+        ${groups.map(g => `
+          ${groups.length > 1 ? `<div data-comm-kind-head="${g.kind.v}" style="font-size:11px;font-weight:800;color:var(--ink3);letter-spacing:.04em;padding:10px 14px 6px">${g.kind.emoji} ${t(g.kind.ko, g.kind.en)} <span style="font-weight:600;opacity:.7">${g.items.length}</span></div>` : ''}
+          ${g.items.map(c => `
           <div onclick="switchToCommunity('${c.id}')"
             style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:12px;cursor:pointer;transition:background .12s;
             ${c.id===currentId?'background:var(--asoft)':''}"
@@ -16441,7 +16469,7 @@ async function showCommunitySwitcher() {
             </div>
             ${c.id===currentId?'<span style="font-size:11px;color:var(--accent);font-weight:600">현재</span>'
               :(isViceAdmin()&&c.id===myHome?'<span style="font-size:11px;color:var(--ink3);font-weight:600">내 소속</span>':'')}
-          </div>`).join('')}
+          </div>`).join('')}`).join('')}
       </div>
       <div style="padding:12px 16px;border-top:1px solid var(--border)">
         <button onclick="document.getElementById('community-switcher-overlay').remove()"
@@ -17764,6 +17792,7 @@ async function renderAdminCommunities() {
   const area = document.getElementById('admin-content');
   const { data: communities } = await sb.from('communities').select('*').order('created_at');
   const list = communities || [];
+  const groups = groupByCommKind(list);   // 리뉴젠 공동체 / 리뉴젠 아카데미
   const { data: pendingRows } = await sb.from('members').select('community_id').eq('status', 'pending');
   const pendingByComm = {};
   (pendingRows || []).forEach(r => { pendingByComm[r.community_id] = (pendingByComm[r.community_id] || 0) + 1; });
@@ -17795,17 +17824,27 @@ async function renderAdminCommunities() {
             </div>
           </div>
         </div>
-        <div style="margin-bottom:12px">
-          <div style="font-size:12px;color:var(--ink3);margin-bottom:5px;font-weight:500">설명 (선택)</div>
-          <input id="new-comm-desc" class="adm-input" placeholder="공동체 소개" style="width:100%"/>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+          <div>
+            <div style="font-size:12px;color:var(--ink3);margin-bottom:5px;font-weight:500">설명 (선택)</div>
+            <input id="new-comm-desc" class="adm-input" placeholder="공동체 소개" style="width:100%"/>
+          </div>
+          <div>
+            <div style="font-size:12px;color:var(--ink3);margin-bottom:5px;font-weight:500">종류 *</div>
+            <select id="new-comm-kind" class="adm-input" style="width:100%">
+              ${COMM_KINDS.map(k => `<option value="${k.v}">${k.emoji} ${t(k.ko, k.en)}</option>`).join('')}
+            </select>
+          </div>
         </div>
         <button onclick="createCommunity()" style="height:38px;padding:0 20px;border-radius:10px;border:none;background:var(--accent);color:white;font:600 13px var(--font);cursor:pointer">+ 공동체 생성</button>
       </div>
 
-      <!-- 공동체 목록 -->
+      <!-- 공동체 목록 — 종류별로 묶는다 -->
       <div style="font-size:13px;font-weight:700;color:var(--ink2);margin-bottom:12px">전체 공동체 (${list.length}개)</div>
+      ${groups.map(g => `
+      <div data-comm-kind-head="${g.kind.v}" style="font-size:12.5px;font-weight:800;color:var(--ink3);letter-spacing:.04em;margin:18px 0 10px">${g.kind.emoji} ${t(g.kind.ko, g.kind.en)} <span style="font-weight:600;opacity:.75">${g.items.length}개</span></div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;align-items:start">
-      ${list.map(c => `
+      ${g.items.map(c => `
         <div class="adm-card" style="border-left:4px solid ${c.color||'#1d3a5f'};margin-bottom:0">
           <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
             <div style="display:flex;align-items:center;gap:12px;flex:1">
@@ -17819,7 +17858,7 @@ async function renderAdminCommunities() {
               </div>
             </div>
             <div style="display:flex;gap:8px;flex-shrink:0">
-              <button onclick="editCommunity('${c.id}','${escJs(c.name)}','${escJs(c.description||'')}','${c.color||'#1d3a5f'}')"
+              <button onclick="editCommunity('${c.id}','${escJs(c.name)}','${escJs(c.description||'')}','${c.color||'#1d3a5f'}','${commKind(c)}')"
                 style="height:32px;padding:0 12px;border-radius:8px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:500 12px var(--font);cursor:pointer">수정</button>
               ${c.id !== '00000000-0000-0000-0000-000000000001' ? `
               <button onclick="deleteCommunity('${c.id}','${escJs(c.name)}')"
@@ -17836,7 +17875,7 @@ async function renderAdminCommunities() {
           </div>
         </div>
       `).join('')}
-      </div>
+      </div>`).join('')}
     </div>`;
 
   // 첫 번째 색상 선택 표시
@@ -17860,10 +17899,18 @@ async function createCommunity() {
   const name = document.getElementById('new-comm-name').value.trim();
   const desc = document.getElementById('new-comm-desc').value.trim();
   const color = document.getElementById('new-comm-color').value || '#1d3a5f';
+  const kind = (document.getElementById('new-comm-kind') || {}).value || 'community';
   if (!name) { showUploadToast('공동체 이름을 입력해주세요'); return; }
-  const { error } = await sb.from('communities').insert({
-    name, description: desc, color, created_by: ME.id
+  let { error } = await sb.from('communities').insert({
+    name, description: desc, color, kind, created_by: ME.id
   });
+  //  종류 칸을 아직 안 깔았으면 그것만 빼고 다시 — 공동체 만들기가 막힐 일은 아니다
+  if (error && /kind/.test(error.message || '')) {
+    ({ error } = await sb.from('communities').insert({
+      name, description: desc, color, created_by: ME.id
+    }));
+    if (!error) showUploadToast('종류만 빼고 만들었어요 — db/공동체_종류_와_표잠그기_DB설치.sql 을 실행해주세요');
+  }
   if (error) { showUploadToast('생성 실패: ' + error.message); return; }
   showUploadToast('✅ 공동체가 생성됐어요!');
   renderAdminCommunities();
@@ -17877,7 +17924,8 @@ async function deleteCommunity(id, name) {
   renderAdminCommunities();
 }
 
-function editCommunity(id, name, desc, color) {
+function editCommunity(id, name, desc, color, kind) {
+  kind = (kind === 'academy') ? 'academy' : 'community';
   const area = document.getElementById('admin-content');
   const editHtml = `
     <div class="adm-card" style="max-width:500px;border:2px solid var(--accent)">
@@ -17890,9 +17938,19 @@ function editCommunity(id, name, desc, color) {
         <div style="font-size:12px;color:var(--ink3);margin-bottom:5px;font-weight:500">설명</div>
         <input id="edit-comm-desc" class="adm-input" value="${desc}" style="width:100%"/>
       </div>
-      <div style="margin-bottom:16px">
+      <div style="margin-bottom:12px">
         <div style="font-size:12px;color:var(--ink3);margin-bottom:5px;font-weight:500">대표 색상</div>
         <input type="color" id="edit-comm-color" value="${color}" style="width:44px;height:36px;border:none;border-radius:8px;cursor:pointer;padding:0"/>
+      </div>
+      <!-- 종류는 총관리자만. 서버도 막아 뒀으니 화면에서도 보여만 준다. -->
+      <div style="margin-bottom:16px">
+        <div style="font-size:12px;color:var(--ink3);margin-bottom:5px;font-weight:500">종류</div>
+        ${isSuperAdmin()
+          ? `<select id="edit-comm-kind" class="adm-input" style="width:100%">
+               ${COMM_KINDS.map(k => `<option value="${k.v}" ${k.v===kind?'selected':''}>${k.emoji} ${t(k.ko, k.en)}</option>`).join('')}
+             </select>`
+          : `<div style="font-size:13px;color:var(--ink2);padding:8px 0">${commKindInfo(kind).emoji} ${t(commKindInfo(kind).ko, commKindInfo(kind).en)}
+               <span style="font-size:11.5px;color:var(--ink3);margin-left:6px">${t('— 종류는 총관리자만 바꿉니다','— only a super admin can change this')}</span></div>`}
       </div>
       <div style="display:flex;gap:8px">
         <button onclick="saveCommunity('${id}')" style="height:36px;padding:0 20px;border-radius:9px;border:none;background:var(--accent);color:white;font:600 13px var(--font);cursor:pointer">저장</button>
@@ -17906,8 +17964,16 @@ async function saveCommunity(id) {
   const name = document.getElementById('edit-comm-name').value.trim();
   const desc = document.getElementById('edit-comm-desc').value.trim();
   const color = document.getElementById('edit-comm-color').value;
+  const kindEl = document.getElementById('edit-comm-kind');   // 총관리자에게만 있다
   if (!name) { showUploadToast('이름을 입력해주세요'); return; }
-  const { error } = await sb.from('communities').update({ name, description: desc, color }).eq('id', id);
+  const patch = { name, description: desc, color };
+  if (kindEl) patch.kind = kindEl.value;
+  let { error } = await sb.from('communities').update(patch).eq('id', id);
+  if (error && /kind/.test(error.message || '')) {
+    delete patch.kind;
+    ({ error } = await sb.from('communities').update(patch).eq('id', id));
+    if (!error) showUploadToast('종류만 빼고 저장했어요 — db/공동체_종류_와_표잠그기_DB설치.sql 을 실행해주세요');
+  }
   if (error) { showUploadToast('저장 실패: ' + error.message); return; }
   showUploadToast('✅ 저장됐어요!');
   renderAdminCommunities();
