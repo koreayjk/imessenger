@@ -1920,7 +1920,13 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
         <input id="new-ch-name" placeholder="채널 이름 (예: 청년부)" style="width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none;margin-bottom:10px"/>
         <input id="new-ch-emoji" placeholder="이모지 (예: 🌿, 선택사항)" style="width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none;margin-bottom:10px"/>
         <input id="new-ch-desc" placeholder="채널 설명 (선택사항)" style="width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none;margin-bottom:12px"/>
+        <!-- 어느 그룹에 넣나 — 🌐 그룹을 고르면 초대 범위가 바뀐다 -->
+        <div id="new-ch-group-row" style="margin-bottom:12px;display:none">
+          <div style="font-size:12px;font-weight:600;color:var(--ink3);margin-bottom:6px;letter-spacing:.03em" data-ko="그룹" data-en="Group">그룹</div>
+          <select id="new-ch-group" onchange="onNewChGroupChange()" style="width:100%;padding:11px 13px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none;background:var(--surface);color:var(--ink)"></select>
+        </div>
         <!-- 멤버 선택 -->
+        <div id="new-ch-scope" style="display:none;font-size:12px;line-height:1.65;border-radius:10px;padding:9px 11px;margin-bottom:9px"></div>
         <div style="font-size:12px;font-weight:600;color:var(--ink3);margin-bottom:8px;letter-spacing:.03em">초대할 멤버 선택</div>
         <div style="display:flex;gap:8px;margin-bottom:8px">
           <div onclick="selectAllMembers(true)" style="height:28px;padding:0 12px;border-radius:8px;background:var(--s3);font-size:12px;display:flex;align-items:center;cursor:pointer;color:var(--ink2)">전체 선택</div>
@@ -4757,10 +4763,45 @@ let channelGroups = [];
 let dmFavorites = new Set();
 let dmExpanded = false;
 let groupCollapsed = new Set();
+// ── 🌐 모든 공동체 그룹 ─────────────────────────────────────────
+//  깃발(channel_groups.cross_community)이 선 그룹은 **어느 공동체에
+//  있어도 모두에게 보입니다.** 그 그룹 안의 방에만 다른 공동체 사람을
+//  초대할 수 있습니다. 깃발 없는 그룹은 전과 똑같이 자기 공동체만.
+function isCrossGroup(g) { return !!(g && g.cross_community); }
+function isCrossChannel(ch) {
+  const gid = ch && ch.group_id;
+  if (!gid) return false;
+  return isCrossGroup(commGroups.find(x => x.id === gid));
+}
 async function loadChannelGroups() {
-  try { const { data } = await sb.from('channel_groups').select('*').eq('community_id', CID()).order('sort').order('created_at'); commGroups = data || []; }
+  //  서버는 그룹을 전부 보여줍니다(이름뿐입니다). 가르는 건 여기서 합니다 —
+  //  그래야 '우리 공동체 + 깃발 선 것' 을 한 번에 집을 수 있습니다.
+  try {
+    const { data } = await sb.from('channel_groups').select('*').order('sort').order('created_at');
+    commGroups = (data || []).filter(g => g.community_id === CID() || isCrossGroup(g));
+  }
   catch(_) { commGroups = []; }
   mergeGroups();
+}
+
+//  🌐 방에 들어갈 때, 그 방에 같이 있는 다른 공동체 사람의 이름·사진을
+//  읽어 옵니다. members 규칙(RLS)은 건드리지 않았습니다 — 서버 함수가
+//  **그 방 사람들만** 돌려줍니다. 방 밖에서는 아무것도 넓어지지 않습니다.
+async function loadCrossChannelMembers(ch) {
+  if (!ch || !isCrossChannel(ch)) return;
+  try {
+    const { data, error } = await sb.rpc('cross_channel_members', { p_channel: ch.id });
+    if (error || !data) return;
+    (data || []).forEach(m => {
+      const had = members[m.id] || {};
+      members[m.id] = Object.assign({}, had, {
+        id: m.id, name: m.name, photo_url: m.photo_url,
+        community_role: m.community_role, community_id: m.community_id,
+        community_name: m.community_name,
+        color: avColor(had.color || null),
+      });
+    });
+  } catch (_) {}
 }
 
 // ── 내 순서·내 그룹 (개인 덧층) ──────────────────────────────────
@@ -5138,18 +5179,110 @@ async function chDropToGroup(e, groupId) {
 //  공동체가 같이 쓰는 그룹(channel_groups)은 예전 것이 그대로 남아
 //  모두에게 보이고, 그건 관리자가 고친다.
 async function createChannelGroup() {
+  //  총관리자는 세 갈래 중에 고른다. 그 밖의 사람은 예전처럼 '내 그룹' 만.
+  if (isSuperAdmin()) { openGroupKindModal(); return; }
   const name = prompt(t('새 그룹 이름 (예: 사역팀)\n나한테만 보이는 그룹이에요.',
                         'New group name\n(only you will see it)'));
   if (name === null) return;
   if (!name.trim()) return;
+  await addMyChannelGroup(name.trim());
+}
+
+async function addMyChannelGroup(name) {
   const sort = (myGroups.length + 1) * 10;
   const { data, error } = await sb.from('my_channel_groups')
-    .insert({ member_id: ME.id, name: name.trim(), sort }).select().single();
+    .insert({ member_id: ME.id, name, sort }).select().single();
   if (error) { _prefsMissing = true; prefsNeedSql(); return; }
   if (data) myGroups.push(data);
   mergeGroups();
   showUploadToast(t('✅ 내 그룹이 생겼어요. 토픽을 끌어다 넣어보세요',
                     '✅ Group added — drag topics into it'));
+  renderPanel();
+}
+
+// ── 그룹 만들기 (총관리자) ───────────────────────────────────────
+//  세 갈래를 **글로 똑똑히** 갈라 놓습니다. 여기서 헛갈리면
+//  '모든 공동체' 방을 모르고 만들게 됩니다.
+const GROUP_KINDS = [
+  { v: 'mine',  emoji: '\u{1F464}', ko: '나만 보는 그룹',
+    koSub: '내 사이드바에서만 보입니다. 아무 영향 없어요.',
+    en: 'Just for me', enSub: 'Only you see it.' },
+  { v: 'comm',  emoji: '\u{1F3DB}\u{FE0F}', ko: '우리 공동체 그룹',
+    koSub: '우리 공동체 사람 모두에게 보입니다. 방에는 <b>우리 공동체 사람만</b> 초대합니다.',
+    en: 'Our community', enSub: 'Everyone here sees it. Invite <b>our members only</b>.' },
+  { v: 'cross', emoji: '\u{1F310}', ko: '모든 공동체 그룹',
+    koSub: '<b>모든 공동체</b> 사람에게 보이고, 이 그룹 안의 방에는 <b>어느 공동체 사람이든</b> 초대할 수 있습니다. 방 만들기는 총·부총관리자만.',
+    en: 'All communities', enSub: 'Visible to <b>every community</b>; rooms here can invite <b>anyone</b>. Only super/vice admins create rooms.' },
+];
+let _gkPick = 'mine';
+function openGroupKindModal() {
+  _gkPick = 'mine';
+  const old = document.querySelector('.group-kind-modal'); if (old) old.remove();
+  const m = document.createElement('div');
+  m.className = 'group-kind-modal';
+  m.style.cssText = 'position:fixed;inset:0;z-index:260;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:18px';
+  m.innerHTML = `<div style="background:var(--surface);border-radius:18px;width:430px;max-width:94vw;max-height:88vh;overflow-y:auto;box-shadow:var(--sh-3)">
+    <div style="padding:17px 20px;border-bottom:1px solid var(--border);font:700 15.5px var(--font);color:var(--ink)">\u{1F4C2} ${t('새 그룹 만들기','New group')}</div>
+    <div style="padding:16px 20px">
+      <input id="gk-name" placeholder="${escAttr(t('그룹 이름 (예: 사역팀)','Group name'))}"
+        style="width:100%;padding:11px 13px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none;margin-bottom:14px"/>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        ${GROUP_KINDS.map(k => `
+          <div onclick="pickGroupKind('${k.v}')" data-gk="${k.v}"
+            style="display:flex;gap:11px;padding:12px 13px;border:2px solid var(--border);border-radius:12px;cursor:pointer;align-items:flex-start">
+            <div style="font-size:19px;line-height:1.1">${k.emoji}</div>
+            <div style="flex:1">
+              <div style="font:700 13.5px var(--font);color:var(--ink)">${t(k.ko, k.en)}</div>
+              <div style="font:12px var(--font);color:var(--ink3);line-height:1.6;margin-top:2px">${t(k.koSub, k.enSub)}</div>
+            </div>
+          </div>`).join('')}
+      </div>
+    </div>
+    <div style="padding:13px 18px;border-top:1px solid var(--border);display:flex;gap:8px">
+      <button onclick="document.querySelector('.group-kind-modal').remove()"
+        style="flex:1;height:42px;border-radius:11px;border:none;background:var(--s3);color:var(--ink2);font:600 14px var(--font);cursor:pointer">${t('취소','Cancel')}</button>
+      <button onclick="submitGroupKind()"
+        style="flex:2;height:42px;border-radius:11px;border:none;background:var(--accent);color:#fff;font:700 14px var(--font);cursor:pointer">${t('만들기','Create')}</button>
+    </div>
+  </div>`;
+  m.addEventListener('click', e => { if (e.target === m) m.remove(); });
+  document.body.appendChild(m);
+  pickGroupKind('mine');
+  const el = document.getElementById('gk-name'); if (el) el.focus();
+}
+function pickGroupKind(v) {
+  _gkPick = v;
+  document.querySelectorAll('.group-kind-modal [data-gk]').forEach(x => {
+    const on = x.dataset.gk === v;
+    x.style.borderColor = on ? 'var(--accent)' : 'var(--border)';
+    x.style.background  = on ? 'var(--asoft)' : 'transparent';
+  });
+}
+async function submitGroupKind() {
+  const el = document.getElementById('gk-name');
+  const name = (el ? el.value : '').trim();
+  if (!name) { if (el) el.style.borderColor = 'var(--rose)'; return; }
+  const kind = _gkPick;
+  document.querySelector('.group-kind-modal')?.remove();
+  if (kind === 'mine') { await addMyChannelGroup(name); return; }
+
+  const row = { community_id: CID(), name, sort: (commGroups.length + 1) * 10 };
+  if (kind === 'cross') row.cross_community = true;
+  let { data, error } = await sb.from('channel_groups').insert(row).select().single();
+  //  깃발 칸을 아직 안 깔았으면 알려준다 — 조용히 '우리 공동체 그룹' 이
+  //  되어 버리면 나중에 모르고 쓰게 된다.
+  if (error && /cross_community/.test(error.message || '')) {
+    showUploadToast(t('db/전체공동체_채팅그룹_DB설치.sql 을 먼저 실행해주세요',
+                      'Run db/전체공동체_채팅그룹_DB설치.sql first'));
+    return;
+  }
+  if (error) { showUploadToast(t('만들지 못했어요: ','Could not create: ') + error.message); return; }
+  if (data) commGroups.push(data);
+  mergeGroups();
+  showUploadToast(kind === 'cross'
+    ? t('\u{1F310} 모든 공동체 그룹이 생겼어요. 이 그룹 안의 방에는 어느 공동체 사람이든 초대할 수 있어요',
+        '\u{1F310} All-communities group created')
+    : t('\u{1F3DB}\u{FE0F} 공동체 그룹이 생겼어요','\u{1F3DB}\u{FE0F} Community group created'));
   renderPanel();
 }
 async function renameChannelGroup(id) {
@@ -5191,11 +5324,15 @@ function toggleGroupCollapse(id) { if (groupCollapsed.has(id)) groupCollapsed.de
 function groupHeaderHtml(g, count) {
   // 고치기·지우기는 내 그룹이거나 관리자일 때만. 남이 만든 공동체
   //  그룹에 ✏️ 를 내밀어 놓고 눌렀을 때 막는 건 불친절하다.
-  const canEdit = g.mine || isCommunityAdmin();
+  //  🌐 모든 공동체 그룹은 **총관리자만** 고치고 지웁니다. 공동체
+  //  관리자에게 ✏️ 를 내밀면 남의 공동체까지 걸린 그룹을 건드리게 됩니다.
+  const cross = isCrossGroup(g);
+  const canEdit = g.mine || (cross ? isSuperAdmin() : isCommunityAdmin());
   const collapsed = groupCollapsed.has(g.id);
   return `<div class="section-label" style="display:flex;align-items:center;gap:6px" ondragover="chGroupDragOver(event)" ondragleave="chGroupDragLeave(event)" ondrop="chDropToGroup(event,'${g.id}')">
-    <span onclick="toggleGroupCollapse('${g.id}')" style="cursor:pointer;display:inline-flex;align-items:center;gap:5px">${collapsed?'▸':'▾'} ${escHtml(g.name||'그룹')} <span style="color:var(--ink3);font-weight:400">${count}</span></span>
+    <span onclick="toggleGroupCollapse('${g.id}')" style="cursor:pointer;display:inline-flex;align-items:center;gap:5px">${collapsed?'▸':'▾'} ${cross?'\u{1F310} ':''}${escHtml(g.name||'그룹')} <span style="color:var(--ink3);font-weight:400">${count}</span></span>
     <div style="flex:1"></div>
+    ${cross?`<span data-cross-badge="${g.id}" title="${escAttr(t('모든 공동체가 함께 쓰는 그룹 — 이 안의 방에는 어느 공동체 사람이든 초대할 수 있어요','All communities share this group'))}" style="font-size:10px;color:#1e40af">\u{1F310}</span>`:''}
     ${g.mine?`<span title="${escAttr(t('나만 보는 그룹','Only you see this'))}" style="font-size:10px;color:var(--ink3)">👤</span>`:''}
     ${canEdit?`<span onclick="renameChannelGroup('${g.id}')" title="이름 수정" style="cursor:pointer;font-size:12px">✏️</span><span onclick="deleteChannelGroup('${g.id}')" title="그룹 삭제" style="cursor:pointer;font-size:12px;opacity:.7">🗑</span>`:''}
   </div>`;
@@ -5573,6 +5710,8 @@ async function openChannel(id) {
   currentChannel = channels.find(c=>c.id===id);
   if (!currentChannel) return;
   if (leaving && leaving.id !== id) sweepEmptyDm(leaving);
+  //  🌐 방이면 다른 공동체 사람의 이름을 먼저 채운다 (멤버 목록·사진·카드)
+  await loadCrossChannelMembers(currentChannel);
   setupReactionInteractions();
 
   sessionStorage.setItem('last_channel_id', id);
@@ -9174,10 +9313,21 @@ async function openAddMemberModal() {
   if (!currentChannel || isStudentMember(ME) || currentChannel.kind === 'dm') return;
   document.querySelectorAll('.add-member-modal').forEach(x => x.remove());
   const inCh = currentChannelMemberIds || new Set();
-  const cand = Object.values(members).filter(m =>
+  //  🌐 방이면 모든 공동체 사람 중에 고른다 (총·부총관리자에게만 답이 온다).
+  //  그 밖의 방은 전과 같이 우리 공동체만.
+  let pool = Object.values(members), cross = false;
+  if (isCrossChannel(currentChannel) && canMakeCrossChannel()) {
+    try {
+      const { data, error } = await sb.rpc('cross_invite_candidates', { p_group: currentChannel.group_id });
+      if (!error && data) { pool = data; cross = true; }
+    } catch (_) {}
+  }
+  const cand = pool.filter(m =>
     m && m.id !== ME.id && !inCh.has(m.id) &&
     m.community_role !== 'store_bot' && (m.status ? m.status !== 'removed' : true))
-    .sort((a,b) => (a.name||'').localeCompare(b.name||''));
+    .sort((a,b) => cross
+      ? ((a.community_name||'').localeCompare(b.community_name||'') || (a.name||'').localeCompare(b.name||''))
+      : (a.name||'').localeCompare(b.name||''));
   const modal = document.createElement('div');
   modal.className = 'add-member-modal';
   modal.style.cssText = 'position:fixed;inset:0;z-index:250;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px';
@@ -9186,10 +9336,11 @@ async function openAddMemberModal() {
     <label style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:10px;cursor:pointer" onmouseover="this.style.background='var(--s2)'" onmouseout="this.style.background=''">
       <input type="checkbox" class="am-pick" value="${m.id}" style="width:17px;height:17px;flex-shrink:0"/>
       <div style="width:30px;height:30px;border-radius:9px;${avFill(m, '#999')};color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0">${avInner(m)}</div>
-      <div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(m.name||'')}</div><div style="font-size:11px;color:var(--ink3)">${escHtml(m.role||'')}</div></div>
+      <div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(m.name||'')}</div><div style="font-size:11px;color:var(--ink3)">${escHtml(cross ? [m.community_name||'', m.community_role||''].filter(Boolean).join(' · ') : (m.role||''))}</div></div>
     </label>`).join('') : `<div style="text-align:center;color:var(--ink3);font-size:13px;padding:24px">${t('추가할 수 있는 멤버가 없어요','No members available to add')}</div>`;
   modal.innerHTML = `<div style="background:var(--surface);border-radius:18px;width:420px;max-width:94vw;max-height:80vh;display:flex;flex-direction:column;box-shadow:var(--sh-3)">
     <div style="padding:16px 18px;border-bottom:1px solid var(--border);font-size:15px;font-weight:700">＋ ${t('채팅방에 멤버 추가','Add members to chat')}</div>
+    ${cross ? `<div style="padding:9px 18px;background:#eff6ff;color:#1e40af;font:600 12px var(--font);line-height:1.6">\u{1F310} ${t('이 방은 <b>모든 공동체</b> 방이에요 — 어느 공동체 사람이든 넣을 수 있어요','This is an <b>all-communities</b> room')}</div>` : ''}
     <div style="padding:8px 12px;overflow-y:auto;flex:1">${rows}</div>
     <div style="padding:12px 16px;border-top:1px solid var(--border);display:flex;gap:8px">
       <button onclick="this.closest('.add-member-modal').remove()" style="flex:1;height:42px;border-radius:11px;border:none;background:var(--s3);color:var(--ink2);font:600 14px var(--font);cursor:pointer">${t('취소','Cancel')}</button>
@@ -10777,9 +10928,23 @@ let selectedNewChMembers = new Set();
 // 학생에게 단추를 보여주면 눌러도 '실패' 만 뜹니다 — 아예 안 보여줍니다.
 function canMakeTopicChannel() { return canAccessSchool(); }
 
+//  🌐 그룹 안의 방은 총·부총관리자만 만든다 (서버도 같은 규칙)
+function canMakeCrossChannel() { return isSuperAdmin() || isViceAdmin(); }
+//  방 만들기 창에서 고를 수 있는 그룹
+function newChGroupChoices() {
+  //  ⚠️ 🌐 그룹은 **우리 공동체에 있어도** 총·부총관리자만 고른다.
+  //     'community_id 가 우리 것' 을 먼저 보면, 우리 공동체에 만든 🌐 그룹이
+  //     공동체 관리자에게 그대로 보인다 (시험에서 걸렸다).
+  return commGroups
+    .filter(g => isCrossGroup(g) ? canMakeCrossChannel() : g.community_id === CID())
+    .map(g => ({ id: g.id, name: g.name, cross: isCrossGroup(g) }));
+}
+let newChCandidates = null;   // 🌐 일 때 쓰는 '모든 공동체' 후보 (없으면 우리 공동체)
+
 function showAddChannelModal() {
   const topic = canMakeTopicChannel();
   addTabMode = topic ? 'topic' : 'dm';
+  newChCandidates = null;
   selectedNewChMembers = new Set(Object.keys(members)); // 기본: 전체 선택
   const tabRow = document.getElementById('add-tab-topic');
   if (tabRow) tabRow.style.display = topic ? '' : 'none';
@@ -10790,26 +10955,114 @@ function showAddChannelModal() {
   document.getElementById('new-ch-name').value = '';
   document.getElementById('new-ch-emoji').value = '';
   document.getElementById('new-ch-desc').value = '';
+  //  그룹 고르개 — 고를 그룹이 있을 때만 보여준다
+  const row = document.getElementById('new-ch-group-row');
+  const sel = document.getElementById('new-ch-group');
+  const choices = newChGroupChoices();
+  if (row && sel) {
+    row.style.display = (topic && choices.length) ? '' : 'none';
+    sel.innerHTML = `<option value="">${t('그룹 없음','No group')}</option>`
+      + choices.map(g => `<option value="${g.id}">${g.cross ? '\u{1F310} ' : ''}${escHtml(g.name)}</option>`).join('');
+    sel.value = '';
+  }
+  onNewChGroupChange();
   switchAddTab(addTabMode);
+}
+
+//  그룹을 바꾸면 '누구를 초대할 수 있나' 가 바뀐다.
+//  🌐 그룹 → 모든 공동체 · 그 밖 → 우리 공동체. 화면에 또박또박 적는다.
+async function onNewChGroupChange() {
+  const sel = document.getElementById('new-ch-group');
+  const note = document.getElementById('new-ch-scope');
+  const gid = sel ? sel.value : '';
+  const cross = !!gid && isCrossGroup(commGroups.find(g => g.id === gid));
+  if (!cross) {
+    newChCandidates = null;
+    selectedNewChMembers = new Set(Object.keys(members));
+    if (note) {
+      note.style.display = gid ? '' : 'none';
+      note.style.background = 'var(--s2)'; note.style.color = 'var(--ink3)';
+      note.innerHTML = t('\u{1F3DB}\u{FE0F} <b>우리 공동체 사람만</b> 초대합니다.',
+                         '\u{1F3DB}\u{FE0F} Invite <b>our community only</b>.');
+    }
+    renderNewChMembers();
+    return;
+  }
+  if (note) {
+    note.style.display = '';
+    note.style.background = '#eff6ff'; note.style.color = '#1e40af';
+    note.innerHTML = t('\u{1F310} <b>모든 공동체</b> 사람 중에 초대할 수 있어요. 불러오는 중…',
+                       '\u{1F310} You can invite from <b>every community</b>. Loading…');
+  }
+  let rows = null;
+  try {
+    const { data, error } = await sb.rpc('cross_invite_candidates', { p_group: gid });
+    if (!error) rows = data || [];
+  } catch (_) {}
+  if (!rows) {
+    newChCandidates = null;
+    selectedNewChMembers = new Set(Object.keys(members));
+    if (note) {
+      note.style.background = '#fef2f2'; note.style.color = '#b91c1c';
+      note.innerHTML = t('명단을 불러오지 못했어요 — db/전체공동체_채팅그룹_DB설치.sql 을 실행해주세요. 지금은 우리 공동체만 보여요.',
+                         'Could not load the list — run db/전체공동체_채팅그룹_DB설치.sql. Showing our community only.');
+    }
+    renderNewChMembers();
+    return;
+  }
+  newChCandidates = rows;
+  //  🌐 방은 **아무도 안 고른 상태**로 시작한다. '전체 선택' 으로 시작하면
+  //  모든 공동체 전원이 들어간 방을 모르고 만들게 된다.
+  selectedNewChMembers = new Set([ME.id]);
+  if (note) {
+    const comms = new Set(rows.map(r => r.community_name || ''));
+    note.innerHTML = t(`\u{1F310} <b>모든 공동체</b> 사람 중에 초대할 수 있어요 — 공동체 ${comms.size}곳 · ${rows.length}명. 넣을 사람만 고르세요.`,
+                       `\u{1F310} Invite from <b>every community</b> — ${comms.size} communities · ${rows.length} people. Pick who to add.`);
+  }
+  renderNewChMembers();
 }
 function closeAddModal() { document.getElementById('add-modal').style.display = 'none'; }
 
 function renderNewChMembers() {
   const list = document.getElementById('new-ch-members');
   if (!list) return;
-  list.innerHTML = Object.values(members).map(m => {
+  const row = (m, sub) => {
     const selected = selectedNewChMembers.has(m.id);
     return `<div onclick="toggleNewChMember('${m.id}',this)" data-mid="${m.id}"
       style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:9px;cursor:pointer;background:${selected?'var(--asoft)':'transparent'}"
       onmouseover="this.style.background='${selected?'var(--asoft)':'var(--bg)'}'"
       onmouseout="this.style.background='${selected?'var(--asoft)':'transparent'}'">
       <div style="width:28px;height:28px;border-radius:8px;${avFill(m, '#999')};color:white;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;flex-shrink:0">${avInner(m)}</div>
-      <div style="flex:1;font-size:13.5px;font-weight:500">${m.name}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13.5px;font-weight:500">${escHtml(m.name || '')}</div>
+        ${sub ? `<div style="font-size:11px;color:var(--ink3);margin-top:1px">${escHtml(sub)}</div>` : ''}
+      </div>
       <div style="width:20px;height:20px;border-radius:6px;border:2px solid ${selected?'var(--accent)':'var(--border)'};background:${selected?'var(--accent)':'transparent'};display:flex;align-items:center;justify-content:center;flex-shrink:0">
         ${selected?'<span style="color:white;font-size:11px">✓</span>':''}
       </div>
     </div>`;
-  }).join('');
+  };
+  //  🌐 일 때는 **어느 공동체 사람인지** 꼭 보여준다. 이름만 늘어놓으면
+  //  남의 공동체 사람을 모르고 넣게 된다.
+  if (newChCandidates) {
+    const byComm = {};
+    newChCandidates.forEach(m => {
+      const k = m.community_name || t('(공동체 없음)','(no community)');
+      (byComm[k] = byComm[k] || []).push(m);
+    });
+    const mine = (members[ME.id] || {}).community_id;
+    const keys = Object.keys(byComm).sort((a, b) => {
+      //  내 공동체를 맨 위로
+      const am = byComm[a][0].community_id === mine ? 0 : 1;
+      const bm = byComm[b][0].community_id === mine ? 0 : 1;
+      return am - bm || a.localeCompare(b);
+    });
+    list.innerHTML = keys.map(k => `
+      <div data-cross-comm="${escAttr(k)}" style="font:800 11px var(--font);color:var(--ink3);letter-spacing:.04em;padding:9px 12px 4px">${escHtml(k)} <span style="font-weight:600;opacity:.75">${byComm[k].length}</span></div>
+      ${byComm[k].map(m => row(m, m.community_role || '')).join('')}`).join('');
+    return;
+  }
+  list.innerHTML = Object.values(members).map(m => row(m, '')).join('');
 }
 
 function toggleNewChMember(id, el) {
@@ -10819,7 +11072,8 @@ function toggleNewChMember(id, el) {
 }
 
 function selectAllMembers(all) {
-  if (all) Object.keys(members).forEach(id => selectedNewChMembers.add(id));
+  const ids = newChCandidates ? newChCandidates.map(m => m.id) : Object.keys(members);
+  if (all) ids.forEach(id => selectedNewChMembers.add(id));
   else selectedNewChMembers.clear();
   renderNewChMembers();
 }
@@ -10892,7 +11146,16 @@ async function submitAddChannel() {
     if (!canMakeTopicChannel()) { alert(t('단체방은 선생님·간사님만 만들 수 있어요','Only staff can create group channels')); return; }
     // created_by 를 적어 둡니다 — 방을 만든 그 한순간, 아직 멤버 줄이 없을 때
     // 만든 사람이 제 방을 못 보게 되는 일을 막습니다.
-    const { data, error } = await sb.from('channels').insert({ name, emoji, description: desc, pinned: false, kind: 'topic', community_id: CID(), created_by: ME.id }).select().single();
+    //  어느 그룹에 넣나. 🌐 그룹이면 그 방이 '모든 공동체 방' 이 된다.
+    const gsel = document.getElementById('new-ch-group');
+    const gid = (gsel && gsel.value) || null;
+    const crossRoom = !!gid && isCrossGroup(commGroups.find(g => g.id === gid));
+    if (crossRoom && !canMakeCrossChannel()) {
+      alert(t('모든 공동체 방은 총·부총관리자만 만들 수 있어요',
+              'Only super/vice admins can create an all-communities room'));
+      return;
+    }
+    const { data, error } = await sb.from('channels').insert({ name, emoji, description: desc, pinned: false, kind: 'topic', community_id: CID(), group_id: gid, created_by: ME.id }).select().single();
     if (error) { alert('채널 생성 실패: ' + error.message); return; }
     if (data) {
       // 만든 사람은 늘 들어간다. 안 그러면 만들자마자 남의 방이 된다.
