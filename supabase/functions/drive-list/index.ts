@@ -17,7 +17,9 @@
 //
 // 자료실은 두 칸입니다.
 //   🏠 우리 공동체  : communities.drive_root_folder_id
-//   🌐 전체 공용    : app_settings.drive_shared_folder_id (총관리자만 정함)
+//   🌐 전체 공용    : app_settings.drive_shared_folder_id_<종류> (총관리자만 정함)
+//                     종류마다 따로 둡니다 — 리뉴젠 공동체 그룹과 리뉴젠
+//                     아카데미 그룹이 서로 다른 자료실을 봅니다.
 // 요청의 scope 가 "shared" 면 공동체를 따지지 않고 전체 공용 폴더를 엽니다.
 //
 // 폴더는 '링크가 있는 모든 사용자 - 뷰어' 로 공유되어 있어야 합니다.
@@ -137,7 +139,7 @@ function shape(f: any) {
 // 총관리자만 다른 공동체를 명시해 열 수 있다 (앱의 공동체 전환 기능 때문).
 //
 // scope = "shared" 면 공동체를 따지지 않고 '전체 공용 폴더' 를 돌려준다.
-// 그 폴더는 app_settings.drive_shared_folder_id 한 자리에 있고,
+// 그 폴더는 app_settings 에 종류별로 하나씩 있고,
 // **일부러 모두에게 보여주는** 폴더다 (총관리자만 정한다).
 async function resolveRoot(req: Request, wantedCommunityId: string, scope: string) {
   if (!SUPABASE_URL || !SERVICE_KEY) {
@@ -158,29 +160,35 @@ async function resolveRoot(req: Request, wantedCommunityId: string, scope: strin
     .select("community_id, community_role").eq("id", user.id).single();
   if (!me) { const e: any = new Error("공동체 정보를 찾을 수 없습니다"); e.status = 403; throw e; }
 
-  // ── 🌐 전체 공용 폴더 ──
-  if (scope === "shared") {
-    const { data: st } = await admin.from("app_settings")
-      .select("value").eq("key", "drive_shared_folder_id").maybeSingle();
-    return {
-      rootId: String((st as any)?.value || "").trim(),
-      communityId: "",
-      role: me.community_role,
-      communityName: "",
-      scope: "shared",
-    };
-  }
-
   // 클라이언트가 보낸 공동체 ID 는 공동체를 넘나들 수 있는 사람만 인정
   // (총관리자 · 부총관리자. 부총관리자는 읽기만 하지만 '보는 곳'이 따라와야 한다)
   const communityId = ((me.community_role === "super_admin" || me.community_role === "vice_admin") && wantedCommunityId) ? wantedCommunityId : me.community_id;
 
   const { data: comm } = await admin.from("communities")
-    .select("drive_root_folder_id, name").eq("id", communityId).single();
+    .select("drive_root_folder_id, name, kind").eq("id", communityId).single();
+
+  // ── 🌐 전체 공용 폴더 ──
+  //  종류마다 **따로** 둔다. 리뉴젠 공동체 그룹과 리뉴젠 아카데미 그룹이
+  //  서로 다른 자료실을 본다. 보고 있는 공동체의 종류를 따른다
+  //  (총·부총관리자가 공동체를 바꾸면 그 종류의 공용 폴더가 보인다).
+  if (scope === "shared") {
+    const kind = ((comm as any)?.kind === "academy") ? "academy" : "community";
+    const { data: st } = await admin.from("app_settings")
+      .select("value").eq("key", "drive_shared_folder_id_" + kind).maybeSingle();
+    return {
+      rootId: String((st as any)?.value || "").trim(),
+      communityId,
+      role: me.community_role,
+      communityName: "",
+      scope: "shared",
+      sharedKind: kind,
+    };
+  }
   // 이 공동체에 지정된 폴더만 쓴다. 없으면 빈 값 → 호출부에서 needsFolder 로 안내한다.
   const rootId = String((comm as any)?.drive_root_folder_id || "").trim();
   return { rootId, communityId, role: me.community_role,
-           communityName: (comm as any)?.name || "", scope: "mine" };
+           communityName: (comm as any)?.name || "", scope: "mine",
+           sharedKind: ((comm as any)?.kind === "academy") ? "academy" : "community" };
 }
 
 Deno.serve(async (req) => {
@@ -196,14 +204,16 @@ Deno.serve(async (req) => {
     const path: string[] = Array.isArray(b.path) ? b.path.map((x: any) => String(x || "").trim()).filter(Boolean) : [];
 
     const wantScope = (String(b.scope || "mine").trim() === "shared") ? "shared" : "mine";
-    const { rootId, communityName, scope } = await resolveRoot(req, String(b.communityId || "").trim(), wantScope);
+    const { rootId, communityName, scope, sharedKind } = await resolveRoot(req, String(b.communityId || "").trim(), wantScope);
+    const kindKo = sharedKind === "academy" ? "리뉴젠 아카데미" : "리뉴젠 공동체";
     if (!rootId) {
       return json({
         error: scope === "shared"
-          ? "전체 공용 자료실 폴더가 아직 지정되지 않았습니다. 총관리자가 관리자 → 공동체 에서 등록해야 합니다."
+          ? `${kindKo} 그룹의 전체 공용 자료실 폴더가 아직 지정되지 않았습니다. 총관리자가 관리자 → 공동체 에서 등록해야 합니다.`
           : "이 공동체의 자료실 폴더가 아직 지정되지 않았습니다. 관리자 → 공동체 설정 에서 구글 드라이브 폴더 ID 를 등록해 주세요.",
         needsFolder: true,
         scope,
+        sharedKind,
       }, 400);
     }
 
@@ -219,8 +229,9 @@ Deno.serve(async (req) => {
       });
       const data = await driveGet(`/files?${p.toString()}&${COMMON}`);
       return json({
-        v: 4,
+        v: 5,
         scope,
+        sharedKind,
         rootId,
         folderId: rootId,
         communityName,
@@ -235,7 +246,7 @@ Deno.serve(async (req) => {
     const folderId = breadcrumb[breadcrumb.length - 1].id;
     const files = (await listChildren(folderId)).map(shape);
 
-    return json({ v: 4, scope, rootId, folderId, communityName, files, breadcrumb });
+    return json({ v: 5, scope, sharedKind, rootId, folderId, communityName, files, breadcrumb });
   } catch (e: any) {
     const status = e?.status;
     let msg = String(e?.message || e);

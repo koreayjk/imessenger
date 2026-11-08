@@ -7113,20 +7113,31 @@ function driveOpenFolder(id) { drivePath = drivePath.concat([id]); driveSearch =
 function driveGoCrumb(level) { drivePath = drivePath.slice(0, level); driveSearch = ''; initDrivePage(); }
 function driveGoRoot() { drivePath = []; driveSearch = ''; initDrivePage(); }
 
-//  전체 공용 폴더가 지정되어 있나 — 탭을 보여줄지 정하는 데만 씁니다.
+//  전체 공용 폴더는 **종류마다 따로** 입니다.
+//    리뉴젠 공동체 그룹 → drive_shared_folder_id_community
+//    리뉴젠 아카데미 그룹 → drive_shared_folder_id_academy
+//  내가 보고 있는 공동체의 종류에 맞는 것을 봅니다.
+function sharedKeyFor(kind) {
+  return 'drive_shared_folder_id_' + (kind === 'academy' ? 'academy' : 'community');
+}
+let driveMyKind = null;      // 지금 보고 있는 공동체의 종류
 async function driveLoadShared() {
   if (driveSharedOn !== null) return;
   try {
+    const { data: c } = await sb.from('communities')
+      .select('kind').eq('id', CID()).maybeSingle();
+    driveMyKind = commKind(c);
     const { data } = await sb.from('app_settings')
-      .select('value').eq('key', 'drive_shared_folder_id').maybeSingle();
+      .select('value').eq('key', sharedKeyFor(driveMyKind)).maybeSingle();
     driveSharedOn = !!(data && String(data.value || '').trim());
-  } catch (_) { driveSharedOn = false; }   // 표를 아직 안 깔았으면 없는 것으로
+  } catch (_) { driveSharedOn = false; driveMyKind = 'community'; }
 }
 
 function driveSwitchScope(sc) {
   const want = (sc === 'shared') ? 'shared' : 'mine';
   if (driveScope === want) return;
   driveScope = want;
+  driveSharedOn = null;        // 공동체를 바꿨을 수도 있으니 다시 본다
   drivePath = []; driveSearch = '';
   driveItems = []; driveCrumbs = []; driveRootId = ''; driveFolderId = '';
   driveNeedsFolder = false;
@@ -7146,6 +7157,7 @@ function driveTabsHtml() {
   return `<div style="display:flex;gap:7px;margin-bottom:12px;flex-wrap:wrap">
     ${tab('mine',   '\u{1F3E0}', '우리 공동체', 'Our community')}
     ${tab('shared', '\u{1F310}', '전체 공용',   'Shared')}
+    ${driveScope === 'shared' ? `<div style="display:flex;align-items:center;font:700 11.5px var(--font);color:#1e40af;padding:0 4px">${escHtml(commKindInfo(driveMyKind || 'community').emoji + ' ' + t(commKindInfo(driveMyKind || 'community').ko, commKindInfo(driveMyKind || 'community').en))} ${t('그룹','group')}</div>` : ''}
     ${(!driveSharedOn && isSuperAdmin()) ? `<div style="display:flex;align-items:center;font:600 11.5px var(--font);color:var(--ink3);padding:0 4px">${t('← 전체 공용 폴더는 관리자 ▸ 🏛️ 공동체 에서 정합니다','← set the shared folder under Admin ▸ Communities')}</div>` : ''}
   </div>`;
 }
@@ -7256,8 +7268,8 @@ function renderDriveNoFolder() {
       : t('이 공동체의 자료실 폴더가 아직 없어요','No files folder set for this community yet')}</div>
     <div style="font-size:12.5px;color:var(--ink2);line-height:1.8">
       ${shared
-        ? t('전체 공용 자료실은 <b>모든 공동체가 같은 폴더 하나</b>를 봅니다. 총관리자가 <b>관리자 → 🏛️ 공동체</b> 에서 폴더를 지정해 주세요.',
-            'The shared library is <b>one folder for every community</b>. A super admin sets it under <b>Admin → Communities</b>.')
+        ? t(`<b>${escHtml(commKindInfo(driveMyKind || 'community').ko)}</b> 그룹이 함께 쓰는 자료실이에요. 같은 그룹의 공동체는 <b>같은 폴더 하나</b>를 봅니다. 총관리자가 <b>관리자 → 🏛️ 공동체</b> 에서 이 그룹의 폴더를 지정해 주세요.`,
+            `The shared library for the <b>${escHtml(commKindInfo(driveMyKind || 'community').en)}</b> group. A super admin sets it under <b>Admin → Communities</b>.`)
         : t('자료실은 <b>공동체마다 다른 폴더</b>를 씁니다. 이 공동체에서 보여줄 구글 드라이브 폴더를 먼저 지정해 주세요.',
             'Each community uses its <b>own folder</b>. Please set the Google Drive folder for this community first.')}
     </div>
@@ -18442,12 +18454,17 @@ async function renderAdminCommunities() {
   const { data: communities } = await sb.from('communities').select('*').order('created_at');
   const list = communities || [];
   const groups = groupByCommKind(list);   // 리뉴젠 공동체 / 리뉴젠 아카데미
-  //  🌐 전체 공용 자료실 폴더 (앱 전체에 하나). 표를 아직 안 깔았으면 빈 값.
-  let sharedFolder = '';
+  //  🌐 전체 공용 자료실 폴더 — **종류마다 따로**.
+  //  표를 아직 안 깔았으면 빈 값으로 둔다.
+  const sharedFolders = { community: '', academy: '' };
   try {
     const { data: st } = await sb.from('app_settings')
-      .select('value').eq('key', 'drive_shared_folder_id').maybeSingle();
-    sharedFolder = String((st && st.value) || '');
+      .select('key,value')
+      .in('key', COMM_KINDS.map(k => sharedKeyFor(k.v)));
+    (st || []).forEach(r => {
+      const k = COMM_KINDS.find(x => sharedKeyFor(x.v) === r.key);
+      if (k) sharedFolders[k.v] = String(r.value || '');
+    });
   } catch (_) {}
   const { data: pendingRows } = await sb.from('members').select('community_id').eq('status', 'pending');
   const pendingByComm = {};
@@ -18461,20 +18478,31 @@ async function renderAdminCommunities() {
         <span style="font-size:20px">🔔</span>
         <span style="font-size:13.5px;font-weight:700;color:#b91c1c">승인 대기 ${totalPending}명 — 아래 빨간 배지가 있는 공동체의 "멤버 보기"에서 승인하세요</span>
       </div>` : ''}
-      <!-- 🌐 전체 공용 자료실 폴더 — 앱 전체에 하나뿐. 총관리자만. -->
+      <!-- 🌐 전체 공용 자료실 폴더 — 종류마다 따로. 총관리자만. -->
       <div class="adm-card" style="margin-bottom:20px;border-left:4px solid #1e40af">
         <div style="font-size:14px;font-weight:700;margin-bottom:6px;color:var(--adeep)">🌐 전체 공용 자료실 폴더</div>
-        <div style="font-size:12.5px;color:var(--ink3);line-height:1.75;margin-bottom:12px">
-          모든 공동체가 <b>같은 폴더 하나</b>를 보는 자료실이에요. 자료실 화면 위에 <b>🌐 전체 공용</b> 칸으로 나옵니다.<br>
+        <div style="font-size:12.5px;color:var(--ink3);line-height:1.75;margin-bottom:14px">
+          <b>종류마다 따로</b> 씁니다. 같은 종류의 공동체끼리 <b>같은 폴더 하나</b>를 봅니다 —
+          리뉴젠 공동체 그룹과 리뉴젠 아카데미 그룹은 <b>서로 다른 자료실</b>을 봅니다.<br>
+          자료실 화면 위에 <b>🌐 전체 공용</b> 칸으로 나옵니다.<br>
           공동체마다 따로 쓰는 폴더는 각 공동체의 <b>공동체 설정</b> 에서 정합니다 — 여기와 다른 칸이에요.<br>
           폴더는 구글 드라이브에서 <b>링크가 있는 모든 사용자 · 뷰어</b> 로 공유해 주세요.
         </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-          <input id="shared-drive" class="adm-input" value="${escAttr(sharedFolder)}"
-            placeholder="예: 1AbC2dEfGhIjKlMnOpQrStUvWxYz (또는 폴더 주소 붙여넣기)" style="flex:1;min-width:240px"/>
-          <button onclick="saveSharedDriveFolder()" style="height:38px;padding:0 18px;border-radius:10px;border:none;background:#1e40af;color:#fff;font:700 13px var(--font);cursor:pointer">저장</button>
-          ${sharedFolder ? `<button onclick="saveSharedDriveFolder(true)" style="height:38px;padding:0 14px;border-radius:10px;border:1.5px solid #fca5a5;background:#fef2f2;color:#dc2626;font:600 13px var(--font);cursor:pointer">비우기</button>` : ''}
-        </div>
+        ${COMM_KINDS.map(k => {
+          const cur = sharedFolders[k.v] || '';
+          const n = list.filter(c => commKind(c) === k.v).length;
+          return `<div data-shared-kind="${k.v}" style="margin-bottom:12px">
+            <div style="font-size:12.5px;font-weight:700;color:var(--ink2);margin-bottom:6px">${k.emoji} ${t(k.ko, k.en)}
+              <span style="font-weight:600;color:var(--ink3)">· 공동체 ${n}곳</span>
+              ${cur ? '' : `<span style="font-weight:600;color:#b45309;margin-left:4px">${t('아직 없음','not set')}</span>`}</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+              <input id="shared-drive-${k.v}" class="adm-input" value="${escAttr(cur)}" style="flex:1;min-width:240px;margin-bottom:0"
+                placeholder="예: 1AbC2dEfGhIjKlMnOpQrStUvWxYz (또는 폴더 주소 붙여넣기)"/>
+              <button onclick="saveSharedDriveFolder('${k.v}')" style="height:38px;padding:0 18px;border-radius:10px;border:none;background:#1e40af;color:#fff;font:700 13px var(--font);cursor:pointer">저장</button>
+              ${cur ? `<button onclick="saveSharedDriveFolder('${k.v}', true)" style="height:38px;padding:0 14px;border-radius:10px;border:1.5px solid #fca5a5;background:#fef2f2;color:#dc2626;font:600 13px var(--font);cursor:pointer">비우기</button>` : ''}
+            </div>
+          </div>`;
+        }).join('')}
       </div>
 
       <!-- 새 공동체 생성 -->
@@ -18563,13 +18591,14 @@ function driveFolderIdOf(raw) {
   const m = v.match(/folders\/([A-Za-z0-9_-]{10,})/) || v.match(/[?&]id=([A-Za-z0-9_-]{10,})/);
   return (m ? m[1] : v);
 }
-async function saveSharedDriveFolder(clear) {
+async function saveSharedDriveFolder(kind, clear) {
   if (!isSuperAdmin()) { showUploadToast('총관리자만 바꿀 수 있어요'); return; }
-  const el = document.getElementById('shared-drive');
+  const info = commKindInfo(kind);
+  const el = document.getElementById('shared-drive-' + info.v);
   const val = clear ? '' : driveFolderIdOf(el ? el.value : '');
-  if (clear && !confirm('전체 공용 자료실 폴더를 비울까요?\n\n자료실의 🌐 전체 공용 칸이 사라집니다. (드라이브의 폴더와 파일은 그대로예요)')) return;
+  if (clear && !confirm(`${info.ko} 그룹의 전체 공용 자료실 폴더를 비울까요?\n\n그 그룹의 자료실에서 🌐 전체 공용 칸이 사라집니다. (드라이브의 폴더와 파일은 그대로예요)`)) return;
   const { data, error } = await sb.from('app_settings')
-    .upsert({ key: 'drive_shared_folder_id', value: val || null }, { onConflict: 'key' })
+    .upsert({ key: sharedKeyFor(info.v), value: val || null }, { onConflict: 'key' })
     .select('key');
   if (error) {
     showUploadToast(/app_settings/.test(error.message || '')
@@ -18579,8 +18608,9 @@ async function saveSharedDriveFolder(clear) {
   }
   //  0건이면 규칙(RLS)에 막힌 것 — 조용히 넘어가면 '저장됐다' 고 거짓말이 된다
   if (!data || !data.length) { showUploadToast('저장 권한이 없어요 (총관리자만)'); return; }
-  driveSharedOn = !!val;           // 자료실 탭이 바로 맞게 나오도록
-  showUploadToast(val ? '✅ 전체 공용 자료실 폴더를 저장했어요' : '전체 공용 자료실 폴더를 비웠어요');
+  driveSharedOn = null;            // 자료실 탭을 다시 보게 한다
+  showUploadToast(val ? `✅ ${info.ko} 그룹의 전체 공용 자료실 폴더를 저장했어요`
+                      : `${info.ko} 그룹의 전체 공용 자료실 폴더를 비웠어요`);
   renderAdminCommunities();
 }
 

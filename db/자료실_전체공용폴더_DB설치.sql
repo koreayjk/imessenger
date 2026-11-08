@@ -4,8 +4,14 @@
 -- ═══════════════════════════════════════════════════════════════════
 --
 --  우리 공동체 폴더는 이미 communities.drive_root_folder_id 에 있습니다.
---  전체 공용 폴더는 **모두가 같은 하나**를 보는 것이라, 공동체 칸이 아니라
---  앱 전체에 한 자리만 있어야 합니다. 그래서 작은 표 하나를 둡니다.
+--  전체 공용 폴더는 **같은 그룹끼리 같은 하나**를 보는 것이라, 공동체 칸이
+--  아니라 앱 전체에 자리를 둡니다. 그래서 작은 표 하나를 둡니다.
+--
+--  열쇠는 공동체 종류마다 하나씩입니다 —
+--    drive_shared_folder_id_community : 리뉴젠 공동체 그룹
+--    drive_shared_folder_id_academy   : 리뉴젠 아카데미 그룹
+--  두 그룹은 서로 다른 자료실을 봅니다. 한쪽이 비어 있으면 그 그룹에는
+--  '아직 없어요' 라고 하고, **다른 그룹 폴더로 되돌아가지 않습니다.**
 --
 --  ⚠️ 예전에 쓰던 DRIVE_ROOT_FOLDER_ID 시크릿과 다릅니다. 그건 '폴더를
 --     안 정한 공동체가 남의 자료실을 보던' 사고의 원인이라 없앴습니다.
@@ -20,7 +26,7 @@ create table if not exists public.app_settings (
 );
 
 comment on table public.app_settings is
-  '앱 전체에 하나뿐인 설정. 총관리자만 씁니다. 지금 쓰는 열쇠: drive_shared_folder_id';
+  '앱 전체에 하나뿐인 설정. 총관리자만 씁니다. 지금 쓰는 열쇠: drive_shared_folder_id_community · drive_shared_folder_id_academy';
 
 alter table public.app_settings enable row level security;
 
