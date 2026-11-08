@@ -4798,6 +4798,7 @@ async function loadCrossChannelMembers(ch) {
         id: m.id, name: m.name, photo_url: m.photo_url,
         community_role: m.community_role, community_id: m.community_id,
         community_name: m.community_name,
+        email: m.email || had.email || '',
         color: avColor(had.color || null),
       });
     });
@@ -4857,6 +4858,23 @@ async function loadDmFavorites() {
   catch(_) { dmFavorites = new Set(); }
 }
 
+//  🌐 다른 공동체에 있는 방도, 내가 초대받았으면 가져온다.
+//
+//  ⚠️ 여기서 한 번 데었습니다. 방 목록을 `community_id = 내 공동체` 로만
+//     불러왔습니다. 그래서 IM USA 에 만든 🌐 방에 IM HQ 사람을 넣어도,
+//     그 사람 화면에는 **그룹만 보이고 안은 0개**였습니다. 규칙(RLS)은
+//     읽기를 허락하는데, 앱이 애초에 안 물어본 것입니다.
+async function addMyOutsideChannels(myIds) {
+  const have = new Set(channels.map(c => c.id));
+  const missing = [...myIds].filter(id => !have.has(id));
+  if (!missing.length) return 0;        // 보통은 여기서 끝 — 더 묻지 않는다
+  try {
+    const { data: extra } = await sb.from('channels').select('*').in('id', missing);
+    if (extra && extra.length) { channels = sortChannels(channels.concat(extra)); return extra.length; }
+  } catch (_) {}
+  return 0;
+}
+
 async function init() {
   // 켜질 때 서버에 묻는 것들을 한꺼번에 보낸다.
   //
@@ -4887,6 +4905,7 @@ async function init() {
   dmFavorites = new Set(myCh.filter(r => r.favorite).map(r => r.channel_id));
   const myChIdSet = new Set(myCh.map(r => r.channel_id));
   myRealChannelIds = myChIdSet;
+  await addMyOutsideChannels(myChIdSet);   // 🌐 남의 공동체에 있는 내 방
 
   if (canViewAllCommunities()) {
     // 총·부총관리자는 공개방을 다 보되, 1:1 은 내가 낀 것만
@@ -4908,6 +4927,7 @@ async function init() {
         const { data: myDMs } = await sb.from('channel_members').select('channel_id').eq('member_id', ME.id);
         const myDMIds = new Set((myDMs||[]).map(m => m.channel_id));
         myRealChannelIds = myDMIds;
+        await addMyOutsideChannels(myDMIds);     // 🌐 남의 공동체에 있는 내 방
         myChannelIds = new Set(channels.map(c => {
           if (c.kind === 'dm') return myDMIds.has(c.id) ? c.id : null;
           return c.id;
@@ -4916,6 +4936,7 @@ async function init() {
         const { data: myMemberships } = await sb.from('channel_members').select('channel_id').eq('member_id', ME.id);
         myChannelIds = new Set((myMemberships||[]).map(m => m.channel_id));
         myRealChannelIds = myChannelIds;
+        await addMyOutsideChannels(myChannelIds); // 🌐 남의 공동체에 있는 내 방
       }
       renderPanel();
     })
@@ -9354,6 +9375,11 @@ function openMemberCard(memberId) {
   // 학생끼리는 1:1 대화를 막아 두었다. 못 할 단추를 보여주면 안 된다.
   const canDm = !me && !(isStudent() && isStudentMember(m)) && m.community_role !== 'store_bot';
   const grade = (m.grade || '').toString().trim();
+  //  소속 — 🌐 방에서 온 다른 공동체 사람은 community_name 을 들고 있다.
+  //  우리 공동체 사람은 지금 보고 있는 공동체가 곧 소속이다.
+  const commName = (m.community_name || '').trim()
+    || ((!m.community_id || m.community_id === CID()) ? (COMM_NAME || '') : '');
+  const email = (m.email || '').toString().trim();
   const bd = document.createElement('div');
   bd.className = 'member-card-bd';
   bd.style.cssText = 'position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;padding:18px';
@@ -9371,6 +9397,20 @@ function openMemberCard(memberId) {
       ${grade ? `<span style="font:700 11.5px var(--font);color:var(--ink2);background:var(--s2);padding:4px 10px;border-radius:99px">${escHtml(grade)}${/^\d+$/.test(grade) ? t('학년','') : ''}</span>` : ''}
       ${m.status === 'pending' ? `<span style="font:700 11.5px var(--font);color:#8b6914;background:#fdf6e3;padding:4px 10px;border-radius:99px">${t('승인 대기','Pending')}</span>` : ''}
     </div>
+    ${(commName || email) ? `
+    <div data-mc-info style="margin-top:13px;border-top:1px solid var(--border);padding-top:12px;display:flex;flex-direction:column;gap:8px;text-align:left">
+      ${commName ? `<div style="display:flex;align-items:center;gap:8px;min-width:0">
+        <span style="font-size:13px;flex-shrink:0;width:16px;text-align:center">\u{1F3DB}\u{FE0F}</span>
+        <span style="font:600 11px var(--font);color:var(--ink3);flex-shrink:0;width:34px">${t('소속','Org')}</span>
+        <span data-mc-comm style="font:600 12.5px var(--font);color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(commName)}</span>
+      </div>` : ''}
+      ${email ? `<div style="display:flex;align-items:center;gap:8px;min-width:0">
+        <span style="font-size:13px;flex-shrink:0;width:16px;text-align:center">\u{2709}\u{FE0F}</span>
+        <span style="font:600 11px var(--font);color:var(--ink3);flex-shrink:0;width:34px">${t('이메일','Email')}</span>
+        <a data-mc-email href="mailto:${escAttr(email)}" title="${escAttr(email)}"
+           style="font:600 12.5px var(--font);color:var(--accent);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(email)}</a>
+      </div>` : ''}
+    </div>` : ''}
     <div style="display:flex;flex-direction:column;gap:7px;margin-top:16px">
       ${canDm ? `<button onclick="memberCardDm('${m.id}')" style="height:42px;border-radius:12px;border:none;background:#1d3a5f;color:#fff;font:700 14px var(--font);cursor:pointer">💬 ${t('1:1 대화','Direct message')}</button>` : ''}
       ${canDm ? `<button onclick="startCall('${escJs(m.id)}')" style="height:42px;border-radius:12px;border:none;background:#2a7a5a;color:#fff;font:700 14px var(--font);cursor:pointer">📞 ${t('전화 걸기','Call')}</button>` : ''}
@@ -9577,7 +9617,8 @@ function amRender() {
       <div style="width:30px;height:30px;border-radius:9px;${avFill(m, '#999')};color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0">${avInner(m)}</div>
       <div style="flex:1;min-width:0">
         <div style="font-size:13.5px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(m.name||'')}</div>
-        <div style="font-size:11px;color:var(--ink3)">${escHtml(memberRoleLabel(m))}</div>
+        <div data-am-sub style="font-size:11px;color:var(--ink3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${
+          escHtml([memberRoleLabel(m), (m.email||'').trim()].filter(Boolean).join(' · '))}</div>
       </div>
     </div>`;
   };

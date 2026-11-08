@@ -191,10 +191,10 @@ create policy channel_members_community_line on public.channel_members
 drop function if exists public.cross_channel_members(uuid);
 create or replace function public.cross_channel_members(p_channel uuid)
 returns table (id uuid, name text, photo_url text, community_role text,
-               community_id uuid, community_name text)
+               community_id uuid, community_name text, email text)
 language sql stable security definer set search_path = public as $$
   select m.id, m.name, m.photo_url, m.community_role, m.community_id,
-         coalesce(c.name, '')
+         coalesce(c.name, ''), m.email
     from public.channel_members cm
     join public.members m    on m.id = cm.member_id
     left join public.communities c on c.id = m.community_id
@@ -206,13 +206,16 @@ language sql stable security definer set search_path = public as $$
 $$;
 
 --  ② 초대 후보 — 모든 공동체의 쓰는 사람. 총·부총관리자에게만.
+--     이메일도 함께 돌려줍니다. 같은 이름이 여러 공동체에 있을 때
+--     누구를 넣는 건지 가리려면 이메일이 있어야 합니다.
+--     (받는 사람은 총·부총관리자뿐입니다)
 drop function if exists public.cross_invite_candidates(uuid);
 create or replace function public.cross_invite_candidates(p_group uuid)
 returns table (id uuid, name text, photo_url text, community_role text,
-               community_id uuid, community_name text)
+               community_id uuid, community_name text, email text)
 language sql stable security definer set search_path = public as $$
   select m.id, m.name, m.photo_url, m.community_role, m.community_id,
-         coalesce(c.name, '')
+         coalesce(c.name, ''), m.email
     from public.members m
     left join public.communities c on c.id = m.community_id
    where coalesce(m.status, 'active') not in ('removed','pending')
