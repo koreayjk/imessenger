@@ -10,7 +10,10 @@
 // 필요한 Secrets (Edge Functions → Secrets):
 //   DRIVE_API_KEY         : Google Cloud 에서 만든 API 키 (Drive API 사용 설정 필요)
 //                           ※ 없으면 GOOGLE_API_KEY 를 대신 사용합니다
-//   DRIVE_ROOT_FOLDER_ID  : (선택) 공동체에 폴더가 지정되지 않았을 때 쓰는 기본 폴더
+//
+// ※ 공동체에 폴더가 지정되지 않았으면 '아직 지정되지 않았습니다' 라고 답합니다.
+//   예전에는 DRIVE_ROOT_FOLDER_ID 시크릿으로 되돌아갔는데, 그러면 폴더를 등록하지 않은
+//   공동체가 전부 남의 공동체 자료실을 보게 됩니다. 그래서 되돌아가지 않습니다.
 //
 // 폴더는 '링크가 있는 모든 사용자 - 뷰어' 로 공유되어 있어야 합니다.
 //
@@ -20,7 +23,6 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
 const API_KEY = ((Deno.env.get("DRIVE_API_KEY") ?? Deno.env.get("GOOGLE_API_KEY")) ?? "").trim();
-const FALLBACK_ROOT = (Deno.env.get("DRIVE_ROOT_FOLDER_ID") ?? "").trim();
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
@@ -130,8 +132,10 @@ function shape(f: any) {
 // 총관리자만 다른 공동체를 명시해 열 수 있다 (앱의 공동체 전환 기능 때문).
 async function resolveRoot(req: Request, wantedCommunityId: string) {
   if (!SUPABASE_URL || !SERVICE_KEY) {
-    // DB 에 접근할 수 없으면 예전처럼 시크릿 폴더로 (설치 전 호환)
-    return { rootId: FALLBACK_ROOT, communityId: "", role: "" };
+    // DB 에 닿지 못하면 어느 공동체인지 알 수 없다. 모르면 아무것도 열지 않는다.
+    const e: any = new Error("서버 설정이 끝나지 않았습니다. 잠시 뒤 다시 시도해 주세요.");
+    e.status = 503;
+    throw e;
   }
   const admin = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
   const authHeader = req.headers.get("Authorization") || "";
@@ -151,7 +155,8 @@ async function resolveRoot(req: Request, wantedCommunityId: string) {
 
   const { data: comm } = await admin.from("communities")
     .select("drive_root_folder_id, name").eq("id", communityId).single();
-  const rootId = String((comm as any)?.drive_root_folder_id || "").trim() || FALLBACK_ROOT;
+  // 이 공동체에 지정된 폴더만 쓴다. 없으면 빈 값 → 호출부에서 needsFolder 로 안내한다.
+  const rootId = String((comm as any)?.drive_root_folder_id || "").trim();
   return { rootId, communityId, role: me.community_role, communityName: (comm as any)?.name || "" };
 }
 
@@ -206,7 +211,7 @@ Deno.serve(async (req) => {
   } catch (e: any) {
     const status = e?.status;
     let msg = String(e?.message || e);
-    if (status === 401 || (status === 403 && /로그인|공동체 정보/.test(msg))) {
+    if (status === 401 || status === 503 || (status === 403 && /로그인|공동체 정보/.test(msg))) {
       return json({ error: msg }, status);
     }
     if (status === 403 && msg === "PATH") {
