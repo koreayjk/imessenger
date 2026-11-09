@@ -2171,6 +2171,23 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
           <input id="ev-end-time" type="time" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none"/>
         </div>
       </div>
+      <!-- 🔁 반복. 구글 캘린더의 반복과 서로 오갑니다 (개선창 ⑭ · 박윤환) -->
+      <div style="margin-bottom:12px">
+        <div style="font-size:11.5px;color:var(--ink3);margin-bottom:5px" data-ko="반복" data-en="Repeat">반복</div>
+        <div style="display:flex;gap:8px">
+          <select id="ev-rep" onchange="onEvRepChange()" style="flex:1;min-width:0;padding:10px 12px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none;background:var(--surface);color:var(--ink)">
+            <option value="" data-ko="반복 안 함" data-en="Does not repeat">반복 안 함</option>
+            <option value="DAILY" data-ko="매일" data-en="Daily">매일</option>
+            <option value="WEEKLY" data-ko="매주 (이 날 요일)" data-en="Weekly (this weekday)">매주 (이 날 요일)</option>
+            <option value="WEEKDAY" data-ko="주중 매일 (월~금)" data-en="Every weekday (Mon–Fri)">주중 매일 (월~금)</option>
+            <option value="MONTHLY" data-ko="매월" data-en="Monthly">매월</option>
+            <option value="YEARLY" data-ko="매년" data-en="Yearly">매년</option>
+            <option value="KEEP" data-ko="지금 규칙 그대로" data-en="Keep current rule" style="display:none" disabled>지금 규칙 그대로</option>
+          </select>
+          <input id="ev-rep-until" type="date" onchange="onEvRepChange()" style="width:148px;padding:10px 12px;border:1.5px solid var(--border);border-radius:11px;font:14px var(--font);outline:none;background:var(--surface);color:var(--ink);display:none"/>
+        </div>
+        <div id="ev-rep-note" style="font-size:11px;color:var(--ink3);margin-top:5px;line-height:1.6"></div>
+      </div>
       <!-- 누구 일정인가. 기본은 '내 일정' 이다 — 모두에게 보내는 건
            일부러 고르게 한다. 잘못 올리면 되돌리기 번거롭다. -->
       <div style="margin-bottom:12px">
@@ -11339,7 +11356,7 @@ let pendingScheduleFile = null;
 let pendingScheduleTitle = '';
 
 function showScheduleImageForm() {
-  pendingScheduleDate = new Date().toISOString().slice(0,10);
+  pendingScheduleDate = todayStr();
   const modal = document.createElement('div');
   modal.id = 'sched-title-modal';
   modal.style.cssText = 'position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center';
@@ -15317,7 +15334,7 @@ async function saveMockItem() {
 
   const item = {
     id: Date.now().toString(),
-    date: new Date().toISOString().slice(0, 10),
+    date: todayStr(),
     exam: document.getElementById('mock-exam')?.value?.trim() || r.exam_name || '',
     subject: r.subject || '',
     mode: r.grading_mode || '',
@@ -15933,7 +15950,7 @@ function renderReadingLog(bookId) {
   const log = readingMyLogs.find(l => l.book_id === bookId);
   const wc0 = countWords(log?.report || '');
   const submitted = !!log && wc0 >= MIN_REPORT_WORDS;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayStr();
   const inputCss = 'width:100%;padding:10px 13px;border-radius:10px;border:1.5px solid var(--border);background:var(--s2);font:14px var(--font);color:var(--ink);outline:none';
   const inp = 'height:32px;padding:0 9px;border:1px solid var(--border);border-radius:8px;font:600 12px var(--font);background:var(--surface);color:var(--ink)';
   const page = document.getElementById('reading-page');
@@ -16035,7 +16052,7 @@ function updateReadingWC() {
   el.style.color = n >= MIN_REPORT_WORDS ? '#15803d' : (n >= MIN_REPORT_WORDS*0.6 ? '#b8860b' : 'var(--ink3)');
 }
 async function addReadingNote(bookId) {
-  const date = document.getElementById('rn-date')?.value || new Date().toISOString().slice(0,10);
+  const date = document.getElementById('rn-date')?.value || todayStr();
   const pages = (document.getElementById('rn-pages')?.value || '').trim();
   const content = stripPastedHtml(document.getElementById('rn-content')?.value || '');
   if (!content) { showUploadToast(t('메모 내용을 입력하세요','Please enter note content')); return; }
@@ -16060,7 +16077,7 @@ async function deleteReadingNote(id, bookId) {
 }
 
 async function saveReadingLog(bookId) {
-  const read_date = document.getElementById('rd-date').value || new Date().toISOString().slice(0, 10);
+  const read_date = document.getElementById('rd-date').value || todayStr();
   const report = stripPastedHtml(document.getElementById('rd-report').value);
   const wc = countWords(report);
   if (wc < MIN_REPORT_WORDS) {
@@ -18327,6 +18344,13 @@ async function syncGoogleCalendar() {
         `Sent: ${sent} (new ${r.pushed||0}, updated ${r.updated||0})`),
       t(`구글에서 가져옴: ${r.pulled||0}건`, `Pulled: ${r.pulled||0}`),
     ];
+    //  🔁 반복 일정이 몇 건 왔는지 알려 준다. 예전에는 반복이 첫 회차 하나로만
+    //     들어와서 "분명히 매주로 넣었는데 한 번만 보인다" 를 스스로 확인할
+    //     길이 없었습니다 (개선창 ⑭ · 박윤환).
+    if (r.repeats) lines.push(t(`🔁 반복 일정: ${r.repeats}건 (달력에서 매 회차로 펼쳐 보여요)`,
+                                `🔁 Repeating: ${r.repeats} (shown on every occurrence)`));
+    if (r.exceptions) lines.push(t(`그 중 회차만 빠지거나 바뀐 날: ${r.exceptions}건`,
+                                   `Occurrences changed or removed: ${r.exceptions}`));
     if (r.deletedHere) lines.push(t(`구글에서 지워져 TCS 에서도 지움: ${r.deletedHere}건`, `Deleted here: ${r.deletedHere}`));
     if (r.deletedThere) lines.push(t(`TCS 에서 지워져 구글에서도 지움: ${r.deletedThere}건`, `Deleted there: ${r.deletedThere}`));
     if (Array.isArray(data.problems) && data.problems.length) {
@@ -23339,6 +23363,187 @@ function ymdStr(d) {
   const z = (n) => String(n).padStart(2, '0');
   return d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate());
 }
+// 오늘 — 보는 사람의 날짜. new Date().toISOString() 은 UTC 라 한국에서는
+// 새벽에 '어제', 미국에서는 저녁에 '내일' 이 나온다.
+function todayStr() { return ymdStr(new Date()); }
+
+// ══════════════════════════════════════════════════════════════
+// 🔁 반복 일정 — 규칙을 들고 와서, 달력이 그릴 때 펼친다
+//  (개선창 ⑭ · 박윤환 · RM · 2026-11-06)
+// ══════════════════════════════════════════════════════════════
+//  "구글 캘린더에 반복으로 설정한 내용이 TCS와 연동되지 않고,
+//   최초로 기록한 일정만 서로 동기화 되는 부분을 개선 부탁드립니다."
+//
+//  맞는 말씀이었습니다. gcal-sync 가 일부러 대표 일정 한 건만 들여오고
+//  설명에 '🔁 매주 …' 라는 글만 적어 뒀습니다 — events 표에 '반복' 이라는
+//  개념이 아예 없었기 때문입니다.
+//
+//  고친 방향 : 줄을 늘리지 않고 **규칙을 담고, 그릴 때 펼친다**.
+//   펼쳐서 줄로 집어넣으면 매주 반복 하나가 2년 반 치 130줄이 되고,
+//   제목 한 번 고칠 때마다 130줄을 따라다녀야 합니다.
+const RR_DAYS = ['SU','MO','TU','WE','TH','FR','SA'];   // getDay() 순서
+const RR_MAX = 1200;    // 끝없는 반복에 걸려 영원히 돌지 않도록 뚜껑
+
+//  'FREQ=WEEKLY;BYDAY=MO,WE' → 조각으로. 모르는 FREQ 는 null (안 펼친다).
+function rrParse(rrule) {
+  const s = String(rrule || '').replace(/^RRULE:/i, '').trim();
+  if (!s) return null;
+  const o = {};
+  s.split(';').forEach(part => {
+    const i = part.indexOf('=');
+    if (i > 0) o[part.slice(0, i).trim().toUpperCase()] = part.slice(i + 1).trim();
+  });
+  const freq = String(o.FREQ || '').toUpperCase();
+  if (!['DAILY','WEEKLY','MONTHLY','YEARLY'].includes(freq)) return null;
+  const m = String(o.UNTIL || '').match(/^(\d{4})(\d{2})(\d{2})/);
+  return {
+    freq,
+    interval: Math.max(1, parseInt(o.INTERVAL || '1', 10) || 1),
+    byday: String(o.BYDAY || '').split(',').map(x => x.trim().toUpperCase()).filter(Boolean),
+    bymonthday: String(o.BYMONTHDAY || '').split(',').map(x => parseInt(x, 10)).filter(n => !isNaN(n)),
+    count: Math.max(0, parseInt(o.COUNT || '0', 10) || 0),
+    until: m ? `${m[1]}-${m[2]}-${m[3]}` : '',
+  };
+}
+
+//  ev 의 반복을 [fromIso, toIso] 안에서 펼쳐 날짜 목록으로.
+//   · 시작일(start_date) 이 첫 회차입니다.
+//   · rrule_except 에 든 날은 뺍니다 (구글에서 그 회차만 지우거나 바꾼 날).
+//   · COUNT 는 '몇 번째 회차' 를 보는 값이라, 창 앞쪽 회차도 세어야 맞습니다.
+function rrOccurrences(ev, fromIso, toIso) {
+  const r = rrParse(ev && ev.rrule);
+  if (!r) return [];
+  const start = ymdLocal(ev.start_date);
+  const from = ymdLocal(fromIso), to = ymdLocal(toIso);
+  if (!start || !from || !to) return [];
+  const until = r.until ? ymdLocal(r.until) : null;
+  const stop = (until && until < to) ? until : to;
+  if (stop < start) return [];
+  const skip = new Set((ev.rrule_except || []).map(d => String(d).slice(0, 10)));
+  const out = [];
+  let seen = 0, guard = 0;
+  //  true = 더 가도 된다 / false = 여기서 끝
+  const take = (d) => {
+    if (d < start) return true;
+    if (until && d > until) return false;
+    seen++;
+    if (r.count && seen > r.count) return false;
+    if (d >= from && d <= to) { const iso = ymdStr(d); if (!skip.has(iso)) out.push(iso); }
+    return true;
+  };
+
+  if (r.freq === 'DAILY') {
+    for (const d = new Date(start); d <= stop && guard++ < RR_MAX; d.setDate(d.getDate() + r.interval)) {
+      if (!take(new Date(d))) break;
+    }
+  } else if (r.freq === 'WEEKLY') {
+    const wd = (r.byday.length
+      ? r.byday.map(x => RR_DAYS.indexOf(x.replace(/^[-+]?\d+/, ''))).filter(i => i >= 0)
+      : [start.getDay()]).sort((a, b) => a - b);
+    const w0 = new Date(start); w0.setDate(w0.getDate() - start.getDay());
+    let dead = false;
+    for (const w = new Date(w0); w <= stop && !dead && guard++ < RR_MAX; w.setDate(w.getDate() + 7 * r.interval)) {
+      for (const k of wd) {
+        const d = new Date(w); d.setDate(w.getDate() + k);
+        if (d < start) continue;
+        if (!take(d)) { dead = true; break; }
+      }
+    }
+  } else if (r.freq === 'MONTHLY') {
+    //  '셋째 수요일'(3WE) · '마지막 금요일'(-1FR) 꼴
+    const nth = [];
+    r.byday.forEach(x => {
+      const m = x.match(/^([-+]?\d+)?([A-Z]{2})$/);
+      if (m && RR_DAYS.indexOf(m[2]) >= 0) nth.push([m[1] ? parseInt(m[1], 10) : 0, RR_DAYS.indexOf(m[2])]);
+    });
+    const md = r.bymonthday.length ? r.bymonthday.slice() : (nth.length ? [] : [start.getDate()]);
+    let dead = false;
+    for (const mo = new Date(start.getFullYear(), start.getMonth(), 1);
+         mo <= stop && !dead && guard++ < RR_MAX;
+         mo.setMonth(mo.getMonth() + r.interval)) {
+      const y = mo.getFullYear(), m = mo.getMonth(), last = new Date(y, m + 1, 0).getDate();
+      const days = [];
+      //  31일마다 로 둔 반복은 **없는 달을 건너뜁니다** (2월에 31일은 없다)
+      md.forEach(n => { const dd = n > 0 ? n : last + 1 + n; if (dd >= 1 && dd <= last) days.push(dd); });
+      nth.forEach(([k, w]) => {
+        const first = new Date(y, m, 1).getDay();
+        if (k > 0) { const dd = 1 + ((w - first + 7) % 7) + (k - 1) * 7; if (dd <= last) days.push(dd); }
+        else if (k < 0) { const lw = new Date(y, m, last).getDay(); const dd = last - ((lw - w + 7) % 7) + (k + 1) * 7; if (dd >= 1) days.push(dd); }
+        else { for (let dd = 1 + ((w - first + 7) % 7); dd <= last; dd += 7) days.push(dd); }
+      });
+      days.sort((a, b) => a - b);
+      for (const dd of days) {
+        const d = new Date(y, m, dd);
+        if (d < start) continue;
+        if (!take(d)) { dead = true; break; }
+      }
+    }
+  } else {
+    for (let y = start.getFullYear(); guard++ < RR_MAX; y += r.interval) {
+      const d = new Date(y, start.getMonth(), start.getDate());
+      if (d > stop) break;
+      if (!take(d)) break;
+    }
+  }
+  return out;
+}
+
+//  반복을 사람 말로 — 화면 안내에만 씁니다
+function rrLabel(rrule) {
+  const r = rrParse(rrule);
+  if (!r) return '';
+  const KO = { SU:'일', MO:'월', TU:'화', WE:'수', TH:'목', FR:'금', SA:'토' };
+  const EN = { SU:'Sun', MO:'Mon', TU:'Tue', WE:'Wed', TH:'Thu', FR:'Fri', SA:'Sat' };
+  const key = r.byday.map(x => x.replace(/^[-+]?\d+/, ''));
+  const weekdayOnly = key.length === 5 && ['MO','TU','WE','TH','FR'].every(d => key.includes(d));
+  const n = r.interval;
+  let base;
+  if (r.freq === 'DAILY')        base = t(n > 1 ? n + '일마다' : '매일', n > 1 ? 'Every ' + n + ' days' : 'Daily');
+  else if (r.freq === 'WEEKLY')  base = weekdayOnly ? t('주중 매일 (월~금)', 'Every weekday')
+                                  : key.length ? t((n > 1 ? n + '주마다 ' : '매주 ') + key.map(d => KO[d] || d).join('·') + '요일',
+                                                   (n > 1 ? 'Every ' + n + ' weeks on ' : 'Weekly on ') + key.map(d => EN[d] || d).join(', '))
+                                  : t(n > 1 ? n + '주마다' : '매주', n > 1 ? 'Every ' + n + ' weeks' : 'Weekly');
+  else if (r.freq === 'MONTHLY') base = t(n > 1 ? n + '개월마다' : '매월', n > 1 ? 'Every ' + n + ' months' : 'Monthly');
+  else                           base = t(n > 1 ? n + '년마다' : '매년', n > 1 ? 'Every ' + n + ' years' : 'Yearly');
+  const tail = r.until ? t(' (' + r.until + ' 까지)', ' (until ' + r.until + ')')
+             : r.count ? t(' (' + r.count + '회)', ' (' + r.count + ' times)') : '';
+  return '\u{1F501} ' + base + tail;
+}
+
+//  펼친 회차는 '가짜 줄' 로 만든다. id 는 'rr:<대표id>:<날짜>'.
+//  눌러서 열면 rrRealId 가 대표 일정을 찾아 줍니다.
+function rrRealId(id) { const m = String(id || '').match(/^rr:([^:]+):/); return m ? m[1] : String(id || ''); }
+function rrSpanDays(e) {
+  if (!e.end_date || e.end_date === e.start_date) return 0;
+  const a = ymdLocal(e.start_date), b = ymdLocal(e.end_date);
+  return (a && b) ? Math.max(0, Math.round((b - a) / 86400000)) : 0;
+}
+function rrAddDays(iso, n) { const d = ymdLocal(iso); if (!d) return iso; d.setDate(d.getDate() + n); return ymdStr(d); }
+
+//  달력이 그릴 목록 — 반복은 [fromIso, toIso] 안에서 펼쳐 넣는다.
+//  반복이 아닌 일정은 그대로 둡니다.
+function calEventsExpanded(fromIso, toIso) {
+  const out = [];
+  (calEvents || []).forEach(e => {
+    if (!e.rrule) { out.push(e); return; }
+    const span = rrSpanDays(e);
+    rrOccurrences(e, fromIso, toIso).forEach(iso => {
+      out.push(Object.assign({}, e, {
+        id: 'rr:' + e.id + ':' + iso,
+        start_date: iso,
+        end_date: span > 0 ? rrAddDays(iso, span) : null,
+        _rrOf: e.id, _rrDate: iso,
+      }));
+    });
+  });
+  return out;
+}
+//  그 날짜가 든 달 주변을 넉넉히 펼친다 (달을 걸친 여러 날 일정까지)
+function calEventsAround(dateStr) {
+  const d = ymdLocal(dateStr) || new Date();
+  return calEventsExpanded(ymdStr(new Date(d.getFullYear(), d.getMonth(), 1 - 31)),
+                           ymdStr(new Date(d.getFullYear(), d.getMonth() + 1, 31)));
+}
 
 function renderCalendar() {
   const today = new Date();
@@ -23359,7 +23564,11 @@ function renderCalendar() {
       `<button onclick="setCalCatFilter(${label===null?'null':`'${label}'`})" style="display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 11px;border:1px solid ${active?(color||'#1d3a5f'):'var(--border)'};border-radius:99px;cursor:pointer;font:600 11px var(--font);white-space:nowrap;background:${active?(color||'#1d3a5f'):'var(--surface)'};color:${active?'#fff':'var(--ink2)'}">${color?`<span style="width:8px;height:8px;border-radius:50%;background:${active?'#fff':color}"></span>`:''}${label===null?t('전체','All'):eventCatLabel(label)}</button>`;
     legend.innerHTML = chip(null, null, !calCatFilter) + EVENT_CATS.map(c => chip(c.label, c.color, calCatFilter===c.label)).join('');
   }
-  const evs = calCatFilter ? calEvents.filter(e => (e.category||'') === calCatFilter) : calEvents;
+  //  🔁 반복 일정을 이 달 안에서 펼친다. 달을 걸친 일정도 잡히도록
+  //     앞뒤로 한 달쯤 넉넉히 펼쳐 둔다 (개선창 ⑭).
+  const expanded = calEventsExpanded(
+    ymdStr(new Date(calYear, calMonth, 1 - 31)), ymdStr(new Date(calYear, calMonth + 1, 31)));
+  const evs = calCatFilter ? expanded.filter(e => (e.category||'') === calCatFilter) : expanded;
 
   const rows = Math.ceil((firstDay + daysInMonth) / 7);
 
@@ -23562,7 +23771,7 @@ function selectCalDate(dateStr) {
 function showDayEvents(dateStr) {
   const area = document.getElementById('cal-events');
   // 단일 + 해당 날짜를 포함하는 다일 이벤트 모두 포함
-  const dayEvents = calEvents.filter(e => {
+  const dayEvents = calEventsAround(dateStr).filter(e => {
     if (!e.end_date || e.end_date === e.start_date) return e.start_date === dateStr;
     return e.start_date <= dateStr && e.end_date >= dateStr;
   }).concat(birthdaysForDate(dateStr));
@@ -23624,11 +23833,12 @@ function showEventForm(dateStr) {
   document.getElementById('event-modal-title').textContent = t('📅 일정 추가','📅 Add Event');
   document.getElementById('ev-title').value = '';
   document.getElementById('ev-desc').value = '';
-  document.getElementById('ev-date').value = dateStr || calSelectedDate || new Date().toISOString().slice(0,10);
+  document.getElementById('ev-date').value = dateStr || calSelectedDate || todayStr();
   document.getElementById('ev-end-date').value = '';
   document.getElementById('ev-time').value = '';
   document.getElementById('ev-end-time').value = '';
   document.getElementById('ev-cat').value = '';
+  evSetRepeatUi('');
   eventScope = 'mine';            // 기본은 내 일정
   paintEventScope();
   document.getElementById('ev-delete-btn').style.display = 'none';
@@ -23639,12 +23849,14 @@ function showEventForm(dateStr) {
 }
 
 function editEvent(id) {
-  const ev = calEvents.find(e => e.id === id);
+  //  펼친 회차('rr:<대표id>:<날짜>') 를 눌렀으면 대표 일정을 연다
+  const realId = rrRealId(id);
+  const ev = calEvents.find(e => e.id === realId);
   if (!ev) return;
   // 내가 만든 일정이면 고칠 수 있다. 공동체 일정은 올린 사람이 고친다
   //  (서버 규칙도 같다 — 여기서 열어 두면 눌러도 저장이 안 된다).
   if (ev.created_by !== ME.id && ev.owner_id !== ME.id) { return; }
-  editingEventId = id;
+  editingEventId = realId;
   selectedEventColor = ev.color || '#2a5298';
   document.getElementById('event-modal-title').textContent = t('✏️ 일정 수정','✏️ Edit Event');
   document.getElementById('ev-title').value = ev.title;
@@ -23654,6 +23866,7 @@ function editEvent(id) {
   document.getElementById('ev-time').value = ev.start_time ? ev.start_time.slice(0,5) : '';
   document.getElementById('ev-end-time').value = ev.end_time ? ev.end_time.slice(0,5) : '';
   document.getElementById('ev-cat').value = ev.category || '';
+  evSetRepeatUi(ev.rrule || '');
   // 고칠 때는 지금 그 일정이 어느 쪽인지 그대로 보여 준다
   eventScope = ev.owner_id ? 'mine' : 'comm';
   paintEventScope();
@@ -23699,6 +23912,77 @@ function paintEventScope() {
     : t('나만 봅니다. 다른 사람 달력에는 안 보여요.','Only you see it.');
 }
 
+// ── 🔁 반복 고르개 ────────────────────────────────────────────
+//  고르개로는 흔한 다섯 가지만 만듭니다. 구글에서 들어온 복잡한 규칙
+//  (예: 3주마다 화·목) 은 고르개로 나타낼 수 없으니, '지금 규칙 그대로'
+//  라는 칸을 보여 주고 **건드리지 않으면 원래 규칙을 그대로 둡니다**.
+//  여기서 다시 만들어 버리면 사용자가 손대지도 않은 반복이 바뀝니다.
+let evRruleOrig = '';
+
+function evSimpleOf(rrule) {
+  const r = rrParse(rrule);
+  if (!r) return '';
+  if (r.interval !== 1 || r.count) return 'KEEP';
+  if (r.freq === 'DAILY'  && !r.byday.length) return 'DAILY';
+  if (r.freq === 'WEEKLY') {
+    const d = r.byday.map(x => x.replace(/^[-+]?\d+/, ''));
+    if (!d.length) return 'WEEKLY';
+    if (d.length === 5 && ['MO','TU','WE','TH','FR'].every(k => d.includes(k))) return 'WEEKDAY';
+    const own = ymdLocal(document.getElementById('ev-date') ? document.getElementById('ev-date').value : '');
+    if (d.length === 1 && own && d[0] === RR_DAYS[own.getDay()]) return 'WEEKLY';
+    return 'KEEP';
+  }
+  if (r.freq === 'MONTHLY' && !r.byday.length && !r.bymonthday.length) return 'MONTHLY';
+  if (r.freq === 'YEARLY'  && !r.byday.length) return 'YEARLY';
+  return 'KEEP';
+}
+
+function evSetRepeatUi(rrule) {
+  evRruleOrig = String(rrule || '');
+  const sel = document.getElementById('ev-rep');
+  const un = document.getElementById('ev-rep-until');
+  if (!sel) return;
+  const v = evSimpleOf(evRruleOrig);
+  const keep = sel.querySelector('option[value="KEEP"]');
+  if (keep) { keep.disabled = v !== 'KEEP'; keep.style.display = v === 'KEEP' ? '' : 'none'; }
+  sel.value = v;
+  if (un) un.value = (rrParse(evRruleOrig) || {}).until || '';
+  onEvRepChange();
+}
+
+function onEvRepChange() {
+  const sel = document.getElementById('ev-rep');
+  const un = document.getElementById('ev-rep-until');
+  const note = document.getElementById('ev-rep-note');
+  if (!sel) return;
+  const v = sel.value;
+  if (un) {
+    un.style.display = (v && v !== 'KEEP') ? '' : 'none';
+    un.title = t('언제까지 반복할지 — 비워 두면 계속해요', 'Repeat until — leave empty to keep going');
+  }
+  if (note) {
+    const rule = evRruleFromUi();
+    note.textContent = !rule ? ''
+      : rrLabel(rule) + t(' · 고치면 모든 회차에 반영돼요', ' · changes apply to every occurrence');
+  }
+}
+
+//  고른 것 → RRULE. 'KEEP' 이면 원래 규칙을 그대로 돌려줍니다.
+function evRruleFromUi() {
+  const sel = document.getElementById('ev-rep');
+  const v = sel ? sel.value : '';
+  if (!v) return null;
+  if (v === 'KEEP') return evRruleOrig || null;
+  const until = ((document.getElementById('ev-rep-until') || {}).value || '').replace(/-/g, '');
+  const tail = until ? ';UNTIL=' + until + 'T235959Z' : '';
+  if (v === 'WEEKDAY') return 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR' + tail;
+  if (v === 'WEEKLY') {
+    const d = ymdLocal((document.getElementById('ev-date') || {}).value || '');
+    return 'FREQ=WEEKLY' + (d ? ';BYDAY=' + RR_DAYS[d.getDay()] : '') + tail;
+  }
+  return 'FREQ=' + v + tail;
+}
+
 async function submitEvent() {
   const title = document.getElementById('ev-title').value.trim();
   if (!title) { document.getElementById('ev-title').style.borderColor='var(--rose)'; return; }
@@ -23716,6 +24000,8 @@ async function submitEvent() {
     community_id: CID(),
     // 비어 있으면 공동체 일정, 내 id 면 나만 보는 일정
     owner_id: eventScope === 'comm' ? null : ME.id,
+    // 🔁 반복 규칙. 구글 캘린더와 서로 오갑니다 (개선창 ⑭)
+    rrule: evRruleFromUi(),
   };
   if (!payload.start_date) { document.getElementById('ev-date').style.borderColor='var(--rose)'; return; }
 
@@ -23723,6 +24009,16 @@ async function submitEvent() {
     ? sb.from('events').update(payload).eq('id', editingEventId).select('id')
     : sb.from('events').insert(payload).select('id');
   let { data, error } = await q;
+  //  반복 칸이 아직 없는 DB 면 반복만 빼고 저장한다 (나머지는 살린다)
+  if (error && /rrule/.test(error.message || '')) {
+    const had = payload.rrule;
+    delete payload.rrule;
+    ({ data, error } = editingEventId
+      ? await sb.from('events').update(payload).eq('id', editingEventId).select('id')
+      : await sb.from('events').insert(payload).select('id'));
+    if (!error && had) showUploadToast(t('반복은 빼고 저장했어요 — db/일정_반복_DB설치.sql 을 돌려주세요',
+                                         'Saved without the repeat — run db/일정_반복_DB설치.sql'));
+  }
   if (error && /owner_id/.test(error.message || '')) {
     // 칸이 아직 없다 — 예전처럼 공동체 일정으로만 저장한다.
     delete payload.owner_id;

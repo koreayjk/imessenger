@@ -170,6 +170,11 @@ async function openApp(b, o = {}) {
     //  시험을 UTC 컨테이너에서만 돌리면 그 버릇이 안 드러난다 — 시간대를 옮겨 본다.
     o.tz ? { timezoneId: o.tz } : {}));
   pg.on('pageerror', e => console.log('  ⚠️', e.message.slice(0, 130)));
+  //  ⚠️ '오늘' 을 toISOString() 으로 만들면 UTC 로 하루가 밀립니다. 그런데 그
+  //     어긋남은 하루 중 몇 시간에만 드러나서, 지금 시각에 맡기면 시험이
+  //     어떤 때는 잡고 어떤 때는 못 잡습니다. 시계를 못 박아 둡니다.
+  //     setFixedTime 은 Date 만 고정하고 타이머는 그대로 돌려줍니다.
+  if (o.now) await pg.clock.setFixedTime(new Date(o.now));
   //  🚧 바깥으로 나가는 길을 전부 막는다.
   //
   //  index.html 은 19줄에서 supabase-js 를 CDN 에서 받아옵니다. 그게 받아지면

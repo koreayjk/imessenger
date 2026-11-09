@@ -132,9 +132,14 @@ function toGoogle(ev: any, tz: string) {
     // 이게 있어야 'TCS 에서 지워진 것' 을 구글에서 찾아 지울 수 있다.
     extendedProperties: { private: { tcsId: String(ev.id || "") } },
   };
-  // 🔁 반복 규칙이 있으면 구글에도 '반복 일정' 으로 올린다.
+  // 🔁 반복 규칙을 구글에도 그대로 올린다.
   //    이게 없으면 TCS 에서 만든 반복이 구글에서는 한 건으로만 보인다.
-  if (ev.rrule) body.recurrence = ["RRULE:" + String(ev.rrule).replace(/^RRULE:/i, "")];
+  //  ⚠️ 없을 때 이 칸을 **빼면 안 된다**. PATCH 는 안 보낸 칸을 그대로 두므로,
+  //     TCS 에서 반복을 없애도 구글에서는 계속 반복으로 남는다.
+  //     그래서 없으면 빈 목록을 보내 풀어 준다.
+  body.recurrence = ev.rrule
+    ? ["RRULE:" + String(ev.rrule).replace(/^RRULE:/i, "")]
+    : [];
   if (ev.start_time) {
     body.start = { dateTime: `${startDate}T${(ev.start_time + ":00").slice(0, 8)}`, timeZone: tz };
     const endT = ev.end_time || ev.start_time;
@@ -581,7 +586,7 @@ Deno.serve(async (req) => {
       const masters = all.filter((g) => !g.recurringEventId);
       const pieces = all.filter((g) => g.recurringEventId);
       // 구글 일정 id → 그 일정이 들어간 TCS 줄 (회차에서 대표를 찾으려면 필요)
-      const mine = new Map<string, { id: string; origin: string }>();
+      const mine = new Map<string, { id: string; origin: string; repeats: boolean }>();
 
       // ── 2-1. 대표 일정 ────────────────────────────────────────────
       for (const g of masters) {
@@ -616,7 +621,7 @@ Deno.serve(async (req) => {
         if (mapped.rrule) report.repeats++;
 
         if (exist) {
-          mine.set(String(g.id), { id: exist.id, origin: String(exist.gcal_origin || "") });
+          mine.set(String(g.id), { id: exist.id, origin: String(exist.gcal_origin || ""), repeats: !!mapped.rrule });
           // TCS 가 원본인 일정은 구글 쪽 내용으로 덮지 않는다 (TCS 가 주인)
           if (exist.gcal_origin === "tcs") { report.skipped++; continue; }
           await admin.from("events").update({ ...mapped, gcal_synced_at: new Date().toISOString() })
@@ -627,7 +632,7 @@ Deno.serve(async (req) => {
             created_by: uid, created_by_name: "구글 캘린더",
             google_event_id: g.id, gcal_origin: "google", gcal_synced_at: new Date().toISOString(),
           }).select("id").single();
-          if (made) mine.set(String(g.id), { id: made.id, origin: "google" });
+          if (made) mine.set(String(g.id), { id: made.id, origin: "google", repeats: !!mapped.rrule });
           report.pulled++;
         }
       }
@@ -678,11 +683,15 @@ Deno.serve(async (req) => {
       }
 
       // 모아 둔 예외 날짜를 대표에 적는다.
-      //  구글이 주인인 대표만 손댑니다. 통째로 덮는 게 맞습니다 — 구글에서
-      //  되살린 회차는 더 이상 예외 목록에 오지 않으니, 그대로 되살아납니다.
-      for (const [id, days] of except) {
-        await admin.from("events").update({ rrule_except: [...days].sort() }).eq("id", id);
-        report.exceptions += days.size;
+      //  ⚠️ except 에 있는 것만 적으면 안 된다. 구글에서 지웠던 회차를 다시
+      //     되살리면 그 회차는 더 이상 pieces 로 오지 않는데, 그러면 예전에
+      //     적어 둔 예외가 남아서 **되살렸는데도 계속 숨는다**.
+      //     그래서 반복이 있는 '구글이 주인' 대표마다, 없으면 빈 칸으로 다시 적는다.
+      for (const owner of mine.values()) {
+        if (owner.origin !== "google" || !owner.repeats) continue;
+        const days = [...(except.get(owner.id) || new Set<string>())].sort();
+        await admin.from("events").update({ rrule_except: days }).eq("id", owner.id);
+        report.exceptions += days.length;
       }
     } catch (e: any) {
       if (problems.length < 5) problems.push(`가져오기: ${e.message}`);

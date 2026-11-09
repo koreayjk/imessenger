@@ -25,7 +25,7 @@ const ONE = { id:'E-one', title:'한 번 행사', start_date:'2026-11-12',
               rrule:null, rrule_except:[], color:'#2a5298', community_id:'c1', created_by:'me', owner_id:null };
 
 async function openCal(b, o = {}) {
-  const pg = await openApp(b, Object.assign({}, o.tz ? { tz:o.tz } : {}));
+  const pg = await openApp(b, Object.assign({}, o.tz ? { tz:o.tz } : {}, o.now ? { now:o.now } : {}));
   await pg.evaluate((d) => {
     ME.community_role = 'community_admin'; ME.community_id = 'c1'; ME.id = 'me';
     calEvents = (d.EVS || []).map(x => Object.assign({}, x));
@@ -249,34 +249,43 @@ console.log('\n⑥ 저장');
 
 // ── ⑦ 시간대 — '오늘' 이 하루 밀리지 않는다 ─────────────
 //  new Date().toISOString() 으로 '오늘' 을 만들면 UTC 로 밀려서, 한국에서는
-//  새벽에 '어제' 가, 미국에서는 저녁에 '내일' 이 나옵니다. 일정·독후감 날짜가
-//  하루 어긋납니다. UTC 컨테이너에서만 돌리면 안 드러나니 시간대를 옮겨서,
-//  그리고 **덫이 실제로 걸려 있는지까지** 확인하고 잽니다.
+//  새벽에 '어제' 가, 미국에서는 저녁에 '내일' 이 나옵니다. 일정 기본 날짜와
+//  독후감 날짜가 하루 어긋납니다.
+//
+//  ⚠️ 그 어긋남은 **하루 중 몇 시간에만** 드러납니다. 지금 시각에 맡기면
+//     시험이 어떤 때는 잡고 어떤 때는 못 잡습니다 (되돌려 보고 ❌ 가 안 나와서
+//     들켰습니다). 그래서 시계를 못 박고, '덫이 걸렸는지' 까지 확인합니다.
 console.log("\n⑦ 시간대 — '오늘' 이 안 밀린다");
 {
-  for (const tz of ['Asia/Seoul', 'America/Los_Angeles']) {
-    const pg = await openCal(b, { tz });
+  for (const [tz, now, utcDay] of [
+    //  서울 11/9 01:30 = UTC 11/8 16:30  → toISOString 은 '어제'
+    ['Asia/Seoul',          '2026-11-08T16:30:00Z', '2026-11-08'],
+    //  LA   11/9 20:30 = UTC 11/10 04:30 → toISOString 은 '내일'
+    ['America/Los_Angeles', '2026-11-10T04:30:00Z', '2026-11-10'],
+  ]) {
+    const pg = await openCal(b, { tz, now });
     const r = await pg.evaluate(() => {
-      const dawn = new Date(2026, 10, 9, 0, 30);    // 그 사람 시계로 11/9 새벽
-      const nite = new Date(2026, 10, 9, 23, 30);   // 그 사람 시계로 11/9 밤
+      const n = new Date();
       calSelectedDate = null;
-      showEventForm();                               // 날짜를 안 주고 열면 '오늘'
+      showEventForm();                      // 날짜를 안 주고 열면 '오늘'
       return {
-        dawn: ymdStr(dawn), dawnUtc: dawn.toISOString().slice(0, 10),
-        nite: ymdStr(nite), niteUtc: nite.toISOString().slice(0, 10),
         today: todayStr(),
+        utc: n.toISOString().slice(0, 10),
+        local: n.getFullYear() + '-' + String(n.getMonth() + 1).padStart(2, '0')
+             + '-' + String(n.getDate()).padStart(2, '0'),
         formDate: document.getElementById('ev-date').value,
-        off: new Date().getTimezoneOffset(),
+        off: n.getTimezoneOffset(),
       };
     });
     await pg.close();
-    ok(r.off !== 0, `${tz} — 시간대가 실제로 옮겨졌다 (UTC 와 ${r.off}분 차이)`);
-    ok(r.dawnUtc !== '2026-11-09' || r.niteUtc !== '2026-11-09',
-       `${tz} — 덫이 걸려 있다 (toISOString 은 ${r.dawnUtc} / ${r.niteUtc})`);
-    ok(r.dawn === '2026-11-09' && r.nite === '2026-11-09',
-       `${tz} — 새벽도 밤도 그 날 그대로`);
-    ok(r.formDate === r.today,
-       `${tz} — 일정 추가 창의 기본 날짜도 그 사람 '오늘' (${r.formDate})`);
+    //  ★ 먼저 덫이 걸려 있는지 — UTC 와 그 사람 날짜가 **달라야** 잴 수 있다
+    ok(r.utc === utcDay && r.local === '2026-11-09',
+       `${tz} — 덫이 걸렸다 (그 사람은 11/9, UTC 로는 ${r.utc})`);
+    ok(r.today === '2026-11-09',
+       `${tz} — todayStr 은 그 사람 날짜 11/9 (${r.today})`);
+    ok(r.formDate === '2026-11-09',
+       `${tz} — 일정 추가 창의 기본 날짜도 11/9 (${r.formDate})`);
+    ok(r.off !== 0, `${tz} — 시간대가 실제로 옮겨졌다 (UTC 와 ${r.off}분)`);
   }
 }
 

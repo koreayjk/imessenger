@@ -91,8 +91,11 @@ revoke truncate on public.weekly_logs from anon, authenticated;
 
 --  고친 때를 적어 둔다
 create or replace function public.weekly_logs_touch()
-returns trigger language plpgsql as $$
-begin new.updated_at := now(); return new; end $$;
+returns trigger language plpgsql
+set search_path = public
+as $$
+begin new.updated_at := now(); return new; end
+$$;
 
 --  두 번 깔아도 터지지 않게 — 이미 있으면 넘어갑니다
 do $$
