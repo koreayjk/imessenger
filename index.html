@@ -22114,7 +22114,10 @@ function imNoteEditorHtml() {
       <button onclick="imTogglePin()" title="${imAttr(t('맨 위에 고정','Pin to top'))}" style="height:32px;padding:0 11px;border:1.5px solid ${n.pinned?'#1d3a5f':'var(--border)'};background:${n.pinned?'#1d3a5f':'var(--surface)'};color:${n.pinned?'#fff':'var(--ink2)'};border-radius:9px;cursor:pointer;font:600 12px var(--font)">📌</button>
       <button onclick="imOpenShare()" title="${t('공유 범위 정하기','Set who can see this')}" style="height:32px;padding:0 12px;border:1.5px solid ${n.visibility==='private'?'var(--border)':'var(--accent)'};background:var(--surface);border-radius:9px;cursor:pointer;font:600 12px var(--font);color:${n.visibility==='private'?'var(--ink2)':'var(--adeep)'}">${imShareLabel(n)}</button>
       <button onclick="imDeleteNote()" style="height:32px;padding:0 12px;border:1.5px solid var(--border);background:var(--surface);border-radius:9px;cursor:pointer;font:600 12px var(--font);color:var(--rose)">${t('삭제','Delete')}</button>
-    ` : `<span style="font-size:11.5px;color:var(--ink3)">${t('다른 사람의 공개 노트예요 (읽기 전용)','Shared by another member (read-only)')}</span>`}
+    ` : `
+      ${canAdminNoteVis(n) ? `<button onclick="imOpenAdminVis()" title="${imAttr(t('관리자 — 이 노트의 공개 상태를 조정해요 (내용은 못 고쳐요)','Admin — adjust who can see this note (contents stay untouched)'))}"
+        style="height:32px;padding:0 12px;border:1.5px solid var(--accent);background:var(--surface);border-radius:9px;cursor:pointer;font:700 12px var(--font);color:var(--adeep)">&#128736; ${t('공개 조정','Visibility')}</button>` : ''}
+      <span style="font-size:11.5px;color:var(--ink3)">${t('다른 사람의 공개 노트예요 (읽기 전용)','Shared by another member (read-only)')}</span>`}
   </div>
 
   <input id="im-title" ${ro} value="${imAttr(n.title)}" oninput="imOnEdit()" placeholder="${imAttr(t('제목','Title'))}"
@@ -22367,6 +22370,133 @@ async function imSaveShare() {
   imToast(d.vis === 'community' ? t('🌐 공동체 전체에 공개했어요','🌐 Shared with everyone')
         : d.vis === 'selected'  ? t('👥 고른 사람에게만 공개했어요','👥 Shared with the people you picked')
         : t('🔒 나만 보도록 되돌렸어요','🔒 Back to private'));
+}
+
+// ══════════════════════════════════════════
+// 관리자 — 이미 올라온 노트의 공개 상태 조정
+//  (개선창 ⑧ · 양회광 · IM HQ)
+// ══════════════════════════════════════════
+//  관리자도 못 하는 두 가지가 있습니다 — 서버에서도 막아 뒀습니다.
+//   ① 남의 「나만 보기」 노트는 보지도, 건드리지도 못합니다.
+//      → 이미 올라온(공개된) 노트만 조정됩니다.
+//   ② 남의 노트 '내용' 은 못 고칩니다. 공개 칸만 바뀝니다.
+//  그리고 몰래 바뀌면 안 되니, 바꾸면 글쓴이에게 한 줄 보냅니다.
+//
+//  '고른 사람만' 은 넣지 않았습니다. 남의 노트를 누구에게 보일지
+//  관리자가 대신 고르는 건 지나칩니다 — 서버도 그 값을 받지 않습니다.
+function canAdminNoteVis(n) {
+  return !!n && !!ME && !imNoteIsMine(n) && isCommunityAdmin()
+      && ['community', 'selected'].includes(n.visibility);
+}
+function imNoteAuthorName(n) {
+  return (n && (n.author_name || (members[n.user_id] || {}).name)) || t('글쓴이', 'the author');
+}
+function imNoteTitleOf(n) {
+  return (n && String(n.title || '').trim()) || t('제목 없음', 'Untitled');
+}
+
+function imOpenAdminVis() {
+  if (!canAdminNoteVis(imNoteCur)) return;
+  renderAdminVisModal();
+}
+
+function renderAdminVisModal() {
+  document.getElementById('im-admvis-modal')?.remove();
+  const n = imNoteCur; if (!canAdminNoteVis(n)) return;
+  const who = imNoteAuthorName(n);
+
+  const row = (v, icon, title, desc) => {
+    const now = n.visibility === v;
+    return `<div ${now ? '' : `onclick="imAdminSetVis('${v}')"`}
+      style="display:flex;align-items:flex-start;gap:11px;padding:11px 13px;border-radius:12px;margin-bottom:6px;
+      cursor:${now ? 'default' : 'pointer'};
+      border:1.5px solid ${now ? 'var(--accent)' : 'var(--border)'};background:${now ? 'var(--asoft)' : 'var(--surface)'}">
+      <div style="font-size:17px;line-height:1.2">${icon}</div>
+      <div style="min-width:0;flex:1">
+        <div style="font-size:13.5px;font-weight:700;color:var(--ink)">${title}</div>
+        <div style="font-size:11.5px;color:var(--ink3);margin-top:2px;word-break:keep-all">${desc}</div>
+      </div>
+      ${now ? `<span style="font-size:11px;font-weight:700;color:var(--adeep);flex-shrink:0;margin-top:3px;white-space:nowrap">${t('지금 상태', 'Current')}</span>` : ''}
+    </div>`;
+  };
+
+  const m = document.createElement('div');
+  m.id = 'im-admvis-modal';
+  m.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px';
+  m.innerHTML = `
+    <div style="background:var(--surface);border-radius:20px;width:100%;max-width:440px;max-height:88vh;display:flex;flex-direction:column;box-shadow:var(--sh-3);overflow:hidden">
+      <div style="padding:19px 22px;border-bottom:1px solid var(--border)">
+        <div style="font-size:16px;font-weight:700">&#128736; ${t('공개 상태 조정', 'Adjust visibility')}</div>
+        <div style="font-size:12px;color:var(--ink3);margin-top:4px;word-break:keep-all">
+          ${escHtml(imNoteTitleOf(n))} <span style="opacity:.7">· ${escHtml(who)}${t(' 님의 노트', "'s note")}</span>
+        </div>
+      </div>
+      <div style="padding:14px 18px;overflow-y:auto;flex:1;min-height:0">
+        ${row('community', '\u{1F310}', t('공동체 전체 공개', 'Everyone in the community'),
+              t('우리 공동체 구성원 모두가 봐요', 'All members of your community can see it'))}
+        ${row('private', '\u{1F512}', t('비공개로 내리기', 'Make it private'),
+              t('글쓴이만 보게 돼요. 노트와 내용은 그대로 남습니다', 'Only the author can see it. The note and its contents stay'))}
+        ${n.visibility === 'selected' ? `<div style="font-size:11.5px;color:var(--ink3);background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:9px 11px;margin-top:4px;word-break:keep-all">
+          ${t('지금은 「고른 사람만」 이에요. 어느 쪽으로 바꾸든 고른 명단은 지워집니다.',
+              'It is currently shared with selected people. Either choice clears that list.')}
+        </div>` : ''}
+        <div style="font-size:11.5px;color:var(--ink3);margin-top:12px;line-height:1.65;word-break:keep-all">
+          ${t('· 바꾸면 ', '· ')}${escHtml(who)}${t(' 님에게 알려 드려요.', ' will be notified.')}<br>
+          ${t('· 노트 제목과 내용은 관리자도 고칠 수 없어요.', '· Admins cannot change the title or contents.')}
+        </div>
+      </div>
+      <div style="padding:12px 18px;border-top:1px solid var(--border);display:flex;justify-content:flex-end">
+        <button onclick="document.getElementById('im-admvis-modal').remove()"
+          style="height:38px;padding:0 18px;border-radius:10px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);font:600 13px var(--font);cursor:pointer">${t('닫기', 'Close')}</button>
+      </div>
+    </div>`;
+  m.addEventListener('click', e => { if (e.target === m) m.remove(); });
+  document.body.appendChild(m);
+}
+
+async function imAdminSetVis(v) {
+  const n = imNoteCur; if (!canAdminNoteVis(n)) return;
+  if (v !== 'private' && v !== 'community') return;
+  const who = imNoteAuthorName(n), title = imNoteTitleOf(n);
+
+  if (!confirm(v === 'private'
+    ? t(`「${title}」 을 비공개로 내릴까요?\n\n` + who + ' 님만 보게 되고, ' + who + ' 님에게 알려 드립니다.\n노트와 내용은 그대로 남습니다.',
+        `Make "${title}" private?\n\nOnly ` + who + ' will see it, and ' + who + ' will be notified.\nThe note and its contents stay.')
+    : t(`「${title}」 을 공동체 전체에 공개할까요?\n\n` + who + ' 님에게 알려 드립니다.',
+        `Share "${title}" with everyone in the community?\n\n` + who + ' will be notified.'))) return;
+
+  const { error } = await sb.rpc('admin_set_note_visibility', { p_note: n.id, p_vis: v });
+  if (error) {
+    const msg = error.message || '';
+    imToast(/admin_set_note_visibility/.test(msg)
+      ? '공개 조정은 DB 설치가 필요해요 — 노트_공개조정_DB설치.sql 을 실행해주세요'
+      : t('바꾸지 못했어요: ', 'Could not change it: ') + msg);
+    return;
+  }
+
+  // 몰래 바뀌면 안 된다 — 글쓴이에게 한 줄. 못 보내도 바뀐 건 바뀐 것이니,
+  // 보냈다고 거짓말하지 않고 토스트 문구만 달라진다.
+  let told = false;
+  try {
+    told = await dmSendTextTo(n.user_id, v === 'private'
+      ? t(`\u{1F512} 노트를 비공개로 내렸어요\n「${title}」\n\n관리자(${ME.name})가 이 노트를 「나만 보기」로 바꿨어요.\n노트와 내용은 그대로 있고, 이제 ` + who + ' 님만 볼 수 있어요.',
+          `\u{1F512} A note was made private\n"${title}"\n\nAn admin (${ME.name}) set this note to private.\nThe note and its contents are unchanged — only you can see it now.`)
+      : t(`\u{1F310} 노트를 공동체 전체에 공개했어요\n「${title}」\n\n관리자(${ME.name})가 이 노트를 공동체 전체 공개로 바꿨어요.\n내용은 그대로예요.`,
+          `\u{1F310} A note was shared with everyone\n"${title}"\n\nAn admin (${ME.name}) made this note visible to the whole community.\nIts contents are unchanged.`));
+  } catch (_) {}
+
+  document.getElementById('im-admvis-modal')?.remove();
+  if (v === 'private') {
+    // 이제 관리자 눈에도 안 보인다 (RLS). 목록에서 빼고 목록으로 돌아간다.
+    imNotes = imNotes.filter(x => x.id !== n.id);
+    imNoteCur = null;
+  } else {
+    n.visibility = 'community'; n.share_members = []; n.share_groups = [];
+  }
+  renderNotePage();
+  imToast((v === 'private' ? t('\u{1F512} 비공개로 내렸어요', '\u{1F512} Set to private')
+                           : t('\u{1F310} 공동체 전체에 공개했어요', '\u{1F310} Shared with everyone'))
+        + (told ? t(' · 글쓴이에게 알렸어요', ' · the author was notified') : ''));
 }
 
 async function imDeleteNote() {
@@ -26965,19 +27095,26 @@ async function loadTimetableAll() {
 
 function ttViewToggleHtml() {
   const t = (v,label) => `<button onclick="setTtView('${v}')" style="height:34px;padding:0 13px;border:none;border-radius:8px;font:600 12px var(--font);cursor:pointer;background:${ttView===v?'#1d3a5f':'transparent'};color:${ttView===v?'#fff':'var(--ink2)'}">${label}</button>`;
-  return `<div style="display:inline-flex;gap:2px;background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:3px">${t('edit', window.t('반별 편집','By Class'))}${t('teacher', window.t('교사별 보기','By Teacher'))}</div>`;
+  return `<div style="display:inline-flex;gap:2px;background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:3px">${t('edit', window.t('반별 편집','By Class'))}${t('teacher', window.t('교사별 보기','By Teacher'))}${t('log', window.t('\u{1F4D4} 주간 기록','\u{1F4D4} Weekly Log'))}</div>`;
 }
 
 async function renderTimetableHub() {
   const main = document.getElementById('school-main');
   main.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink3);font-size:13px">'+t('불러오는 중...','Loading...')+'</div>';
-  try { if (ttView === 'teacher') await loadTimetableAll(); else await loadTimetable(); }
+  try {
+    if (ttView === 'teacher') await loadTimetableAll();
+    else if (ttView === 'log') await loadWeeklyLogs();
+    else await loadTimetable();
+  }
   catch(e) {
-    if (schoolTableMissing(e)) return schoolSetupNeeded(e, 'db/학사_시간표_DB설치.sql');
+    if (schoolTableMissing(e)) return schoolSetupNeeded(e,
+      ttView === 'log' ? 'db/주간기록_DB설치.sql' : 'db/학사_시간표_DB설치.sql');
     main.innerHTML = `<div style="color:#b91c1c;padding:30px;text-align:center;font-size:13px">${t('불러오기 실패: ','Failed to load: ')}${e.message||e}</div>`;
     return;
   }
-  if (ttView === 'teacher') renderTimetableTeacher(); else renderTimetableGrid();
+  if (ttView === 'teacher') renderTimetableTeacher();
+  else if (ttView === 'log') renderWeeklyLog();
+  else renderTimetableGrid();
 }
 
 function setTtView(v) { ttView = v; renderTimetableHub(); }
@@ -27099,6 +27236,188 @@ function renderTimetableGrid() {
 
 function changeTtGroup(v) { ttGroup = v; renderTimetableHub(); }
 function changeTtPeriods(v) { ttPeriods = Math.max(1, Math.min(TT_MAX_PERIODS, parseInt(v) || 7)); renderTimetableGrid(); }
+
+// ══════════════════════════════════════════════════════════════
+// 📔 주간 기록 — 날짜가 붙은 데일리 기록
+//  (개선창 ⑪ · 송희정 · 프로토스 · 2026-11-06)
+// ══════════════════════════════════════════════════════════════
+//  바라던 것 : "시간표 일정을 바인더 기록하듯이 공동체 전체와 그룹별로
+//   데일리 기록을 남기고 싶은데 날짜가 없네요. 11월 1주 2주 ..
+//   한주씩 날짜와 함께 기록할수 있으면 좋겠어요"
+//
+//  시간표(timetables) 는 '매주 똑같은 수업표' 입니다 — 요일·교시만 있고
+//  **날짜가 없습니다**. 그래서 지난주와 이번주를 가를 수가 없었습니다.
+//  수업표는 그대로 두고, 날짜를 가진 표(weekly_logs) 를 옆에 둡니다.
+//
+//  공통(전체) 과 그룹별로 따로 쌓입니다 — 위의 반 고르개를 같이 씁니다.
+const WL_DAYS = [t('월','Mon'), t('화','Tue'), t('수','Wed'), t('목','Thu'), t('금','Fri'), t('토','Sat'), t('일','Sun')];
+let wlWeek = '';        // 그 주의 월요일 'YYYY-MM-DD'
+let wlRows = [];        // 그 주에 이미 적힌 기록
+let wlSaving = false;
+
+//  ⚠️ toISOString() 을 쓰면 UTC 로 밀려서 **하루가 어긋납니다**
+//     (한국은 +9, 미국은 -5~-8 — 양쪽 다 틀립니다). 보는 사람의 날짜 그대로 씁니다.
+function wlIso(d) {
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')
+       + '-' + String(d.getDate()).padStart(2, '0');
+}
+function wlParse(iso) { const [y, m, d] = String(iso).slice(0, 10).split('-').map(Number); return new Date(y, m - 1, d); }
+function wlShift(iso, n) { const d = wlParse(iso); d.setDate(d.getDate() + n); return wlIso(d); }
+function wlMonday(d) {
+  const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  x.setDate(x.getDate() - ((x.getDay() + 6) % 7));   // 0=일 → 월요일로 당긴다
+  return wlIso(x);
+}
+//  '11월 2주' — 그 주 월요일이 든 달에서 몇째 주인가
+function wlWeekNo(iso) { return Math.floor((wlParse(iso).getDate() - 1) / 7) + 1; }
+function wlWeekLabel(iso) {
+  const a = wlParse(iso), b = wlParse(wlShift(iso, 6));
+  const md = d => (d.getMonth() + 1) + '/' + String(d.getDate()).padStart(2, '0');
+  const mo = a.getMonth() + 1, wk = wlWeekNo(iso);
+  return t(`${mo}월 ${wk}주`, `Week ${wk} of ${mo}`) + ` (${md(a)} ~ ${md(b)})`;
+}
+//  쓸 수 있는 사람 = 간사 이상. 서버도 같은 선을 그어 뒀습니다(is_staff_of).
+//  부총관리자는 남의 공동체를 들여다보는 중에는 읽기만 합니다.
+function wlCanWrite() {
+  if (!ME) return false;
+  if (ME.community_role === 'super_admin') return true;
+  if (isViceAdmin()) return inHomeCommunity();
+  return ['community_admin', 'admin_officer', 'teacher', 'staff'].includes(ME.community_role);
+}
+function wlRowOf(iso) { return wlRows.find(r => String(r.log_date).slice(0, 10) === iso) || null; }
+
+async function loadWeeklyLogs() {
+  if (!wlWeek) wlWeek = wlMonday(new Date());
+  let q = sb.from('weekly_logs').select('*')
+    .eq('community_id', CID())
+    .gte('log_date', wlWeek).lte('log_date', wlShift(wlWeek, 6));
+  q = ttGroup ? q.eq('group_id', ttGroup) : q.is('group_id', null);
+  const { data, error } = await q;
+  if (error) throw error;
+  wlRows = data || [];
+}
+function wlGoWeek(n) { wlWeek = wlShift(wlWeek || wlMonday(new Date()), n * 7); renderTimetableHub(); }
+function wlThisWeek() { wlWeek = wlMonday(new Date()); renderTimetableHub(); }
+
+function renderWeeklyLog() {
+  const main = document.getElementById('school-main');
+  if (!wlWeek) wlWeek = wlMonday(new Date());
+  const can = wlCanWrite(), today = wlIso(new Date());
+  const inputStyle = 'border:1px solid var(--border);border-radius:9px;padding:0 10px;font:600 13px var(--font);color:var(--ink);background:var(--surface)';
+  const groupOpts = `<option value="" ${ttGroup === '' ? 'selected' : ''}>${t('공통(전체) 기록','Common (All)')}</option>`
+    + tcsGroups.map(g => `<option value="${g.id}" ${ttGroup === g.id ? 'selected' : ''}>${escHtml(g.name)}</option>`).join('');
+
+  const cards = WL_DAYS.map((label, i) => {
+    const iso = wlShift(wlWeek, i), r = wlRowOf(iso), d = wlParse(iso);
+    const isToday = iso === today, weekend = i >= 5;
+    return `<div data-wl-card="${iso}" style="background:var(--surface);border:1.5px solid ${isToday ? '#1d3a5f' : 'var(--border)'};border-radius:12px;padding:11px 13px">
+      <div style="display:flex;align-items:center;gap:7px;margin-bottom:7px">
+        <span style="font:800 13.5px var(--font);color:${weekend ? 'var(--rose)' : 'var(--ink)'}">${label}</span>
+        <span data-wl-date="${iso}" style="font:600 12px var(--font);color:var(--ink3)">${d.getMonth() + 1}/${String(d.getDate()).padStart(2, '0')}</span>
+        ${isToday ? `<span style="font:700 10px var(--font);color:#fff;background:#1d3a5f;border-radius:99px;padding:2px 7px">${t('오늘','Today')}</span>` : ''}
+        <div style="flex:1"></div>
+        ${r && r.author_name ? `<span data-wl-by="${iso}" style="font-size:10.5px;color:var(--ink3)">${escHtml(r.author_name)}</span>` : ''}
+      </div>
+      <textarea id="wl-${iso}" ${can ? '' : 'readonly'} rows="4"
+        placeholder="${imAttr(can ? t('이 날 있었던 일을 적어요','What happened on this day') : t('아직 기록이 없어요','No record yet'))}"
+        style="width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:9px;padding:8px 10px;font:500 13px/1.7 var(--font);color:var(--ink);background:${can ? 'var(--surface)' : 'var(--s2)'};resize:vertical;outline:none">${escTa(r ? r.content : '')}</textarea>
+    </div>`;
+  }).join('');
+
+  main.innerHTML = `<div class="spage">
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
+      ${ttViewToggleHtml()}
+      <div style="display:inline-flex;align-items:center;gap:4px">
+        <button onclick="wlGoWeek(-1)" title="${imAttr(t('지난 주','Previous week'))}" style="width:32px;height:34px;${inputStyle};padding:0;cursor:pointer">&#9664;</button>
+        <span data-wl-week="${wlWeek}" style="min-width:160px;text-align:center;font:800 13.5px var(--font);color:var(--ink)">${escHtml(wlWeekLabel(wlWeek))}</span>
+        <button onclick="wlGoWeek(1)" title="${imAttr(t('다음 주','Next week'))}" style="width:32px;height:34px;${inputStyle};padding:0;cursor:pointer">&#9654;</button>
+      </div>
+      <button onclick="wlThisWeek()" style="height:34px;${inputStyle};cursor:pointer;font-weight:600">${t('이번 주','This week')}</button>
+      <select onchange="changeTtGroup(this.value)" style="height:34px;max-width:200px;${inputStyle}">${groupOpts}</select>
+      <div style="flex:1"></div>
+      <button onclick="printWeeklyLog()" style="height:34px;${inputStyle};cursor:pointer;color:var(--ink2)">&#128424; ${t('인쇄','Print')}</button>
+      ${can ? `<button id="wl-save" onclick="saveWeeklyLog()" style="height:34px;padding:0 18px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 13px var(--font)">${t('저장','Save')}</button>` : ''}
+    </div>
+    <div style="font-size:12px;color:var(--ink3);margin-bottom:10px">${can
+      ? t('날짜별로 그 날 있었던 일을 적고 <b>저장</b>하세요. 주를 넘기면 지난 주 기록이 그대로 남아 있어요.',
+          'Write what happened on each day and press <b>Save</b>. Move between weeks — past weeks keep their records.')
+      : t('기록은 간사 이상이 적습니다. 여기서는 읽기만 해요.',
+          'Staff and above write these records. This is read-only for you.')}</div>
+    <div style="display:grid;gap:12px;align-items:start;grid-template-columns:repeat(auto-fill, minmax(min(100%, 320px), 1fr))">${cards}</div>
+  </div>`;
+}
+
+async function saveWeeklyLog() {
+  if (!wlCanWrite() || wlSaving) return;
+  wlSaving = true;
+  const btn = document.getElementById('wl-save');
+  if (btn) { btn.disabled = true; btn.textContent = t('저장 중…','Saving…'); }
+  const gid = ttGroup || null;
+  let put = 0, cut = 0, failed = 0, missing = null;
+
+  for (let i = 0; i < WL_DAYS.length; i++) {
+    const iso = wlShift(wlWeek, i);
+    const el = document.getElementById('wl-' + iso); if (!el) continue;
+    const text = el.value.trim();
+    const r = wlRowOf(iso);
+    const was = r ? String(r.content || '').trim() : '';
+    if (text === was) continue;                       // 안 건드린 날은 건너뛴다
+
+    //  ⚠️ RLS 가 막으면 **error 없이 0줄** 이 옵니다. 그래서 늘 .select('id') 로
+    //     돌아온 줄 수를 세고, 0이면 저장했다고 말하지 않습니다.
+    if (!text && r) {
+      const { data, error } = await sb.from('weekly_logs').delete().eq('id', r.id).select('id');
+      if (error || !data || !data.length) { failed++; missing = missing || error; continue; }
+      wlRows = wlRows.filter(x => x.id !== r.id); cut++;
+    } else if (r) {
+      const { data, error } = await sb.from('weekly_logs')
+        .update({ content: text, author_id: ME.id, author_name: ME.name })
+        .eq('id', r.id).select('id');
+      if (error || !data || !data.length) { failed++; missing = missing || error; continue; }
+      Object.assign(r, { content: text, author_id: ME.id, author_name: ME.name }); put++;
+    } else {
+      const { data, error } = await sb.from('weekly_logs').insert({
+        community_id: CID(), group_id: gid, log_date: iso,
+        content: text, author_id: ME.id, author_name: ME.name,
+      }).select().single();
+      if (error || !data) { failed++; missing = missing || error; continue; }
+      wlRows.push(data); put++;
+    }
+  }
+
+  wlSaving = false;
+  if (missing && schoolTableMissing(missing)) return schoolSetupNeeded(missing, 'db/주간기록_DB설치.sql');
+  if (!put && !cut && !failed) {
+    if (btn) { btn.disabled = false; btn.textContent = t('저장','Save'); }
+    showUploadToast(t('바뀐 게 없어요','Nothing changed'));
+    return;
+  }
+  renderWeeklyLog();
+  if (failed) {
+    showUploadToast(t(`${failed}일치는 저장되지 않았어요 — 권한이 없거나 서버가 막았어요`,
+                      `${failed} day(s) were not saved — no permission, or the server refused`));
+  } else {
+    showUploadToast(t(`✅ ${wlWeekLabel(wlWeek)} 기록을 저장했어요`,
+                      `✅ Saved the records for ${wlWeekLabel(wlWeek)}`));
+  }
+}
+
+function printWeeklyLog() {
+  const gName = ttGroup ? ((tcsGroups.find(g => g.id === ttGroup) || {}).name || t('그룹','Group')) : t('공통(전체)','Common (All)');
+  const title = `${gName} ${t('주간 기록','Weekly Log')} — ${wlWeekLabel(wlWeek)}`;
+  const rows = WL_DAYS.map((label, i) => {
+    const iso = wlShift(wlWeek, i), r = wlRowOf(iso), d = wlParse(iso);
+    const body = String((r && r.content) || '').trim();
+    return `<tr>
+      <th style="width:92px;vertical-align:top">${label}<br><span class="sub">${d.getMonth() + 1}/${String(d.getDate()).padStart(2, '0')}</span></th>
+      <td style="vertical-align:top;white-space:pre-wrap;min-height:46px">${escHtml(body)}</td>
+    </tr>`;
+  }).join('');
+  openPrintDoc({
+    title, docTitle: title, footerNote: t('주간 기록','Weekly Log'),
+    body: `<table class="tt"><tbody>${rows}</tbody></table>`,
+  });
+}
 
 async function saveTimetable() {
   const val = id => (document.getElementById(id)?.value || '').trim();

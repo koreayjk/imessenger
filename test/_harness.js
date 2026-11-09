@@ -50,9 +50,13 @@ function dbScript() {
     window.__rpc = []; window.__rm = []; window.__rmResult = null;
     window.__fn = []; window.__fnResult = {};
     let seq = 0;
-    const mkq = (t) => { const q = { _t:t, _eq:{}, _cmp:[] };
-      ['is','not','range','or','filter','contains']
+    const mkq = (t) => { const q = { _t:t, _eq:{}, _cmp:[], _is:[] };
+      ['not','range','or','filter','contains']
         .forEach(k => q[k] = function(){ return this; });
+      //  ⚠️ .is('group_id', null) 을 그냥 넘기면 '공통 기록' 과 '그룹 기록' 이
+      //     한 통에 섞여 나온다. 그러면 갈라져 쌓이는지 잴 수가 없다
+      //     (limit·gte·엣지함수 때와 같은 자리에서 또 데었다). 진짜로 거른다.
+      q.is = function(k, v){ this._is.push([k, v]); return this; };
       //  ⚠️ gte/lt 를 그냥 넘기면 '이 달 것만 보이는지' 를 잴 수가 없다.
       //     달을 걸러도 지난달 것이 같이 나오는데 시험은 통과해 버린다
       //     (limit 때와 똑같은 자리에서 또 데었다). 진짜로 거른다.
@@ -95,6 +99,12 @@ function dbScript() {
           if (a !== null && a !== '' && b !== null && b !== '' && !isNaN(na) && !isNaN(nb)) return na - nb;
           return String(a == null ? '' : a).localeCompare(String(b == null ? '' : b));
         };
+        (this._is || []).forEach(([k, v]) => {
+          rows = rows.filter(x => v === null ? (x[k] == null)
+                                : v === true ? x[k] === true
+                                : v === false ? x[k] === false
+                                : String(x[k]) === String(v));
+        });
         this._cmp.forEach(([op, k, v]) => {
           rows = rows.filter(x => {
             if (op === 'neq') return String(x[k]) !== String(v);
@@ -155,7 +165,10 @@ async function launch() {
 async function openApp(b, o = {}) {
   const pg = await b.newPage(Object.assign(
     { viewport: o.viewport || { width: 1280, height: 950 } },
-    o.ua ? { userAgent: o.ua } : {}));
+    o.ua ? { userAgent: o.ua } : {},
+    //  날짜를 toISOString() 으로 만들면 UTC 로 밀려 **하루가 어긋난다**.
+    //  시험을 UTC 컨테이너에서만 돌리면 그 버릇이 안 드러난다 — 시간대를 옮겨 본다.
+    o.tz ? { timezoneId: o.tz } : {}));
   pg.on('pageerror', e => console.log('  ⚠️', e.message.slice(0, 130)));
   //  🚧 바깥으로 나가는 길을 전부 막는다.
   //

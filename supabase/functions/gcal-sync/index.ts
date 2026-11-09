@@ -132,6 +132,9 @@ function toGoogle(ev: any, tz: string) {
     // 이게 있어야 'TCS 에서 지워진 것' 을 구글에서 찾아 지울 수 있다.
     extendedProperties: { private: { tcsId: String(ev.id || "") } },
   };
+  // 🔁 반복 규칙이 있으면 구글에도 '반복 일정' 으로 올린다.
+  //    이게 없으면 TCS 에서 만든 반복이 구글에서는 한 건으로만 보인다.
+  if (ev.rrule) body.recurrence = ["RRULE:" + String(ev.rrule).replace(/^RRULE:/i, "")];
   if (ev.start_time) {
     body.start = { dateTime: `${startDate}T${(ev.start_time + ":00").slice(0, 8)}`, timeZone: tz };
     const endT = ev.end_time || ev.start_time;
@@ -143,28 +146,14 @@ function toGoogle(ev: any, tz: string) {
   return body;
 }
 
-// 반복 규칙을 사람이 읽는 한 줄로. (TCS 는 반복 일정을 다루지 않으므로
-//  펼치지 않고 한 건으로 두되, 반복이라는 사실은 알려 준다)
-function recurrenceText(rules: string[] | undefined): string {
-  const rule = (rules || []).find((r) => String(r).startsWith("RRULE:"));
-  if (!rule) return "";
-  const get = (k: string) => (rule.match(new RegExp(`${k}=([^;]+)`)) || [])[1] || "";
-  const freq = get("FREQ");
-  const interval = parseInt(get("INTERVAL") || "1", 10) || 1;
-  const DAY: Record<string, string> = { MO: "월", TU: "화", WE: "수", TH: "목", FR: "금", SA: "토", SU: "일" };
-  const days = get("BYDAY").split(",").filter(Boolean)
-    .map((d) => DAY[d.replace(/^[-+]?\d/, "")] || d).join("·");
-  const every = interval > 1 ? `${interval}` : "";
-  const base = freq === "DAILY" ? `${every || ""}일마다`
-    : freq === "WEEKLY" ? (days ? `매주 ${days}요일` : `${every ? every + "주마다" : "매주"}`)
-    : freq === "MONTHLY" ? `${every ? every + "개월마다" : "매월"}`
-    : freq === "YEARLY" ? `${every ? every + "년마다" : "매년"}`
-    : "반복";
-  const until = get("UNTIL").slice(0, 8);
-  const count = get("COUNT");
-  const tail = until ? ` (${until.slice(0,4)}-${until.slice(4,6)}-${until.slice(6,8)}까지)`
-    : count ? ` (${count}회)` : "";
-  return `🔁 ${base}${tail}`;
+// 반복 규칙(RRULE) 본문만 꺼낸다. 'RRULE:' 머리는 뗀다.
+//  ⚠️ 예전에는 이 규칙을 버리고 '🔁 매주 …' 라는 글만 설명에 적었습니다.
+//     그래서 구글에서 매주 반복으로 넣은 일정이 TCS 에는 **첫 회차 한 건만**
+//     보였습니다 (개선창 ⑭ · 박윤환). 이제 규칙을 그대로 담고,
+//     달력이 그릴 때 펼칩니다 — 줄을 130개로 늘리지 않습니다.
+function recurrenceRule(rules: string[] | undefined): string {
+  const rule = (rules || []).find((r) => String(r).toUpperCase().startsWith("RRULE:"));
+  return rule ? String(rule).replace(/^RRULE:/i, "").trim() : "";
 }
 
 function fromGoogle(g: any) {
@@ -178,12 +167,12 @@ function fromGoogle(g: any) {
     const back = allDay ? subDay(ed) : ed;
     endOut = back === sd ? null : back;
   }
-  // 반복 일정은 한 건으로 들여오고, 반복이라는 사실을 설명에 적어 둔다
-  const rec = recurrenceText(g.recurrence);
-  const desc = [g.description || "", rec].filter(Boolean).join("\n").trim();
+  // 반복은 규칙 칸에 담는다. 설명에 '🔁 매주 …' 를 끼워 넣던 임시 방편은 뺀다
+  // (이제 달력이 실제로 펼쳐 그리므로, 그 글은 군더더기가 된다)
   return {
     title: g.summary || "(제목 없음)",
-    description: desc || null,
+    description: g.description || null,
+    rrule: recurrenceRule(g.recurrence) || null,
     start_date: sd,
     end_date: endOut,
     start_time: allDay ? null : (g.start?.dateTime || "").slice(11, 16) || null,
@@ -509,6 +498,8 @@ Deno.serve(async (req) => {
     pushed: 0, updated: 0, pulled: 0, skipped: 0,
     deletedHere: 0,   // 구글에서 지워져 TCS 에서도 지운 수
     deletedThere: 0,  // TCS 에서 지워져 구글에서도 지운 수
+    repeats: 0,       // 🔁 반복 규칙을 가지고 들어온 일정 수
+    exceptions: 0,    // 그 중 '이 회차만' 빠지는 날의 수
   };
   const problems: string[] = [];
   // 무엇이 언제로 들어갔는지 — "보냈다는데 안 보인다" 를 스스로 확인할 수 있게
@@ -562,12 +553,19 @@ Deno.serve(async (req) => {
     const from = new Date(); from.setMonth(from.getMonth() - 6);
     const to = new Date(); to.setFullYear(to.getFullYear() + 2);
     try {
+      // 🔁 먼저 다 받아 둔다.
+      //    반복 일정의 '이 회차만 지움/바꿈' 은 대표 일정과 **따로** 오고,
+      //    오는 순서도 정해져 있지 않습니다. 흘리면서 처리하면 대표가 아직
+      //    안 들어온 채로 회차를 만나 놓칩니다. 그래서 모아 두고
+      //    ① 대표 먼저 ② 그 다음 회차 순서로 처리합니다.
+      const all: any[] = [];
       let pageToken: string | undefined;
       do {
         const q = new URLSearchParams({
           // singleEvents=false : 반복 일정을 펼치지 않는다.
-          //   펼치면 매주 반복 하나가 2년 반 치 130건으로 쏟아진다.
-          //   대신 대표 일정 한 건만 들여오고 '🔁 매주 …' 를 설명에 적는다.
+          //   펼치면 매주 반복 하나가 2년 반 치 130건으로 쏟아지고, 고칠 때마다
+          //   130줄을 따라다녀야 합니다. 대신 규칙(RRULE) 을 그대로 들여오고
+          //   달력이 그릴 때 펼칩니다.
           singleEvents: "false",
           // 지워진 것도 받아야 TCS 쪽에서 같이 지울 수 있다
           showDeleted: "true",
@@ -576,54 +574,116 @@ Deno.serve(async (req) => {
         });
         if (pageToken) q.set("pageToken", pageToken);
         const page = await gcal(token, `/calendars/${encodeURIComponent(calId)}/events?${q}`);
-        for (const g of page.items ?? []) {
-          // 반복 일정 중 '이 회차만 바뀐 것' 은 건너뛴다 (대표 일정으로 이미 들어온다)
-          if (g.recurringEventId) continue;
-
-          const { data: exist } = await admin.from("events").select("id, gcal_origin")
-            .eq("community_id", cid).eq("google_event_id", g.id).maybeSingle();
-
-          // 구글에서 지워진 일정 → TCS 에서도 지운다 (구글이 원본인 것만)
-          if (g.status === "cancelled") {
-            if (exist && exist.gcal_origin === "google") {
-              await admin.from("events").delete().eq("id", exist.id);
-              report.deletedHere++;
-            }
-            continue;
-          }
-
-          // 우리가 올린 일정인데 TCS 에서 사라졌다면 → 구글에서도 지운다
-          const tcsId = g.extendedProperties?.private?.tcsId;
-          if (tcsId) {
-            const { data: still } = await admin.from("events").select("id").eq("id", tcsId).maybeSingle();
-            if (!still) {
-              try {
-                await gcal(token, `/calendars/${encodeURIComponent(calId)}/events/${encodeURIComponent(g.id)}`,
-                  { method: "DELETE" });
-                report.deletedThere++;
-              } catch (_) { /* 이미 없으면 그만 */ }
-              continue;
-            }
-          }
-
-          const mapped = fromGoogle(g);
-          if (!mapped.start_date) continue;
-          if (exist) {
-            // TCS 가 원본인 일정은 구글 쪽 내용으로 덮지 않는다 (TCS 가 주인)
-            if (exist.gcal_origin === "tcs") { report.skipped++; continue; }
-            await admin.from("events").update({ ...mapped, gcal_synced_at: new Date().toISOString() })
-              .eq("id", exist.id);
-          } else {
-            await admin.from("events").insert({
-              ...mapped, community_id: cid, color: "#4285F4", category: null,
-              created_by: uid, created_by_name: "구글 캘린더",
-              google_event_id: g.id, gcal_origin: "google", gcal_synced_at: new Date().toISOString(),
-            });
-            report.pulled++;
-          }
-        }
+        for (const g of page.items ?? []) all.push(g);
         pageToken = page.nextPageToken;
       } while (pageToken);
+
+      const masters = all.filter((g) => !g.recurringEventId);
+      const pieces = all.filter((g) => g.recurringEventId);
+      // 구글 일정 id → 그 일정이 들어간 TCS 줄 (회차에서 대표를 찾으려면 필요)
+      const mine = new Map<string, { id: string; origin: string }>();
+
+      // ── 2-1. 대표 일정 ────────────────────────────────────────────
+      for (const g of masters) {
+        const { data: exist } = await admin.from("events").select("id, gcal_origin")
+          .eq("community_id", cid).eq("google_event_id", g.id).maybeSingle();
+
+        // 구글에서 지워진 일정 → TCS 에서도 지운다 (구글이 원본인 것만)
+        if (g.status === "cancelled") {
+          if (exist && exist.gcal_origin === "google") {
+            await admin.from("events").delete().eq("id", exist.id);
+            report.deletedHere++;
+          }
+          continue;
+        }
+
+        // 우리가 올린 일정인데 TCS 에서 사라졌다면 → 구글에서도 지운다
+        const tcsId = g.extendedProperties?.private?.tcsId;
+        if (tcsId) {
+          const { data: still } = await admin.from("events").select("id").eq("id", tcsId).maybeSingle();
+          if (!still) {
+            try {
+              await gcal(token, `/calendars/${encodeURIComponent(calId)}/events/${encodeURIComponent(g.id)}`,
+                { method: "DELETE" });
+              report.deletedThere++;
+            } catch (_) { /* 이미 없으면 그만 */ }
+            continue;
+          }
+        }
+
+        const mapped = fromGoogle(g);
+        if (!mapped.start_date) continue;
+        if (mapped.rrule) report.repeats++;
+
+        if (exist) {
+          mine.set(String(g.id), { id: exist.id, origin: String(exist.gcal_origin || "") });
+          // TCS 가 원본인 일정은 구글 쪽 내용으로 덮지 않는다 (TCS 가 주인)
+          if (exist.gcal_origin === "tcs") { report.skipped++; continue; }
+          await admin.from("events").update({ ...mapped, gcal_synced_at: new Date().toISOString() })
+            .eq("id", exist.id);
+        } else {
+          const { data: made } = await admin.from("events").insert({
+            ...mapped, community_id: cid, color: "#4285F4", category: null,
+            created_by: uid, created_by_name: "구글 캘린더",
+            google_event_id: g.id, gcal_origin: "google", gcal_synced_at: new Date().toISOString(),
+          }).select("id").single();
+          if (made) mine.set(String(g.id), { id: made.id, origin: "google" });
+          report.pulled++;
+        }
+      }
+
+      // ── 2-2. 반복 일정의 '이 회차만' ──────────────────────────────
+      //  · 지운 회차 → 대표의 rrule_except 에 그 날짜를 담아, 그릴 때 뺀다
+      //  · 바꾼 회차 → 원래 날짜를 똑같이 예외로 빼고, 바뀐 내용을 한 줄로
+      //    따로 넣는다. 그래서 그 날에는 바뀐 것만 보이고 두 개가 겹치지 않는다.
+      const except = new Map<string, Set<string>>();   // 대표 TCS 줄 id → 빠지는 날들
+      for (const g of pieces) {
+        const owner = mine.get(String(g.recurringEventId));
+        // 대표를 못 찾았거나, TCS 가 주인인 일정이면 손대지 않는다
+        if (!owner || owner.origin !== "google") continue;
+        const orig = g.originalStartTime?.date
+          || String(g.originalStartTime?.dateTime || "").slice(0, 10);
+        if (!orig) continue;
+        if (!except.has(owner.id)) except.set(owner.id, new Set<string>());
+        except.get(owner.id)!.add(orig);
+
+        const { data: had } = await admin.from("events").select("id, gcal_origin")
+          .eq("community_id", cid).eq("google_event_id", g.id).maybeSingle();
+
+        if (g.status === "cancelled") {
+          // 지운 회차 — 전에 줄로 들어와 있었다면 치운다
+          if (had && had.gcal_origin === "google") {
+            await admin.from("events").delete().eq("id", had.id);
+            report.deletedHere++;
+          }
+          continue;
+        }
+
+        const mapped = fromGoogle(g);
+        if (!mapped.start_date) continue;
+        // 회차 하나는 반복이 아니다 — 규칙은 비우고, 대표를 가리켜 둔다
+        const piece = { ...mapped, rrule: null, rrule_parent: owner.id };
+        if (had) {
+          if (had.gcal_origin === "tcs") { report.skipped++; continue; }
+          await admin.from("events").update({ ...piece, gcal_synced_at: new Date().toISOString() })
+            .eq("id", had.id);
+        } else {
+          await admin.from("events").insert({
+            ...piece, community_id: cid, color: "#4285F4", category: null,
+            created_by: uid, created_by_name: "구글 캘린더",
+            google_event_id: g.id, gcal_origin: "google", gcal_synced_at: new Date().toISOString(),
+          });
+          report.pulled++;
+        }
+      }
+
+      // 모아 둔 예외 날짜를 대표에 적는다.
+      //  구글이 주인인 대표만 손댑니다. 통째로 덮는 게 맞습니다 — 구글에서
+      //  되살린 회차는 더 이상 예외 목록에 오지 않으니, 그대로 되살아납니다.
+      for (const [id, days] of except) {
+        await admin.from("events").update({ rrule_except: [...days].sort() }).eq("id", id);
+        report.exceptions += days.size;
+      }
     } catch (e: any) {
       if (problems.length < 5) problems.push(`가져오기: ${e.message}`);
     }
