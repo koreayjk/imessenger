@@ -35263,7 +35263,7 @@ function renderWriting() {
     const pre = actPrefill(ed);
     const catKnown = !ed || !ed.category || reviewCats.some(c => c.name === ed.category);
     const catOpts = reviewCats.map(c=>`<option value="${escAttr(c.name)}" ${ed && ed.category === c.name ? 'selected' : ''}>${escHtml(reviewCatLabel(c.name))}</option>`).join('')
-      + `<option value="__custom__" ${ed && !catKnown ? 'selected' : ''}>＋ ${t('직접 입력','Enter manually')}</option>`;
+      + `<option value="__custom__" ${(reviewCatCustom || (ed && !catKnown)) ? 'selected' : ''}>＋ ${t('직접 입력','Enter manually')}</option>`;
     main.innerHTML = `<div class="page" style="display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap">
       <div style="flex:1.35 1 440px;min-width:0">
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px">
@@ -35272,7 +35272,11 @@ function renderWriting() {
           ${ed ? `<button onclick="cancelWritingEdit()" style="height:26px;padding:0 10px;border:1px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:8px;cursor:pointer;font:700 11.5px var(--font)">${t('취소','Cancel')}</button>` : ''}
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;align-items:center">
-          <select id="wr-cat" onchange="onReviewCatChange(this.value)" style="${inp}">${catOpts}</select>
+          <!--  분류가 하나도 없는 공동체에서는 고르개에 「＋ 직접 입력」 하나만
+                남습니다. 고를 것이 없는 고르개는 누르면 아무 일도 안 일어나
+                보여서 "이 메뉴가 안 된다" 가 됩니다. 그럴 땐 숨기고 적는 칸만
+                내놓습니다. (칸 자체는 남겨 둡니다 — 저장하는 쪽이 이 값을 읽습니다)  -->
+          <select id="wr-cat" onchange="onReviewCatChange(this.value)" style="${inp};display:${reviewCats.length ? 'block' : 'none'}">${catOpts}</select>
           <input id="wr-cat-custom" value="${escAttr(ed && !catKnown ? ed.category : '')}" placeholder="${t('분류 직접 입력','Enter category')}" style="${inp};display:${(reviewCatCustom || (ed && !catKnown))?'block':'none'}"/>
           <input id="wr-date" type="date" value="${escAttr((ed && ed.date) || attTodayStr())}" style="${inp}"/>
         </div>
@@ -35310,6 +35314,16 @@ function renderWriting() {
         ${myCards || '<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px;background:var(--surface);border:1px solid var(--border);border-radius:12px">'+t('아직 후기가 없어요. 어딘가 다녀온 뒤 첫 후기를 남겨보세요!','No reviews yet. After you go somewhere, leave your first review!')+'</div>'}
       </div>
     </div>`;
+    //  ⚠️ 분류 적는 칸은 **고르개의 지금 값**에 맞춘다. reviewCatCustom 만
+    //     믿으면 안 된다.
+    //
+    //     분류가 하나도 없는 공동체에서는 「＋ 직접 입력」 이 고르개의
+    //     **유일한 칸**이라, 브라우저가 처음부터 그걸 고른 채로 그립니다.
+    //     값이 안 바뀌니 onchange 가 영영 안 울리고, 적는 칸은 숨은 채로
+    //     남습니다 — 눌러도 아무 일이 없고, 저장은 '분류를 선택하거나
+    //     입력하세요' 에서 막힙니다. 운영 17개 공동체 중 14곳이 이 상태였습니다.
+    //     (개선창 밖 · Moses 님이 화면으로 알려주신 것)
+    onReviewCatChange(document.getElementById('wr-cat').value);
   }
 }
 
