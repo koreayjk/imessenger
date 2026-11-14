@@ -95,6 +95,10 @@ console.log('\n③ 로그인 직후 고르기 화면');
 {
   const pg = await openApp(b, { as:'teacher' });
   const r = await pg.evaluate((C) => {
+    //  이 화면은 **총·부총관리자만** 닿습니다 (canViewAllCommunities).
+    //  부총관리자는 자기 갈래만 보므로, 갈래가 다 보이는 총관리자로 잽니다.
+    //  — 누가 어디까지 보는지는 test/부총관리자_그룹안에서만.js 가 잽니다.
+    ME.community_role = 'super_admin'; ME.email = 'x@example.com';
     showCommunitySelect(C);
     const el = document.getElementById('community-list');
     const txt = el.innerText;

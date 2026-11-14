@@ -3982,6 +3982,21 @@ function isSuperAdmin() {
 function isViceAdmin() { return !!ME && ME.community_role === 'vice_admin'; }
 // 공동체를 넘나들며 볼 수 있는 사람
 function canViewAllCommunities() { return isSuperAdmin() || isViceAdmin(); }
+//  부총관리자가 넘나들 수 있는 곳 — **자기 그룹 안까지** 입니다.
+//  리뉴젠 공동체 부총관리자는 리뉴젠 공동체 18곳을 다 보지만, 해외 그룹은
+//  보지 않습니다. 총관리자만 전부 봅니다.
+//  ⚠️ 서버(mine_comm)도 같은 선을 긋습니다. 화면에서만 가리면 질의로
+//     곧장 꺼내 갈 수 있으니, 둘 다 있어야 합니다.
+function visibleCommunities(list) {
+  const all = list || [];
+  if (isSuperAdmin()) return all;
+  const home = all.find(c => c.id === (ME && ME.community_id));
+  if (isViceAdmin()) {
+    const mine = commKind(home);
+    return all.filter(c => commKind(c) === mine);
+  }
+  return home ? [home] : [];
+}
 // 지금 보고 있는 곳이 내 소속 공동체인가
 function inHomeCommunity() { return !VIEW_CID || VIEW_CID === (ME && ME.community_id); }
 // 부총관리자가 남의 공동체를 들여다보는 중 — 이때는 읽기와 채팅만
@@ -4438,7 +4453,8 @@ async function doSignIn() {
     // 각 공동체 관리자·교사·학생 등은 본인 소속 공동체로 바로 진입
     if (canViewAllCommunities()) {
       const { data: multiCommunities } = await sb.from('communities').select('*').order('name');
-      const commList = multiCommunities || [];
+      //  부총관리자는 자기 그룹 안만 (리뉴젠 공동체 ↔ 해외 그룹이 섞이지 않게)
+      const commList = visibleCommunities(multiCommunities || []);
       // 지난번에 들어갔던 공동체가 아직 있으면 고르는 화면 없이 바로 들어간다.
       // 공동체를 바꾸려면 앱 안의 🏛️ 공동체 전환을 쓰면 된다.
       const lastOk = ME.community_id && commList.some(c => c.id === ME.community_id);
@@ -4476,7 +4492,9 @@ function showCommunitySelect(communities) {
   document.getElementById('auth-screen').style.display = 'none';
   document.getElementById('community-select-screen').style.display = 'flex';
   const list = document.getElementById('community-list');
-  const groups = groupByCommKind(communities);
+  //  거르는 일을 **그리는 자리에서** 한다. 부르는 쪽에서만 거르면, 다른
+  //  데서 부를 때 조용히 빠진다 (실제로 되돌려 보니 시험이 못 잡았다).
+  const groups = groupByCommKind(visibleCommunities(communities));
   //  묶음이 하나면 머리글 없이 전과 똑같이 늘어놓는다.
   //  그리드 안에 머리글을 넣으면 줄이 깨지므로 한 칸을 통째로 쓴다.
   list.innerHTML = groups.map(g => `
@@ -17372,7 +17390,7 @@ async function printTcsPdf() {
 // ── 총관리자 공동체 전환 ──
 async function showCommunitySwitcher() {
   const { data: communities } = await sb.from('communities').select('*').order('name');
-  const list = communities || [];
+  const list = visibleCommunities(communities || []);
   const currentId = CID();              // 부총관리자는 '보고 있는 곳'이 현재
   const myHome = ME.community_id || '';   // 관리 권한이 있는 내 소속
   const groups = groupByCommKind(list);   // 리뉴젠 공동체 / 리뉴젠 아카데미
@@ -17385,7 +17403,7 @@ async function showCommunitySwitcher() {
       <div style="padding:20px 24px;border-bottom:1px solid var(--border)">
         <div style="font-size:16px;font-weight:700;color:var(--ink)">🏛️ 공동체 전환</div>
         <div style="font-size:12px;color:var(--ink3);margin-top:3px">${isViceAdmin()
-          ? '내 소속 공동체에서만 관리할 수 있고, 다른 공동체는 보기와 채팅만 가능해요'
+          ? `${commKindInfo(commKind(list.find(c => c.id === (ME && ME.community_id)))).ko} 그룹 안에서 볼 수 있어요. 관리는 내 소속 공동체에서만 되고, 다른 곳은 보기와 채팅만 돼요`
           : '입장할 공동체를 선택하세요'}</div>
       </div>
       <div style="padding:12px;max-height:400px;overflow-y:auto">
