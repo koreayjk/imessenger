@@ -17327,20 +17327,21 @@ ${o.serif ? '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?fami
   @media print { .pw-bar { display: none !important; } }
   /* 문서별 고유 스타일 */
   ${o.extraCss || ''}
-</style></head><body>
+</style></head><body class="${(o.bodies && o.bodies.length > 1) ? 'multi' : ''}">
 <div class="pw-bar">
   <button onclick="window.print()">🖨 ${t('인쇄 / PDF 저장','Print / Save PDF')}</button>
   <button class="sec" onclick="window.close()">${t('닫기','Close')}</button>
 </div>
-<div class="pw">
+${(o.bodies && o.bodies.length ? o.bodies : [o.body || '']).map((bd, i, all) => `
+<div class="pw"${i < all.length - 1 ? ' style="page-break-after:always;break-after:page"' : ''}>
   ${head}
   ${titleBlock}
-  ${o.body || ''}
+  ${bd}
   <div class="pf">
     <span class="pf-note">${o.footerNote ? escHtml(o.footerNote) : escHtml(org.name || '')}</span>
     <span>${t('발급일','Issued')} ${printToday()}</span>
   </div>
-</div>
+</div>`).join('')}
 <script>
   // 로고·글꼴이 다 뜬 뒤에 인쇄창을 연다 (예전엔 타이머라 로고가 빠지곤 했음)
   (function () {
@@ -31910,6 +31911,32 @@ const CERT_TYPES = {
           needPeriod:true,
           stmt:'This certifies that the above person paid a donation of {a} for {p}.' },
   },
+  //  🏛️ 본부(IM HQ) 만 내는 것 — hqOnly.
+  //
+  //     공동체들이 본부에 모여 수련회를 합니다. 이런 증서는 본부가
+  //     한 줄의 일련번호(IMHQ-2026-0001)로 내줘야 대외에서 통합니다.
+  //     그래서 공동체 쪽 발급 고르개에는 내놓지 않고, 공동체는
+  //     「📜 본부에 신청」 으로 올립니다.
+  //
+  //     {e} 는 대회·행사 이름, {p} 는 기간으로 바뀝니다.
+  natl_completion: {
+    hqOnly: true,
+    ko: { label:'전국대회 수료증', docLabel:'수 료 증', sub:'CERTIFICATE OF COMPLETION',
+          needEvent:true, needPeriod:true, eventLabel:'대회 이름', noAmount:true,
+          stmt:'위 사람은 {p} 「{e}」 의 전 과정을 수료하였음을 확인합니다.' },
+    en: { label:'Certificate of Completion', docLabel:'Certificate of Completion', sub:'수 료 증',
+          needEvent:true, needPeriod:true, eventLabel:'Event name', noAmount:true,
+          stmt:'This certifies that the above person completed the full course of "{e}" during {p}.' },
+  },
+  activity_cert: {
+    hqOnly: true,
+    ko: { label:'활동증명서', docLabel:'활 동 증 명 서', sub:'CERTIFICATE OF ACTIVITY',
+          needEvent:true, needPeriod:true, eventLabel:'활동 이름', noAmount:true,
+          stmt:'위 사람은 {p} 「{e}」 에 참여하여 활동하였음을 확인합니다.' },
+    en: { label:'Certificate of Activity', docLabel:'Certificate of Activity', sub:'활 동 증 명 서',
+          needEvent:true, needPeriod:true, eventLabel:'Activity name', noAmount:true,
+          stmt:'This certifies that the above person took part in "{e}" during {p}.' },
+  },
   // 직접입력은 드롭다운 이름과 증서 제목이 달라야 한다 ('직접입력'이 찍히면 안 됨)
   custom: {
     ko: { label:'직접입력', docLabel:'증 명 서', sub:'CERTIFICATE', stmt:'' },
@@ -31960,16 +31987,65 @@ let certCustomTitle = '';
 let certCustomSub = '';
 let certCustomText = '';
 
-let certSubTab = 'issue';        // issue | req | log
+let certSubTab = 'issue';        // issue | req | hq | hqin | log
 let certReqs = [];              // 신청함 목록
 let certReqFilter = 'pending';  // pending | all
 let certLog = [];
 let certLogQ = '';
 
+// ══════════════════════════════════════════════════════════════════
+//  🏛️ 본부(IM HQ)에 증명서 신청하기
+//
+//   공동체들이 본부에 모여 수련회를 합니다. 전국대회 수료증·활동증명서
+//   같은 것은 본부가 **한 줄의 일련번호**(IMHQ-2026-0001)로 내줘야
+//   대외에서 통합니다. 그래서 길이 둘로 갈립니다.
+//
+//    · 공동체 → 「📜 본부에 신청」  : 명단에서 체크해 한꺼번에 올린다
+//    · 본부   → 「공동체에서 온 신청」: 체크해 한꺼번에 발급한다
+//
+//   신청할 때 이름·생년월일·주소·공동체이름을 신청에 떠 둡니다. 그래서
+//   본부가 **남의 공동체 멤버 자료를 읽지 않아도** 증서를 찍을 수 있고,
+//   나중에 주소가 바뀌어도 그때 낸 증서는 그때 값으로 남습니다.
+// ══════════════════════════════════════════════════════════════════
+let hqComm   = null;    // 본부 { id, name } — 정해져 있지 않으면 null
+let hqIsMe   = false;   // 우리 공동체가 본부인가
+let hqKind   = 'natl_completion';
+let hqEvent  = '';
+let hqPurpose = '';
+let hqNote   = '';
+let hqCopies = 1;
+let hqPicked = new Set();   // 공동체 쪽: 신청할 사람
+let hqQ      = '';          // 명단 찾기
+let hqBusy   = false;
+let hqInPicked = new Set(); // 본부 쪽: 고른 신청
+let certForComm = null;     // 발급할 때 찍을 소속 공동체 { id, name }
+let certEventName = '';    // 대회·행사 이름 (수료증·활동증명서의 {e})
+
+//  본부가 어디인지 묻는다. communities 는 로그인 때도 읽는 표라 누구나 본다.
+async function loadHqComm() {
+  try {
+    const { data } = await sb.from('communities').select('id,name').eq('is_hq', true).limit(1);
+    hqComm = (data && data[0]) || null;
+  } catch (_) { hqComm = null; }
+  hqIsMe = !!(hqComm && hqComm.id === CID());
+}
+
+//  한 번 읽은 신청을 세 갈래로 나눠 본다.
+//   · 우리 공동체 안의 신청 (학부모·학생이 올린 것)
+//   · 우리가 본부에 올린 것
+//   · 본부인 우리가 공동체들에게서 받은 것
+const certReqsOwn   = () => certReqs.filter(r => r.community_id === CID() && !r.to_community_id);
+const certReqsToHq  = () => certReqs.filter(r => r.community_id === CID() && r.to_community_id);
+const certReqsFromC = () => certReqs.filter(r => r.to_community_id === CID() && r.community_id !== CID());
+//  본부 전용 종류만 신청할 수 있다 (나머지는 공동체가 직접 낸다)
+const hqKinds = () => Object.entries(CERT_TYPES).filter(([k, v]) => v.hqOnly && !v.retired).map(([k]) => k);
+
 function setCertSubTab(v) {
   certSubTab = v;
   if (v === 'log') renderCertLog();
   else if (v === 'req') renderCertRequests();
+  else if (v === 'hq') renderHqOut();
+  else if (v === 'hqin') renderHqIn();
   else renderCert();
 }
 
@@ -31977,9 +32053,12 @@ async function renderCertHub() {
   if (!tcsOrgs.length) { try { await loadRecordOrgs(); } catch(e){} }
   try { await loadOrgSeals(); } catch(e){}
   if (!certStudentId && schoolStudents.length) { certStudentId = schoolStudents[0].id; await certLoadStudent(certStudentId); }
+  await loadHqComm();            // 본부가 어디인지 — 탭 구성이 달라진다
   await loadCertRequests();      // 기다리는 신청 수를 탭에 보여주려고 먼저 읽는다
   if (certSubTab === 'log') renderCertLog();
   else if (certSubTab === 'req') renderCertRequests();
+  else if (certSubTab === 'hq') renderHqOut();
+  else if (certSubTab === 'hqin') renderHqIn();
   else renderCert();
 }
 
@@ -31987,8 +32066,11 @@ async function renderCertHub() {
 let certReqMissing = false;
 async function loadCertRequests() {
   try {
+    //  우리 공동체 것 + **본부인 우리가 받은 것** 을 함께 읽는다.
+    //  (못 볼 것은 RLS 가 어차피 걸러 줍니다)
     const { data, error } = await sb.from('cert_requests').select('*')
-      .eq('community_id', CID()).order('created_at', { ascending:false }).limit(200);
+      .or('community_id.eq.' + CID() + ',to_community_id.eq.' + CID())
+      .order('created_at', { ascending:false }).limit(400);
     if (error) throw error;
     certReqs = data || []; certReqMissing = false;
   } catch (e) {
@@ -32014,7 +32096,10 @@ function certKindLabel(k, fallback) {
 function renderCertRequests() {
   const main = document.getElementById('school-main');
   if (!main) return;
-  const shown = certReqFilter === 'pending' ? certReqs.filter(r => r.status === 'pending') : certReqs;
+  //  본부에 올린 것·본부가 받은 것은 각자 자기 탭에서 봅니다. 여기에
+  //  섞으면 본부 신청함에 18개 공동체 것이 쏟아져 자기 것이 묻힙니다.
+  const mine = certReqsOwn();
+  const shown = certReqFilter === 'pending' ? mine.filter(r => r.status === 'pending') : mine;
   const chip = (k, label) => `<button onclick="certReqFilter='${k}';renderCertRequests()" style="height:30px;padding:0 13px;border-radius:99px;cursor:pointer;font:700 12px var(--font);
     border:1.5px solid ${certReqFilter===k?'#1d3a5f':'var(--border)'};background:${certReqFilter===k?'#1d3a5f':'var(--surface)'};color:${certReqFilter===k?'#fff':'var(--ink2)'}">${label}</button>`;
 
@@ -32086,15 +32171,393 @@ async function certRejectRequest(id) {
   showUploadToast(t('반려했어요','Rejected'));
 }
 
+
+// ══════════════════════════════════════════════════════════════════
+//  📜 공동체 → 본부에 신청
+//
+//   명단에서 사람을 체크합니다. 이름·생년월일·주소는 멤버 자료에서
+//   자동으로 따라가고, 소속 공동체는 **우리 공동체**로 자동입니다.
+//   적을 것은 종류 · 대회 이름 · 용도뿐입니다.
+// ══════════════════════════════════════════════════════════════════
+//  신청할 수 있는 사람 — 우리 공동체에 있는 사람 모두.
+//  (수련회에는 학생만 가는 게 아닙니다. 간사·교사도 활동증명서를 받습니다)
+function hqMemberList() {
+  const q = hqQ.trim().toLowerCase();
+  return Object.values(members)
+    .filter(m => m && m.community_id === CID() && (m.status || 'active') !== 'removed')
+    .filter(m => !q || String(m.name || '').toLowerCase().includes(q))
+    .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'ko'));
+}
+function hqToggle(id) {
+  if (hqPicked.has(id)) hqPicked.delete(id); else hqPicked.add(id);
+  renderHqOut();
+}
+function hqPickAll(on) {
+  hqMemberList().forEach(m => { if (on) hqPicked.add(m.id); else hqPicked.delete(m.id); });
+  renderHqOut();
+}
+
+function renderHqOut() {
+  const main = document.getElementById('school-main');
+  if (!main) return;
+  const inp = 'height:38px;padding:0 12px;border:1px solid var(--border);border-radius:9px;font:600 13px var(--font);color:var(--ink);background:var(--surface)';
+  const lbl = 'font-size:12px;font-weight:600;color:var(--ink2);display:block;margin-bottom:6px';
+  const kinds = hqKinds();
+  if (!kinds.includes(hqKind)) hqKind = kinds[0] || 'natl_completion';
+  const kindOpts = kinds.map(k => `<option value="${k}"${k === hqKind ? ' selected' : ''}>${escHtml(CERT_TYPES[k].ko.label)}</option>`).join('');
+  const evLabel = ((CERT_TYPES[hqKind] || {}).ko || {}).eventLabel || t('대회·행사 이름','Event name');
+
+  const list = hqMemberList();
+  const allOn = list.length > 0 && list.every(m => hqPicked.has(m.id));
+  const rows = list.map(m => `
+    <label style="display:flex;align-items:center;gap:10px;padding:8px 4px;border-top:1px solid var(--border);cursor:pointer">
+      <input type="checkbox" ${hqPicked.has(m.id) ? 'checked' : ''} onchange="hqToggle('${escJs(m.id)}')" style="width:17px;height:17px;flex-shrink:0;cursor:pointer"/>
+      <span style="font-size:13.5px;font-weight:600;color:var(--ink);min-width:90px">${escHtml(m.name || '')}</span>
+      <span style="font-size:11.5px;color:var(--ink3)">${escHtml(m.grade || '')}${m.birth_date ? ` · ${escHtml(m.birth_date)}` : ''}</span>
+      <span style="flex:1"></span>
+      ${!m.birth_date || !m.address ? `<span style="font-size:11px;color:#8a4a22">${
+        t((!m.birth_date && !m.address) ? '생년월일·주소 없음' : (!m.birth_date ? '생년월일 없음' : '주소 없음'),
+          'missing info')}</span>` : ''}
+    </label>`).join('');
+
+  //  보낸 신청
+  const sent = certReqsToHq();
+  const sentRows = sent.map(r => `
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 2px;border-top:1px solid var(--border);flex-wrap:wrap">
+      ${certReqBadge(r.status)}
+      <div style="flex:1;min-width:160px">
+        <div style="font-size:13.5px;font-weight:600;color:var(--ink)">${escHtml(r.student_name || '')} · ${escHtml(certKindLabel(r.kind, r.kind_label))}${(r.copies||1) > 1 ? ` ×${r.copies}` : ''}</div>
+        <div style="font-size:11px;color:var(--ink3);margin-top:1px">${escHtml(r.event_name || '')}${r.event_name ? ' · ' : ''}${fmtTsDay(r.created_at) || ''}${r.requester_name ? ` · ${escHtml(r.requester_name)}` : ''}</div>
+        ${r.status === 'issued' && r.cert_no ? `<div style="font-size:11.5px;color:#1f6b42;margin-top:2px">${t('발급번호','No.')} ${escHtml(r.cert_no)}</div>` : ''}
+        ${r.status === 'rejected' && r.reject_reason ? `<div style="font-size:11.5px;color:#a93226;margin-top:2px">${escHtml(r.reject_reason)}</div>` : ''}
+      </div>
+    </div>`).join('');
+
+  main.innerHTML = `<div class="spage" style="max-width:820px">
+    ${certTabsHtml()}
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px;margin-bottom:14px">
+      <div style="font-size:14px;font-weight:800;color:var(--adeep);margin-bottom:4px">🏛️ ${escHtml(hqComm ? hqComm.name : '')} ${t('에 신청','— request')}</div>
+      <div style="font-size:12px;color:var(--ink3);line-height:1.7;margin-bottom:14px">${t(
+        '수료증·활동증명서는 <b>본부가 한 줄의 일련번호</b>로 내줍니다. 명단에서 고르면 이름·생년월일·주소는 멤버 자료에서 자동으로 들어가고, 소속은 우리 공동체로 적힙니다.',
+        'Completion and activity certificates are issued by HQ under one serial series. Pick people from the list — name, birth date and address are filled in automatically.')}</div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+        <div><label style="${lbl}">${t('종류','Type')}</label>
+          <select id="hq-kind" onchange="hqKind=this.value;renderHqOut()" style="${inp};width:100%">${kindOpts}</select></div>
+        <div><label style="${lbl}">${escHtml(evLabel)}</label>
+          <input id="hq-event" value="${escAttr(hqEvent)}" oninput="hqEvent=this.value"
+            placeholder="${t('예: 2026 전국대회','e.g. 2026 National Conference')}" style="${inp};width:100%"/></div>
+        <div><label style="${lbl}">${t('용도','For')}</label>
+          <input id="hq-purpose" value="${escAttr(hqPurpose)}" oninput="hqPurpose=this.value"
+            placeholder="${t('예: 대외 제출용','e.g. for submission')}" style="${inp};width:100%"/></div>
+        <div><label style="${lbl}">${t('한 사람당 부수','Copies each')}</label>
+          <input id="hq-copies" type="number" min="1" max="9" value="${Number(hqCopies) || 1}" oninput="hqCopies=this.value" style="${inp};width:100%"/></div>
+        <div style="grid-column:1/3"><label style="${lbl}">${t('덧붙일 말 (선택)','Note (optional)')}</label>
+          <input id="hq-note" value="${escAttr(hqNote)}" oninput="hqNote=this.value" style="${inp};width:100%"/></div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:4px">
+        <input id="hq-q" value="${escAttr(hqQ)}" oninput="hqQ=this.value;renderHqOut()" placeholder="${t('이름으로 찾기','Find by name')}" style="${inp};flex:1;min-width:150px"/>
+        <button onclick="hqPickAll(${allOn ? 'false' : 'true'})" style="height:38px;padding:0 14px;border:1.5px solid var(--border);border-radius:9px;background:var(--surface);color:var(--ink2);font:700 12.5px var(--font);cursor:pointer">${
+          allOn ? t('보이는 사람 모두 끄기','Clear shown') : t('보이는 사람 모두 고르기','Select shown')}</button>
+        <span style="font-size:12.5px;font-weight:800;color:${hqPicked.size ? '#1d3a5f' : 'var(--ink3)'}">${t('고른 사람','Picked')} ${hqPicked.size}</span>
+      </div>
+      <div style="max-height:320px;overflow:auto;margin-bottom:14px">
+        ${list.length ? rows : `<div style="padding:30px;text-align:center;color:var(--ink3);font-size:13px">${t('해당하는 사람이 없어요','Nobody matches')}</div>`}
+      </div>
+
+      <div style="display:flex;justify-content:flex-end;gap:8px">
+        <button id="hq-send" onclick="hqSend()" ${hqBusy ? 'disabled' : ''} style="height:40px;padding:0 22px;border:none;border-radius:9px;background:${hqBusy ? '#9aa6b8' : '#be5b2a'};color:#fff;font:700 13px var(--font);cursor:${hqBusy ? 'default' : 'pointer'}">${
+          hqBusy ? t('보내는 중…','Sending…') : t('본부에 신청하기','Send to HQ')}</button>
+      </div>
+    </div>
+
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px">
+      <div style="font-size:13px;font-weight:800;color:var(--ink2);margin-bottom:6px">${t('본부에 보낸 신청','Sent to HQ')}${sent.length ? ` · ${sent.length}` : ''}</div>
+      ${sent.length ? sentRows : `<div style="padding:26px;text-align:center;color:var(--ink3);font-size:13px">${t('아직 보낸 신청이 없어요','Nothing sent yet')}</div>`}
+    </div>
+  </div>`;
+}
+
+async function hqSend() {
+  if (hqBusy) return;
+  if (!hqComm) { showUploadToast(t('본부가 정해져 있지 않아요','No HQ is set')); return; }
+  if (!hqPicked.size) { showUploadToast(t('신청할 사람을 고르세요','Pick at least one person')); return; }
+  const spec = (CERT_TYPES[hqKind] || {}).ko || {};
+  if (spec.needEvent && !hqEvent.trim()) {
+    showUploadToast(t((spec.eventLabel || '대회 이름') + '을 적어주세요', 'Please enter the event name'));
+    document.getElementById('hq-event')?.focus();
+    return;
+  }
+  hqBusy = true; renderHqOut();
+  try {
+    const { data, error } = await sb.rpc('request_certs_to_hq', { p: {
+      students: [...hqPicked], kind: hqKind,
+      kind_label: spec.label || hqKind,
+      event_name: hqEvent.trim(), purpose: hqPurpose.trim(), note: hqNote.trim(),
+      copies: Math.max(1, Math.min(9, Number(hqCopies) || 1)),
+    }});
+    if (error) throw error;
+    const made = Number((data || {}).made || 0), skipped = Number((data || {}).skipped || 0);
+    hqPicked.clear();
+    await loadCertRequests();
+    showUploadToast(t(
+      `✅ ${made}명 신청했어요` + (skipped ? ` (${skipped}명은 우리 공동체 사람이 아니라 빠졌어요)` : ''),
+      `✅ Requested for ${made}` + (skipped ? ` (${skipped} skipped — not in your community)` : '')));
+  } catch (e) {
+    showUploadToast(t('신청 실패: ','Failed: ') + ((e && e.message) || e));
+  } finally {
+    hqBusy = false; renderHqOut();
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  🏛️ 본부 → 공동체에서 온 신청 (체크해서 한꺼번에 발급)
+// ══════════════════════════════════════════════════════════════════
+function hqInToggle(id) {
+  if (hqInPicked.has(id)) hqInPicked.delete(id); else hqInPicked.add(id);
+  renderHqIn();
+}
+function hqInPickBatch(bid, on) {
+  certReqsFromC().filter(r => (r.batch_id || r.id) === bid && r.status === 'pending')
+    .forEach(r => { if (on) hqInPicked.add(r.id); else hqInPicked.delete(r.id); });
+  renderHqIn();
+}
+
+function renderHqIn() {
+  const main = document.getElementById('school-main');
+  if (!main) return;
+  const inp = 'height:38px;padding:0 12px;border:1px solid var(--border);border-radius:9px;font:600 13px var(--font);color:var(--ink);background:var(--surface)';
+  const lbl = 'font-size:12px;font-weight:600;color:var(--ink2);display:block;margin-bottom:6px';
+  const all = certReqsFromC();
+  const shown = certReqFilter === 'pending' ? all.filter(r => r.status === 'pending') : all;
+  const chip = (k, label) => `<button onclick="certReqFilter='${k}';renderHqIn()" style="height:30px;padding:0 13px;border-radius:99px;cursor:pointer;font:700 12px var(--font);
+    border:1.5px solid ${certReqFilter===k?'#1d3a5f':'var(--border)'};background:${certReqFilter===k?'#1d3a5f':'var(--surface)'};color:${certReqFilter===k?'#fff':'var(--ink2)'}">${label}</button>`;
+
+  //  한 번에 올라온 것(batch_id)끼리 묶어서 보여 줍니다 — 수련회 20명이
+  //  스무 줄로 흩어지면 누가 어느 공동체에서 왔는지 안 보입니다.
+  const groups = [];
+  const byKey = {};
+  shown.forEach(r => {
+    const k = r.batch_id || r.id;
+    if (!byKey[k]) { byKey[k] = { key:k, rows:[], head:r }; groups.push(byKey[k]); }
+    byKey[k].rows.push(r);
+  });
+
+  const gHtml = groups.map(g => {
+    const h = g.head;
+    const pend = g.rows.filter(r => r.status === 'pending');
+    const allOn = pend.length > 0 && pend.every(r => hqInPicked.has(r.id));
+    return `<div style="border:1px solid var(--border);border-radius:11px;padding:13px 14px;margin-bottom:11px;background:var(--s2)">
+      <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:7px">
+        <span style="font-size:13.5px;font-weight:800;color:var(--adeep)">${escHtml(h.community_name || t('(공동체 이름 없음)','(no community name)'))}</span>
+        <span style="font-size:12.5px;font-weight:700;color:var(--ink2)">${escHtml(certKindLabel(h.kind, h.kind_label))}</span>
+        ${h.event_name ? `<span style="font-size:12px;color:var(--ink3)">「${escHtml(h.event_name)}」</span>` : ''}
+        <span style="font-size:11.5px;color:var(--ink3)">· ${g.rows.length}${t('명','')} · ${escHtml(h.requester_name || '')} · ${fmtTsDay(h.created_at) || ''}</span>
+        <span style="flex:1"></span>
+        ${pend.length ? `<button onclick="hqInPickBatch('${escJs(g.key)}',${allOn ? 'false' : 'true'})" style="height:29px;padding:0 11px;border:1.5px solid var(--border);border-radius:8px;background:var(--surface);color:var(--ink2);font:700 11.5px var(--font);cursor:pointer">${
+          allOn ? t('이 묶음 끄기','Clear batch') : t('이 묶음 모두','Select batch')}</button>` : ''}
+      </div>
+      ${h.purpose ? `<div style="font-size:11.5px;color:var(--ink3);margin-bottom:5px">${t('용도','For')}: ${escHtml(h.purpose)}</div>` : ''}
+      ${h.note ? `<div style="font-size:12px;color:var(--ink2);margin-bottom:5px;white-space:pre-wrap">${escHtml(h.note)}</div>` : ''}
+      ${g.rows.map(r => `
+        <label style="display:flex;align-items:center;gap:9px;padding:6px 2px;border-top:1px solid var(--border);cursor:${r.status==='pending'?'pointer':'default'}">
+          ${r.status === 'pending'
+            ? `<input type="checkbox" ${hqInPicked.has(r.id) ? 'checked' : ''} onchange="hqInToggle('${escJs(r.id)}')" style="width:17px;height:17px;flex-shrink:0;cursor:pointer"/>`
+            : `<span style="width:17px;flex-shrink:0"></span>`}
+          <span style="font-size:13px;font-weight:600;color:var(--ink);min-width:86px">${escHtml(r.student_name || '')}</span>
+          <span style="font-size:11.5px;color:var(--ink3)">${escHtml(r.student_birth || t('생년월일 없음','no birth date'))}</span>
+          <span style="flex:1"></span>
+          ${(r.copies || 1) > 1 ? `<span style="font-size:11.5px;color:var(--ink3)">×${r.copies}</span>` : ''}
+          ${r.status !== 'pending' ? certReqBadge(r.status) : ''}
+          ${r.status === 'issued' && r.cert_no ? `<span style="font-size:11.5px;color:#1f6b42">${escHtml(r.cert_no)}</span>` : ''}
+        </label>`).join('')}
+    </div>`;
+  }).join('');
+
+  const orgOpts = tcsOrgs.length ? tcsOrgs.map(o => `<option value="${o.id}" ${o.id===tcsSelectedOrgId?'selected':''}>${escHtml(o.name)}</option>`).join('')
+    : `<option value="">${t('기관 미등록','No organization registered')}</option>`;
+  const sealOpts = `<option value="">${t('직인 없음','No seal')}</option>`
+    + orgSeals.map(sl => `<option value="${sl.id}">${escHtml(sl.name)}</option>`).join('');
+  const org0 = tcsOrgs.find(o => o.id === tcsSelectedOrgId) || tcsOrgs[0] || null;
+
+  main.innerHTML = `<div class="spage" style="max-width:860px">
+    ${certTabsHtml()}
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px">
+      <div style="display:flex;align-items:center;gap:7px;margin-bottom:10px;flex-wrap:wrap">
+        ${chip('pending', t('기다리는 신청','Waiting'))}${chip('all', t('전체','All'))}
+        <span style="flex:1"></span>
+        <span style="font-size:11.5px;color:var(--ink3)">${t('공동체들이 올린 신청이에요 · 번호는 본부 줄로 매겨집니다','Requests from communities · numbered in the HQ series')}</span>
+      </div>
+      ${groups.length ? gHtml : `<div style="padding:40px;text-align:center;color:var(--ink3);font-size:13px">${
+        certReqFilter === 'pending' ? t('기다리는 신청이 없어요','No requests waiting') : t('아직 신청이 없어요','No requests yet')}</div>`}
+
+      ${all.some(r => r.status === 'pending') ? `
+      <div style="border-top:1px solid var(--border);margin-top:14px;padding-top:14px">
+        <div style="font-size:13px;font-weight:800;color:var(--ink2);margin-bottom:10px">${t('고른 사람 한꺼번에 발급','Issue the picked ones')} · ${hqInPicked.size}${t('명','')}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+          <div><label style="${lbl}">${t('기간 (처음)','Period from')}</label><input id="hq-pfrom" type="month" style="${inp};width:100%"/></div>
+          <div><label style="${lbl}">${t('기간 (끝)','Period to')}</label><input id="hq-pto" type="month" style="${inp};width:100%"/></div>
+          <div><label style="${lbl}">${t('발급일자','Issue date')}</label><input id="hq-date" type="date" value="${attTodayStr()}" style="${inp};width:100%"/></div>
+          <div><label style="${lbl}">${t('발급 기관','Issuing organization')}</label><select id="hq-org" style="${inp};width:100%">${orgOpts}</select></div>
+          <div><label style="${lbl}">${t('직인','Seal')}</label><select id="hq-seal" style="${inp};width:100%">${sealOpts}</select></div>
+          <div><label style="${lbl}">${t('대표자 명의','Representative')}</label><input id="hq-rep" value="${escAttr(org0 ? org0.name + t(' 장',' Head') : '')}" style="${inp};width:100%"/></div>
+          <div style="grid-column:1/3"><label style="${lbl}">${t('발급 기관 주소','Organization address')}</label><input id="hq-oaddr" value="${escAttr((org0 && org0.address) || '')}" style="${inp};width:100%"/></div>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:8px">
+          <button onclick="hqRejectPicked()" ${hqBusy ? 'disabled' : ''} style="height:40px;padding:0 16px;border:1.5px solid var(--border);border-radius:9px;background:var(--surface);color:#c0392b;font:700 12.5px var(--font);cursor:pointer">${t('고른 신청 반려','Reject picked')}</button>
+          <button onclick="hqIssuePicked()" ${hqBusy ? 'disabled' : ''} style="height:40px;padding:0 22px;border:none;border-radius:9px;background:${hqBusy ? '#9aa6b8' : '#1d3a5f'};color:#fff;font:700 13px var(--font);cursor:${hqBusy ? 'default' : 'pointer'}">${
+            hqBusy ? t('발급 중…','Issuing…') : t('📄 한꺼번에 발급 & 인쇄','📄 Issue & print all')}</button>
+        </div>
+        <div style="font-size:11.5px;color:var(--ink3);margin-top:9px;line-height:1.7">${t(
+          '발급하면 번호가 <b>IMHQ-연도-순번</b> 으로 차례로 매겨지고, 신청한 공동체도 그 번호를 봅니다. 인쇄창에는 고른 사람 수만큼 장이 나옵니다.',
+          'Numbers are assigned in order as IMHQ-year-seq, and the requesting community sees them. The print window holds one page per person.')}</div>
+      </div>` : ''}
+    </div>
+  </div>`;
+}
+
+async function hqRejectPicked() {
+  const picked = certReqsFromC().filter(r => hqInPicked.has(r.id) && r.status === 'pending');
+  if (!picked.length) { showUploadToast(t('고른 신청이 없어요','Nothing picked')); return; }
+  const why = prompt(t('반려 사유를 적어주세요 (신청한 공동체에 보여요)','Why? (shown to the requesting community)'));
+  if (why === null) return;
+  let okN = 0, failMsg = '';
+  for (const r of picked) {
+    try {
+      const { data, error } = await sb.from('cert_requests').update({
+        status:'rejected', reject_reason:(why || '').trim(),
+        handled_by: ME.id, handled_name: ME.name, handled_at: new Date().toISOString(),
+      }).eq('id', r.id).select('id');
+      if (error) throw error;
+      //  ⚠️ RLS 가 막으면 error 없이 0줄이 돌아온다. 세어 봐야 안다.
+      if (data && data.length) okN++; else failMsg = t('처리할 권한이 없어요','No permission');
+    } catch (e) { failMsg = (e && e.message) || String(e); }
+  }
+  hqInPicked.clear();
+  await loadCertRequests();
+  renderHqIn();
+  showUploadToast(okN
+    ? t(`${okN}건 반려했어요` + (failMsg ? ` · 일부 실패: ${failMsg}` : ''), `Rejected ${okN}`)
+    : t('반려 실패: ','Failed: ') + failMsg);
+}
+
+async function hqIssuePicked() {
+  if (hqBusy) return;
+  const picked = certReqsFromC().filter(r => hqInPicked.has(r.id) && r.status === 'pending');
+  if (!picked.length) { showUploadToast(t('고른 신청이 없어요','Nothing picked')); return; }
+
+  const pFrom = (document.getElementById('hq-pfrom')?.value || '').trim();
+  const pTo   = (document.getElementById('hq-pto')?.value   || '').trim();
+  const date  = document.getElementById('hq-date')?.value || attTodayStr();
+  const orgId = document.getElementById('hq-org')?.value || '';
+  const sealId = document.getElementById('hq-seal')?.value || '';
+  const rep   = (document.getElementById('hq-rep')?.value || '').trim();
+  const oaddr = (document.getElementById('hq-oaddr')?.value || '').trim();
+  const org   = tcsOrgs.find(o => o.id === orgId) || null;
+  const seal  = orgSeals.find(x => x.id === sealId) || null;
+
+  const needP = picked.some(r => ((CERT_TYPES[r.kind] || {})[certLang] || {}).needPeriod);
+  if (needP && (!pFrom || !pTo)) {
+    showUploadToast(t('기간을 채워주세요','Please fill in the period'));
+    document.getElementById('hq-pfrom')?.focus();
+    return;
+  }
+  const periodText = certPeriodText(pFrom, pTo, certLang);
+
+  //  창은 누른 직후에 열어야 한다. 서버에 물어본 뒤에 열면 팝업 차단에 걸린다.
+  const win = window.open('', '_blank');
+  if (!win) { showUploadToast(t('팝업을 허용해 주세요','Please allow pop-ups')); return; }
+  win.document.write('<!DOCTYPE html><meta charset="utf-8"/><body style="font:15px system-ui;padding:40px;color:#40506b">'
+    + t('발급 중…','Issuing…') + '</body>');
+
+  hqBusy = true; renderHqIn();
+  const bodies = []; const nos = []; let failMsg = '';
+  try {
+    for (const r of picked) {
+      const sp = (CERT_TYPES[r.kind] || {})[certLang] || {};
+      const stmt = String(sp.stmt || '')
+        .replace('{e}', r.event_name || '')
+        .replace('{p}', periodText)
+        .replace('{d}', '').replace('{a}', '');
+      const docLabel = sp.docLabel || sp.label || '';
+      let rec = null;
+      try {
+        const { data, error } = await sb.rpc('issue_certificate', { p: {
+          lang: certLang, type: r.kind, doc_label: docLabel, doc_sub: sp.sub || '',
+          student_id: r.student_id, student_name: r.student_name || '',
+          birth: r.student_birth || '', grade: '', school: r.community_name || '',
+          address: r.student_address || '',
+          statement: stmt, reason: r.purpose || '', issue_date: date,
+          event_name: r.event_name || '',
+          for_community_id: r.community_id, for_community_name: r.community_name || '',
+          org_id: orgId || null, org_name: org ? org.name : '',
+          org_logo_url: org ? (org.logo_url || '') : '', org_address: oaddr,
+          rep, seal_url: seal ? seal.image_url : '',
+        }});
+        if (error) throw error;
+        rec = data;
+      } catch (e) { failMsg = (e && e.message) || String(e); continue; }
+
+      nos.push(rec.cert_no);
+      //  한 사람이 여러 부면 같은 장을 부수만큼 넣는다 (번호는 하나)
+      const one = buildCertOpts({
+        lang: certLang, type: r.kind, docLabel, sub: sp.sub || '',
+        no: rec.cert_no, name: r.student_name || '', birth: r.student_birth || '',
+        grade: '', school: r.community_name || '', address: r.student_address || '',
+        stmt, reason: r.purpose || '', date, rep,
+        orgName: org ? org.name : '', orgLogo: org ? (org.logo_url || '') : '',
+        orgAddress: oaddr, sealUrl: seal ? seal.image_url : '',
+      }).body;
+      for (let i = 0; i < Math.max(1, Math.min(9, Number(r.copies) || 1)); i++) bodies.push(one);
+
+      try {
+        await sb.from('cert_requests').update({
+          status:'issued', certificate_id: rec.id || null, cert_no: rec.cert_no || null,
+          handled_by: ME.id, handled_name: ME.name, handled_at: new Date().toISOString(),
+        }).eq('id', r.id);
+      } catch (_) {}
+    }
+  } finally {
+    hqBusy = false;
+  }
+
+  hqInPicked.clear();
+  await loadCertRequests();
+  renderHqIn();
+
+  if (!bodies.length) {
+    win.close();
+    showUploadToast(t('발급 실패: ','Failed: ') + failMsg);
+    return;
+  }
+  const org1 = org || { name:'', logo_url:'' };
+  openPrintDoc({
+    title: t('증서 ' + bodies.length + '장', bodies.length + ' certificates'),
+    serif: true, letterhead: false, margin: '11mm',
+    org: { name: org1.name || '', logo: org1.logo_url || '' },
+    bodies,
+  }, win);
+  showUploadToast(t(
+    `✅ ${nos.length}명 발급 (${nos[0]} ~ ${nos[nos.length-1]})` + (failMsg ? ` · 일부 실패: ${failMsg}` : ''),
+    `✅ Issued ${nos.length} (${nos[0]} ~ ${nos[nos.length-1]})`));
+}
+
 // 발급 / 발급 대장 전환 줄 — 두 화면이 함께 쓴다
 function certTabsHtml() {
   const on  = 'border:1.5px solid #1d3a5f;background:#1d3a5f;color:#fff';
   const off = 'border:1.5px solid var(--border);background:var(--surface);color:var(--ink2)';
   const btn = (k, label) => `<button onclick="setCertSubTab('${k}')" style="height:34px;padding:0 16px;border-radius:9px;cursor:pointer;font:700 13px var(--font);${certSubTab===k?on:off}">${label}</button>`;
-  const waiting = certReqs.filter(r => r.status === 'pending').length;
-  const badge = waiting ? ` <span style="display:inline-block;min-width:17px;height:17px;line-height:17px;padding:0 5px;border-radius:99px;background:#c0392b;color:#fff;font-size:10.5px;font-weight:800;vertical-align:1px">${waiting}</span>` : '';
-  return `<div style="display:flex;gap:7px;margin-bottom:14px">
-    ${btn('issue', t('발급','Issue'))}${btn('req', t('신청함','Requests') + badge)}${btn('log', t('발급 대장','Ledger'))}</div>`;
+  const dot = (n) => n ? ` <span style="display:inline-block;min-width:17px;height:17px;line-height:17px;padding:0 5px;border-radius:99px;background:#c0392b;color:#fff;font-size:10.5px;font-weight:800;vertical-align:1px">${n}</span>` : '';
+  const badge   = dot(certReqsOwn().filter(r => r.status === 'pending').length);
+  const inBadge = dot(certReqsFromC().filter(r => r.status === 'pending').length);
+  //  본부에게만 「공동체에서 온 신청」, 본부가 아닌 곳에만 「본부에 신청」.
+  //  본부가 정해져 있지 않으면 어느 쪽도 띄우지 않습니다 — 누를 데가
+  //  있는데 아무 일도 안 일어나는 것보다 없는 편이 낫습니다.
+  const hqBtn = (hqComm && !hqIsMe) ? btn('hq', t('📜 본부에 신청','📜 Request to HQ')) : '';
+  const inBtn = (hqComm &&  hqIsMe) ? btn('hqin', t('공동체에서 온 신청','From communities') + inBadge) : '';
+  return `<div style="display:flex;gap:7px;margin-bottom:14px;flex-wrap:wrap">
+    ${btn('issue', t('발급','Issue'))}${btn('req', t('신청함','Requests') + badge)}${hqBtn}${inBtn}${btn('log', t('발급 대장','Ledger'))}</div>`;
 }
 
 async function certLoadStudent(id) {
@@ -32124,9 +32587,13 @@ function renderCert() {
   //  물러난 종류(retired) 는 고르개에 내놓지 않습니다. 지난 기록을 열어
   //  그 종류가 골라져 있으면 그때만 한 줄 띄워 줍니다 — 안 그러면 고르개가
   //  엉뚱한 종류로 튀어서, 재발급 때 다른 증명서가 나갑니다.
+  //
+  //  본부 전용(hqOnly) 도 같습니다. 공동체가 이걸 직접 내면 번호가
+  //  공동체 줄로 나가서, 같은 수료증이 두 가지 번호를 갖게 됩니다.
   if (!CERT_TYPES[certType]) certType = 'admit';
   const typeOpts = Object.entries(CERT_TYPES)
-    .filter(([k, v]) => !v.retired || k === certType)
+    .filter(([k, v]) => (!v.retired   || k === certType)
+                     && (!v.hqOnly    || hqIsMe || !hqComm || k === certType))
     .map(([k,v]) => `<option value="${k}"${k===certType?' selected':''}>${v[certLang].label}</option>`).join('');
   const orgOpts = tcsOrgs.length ? tcsOrgs.map(o => `<option value="${o.id}" ${o.id===tcsSelectedOrgId?'selected':''}>${o.name}</option>`).join('')
     : `<option value="">${t('기관 미등록','No organization registered')}</option>`;
@@ -32158,6 +32625,12 @@ function renderCert() {
         <div><label style="${lbl}">${t('학년 (없으면 비움)','Grade (optional)')}</label><input id="cert-grade" value="${escAttr(s?s.grade||'':'')}" style="${inp};width:100%"/></div>
         <div><label style="${lbl}">${t('소속 기관명 (없으면 비움)','Organization (optional)')}</label><input id="cert-school" value="${escAttr(certPrefill.school||'')}" style="${inp};width:100%"/></div>
       </div>
+      <div id="cert-event-wrap" style="display:none;margin-bottom:14px">
+        <label style="${lbl}" id="cert-event-label">${t('대회·행사 이름','Event name')}</label>
+        <input id="cert-event" value="${escAttr(certEventName)}" oninput="certEventName=this.value"
+          placeholder="${t('예: 2026 전국대회','e.g. 2026 National Conference')}" style="${inp};width:100%"/>
+        <div style="font-size:11.5px;color:var(--ink3);margin-top:5px">${t('이 이름이 증서 문장에 들어갑니다.','This name appears in the certificate sentence.')}</div>
+      </div>
       <div id="cert-date-wrap" style="display:none;margin-bottom:14px">
         <label style="${lbl}" id="cert-admit-label">${t('입소일','Date of admission')}</label>
         <input id="cert-admit" type="date" value="${escAttr(certAdmitDate)}" oninput="certAdmitDate=this.value" style="${inp};width:100%;max-width:240px"/>
@@ -32170,9 +32643,9 @@ function renderCert() {
           <span style="font-size:13px;color:var(--ink3)">~</span>
           <input id="cert-period-to" type="month" value="${escAttr(certPeriodTo)}" oninput="certPeriodTo=this.value" style="${inp};max-width:170px"/>
           <input id="cert-paid-amount" value="${escAttr(certPaidAmount)}" placeholder="${t('납입 금액','Amount paid')}" oninput="certPaidAmount=this.value" style="${inp};max-width:200px"/>
-          <button type="button" onclick="certFillPaid()" style="height:38px;padding:0 14px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:9px;cursor:pointer;font:700 12.5px var(--font)">${t('학비 기록에서 불러오기','Load from tuition records')}</button>
+          <button type="button" id="cert-fill-paid" onclick="certFillPaid()" style="height:38px;padding:0 14px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:9px;cursor:pointer;font:700 12.5px var(--font)">${t('학비 기록에서 불러오기','Load from tuition records')}</button>
         </div>
-        <div style="font-size:11.5px;color:var(--ink3);margin-top:5px">${t('불러오면 그 기간에 <b>납부 완료</b>로 적힌 학비를 더해서 채워요. 금액은 직접 고쳐도 됩니다.','Loading sums the tuition marked <b>paid</b> in that period. You can edit the amount.')}</div>
+        <div id="cert-paid-note" style="font-size:11.5px;color:var(--ink3);margin-top:5px">${t('불러오면 그 기간에 <b>납부 완료</b>로 적힌 학비를 더해서 채워요. 금액은 직접 고쳐도 됩니다.','Loading sums the tuition marked <b>paid</b> in that period. You can edit the amount.')}</div>
       </div>
       <div id="cert-custom-wrap" style="display:${certType==='custom'?'block':'none'};margin-bottom:14px">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:12px">
@@ -32388,9 +32861,22 @@ function certSyncType() {
   if (dl && spec.dateLabel) dl.textContent = spec.dateLabel;
   const di = document.getElementById('cert-admit');
   if (di && spec.needDate && !di.value) { di.value = attTodayStr(); certAdmitDate = di.value; }
+  // 대회·행사 이름은 수료증·활동증명서에만
+  const ew = document.getElementById('cert-event-wrap');
+  if (ew) ew.style.display = spec.needEvent ? 'block' : 'none';
+  const el2 = document.getElementById('cert-event-label');
+  if (el2 && spec.eventLabel) el2.textContent = spec.eventLabel;
   // 납입 기간은 기부금 납입 증명서에만
   const pw = document.getElementById('cert-period-wrap');
   if (pw) pw.style.display = spec.needPeriod ? 'block' : 'none';
+  //  수료증은 기간은 쓰지만 금액은 없다 (noAmount). 칸을 띄워 두면
+  //  '납입 금액을 채워주세요' 에서 막혀 발급이 안 된다.
+  const am = document.getElementById('cert-paid-amount');
+  if (am) am.style.display = spec.noAmount ? 'none' : '';
+  const amBtn = document.getElementById('cert-fill-paid');
+  if (amBtn) amBtn.style.display = spec.noAmount ? 'none' : '';
+  const amNote = document.getElementById('cert-paid-note');
+  if (amNote) amNote.style.display = spec.noAmount ? 'none' : '';
   if (spec.needPeriod) {
     const now = attTodayStr().slice(0,7);
     const f = document.getElementById('cert-period-from'), tt = document.getElementById('cert-period-to');
@@ -32532,6 +33018,11 @@ function buildCertOpts(d) {
         /* 페이지 높이를 끝까지 물려준다 — 그래야 flex 가 한 장에 딱 맞춘다 */
         html, body, .pw { height: 100%; }
         .cf { min-height: 0; }
+        /*  여러 장을 한 창에 뽑을 때(본부 명단 발급) 는 다르다.
+            body 높이 100% 를 여러 .pw 가 나눠 가지면 한 장에 두세 개가
+            눌려 들어간다. 그때는 .pw 한 개가 한 쪽(vh) 을 쓰게 한다. */
+        body.multi, html:has(body.multi) { height: auto; }
+        body.multi .pw { height: 100vh; }
       }
 
       /* 모서리 장식 — 안쪽 테두리 네 귀에 짧은 금색 갈고리 */
@@ -32674,16 +33165,25 @@ async function printCertificate() {
   const pFrom = (document.getElementById('cert-period-from')?.value || certPeriodFrom || '').trim();
   const pTo   = (document.getElementById('cert-period-to')?.value   || certPeriodTo   || '').trim();
   const paidAmt = (document.getElementById('cert-paid-amount')?.value || certPaidAmount || '').trim();
-  if (ct.needPeriod && (!pFrom || !pTo || !paidAmt)) {
-    showUploadToast(t('납입 기간과 금액을 채워주세요','Please fill in the period and the amount'));
+  if (ct.needPeriod && (!pFrom || !pTo || (!ct.noAmount && !paidAmt))) {
+    showUploadToast(ct.noAmount ? t('기간을 채워주세요','Please fill in the period')
+                                : t('납입 기간과 금액을 채워주세요','Please fill in the period and the amount'));
     document.getElementById('cert-period-from')?.focus();
+    return;
+  }
+  //  대회·행사 이름 — 수료증·활동증명서의 문장에 들어간다
+  const evName = (document.getElementById('cert-event')?.value || certEventName || '').trim();
+  if (ct.needEvent && !evName) {
+    showUploadToast(t((ct.eventLabel || '대회 이름') + '을 적어주세요', 'Please enter the event name'));
+    document.getElementById('cert-event')?.focus();
     return;
   }
   const periodText = certPeriodText(pFrom, pTo, certLang);
   const stmt = type === 'custom'
     ? ((document.getElementById('cert-custom')?.value || certCustomText || '').trim()
         || certT('위 사실을 증명합니다.','This certifies the above facts.'))
-    : String(ct.stmt || '').replace('{d}', admitText).replace('{p}', periodText).replace('{a}', paidAmt);
+    : String(ct.stmt || '').replace('{d}', admitText).replace('{p}', periodText)
+        .replace('{a}', paidAmt).replace('{e}', evName);
 
   // 창은 클릭 직후에 열어야 한다. 서버에 물어본 뒤에 열면 팝업 차단에 걸린다.
   const win = window.open('', '_blank');
@@ -32708,6 +33208,11 @@ async function printCertificate() {
       community_id: CID(), cert_no: typedNo, lang: certLang, type, doc_label: docLabel, doc_sub: typedSub,
       student_id: certStudentId || null, student_name: name,
       birth, grade, school, address, statement: stmt, reason, issue_date: date,
+      event_name: evName || null,
+      //  소속 공동체 — 신청함에서 다른 공동체 것을 발급한 경우에만 다르다.
+      //  비워 두면 서버가 발급한 공동체로 둔다.
+      for_community_id: certForComm ? certForComm.id : null,
+      for_community_name: certForComm ? certForComm.name : null,
       org_id: orgId || null, org_name: d.orgName, org_logo_url: d.orgLogo, org_address: orgAddress,
       rep, seal_url: d.sealUrl,
     }});
@@ -32717,6 +33222,7 @@ async function printCertificate() {
 
   if (recorded) {
     d.no = recorded.cert_no;
+    certForComm = null;   // 다음 발급에 묻어가지 않게 비운다
     // 신청함에서 들어온 발급이면 그 신청을 '발급 완료' 로 닫는다
     if (certReqId) {
       const reqId = certReqId; certReqId = null;

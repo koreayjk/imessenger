@@ -50,9 +50,14 @@ function dbScript() {
     window.__rpc = []; window.__rm = []; window.__rmResult = null;
     window.__fn = []; window.__fnResult = {};
     let seq = 0;
-    const mkq = (t) => { const q = { _t:t, _eq:{}, _cmp:[], _is:[] };
-      ['not','range','or','filter','contains']
+    const mkq = (t) => { const q = { _t:t, _eq:{}, _cmp:[], _is:[], _or:[] };
+      ['not','range','filter','contains']
         .forEach(k => q[k] = function(){ return this; });
+      //  ⚠️ .or('a.eq.X,b.eq.Y') 를 그냥 넘기면 표의 모든 줄이 돌아온다.
+      //     그러면 '본부가 받은 신청까지 읽는지' 를 잴 수가 없습니다 —
+      //     읽는 길을 지워도 시험이 통과해 버립니다 (limit·gte·is 때와
+      //     같은 자리에서 또 데었습니다). 진짜로 거릅니다.
+      q.or = function(expr){ this._or.push(String(expr || '')); return this; };
       //  ⚠️ .is('group_id', null) 을 그냥 넘기면 '공통 기록' 과 '그룹 기록' 이
       //     한 통에 섞여 나온다. 그러면 갈라져 쌓이는지 잴 수가 없다
       //     (limit·gte·엣지함수 때와 같은 자리에서 또 데었다). 진짜로 거른다.
@@ -99,6 +104,20 @@ function dbScript() {
           if (a !== null && a !== '' && b !== null && b !== '' && !isNaN(na) && !isNaN(nb)) return na - nb;
           return String(a == null ? '' : a).localeCompare(String(b == null ? '' : b));
         };
+        //  or 는 'col.op.value' 를 쉼표로 이은 것. 하나라도 맞으면 통과.
+        (this._or || []).forEach(expr => {
+          const terms = expr.split(',').map(x => x.trim()).filter(Boolean).map(x => {
+            const m = x.match(/^([A-Za-z0-9_]+)\.([a-z]+)\.(.*)$/);
+            return m ? { k:m[1], op:m[2], v:m[3] } : null;
+          }).filter(Boolean);
+          if (!terms.length) return;
+          rows = rows.filter(x => terms.some(tm => {
+            const cur = x[tm.k];
+            if (tm.op === 'is') return tm.v === 'null' ? (cur == null) : String(cur) === tm.v;
+            if (tm.op === 'neq') return String(cur) !== tm.v;
+            return String(cur == null ? '' : cur) === tm.v;   // eq
+          }));
+        });
         (this._is || []).forEach(([k, v]) => {
           rows = rows.filter(x => v === null ? (x[k] == null)
                                 : v === true ? x[k] === true

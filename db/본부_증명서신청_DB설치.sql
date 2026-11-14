@@ -49,6 +49,13 @@ alter table public.cert_requests
   add column if not exists to_community_id uuid references public.communities(id) on delete set null;
 alter table public.cert_requests add column if not exists batch_id uuid;
 alter table public.cert_requests add column if not exists event_name text;
+--  신청할 때의 이름·생년월일·주소·공동체이름을 떠 둡니다.
+--  이게 없으면 본부가 증서를 찍으려고 **남의 공동체 멤버 자료를 읽어야**
+--  합니다. 떠 두면 안 읽어도 되고, 신청 뒤에 주소가 바뀌어도 그때 낸
+--  증서는 그때 값으로 남습니다.
+alter table public.cert_requests add column if not exists student_birth   text;
+alter table public.cert_requests add column if not exists student_address text;
+alter table public.cert_requests add column if not exists community_name  text;
 
 comment on column public.cert_requests.to_community_id is
   '처리할 곳. 비우면 지금처럼 우리 공동체가 처리. 본부 ID 면 본부가 처리한다.';
@@ -56,6 +63,12 @@ comment on column public.cert_requests.batch_id is
   '수련회 명단처럼 한 번에 올린 신청을 묶는 끈. 본부가 한꺼번에 승인한다.';
 comment on column public.cert_requests.event_name is
   '전국대회 수료증 등에 찍히는 대회·행사 이름.';
+comment on column public.cert_requests.student_birth is
+  '신청할 때의 생년월일. 본부가 남의 공동체 멤버 자료를 읽지 않아도 증서를 찍을 수 있게 떠 둔다.';
+comment on column public.cert_requests.student_address is
+  '신청할 때의 주소. 같은 까닭.';
+comment on column public.cert_requests.community_name is
+  '신청한 공동체 이름. 증서의 「소속 공동체」 로 찍힌다.';
 
 create index if not exists cert_requests_to_idx
   on public.cert_requests (to_community_id, status, created_at desc)
@@ -172,6 +185,7 @@ create or replace function public.request_certs_to_hq(p jsonb)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare
   v_me      public.members;
+  v_cname   text;
   v_hq      uuid;
   v_batch   uuid := gen_random_uuid();
   v_ids     uuid[];
@@ -201,6 +215,7 @@ begin
   if v_hq = v_me.community_id then
     raise exception '본부는 증명서 화면에서 바로 발급합니다.' using errcode = '22004';
   end if;
+  select name into v_cname from public.communities where id = v_me.community_id;
 
   select array_agg(distinct x)::uuid[] into v_ids
     from jsonb_array_elements_text(coalesce(p->'students','[]'::jsonb)) as t(x);
@@ -214,17 +229,20 @@ begin
   --  ⚠️ 우리 공동체 사람만. 이 함수는 RLS 를 지나지 않으므로, 여기서
   --     막지 않으면 남의 공동체 아이 이름으로 신청이 들어갑니다.
   for r in
-    select m.id, m.name from public.members m
+    select m.id, m.name, m.birth_date, m.address from public.members m
      where m.id = any(v_ids)
        and m.community_id = v_me.community_id
        and coalesce(m.status,'active') <> 'removed'
+     order by m.name
   loop
     insert into public.cert_requests (
-      community_id, to_community_id, batch_id, student_id, student_name,
+      community_id, community_name, to_community_id, batch_id,
+      student_id, student_name, student_birth, student_address,
       requester_id, requester_name, relation,
       kind, kind_label, purpose, note, event_name, copies, status
     ) values (
-      v_me.community_id, v_hq, v_batch, r.id, r.name,
+      v_me.community_id, v_cname, v_hq, v_batch,
+      r.id, r.name, nullif(r.birth_date::text,''), nullif(r.address,''),
       v_me.id, v_me.name, 'staff',
       v_kind, nullif(p->>'kind_label',''), nullif(p->>'purpose',''),
       nullif(p->>'note',''), nullif(p->>'event_name',''), v_copies, 'pending'
@@ -236,7 +254,8 @@ begin
   if v_made = 0 then
     raise exception '우리 공동체 사람을 한 명도 찾지 못했습니다.' using errcode = '22004';
   end if;
-  return jsonb_build_object('batch_id', v_batch, 'made', v_made, 'skipped', v_skip, 'hq', v_hq);
+  return jsonb_build_object('batch_id', v_batch, 'made', v_made, 'skipped', v_skip,
+                            'hq', v_hq, 'hq_name', (select name from public.communities where id = v_hq));
 end $$;
 
 revoke all on function public.request_certs_to_hq(jsonb) from public;
