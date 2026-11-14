@@ -1653,7 +1653,7 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
         <div style="width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#5A7C8B,#1d3a5f);display:flex;align-items:center;justify-content:center;font-size:16px">🏦</div>
         <div>
           <div style="font-size:15px;font-weight:700;color:var(--ink)">예치금</div>
-          <div style="font-size:11px;color:var(--ink3)">학교에 맡긴 돈의 잔액과 내역이에요</div>
+          <div style="font-size:11px;color:var(--ink3)">공동체에 맡긴 돈의 잔액과 내역이에요</div>
         </div>
         <div id="subnav-deposit" class="subnav-center"></div>
       </div>
@@ -10607,7 +10607,7 @@ const HOME_WIDGETS = {
 
   newsletter: {
     icon:'✉️', ko:'가정통신문', en:'Newsletter',
-    dko:'학교에서 가정으로 보내는 안내를 띄워요', den:'Notices from school to home', w:4,
+    dko:'공동체에서 가정으로 보내는 안내를 띄워요', den:'Notices from the community to home', w:4,
     render: async () => {
       let rows = [];
       try {
@@ -10621,7 +10621,7 @@ const HOME_WIDGETS = {
       } catch(_) {}
       return hwCard(
         hwHead('✉️', t('가정통신문','Newsletter'),
-          `<span style="font-size:11px;color:var(--ink3);white-space:nowrap">${t('학교에서 가정으로','School to home')}</span>`) +
+          `<span style="font-size:11px;color:var(--ink3);white-space:nowrap">${t('공동체에서 가정으로','Community to home')}</span>`) +
         (rows.length ? `<div style="display:flex;flex-direction:column;gap:10px">
           ${rows.map(n => hwRow(`
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
@@ -13530,10 +13530,10 @@ async function renderProfilePage() {
       ${mySignatureCardHtml()}
 
       ${!isStudent() ? `
-      <!-- 학교 정보 (교사/관리자만) -->
+      <!-- 소속 정보 (교사/관리자만) -->
       <div class="adm-card" style="margin-bottom:16px">
-        <div style="font-size:14px;font-weight:700;color:var(--adeep);margin-bottom:16px">🏫 ${t('학교 정보','School Info')}</div>
-        ${inp('school_name', t('학교명','School Name'), ME.school_name, 'text', t('예: IM선교회 대안학교','e.g. IM Mission School'))}
+        <div style="font-size:14px;font-weight:700;color:var(--adeep);margin-bottom:16px">🏫 ${t('소속 정보','Affiliation')}</div>
+        ${inp('school_name', t('소속 기관명','Organization'), ME.school_name, 'text', t('예: IM선교회','e.g. IM Mission'))}
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px">
           <div>${sel('grade', t('현재 학년','Current Grade'), ME.grade, ['K','1','2','3','4','5','6','G7 (중1)','G8 (중2)','G9 (중3)','G10 (고1)','G11 (고2)','G12 (고3)','졸업'])}</div>
           <div>${inp('homeroom_teacher', t('담임 선생님','Homeroom Teacher'), ME.homeroom_teacher, 'text')}</div>
@@ -13553,16 +13553,16 @@ async function renderProfilePage() {
         ${inp('career_goal', t('진로 희망','Career Goal'), ME.career_goal, 'text', t('예: 선교사 / 교사 / 의사','e.g. Missionary / Teacher / Doctor'))}
       </div>
       ` : `
-      <!-- 학생: 현재 학년은 본인 수정 가능, 학교명·담임은 교사 관리 -->
+      <!-- 학생: 현재 학년은 본인 수정 가능, 소속 기관명·담임은 교사 관리 -->
       <div class="adm-card" style="margin-bottom:16px">
-        <div style="font-size:14px;font-weight:700;color:var(--adeep);margin-bottom:16px">🏫 ${t('학교 정보','School Info')}</div>
+        <div style="font-size:14px;font-weight:700;color:var(--adeep);margin-bottom:16px">🏫 ${t('소속 정보','Affiliation')}</div>
         ${sel('grade', t('현재 학년','Current Grade'), ME.grade, ['K','1','2','3','4','5','6','G7 (중1)','G8 (중2)','G9 (중3)','G10 (고1)','G11 (고2)','G12 (고3)','졸업'])}
         <div style="font-size:11px;color:var(--ink3);margin:-8px 0 14px">${t('학년은 직접 선택할 수 있어요. 담임 선생님이 확인 후 조정할 수도 있습니다.','You can set your grade yourself. Your homeroom teacher may adjust it after review.')}</div>
         <div style="display:flex;flex-wrap:wrap;gap:12px;padding-top:4px;border-top:1px dashed var(--border)">
           ${ME.school_name?`<div style="font-size:13px;color:var(--ink2)">🏫 ${ME.school_name}</div>`:''}
           ${ME.homeroom_teacher?`<div style="font-size:13px;color:var(--ink2)">👩‍🏫 ${ME.homeroom_teacher} ${t('선생님','')}</div>`:''}
         </div>
-        ${!ME.school_name&&!ME.homeroom_teacher?`<div style="font-size:12px;color:var(--ink3);margin-top:8px">${t('학교명·담임은 선생님이 등록해드릴 거예요','Your teacher will register the school name and homeroom teacher')}</div>`:''}
+        ${!ME.school_name&&!ME.homeroom_teacher?`<div style="font-size:12px;color:var(--ink3);margin-top:8px">${t('소속 기관명·담임은 선생님이 등록해드릴 거예요','Your teacher will register your organization and homeroom teacher')}</div>`:''}
       </div>
       `}
 
@@ -13704,7 +13704,7 @@ async function saveProfile() {
     church:           get('church'),
     career_goal:      get('career_goal'),
   };
-  // 학교 정보: 해당 입력칸이 렌더된 경우에만 반영 (학생/교사 화면 구성이 다름)
+  // 소속 정보: 해당 입력칸이 렌더된 경우에만 반영 (학생/교사 화면 구성이 다름)
   put(updates, 'school_name');
   put(updates, 'grade');
   put(updates, 'homeroom_teacher');
@@ -14377,12 +14377,12 @@ function getTcsSectionFields(sectionId) {
       {key:'address', label:t('주소','Address'), type:'text'},
     ],
     school: [
-      {key:'school_name', label:t('학교명','School Name'), type:'text'},
-      {key:'school_type', label:t('학교 구분','School Type'), type:'select', options:['대안학교','홈스쿨','기독학교','기타']},
+      {key:'school_name', label:t('소속 기관명','Organization'), type:'text'},
+      {key:'school_type', label:t('기관 구분','Organization Type'), type:'select', options:['대안학교','홈스쿨','기독학교','기타']},
       {key:'enroll_date', label:t('입학일','Enrollment Date'), type:'date'},
       {key:'grad_date', label:t('졸업(예정)일','Graduation Date'), type:'date'},
       {key:'course', label:t('재학 과정','Program'), type:'select', options:['초등','중학','고등','초·중통합','중·고통합','초·중·고통합']},
-      {key:'principal', label:t('학교장','Principal'), type:'text'},
+      {key:'principal', label:t('대표자','Representative'), type:'text'},
     ],
     attendance: [
       {key:'k',  label:t('K (유치원) — 수업일수 / 결석 / 지각 / 조퇴','K (Kindergarten) — School days / Absence / Tardy / Early leave'), type:'text', placeholder:t('예: 180 / 0 / 0 / 0','e.g. 180 / 0 / 0 / 0')},
@@ -14440,7 +14440,7 @@ function getTcsSectionFields(sectionId) {
       {key:'svc5', label:t('봉사 5','Service 5'), type:'text'},
     ],
     awards: [
-      {key:'awd1', label:t('수상/자격증 1 (날짜 / 명칭 / 수여기관 / 급수)','Award/Certificate 1 (date / name / issuer / level)'), type:'text', placeholder:t('2023-11 / 영어경시 우수상 / 학교 / -','2023-11 / English Contest Excellence Award / School / -')},
+      {key:'awd1', label:t('수상/자격증 1 (날짜 / 명칭 / 수여기관 / 급수)','Award/Certificate 1 (date / name / issuer / level)'), type:'text', placeholder:t('2023-11 / 영어경시 우수상 / 공동체 / -','2023-11 / English Contest Excellence Award / Community / -')},
       {key:'awd2', label:t('수상/자격증 2','Award/Certificate 2'), type:'text'},
       {key:'awd3', label:t('수상/자격증 3','Award/Certificate 3'), type:'text'},
       {key:'awd4', label:t('수상/자격증 4','Award/Certificate 4'), type:'text'},
@@ -14466,7 +14466,7 @@ function getTcsSectionFields(sectionId) {
       {key:'final_college', label:t('최종 진학 결과','Final College Result'), type:'text', placeholder:t('예: 한동대학교 국제어문학부 (2025 입학)','e.g. Handong Global University, Intl. Languages (2025 admission)')},
     ],
     comment: [
-      {key:'comment_ko', label:t('담임교사 종합의견 (한국어)','Homeroom Teacher Overall Comment (Korean)'), type:'textarea', rows:10, placeholder:t('학생의 학교생활, 성품, 성장 과정, 강점 중심으로 서술해주세요...','Describe the student\'s school life, character, growth, and strengths...')},
+      {key:'comment_ko', label:t('담임교사 종합의견 (한국어)','Homeroom Teacher Overall Comment (Korean)'), type:'textarea', rows:10, placeholder:t('학생의 공동체 생활, 성품, 성장 과정, 강점 중심으로 서술해주세요...','Describe the student\'s school life, character, growth, and strengths...')},
       {key:'comment_en', label:"Teacher's Assessment (English)", type:'textarea', rows:10, placeholder:'Describe the student\'s character, growth, and unique strengths...'},
       {key:'teacher_name', label:t('담임교사 성명','Homeroom Teacher Name'), type:'text'},
       {key:'issue_date', label:t('작성일','Date Written'), type:'date'},
@@ -17074,8 +17074,8 @@ function buildTcsPreviewHtml(lang) {
     row('주소', escHtml(personal.address || ''))));
 
   if (tcsInc('school')) parts.push(sec('학적사항') + table(
-    row('학교명', escHtml(school.school_name || '')) +
-    row('학교 구분', escHtml(school.school_type || '')) +
+    row('소속 기관명', escHtml(school.school_name || '')) +
+    row('기관 구분', escHtml(school.school_type || '')) +
     row('입학일', escHtml(school.enroll_date || '')) +
     row('졸업(예정)일', escHtml(school.grad_date || '')) +
     row('재학 과정', escHtml(school.course || ''))));
@@ -17202,7 +17202,7 @@ function buildTcsPreviewHtml(lang) {
         <tr>
           <th>담임교사</th>
           <td class="sig">${escHtml(comment.teacher_name||'')}<span class="tdoc-seal">인</span></td>
-          <th>학교장</th>
+          <th>대표자</th>
           <td class="sig">${escHtml(org ? org.name : (school.school_name||''))}<span class="tdoc-seal">인</span></td>
         </tr>
       </table>
@@ -17913,7 +17913,7 @@ async function renderCommunitySettings() {
         </details>
       </div>
 
-      <!-- 직인 (학교 도장) -->
+      <!-- 직인 (기관 도장) -->
       <div class="adm-card" style="margin-top:16px">
         <div style="font-size:13px;font-weight:700;color:var(--ink);margin-bottom:4px">🔴 직인 (도장)</div>
         <div style="font-size:12px;color:var(--ink3);margin-bottom:12px;line-height:1.7">
@@ -17924,7 +17924,7 @@ async function renderCommunitySettings() {
         <div id="cs-seals-list"><div style="font-size:12px;color:var(--ink3)">불러오는 중...</div></div>
         <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           <div id="seal-preview" style="width:52px;height:52px;border-radius:10px;background:#fff;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:19px">🔴</div>
-          <input id="seal-name-input" type="text" placeholder="직인 이름 (예: 학교장 직인)" style="flex:1;min-width:150px;height:38px;padding:0 12px;border:1.5px solid var(--border);border-radius:9px;font:600 13px var(--font);color:var(--ink);background:var(--surface)"/>
+          <input id="seal-name-input" type="text" placeholder="직인 이름 (예: 대표자 직인)" style="flex:1;min-width:150px;height:38px;padding:0 12px;border:1.5px solid var(--border);border-radius:9px;font:600 13px var(--font);color:var(--ink);background:var(--surface)"/>
           <input type="file" id="seal-file-input" accept="image/*" style="display:none" onchange="uploadSealImage(this)"/>
           <input type="hidden" id="seal-image-url" value=""/>
           <button onclick="document.getElementById('seal-file-input').click()" style="height:38px;padding:0 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);font:600 13px var(--font);cursor:pointer">도장 그림</button>
@@ -18417,7 +18417,7 @@ async function syncGoogleCalendar() {
 
 // ══════════════════════════════════════════════════════════════════
 //  직인 (도장)
-//   한국 학교는 증명서에 도장을 찍는다. 도장 그림을 올려 두면
+//   한국에서는 증명서에 도장을 찍는다. 도장 그림을 올려 두면
 //   증명서에 빨간 도장으로 찍혀 나온다. 여러 개 등록해 골라 쓴다.
 // ══════════════════════════════════════════════════════════════════
 let orgSeals = [];
@@ -22284,7 +22284,7 @@ async function imOpenShare() {
     groups: new Set(n.share_groups || []),
   };
   imShareQ = '';
-  // 반 목록은 없을 수도 있다 (학교를 안 쓰는 공동체)
+  // 반 목록은 없을 수도 있다 (학사를 안 쓰는 공동체)
   if (!Array.isArray(imShareGroups)) imShareGroups = [];
   try {
     const { data } = await sb.from('student_groups').select('id,name')
@@ -24076,7 +24076,7 @@ async function deleteEvent() {
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  학사관리 (학교 행정 허브) — 출석부 / 시간표 / 학비 / 가정통신문
+//  학사관리 (공동체 행정 허브) — 출석부 / 시간표 / 학비 / 가정통신문
 // ════════════════════════════════════════════════════════════════════
 // 학사 탭 — 세 묶음으로 나눠 보여줍니다.
 //  이전에는 시간표·출석부·출결신청이 탭에 없어서 다른 화면의 링크로만 들어갈 수 있었고,
@@ -31837,7 +31837,7 @@ async function renderPublicNewsletter(id) {
     box.innerHTML = `<div style="max-width:520px;margin:80px auto;text-align:center">
       <div style="font-size:42px;margin-bottom:14px">🔒</div>
       <div style="font-size:16px;font-weight:700;color:var(--ink);margin-bottom:8px">${t('열람할 수 없는 링크예요','This link cannot be viewed')}</div>
-      <div style="font-size:13px;color:var(--ink3);line-height:1.8">${t('링크가 만료되었거나 공유가 해제되었어요.<br>학교에 문의해 주세요.','The link has expired or sharing was disabled.<br>Please contact the school.')}</div></div>`;
+      <div style="font-size:13px;color:var(--ink3);line-height:1.8">${t('링크가 만료되었거나 공유가 해제되었어요.<br>공동체에 문의해 주세요.','The link has expired or sharing was disabled.<br>Please contact your community.')}</div></div>`;
     return;
   }
   box.innerHTML = `<div class="pg-narrow">
@@ -32156,7 +32156,7 @@ function renderCert() {
         <div><label style="${lbl}">${t('생년월일','Date of birth')}</label><input id="cert-birth" value="${escAttr(certPrefill.birth||(s?s.birth_date||'':''))}" placeholder="${t('예: 2010-03-15','e.g. 2010-03-15')}" style="${inp};width:100%"/></div>
         <div style="grid-column:1/3"><label style="${lbl}">${t('주소','Address')}</label><input id="cert-address" value="${escAttr(certPrefill.address||(s?s.address||'':''))}" placeholder="${t('예: 경기도 고양시 덕양구 백양로 65, 1704호','e.g. 65 Baekyang-ro, Goyang-si')}" style="${inp};width:100%"/></div>
         <div><label style="${lbl}">${t('학년 (없으면 비움)','Grade (optional)')}</label><input id="cert-grade" value="${escAttr(s?s.grade||'':'')}" style="${inp};width:100%"/></div>
-        <div><label style="${lbl}">${t('학교명 (없으면 비움)','School (optional)')}</label><input id="cert-school" value="${escAttr(certPrefill.school||'')}" style="${inp};width:100%"/></div>
+        <div><label style="${lbl}">${t('소속 기관명 (없으면 비움)','Organization (optional)')}</label><input id="cert-school" value="${escAttr(certPrefill.school||'')}" style="${inp};width:100%"/></div>
       </div>
       <div id="cert-date-wrap" style="display:none;margin-bottom:14px">
         <label style="${lbl}" id="cert-admit-label">${t('입소일','Date of admission')}</label>
@@ -32190,7 +32190,7 @@ function renderCert() {
           </div>
         </div>
         <label style="${lbl}">${t('증명 내용','Certificate text')}</label>
-        <textarea id="cert-custom" oninput="certCustomText=this.value" placeholder="${t('증명할 내용을 입력하세요. 예: 위 학생은 본교에서 2025년 9월부터 2026년 5월까지 COG 사역팀으로 활동하였음을 증명합니다.','Enter the text to certify')}" style="width:100%;min-height:90px;padding:12px;border:1px solid var(--border);border-radius:9px;font:400 14px var(--font);color:var(--ink);line-height:1.7;resize:vertical">${escHtml(certCustomText)}</textarea>
+        <textarea id="cert-custom" oninput="certCustomText=this.value" placeholder="${t('증명할 내용을 입력하세요. 예: 위 학생은 본 공동체에서 2025년 9월부터 2026년 5월까지 COG 사역팀으로 활동하였음을 증명합니다.','Enter the text to certify')}" style="width:100%;min-height:90px;padding:12px;border:1px solid var(--border);border-radius:9px;font:400 14px var(--font);color:var(--ink);line-height:1.7;resize:vertical">${escHtml(certCustomText)}</textarea>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
         <div><label style="${lbl}">${t('발급 사유','Purpose')}</label><input id="cert-reason" value="${t('제출용','For submission')}" style="${inp};width:100%"/></div>
@@ -32199,7 +32199,7 @@ function renderCert() {
         <div><label style="${lbl}">${t('발급 기관','Issuing organization')}</label><select id="cert-org" style="${inp};width:100%">${orgOpts}</select></div>
         <div style="grid-column:1/3"><label style="${lbl}">${t('직인','Seal')}</label><select id="cert-seal" style="${inp};width:100%">${sealOpts}</select></div>
         <div style="grid-column:1/3"><label style="${lbl}">${t('발급 기관 주소 (증서 아래 기관명 밑에)','Issuing organization address')}</label><input id="cert-org-addr" value="${escAttr((tcsOrgs.find(o=>o.id===tcsSelectedOrgId)?.address)||'')}" placeholder="${t('예: 충남 논산시 벌곡면 황룡재로 324','e.g. 324 Hwangnyongjae-ro, Nonsan-si')}" style="${inp};width:100%"/></div>
-        <div style="grid-column:1/3"><label style="${lbl}">${t('대표자 명의 (직인 표기)','Representative name (for seal)')}</label><input id="cert-rep" value="${escAttr((tcsOrgs.find(o=>o.id===tcsSelectedOrgId)?.name)||'')}${t(' 장',' Head')}" placeholder="${t('예: ○○학교장 / 대표 홍길동','e.g. Principal of ○○ School / Rep. Hong Gil-dong')}" style="${inp};width:100%"/></div>
+        <div style="grid-column:1/3"><label style="${lbl}">${t('대표자 명의 (직인 표기)','Representative name (for seal)')}</label><input id="cert-rep" value="${escAttr((tcsOrgs.find(o=>o.id===tcsSelectedOrgId)?.name)||'')}${t(' 장',' Head')}" placeholder="${t('예: ○○ 공동체 대표 홍길동','e.g. Rep. Hong Gil-dong, ○○ Community')}" style="${inp};width:100%"/></div>
       </div>
       <div style="display:flex;justify-content:flex-end;gap:8px">
         <button onclick="printCertificate()" style="height:40px;padding:0 22px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 13px var(--font)">${t('📄 미리보기 & 인쇄','📄 Preview & Print')}</button>
@@ -33207,7 +33207,7 @@ function s360SetAllowType(t) { const st=s360AllowFormState(); s360AllowType = t;
 function s360SetAllowCur(c) { const st=s360AllowFormState(); s360AllowCur = c; renderS360AllowCard(); s360AllowFormRestore(st); }
 function s360ToggleAllowAll() { s360AllowShowAll = !s360AllowShowAll; renderS360AllowCard(); }
 
-// ── 예치금(학교 보관금) — 관리자 입금/출금 기록 + 잔액 ──
+// ── 예치금(공동체 보관금) — 관리자 입금/출금 기록 + 잔액 ──
 let s360DepEntries = [];
 let s360DepType = 'in';    // 'in'(입금) | 'out'(출금)
 let s360DepCur = '원';
@@ -33259,7 +33259,7 @@ function s360DepCard(entries) {
   return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin-bottom:14px">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
       <div style="font-size:14px;font-weight:700;color:var(--ink)">🏦 ${t('예치금','Deposits')}</div>
-      <span style="font-size:11px;color:var(--ink3)">${t('학교가 맡아두는 돈 · 입금/출금 기록','Money held by the school · deposit/withdraw record')}</span>
+      <span style="font-size:11px;color:var(--ink3)">${t('공동체가 맡아두는 돈 · 입금/출금 기록','Money held by the community · deposit/withdraw record')}</span>
       <div style="flex:1"></div>
       <span style="font-size:11px;color:var(--ink3)">${t(`전체 ${entries.length}건`,`${entries.length} total`)}</span>
     </div>
