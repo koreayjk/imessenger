@@ -17337,10 +17337,10 @@ ${(o.bodies && o.bodies.length ? o.bodies : [o.body || '']).map((bd, i, all) => 
   ${head}
   ${titleBlock}
   ${bd}
-  <div class="pf">
+  ${o.footer === false ? '' : `<div class="pf">
     <span class="pf-note">${o.footerNote ? escHtml(o.footerNote) : escHtml(org.name || '')}</span>
     <span>${t('발급일','Issued')} ${printToday()}</span>
-  </div>
+  </div>`}
 </div>`).join('')}
 <script>
   // 로고·글꼴이 다 뜬 뒤에 인쇄창을 연다 (예전엔 타이머라 로고가 빠지곤 했음)
@@ -31987,7 +31987,7 @@ let certCustomTitle = '';
 let certCustomSub = '';
 let certCustomText = '';
 
-let certSubTab = 'issue';        // issue | req | hq | hqin | log
+let certSubTab = 'issue';        // issue | req | hq | hqin | form | log
 let certReqs = [];              // 신청함 목록
 let certReqFilter = 'pending';  // pending | all
 let certLog = [];
@@ -32021,6 +32021,37 @@ let hqInPicked = new Set(); // 본부 쪽: 고른 신청
 let certForComm = null;     // 발급할 때 찍을 소속 공동체 { id, name }
 let certEventName = '';    // 대회·행사 이름 (수료증·활동증명서의 {e})
 
+// ── 🖼 양식 ───────────────────────────────────────────────────────
+let certForms  = [];       // 우리 공동체가 올린 양식들
+let cfEditId   = null;     // 편집 중인 양식
+let cfPickK    = null;     // 편집 화면에서 고른 자리
+let cfBusy     = false;
+let cfMissing  = false;    // 표가 아직 없으면 무엇을 돌리라고 알려 준다
+
+async function loadCertForms() {
+  try {
+    const { data, error } = await sb.from('cert_forms').select('*')
+      .eq('community_id', CID()).order('created_at', { ascending:true });
+    if (error) throw error;
+    certForms = data || []; cfMissing = false;
+  } catch (e) {
+    certForms = [];
+    cfMissing = /cert_forms|does not exist|schema cache|PGRST205/i.test((e && (e.message||e.code) || '') + '');
+  }
+}
+
+//  이 종류에 쓸 양식. 종류별 양식이 있으면 그것, 없으면 '모든 종류 공용',
+//  그것도 없으면 null → 기본 증서가 나간다.
+//
+//  ⚠️ **발급하는 곳의 양식**을 씁니다. 본부가 공동체 신청을 대신 발급할
+//     때도 본부 양식입니다 — 번호도 본부 줄(IMHQ-…)이고 도장도 본부
+//     것이라, 양식만 다른 공동체 것이면 엉갈립니다. 같은 대회 수료증이
+//     공동체마다 다른 모양으로 나가면 대외에서 통하지 않습니다.
+function certFormFor(kind) {
+  const on = certForms.filter(f => f && f.enabled !== false);
+  return on.find(f => f.kind === kind) || on.find(f => !f.kind) || null;
+}
+
 //  본부가 어디인지 묻는다. communities 는 로그인 때도 읽는 표라 누구나 본다.
 async function loadHqComm() {
   try {
@@ -32046,6 +32077,7 @@ function setCertSubTab(v) {
   else if (v === 'req') renderCertRequests();
   else if (v === 'hq') renderHqOut();
   else if (v === 'hqin') renderHqIn();
+  else if (v === 'form') renderCertForms();
   else renderCert();
 }
 
@@ -32054,11 +32086,13 @@ async function renderCertHub() {
   try { await loadOrgSeals(); } catch(e){}
   if (!certStudentId && schoolStudents.length) { certStudentId = schoolStudents[0].id; await certLoadStudent(certStudentId); }
   await loadHqComm();            // 본부가 어디인지 — 탭 구성이 달라진다
+  await loadCertForms();         // 우리 공동체가 올려 둔 양식
   await loadCertRequests();      // 기다리는 신청 수를 탭에 보여주려고 먼저 읽는다
   if (certSubTab === 'log') renderCertLog();
   else if (certSubTab === 'req') renderCertRequests();
   else if (certSubTab === 'hq') renderHqOut();
   else if (certSubTab === 'hqin') renderHqIn();
+  else if (certSubTab === 'form') renderCertForms();
   else renderCert();
 }
 
@@ -32171,6 +32205,355 @@ async function certRejectRequest(id) {
   showUploadToast(t('반려했어요','Rejected'));
 }
 
+
+// ══════════════════════════════════════════════════════════════════
+//  🖼 양식 올리고 자리 정하기
+// ══════════════════════════════════════════════════════════════════
+//  PDF → 그림. pdf.js 를 **그때만** 받아온다 (xlsx·heic2any 와 같은 방식).
+let cfPdfJs = null;
+function cfLoadPdfJs() {
+  if (cfPdfJs) return cfPdfJs;
+  cfPdfJs = new Promise((res, rej) => {
+    if (window.pdfjsLib) return res(window.pdfjsLib);
+    const base = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/';
+    const sc = document.createElement('script');
+    sc.src = base + 'pdf.min.js';
+    sc.onload = () => {
+      try { window.pdfjsLib.GlobalWorkerOptions.workerSrc = base + 'pdf.worker.min.js'; } catch (_) {}
+      res(window.pdfjsLib);
+    };
+    sc.onerror = () => { cfPdfJs = null; rej(new Error('pdf')); };
+    document.head.appendChild(sc);
+  });
+  return cfPdfJs;
+}
+
+//  PDF 첫 장 또는 사진 → PNG 조각(blob) + 크기
+async function cfFileToPng(file) {
+  if (/^image\//.test(file.type)) {
+    const url = URL.createObjectURL(file);
+    try {
+      const img = new Image(); img.src = url; await img.decode();
+      const cv = document.createElement('canvas');
+      //  너무 큰 그림은 줄인다 — 2MB 짜리 증서를 수십 장 뽑으면 느려진다
+      const max = 2200, k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+      cv.width = Math.round(img.naturalWidth * k); cv.height = Math.round(img.naturalHeight * k);
+      cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+      const blob = await new Promise(r => cv.toBlob(r, 'image/png'));
+      return { blob, w: cv.width, h: cv.height };
+    } finally { URL.revokeObjectURL(url); }
+  }
+  //  PDF
+  const lib = await cfLoadPdfJs();
+  const buf = await file.arrayBuffer();
+  const doc = await lib.getDocument({ data: buf }).promise;
+  const page = await doc.getPage(1);
+  //  150dpi 쯤으로 그린다 (A4 → 약 1240×1754). 글자가 또렷하게 나온다.
+  const v1 = page.getViewport({ scale: 1 });
+  const scale = Math.min(3, 1240 / v1.width);
+  const vp = page.getViewport({ scale });
+  const cv = document.createElement('canvas');
+  cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height);   // PDF 바탕은 투명이다
+  await page.render({ canvasContext: ctx, viewport: vp }).promise;
+  const blob = await new Promise(r => cv.toBlob(r, 'image/png'));
+  return { blob, w: cv.width, h: cv.height };
+}
+
+async function cfUpload(input) {
+  const file = input.files && input.files[0];
+  input.value = '';
+  if (!file) return;
+  if (cfBusy) return;
+  const kindSel = document.getElementById('cf-new-kind');
+  const kind = kindSel ? (kindSel.value || null) : null;
+  if (certForms.some(f => (f.kind || null) === (kind || null))) {
+    showUploadToast(t('그 종류의 양식이 이미 있어요 — 지우고 올리거나 다른 종류로 올려주세요',
+                      'A form already exists for that type'));
+    return;
+  }
+  cfBusy = true; renderCertForms();
+  showUploadToast(t('양식을 그림으로 바꾸는 중… ⏳','Converting the form… ⏳'));
+  try {
+    const { blob, w, h } = await cfFileToPng(file);
+    if (!blob) throw new Error('blob');
+    const path = `certforms/${CID()}/${Date.now()}.png`;
+    const { error: upErr } = await sb.storage.from('messenger')
+      .upload(path, blob, { contentType:'image/png', cacheControl:'3600', upsert:true });
+    if (upErr) throw upErr;
+    const { data: u } = sb.storage.from('messenger').getPublicUrl(path);
+
+    //  처음 올리면 기본 자리를 깔아 둔다. 자주 쓰는 것만 켜 둔다 —
+    //  스무 개를 다 켜 두면 양식 위가 글자로 뒤덮여 자리를 못 잡는다.
+    const onByDefault = ['docLabel','no','name','birth','stmt','dateKo','org','rep','seal'];
+    const fields = CF_FIELDS.map(sp => Object.assign({ k: sp.k, on: onByDefault.includes(sp.k) }, sp.def));
+
+    const row = {
+      community_id: CID(), name: (file.name || t('새 양식','New form')).replace(/\.[^.]+$/, ''),
+      kind, bg_url: u.publicUrl, bg_w: w, bg_h: h, landscape: w > h,
+      fields, enabled: true, created_by: ME.id,
+    };
+    const { data, error } = await sb.from('cert_forms').insert(row).select('*');
+    if (error) throw error;
+    await loadCertForms();
+    cfEditId = (data && data[0] && data[0].id) || (certForms[certForms.length-1] || {}).id || null;
+    cfPickK = 'name';
+    showUploadToast(t('✅ 올렸어요 — 이제 글자 자리를 끌어서 맞춰 주세요',
+                      '✅ Uploaded — now drag the fields into place'));
+  } catch (e) {
+    const msg = (e && e.message) || String(e);
+    showUploadToast(msg === 'pdf'
+      ? t('PDF 를 그림으로 바꾸는 도구를 받아오지 못했어요. 인터넷을 확인하거나, 양식을 사진(PNG·JPG)으로 올려주세요',
+          'Could not load the PDF converter. Please upload the form as an image instead')
+      : t('올리지 못했어요: ','Upload failed: ') + msg);
+  } finally {
+    cfBusy = false; renderCertForms();
+  }
+}
+
+const cfEditing = () => certForms.find(f => f.id === cfEditId) || null;
+function cfFieldOf(form, k) {
+  const fl = Array.isArray(form.fields) ? form.fields : [];
+  let f = fl.find(x => x && x.k === k);
+  if (!f) { f = Object.assign({ k, on:false }, (cfSpec(k) || {}).def || {}); fl.push(f); form.fields = fl; }
+  return f;
+}
+
+//  ⚠️ 자리를 바꿀 때마다 서버에 쓰면 끌 때마다 수십 번 글이 갑니다.
+//     화면에서는 바로 움직이고, 저장은 「저장」 을 누를 때 한 번만 합니다.
+let cfDirty = false;
+function cfTouch() { cfDirty = true; const b = document.getElementById('cf-save'); if (b) b.style.background = '#be5b2a'; }
+
+async function cfSave() {
+  const form = cfEditing(); if (!form || cfBusy) return;
+  cfBusy = true;
+  try {
+    const { data, error } = await sb.from('cert_forms')
+      .update({ name: form.name, fields: form.fields }).eq('id', form.id).select('id');
+    if (error) throw error;
+    //  ⚠️ RLS 가 막으면 error 없이 0줄이 옵니다. 세어 봐야 압니다.
+    if (!data || !data.length) { showUploadToast(t('고칠 권한이 없어요','No permission')); return; }
+    cfDirty = false;
+    showUploadToast(t('✅ 저장했어요','✅ Saved'));
+  } catch (e) {
+    showUploadToast(t('저장 실패: ','Failed: ') + ((e && e.message) || e));
+  } finally { cfBusy = false; renderCertForms(); }
+}
+
+async function cfDelete(id) {
+  const form = certForms.find(f => f.id === id); if (!form) return;
+  if (!confirm(t(`「${form.name}」 양식을 지울까요?\n\n이미 발급한 증서는 그대로입니다 — 발급할 때의 양식을 증서가 제 안에 들고 있습니다.\n앞으로는 기본 증서가 나갑니다.`,
+                 'Delete this form? Already-issued certificates keep their own copy.'))) return;
+  const { data, error } = await sb.from('cert_forms').delete().eq('id', id).select('id');
+  if (error) { showUploadToast(t('지우지 못했어요: ','Failed: ') + error.message); return; }
+  if (!data || !data.length) { showUploadToast(t('지울 권한이 없어요','No permission')); return; }
+  if (cfEditId === id) cfEditId = null;
+  await loadCertForms();
+  renderCertForms();
+  showUploadToast(t('지웠어요','Deleted'));
+}
+
+//  끌어서 자리 옮기기. 손가락도 되게 pointer 를 쓴다.
+function cfGrab(ev, k) {
+  const form = cfEditing(); if (!form) return;
+  const box = document.getElementById('cf-canvas'); if (!box) return;
+  ev.preventDefault();
+  cfPickK = k;
+  const f = cfFieldOf(form, k);
+  const move = (e) => {
+    const r = box.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    f.x = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+    f.y = Math.max(0, Math.min(1, (e.clientY - r.top) / r.height));
+    const el = document.getElementById('cf-chip-' + k);
+    if (el) { el.style.left = (f.x * 100).toFixed(2) + '%'; el.style.top = (f.y * 100).toFixed(2) + '%'; }
+    const rd = document.getElementById('cf-xy');
+    if (rd) rd.textContent = `${Math.round(f.x*100)}% · ${Math.round(f.y*100)}%`;
+  };
+  const up = () => {
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', up);
+    cfTouch(); renderCertForms();
+  };
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', up);
+  move(ev);
+}
+
+function cfSet(k, prop, v) {
+  const form = cfEditing(); if (!form) return;
+  const f = cfFieldOf(form, k);
+  if (prop === 'on')    f.on = !!v;
+  if (prop === 'size')  f.size = Math.max(6, Math.min(72, Number(v) || 15));
+  if (prop === 'w')     f.w = Math.max(.03, Math.min(1, (Number(v) || 50) / 100));
+  if (prop === 'align') f.align = v;
+  if (prop === 'bold')  f.bold = !!v;
+  if (prop === 'line')  f.line = Math.max(1, Math.min(3, Number(v) || 1.6));
+  cfTouch(); renderCertForms();
+}
+function cfRename(v) { const form = cfEditing(); if (form) { form.name = v; cfTouch(); } }
+function cfPick(k) { cfPickK = k; renderCertForms(); }
+
+//  미리보기 — 실제 발급과 **같은 길**로 뽑는다. 따로 그리면 미리보기만
+//  맞고 인쇄가 어긋나는 일이 생긴다.
+function cfPreview() {
+  const form = cfEditing(); if (!form) return;
+  const org = tcsOrgs.find(o => o.id === tcsSelectedOrgId) || tcsOrgs[0] || null;
+  const seal = orgSeals[0] || null;
+  const sp = (CERT_TYPES[form.kind] || CERT_TYPES.admit)[certLang] || {};
+  const d = {
+    lang: certLang, type: form.kind || 'admit',
+    docLabel: sp.docLabel || sp.label || '증 명 서', sub: sp.sub || '',
+    no: 'IMHQ-2026-0001',
+    name: t('홍길동','Hong Gil-dong'), birth: '2010-03-15', grade: 'G7',
+    school: COMM_NAME || '', address: t('경기도 고양시 …','…'),
+    event: t('2026 전국대회','2026 National Conference'),
+    stmt: String(sp.stmt || t('위 사실을 증명합니다.','This certifies the above facts.'))
+            .replace('{d}', t('3월 2일','March 2')).replace('{p}', t('2026년 3월부터 8월까지','March–August 2026'))
+            .replace('{a}', t('300,000원','300,000 KRW')).replace('{e}', t('2026 전국대회','2026 National Conference')),
+    reason: t('제출용','For submission'), date: attTodayStr(),
+    rep: org ? org.name + t(' 장',' Head') : '',
+    orgName: org ? org.name : '', orgLogo: org ? (org.logo_url || '') : '',
+    orgAddress: (org && org.address) || '', sealUrl: seal ? seal.image_url : '',
+  };
+  openPrintDoc(certFormPrintOpts(d, form));
+}
+
+function renderCertForms() {
+  const main = document.getElementById('school-main');
+  if (!main) return;
+  const inp = 'height:34px;padding:0 10px;border:1px solid var(--border);border-radius:8px;font:600 12.5px var(--font);color:var(--ink);background:var(--surface)';
+  const lbl = 'font-size:11.5px;font-weight:600;color:var(--ink2);display:block;margin-bottom:5px';
+
+  if (cfMissing) {
+    main.innerHTML = `<div class="spage" style="max-width:860px">${certTabsHtml()}
+      <div style="background:#FFF8E7;border:1px solid #F0D080;border-radius:12px;padding:14px 16px;font-size:12.5px;color:#8B6914;line-height:1.7">
+        ${t('양식을 쓰려면 <code>db/증명서_양식_DB설치.sql</code> 을 한 번 실행해주세요.',
+             'Run <code>db/증명서_양식_DB설치.sql</code> once to enable forms.')}</div></div>`;
+    return;
+  }
+
+  //  종류 고르개 — 이미 양식이 있는 종류는 빼 둔다 (한 종류에 하나)
+  const used = new Set(certForms.map(f => f.kind || '*'));
+  const kindOpts = [`<option value=""${used.has('*') ? ' disabled' : ''}>${t('모든 종류 공용','All types')}${used.has('*') ? t(' (있음)',' (exists)') : ''}</option>`]
+    .concat(Object.entries(CERT_TYPES).filter(([k, v]) => !v.retired)
+      .map(([k, v]) => `<option value="${k}"${used.has(k) ? ' disabled' : ''}>${escHtml(v.ko.label)}${used.has(k) ? t(' (있음)',' (exists)') : ''}</option>`)).join('');
+
+  const cards = certForms.map(f => {
+    const on = f.id === cfEditId;
+    return `<div onclick="cfEditId='${escJs(f.id)}';cfPickK='name';renderCertForms()"
+      style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;cursor:pointer;
+             border:1.5px solid ${on ? '#1d3a5f' : 'var(--border)'};background:${on ? 'var(--s2)' : 'var(--surface)'};margin-bottom:8px">
+      <img src="${imAttr(f.bg_url)}" style="width:34px;height:46px;object-fit:contain;background:#fff;border:1px solid var(--border);border-radius:4px"/>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:700;color:var(--ink)">${escHtml(f.name || '')}</div>
+        <div style="font-size:11px;color:var(--ink3)">${f.kind ? escHtml(certKindLabel(f.kind, f.kind)) : t('모든 종류 공용','All types')}</div>
+      </div>
+      <button onclick="event.stopPropagation();cfDelete('${escJs(f.id)}')" style="height:28px;padding:0 10px;border:1.5px solid var(--border);border-radius:8px;background:var(--surface);color:#c0392b;font:700 11.5px var(--font);cursor:pointer">${t('지우기','Delete')}</button>
+    </div>`;
+  }).join('');
+
+  const form = cfEditing();
+  let editor = '';
+  if (form) {
+    const fl = Array.isArray(form.fields) ? form.fields : [];
+    const cur = cfPickK ? cfFieldOf(form, cfPickK) : null;
+    //  편집 화면의 글자 크기는 종이보다 작으니 배율을 함께 넘긴다
+    const chips = CF_FIELDS.map(sp => {
+      const f = fl.find(x => x && x.k === sp.k);
+      if (!f || f.on === false) return '';
+      const hot = sp.k === cfPickK;
+      return `<div id="cf-chip-${sp.k}" onpointerdown="cfGrab(event,'${sp.k}')"
+        style="position:absolute;left:${((f.x||.5)*100).toFixed(2)}%;top:${((f.y||.5)*100).toFixed(2)}%;
+               transform:translate(-50%,-50%);cursor:grab;touch-action:none;z-index:${hot?3:2};
+               background:${hot ? 'rgba(29,58,95,.92)' : 'rgba(29,58,95,.45)'};color:#fff;
+               border:1.5px solid ${hot ? '#f0b429' : 'transparent'};border-radius:7px;
+               padding:2px 7px;font:700 10.5px var(--font);white-space:nowrap">${escHtml(cfLabel(sp.k))}</div>`;
+    }).join('');
+
+    const body = buildCertFormBody({ lang:certLang }, form, { outline:true, extra: chips });
+    editor = `
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px">
+      <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:12px">
+        <input value="${escAttr(form.name || '')}" oninput="cfRename(this.value)" style="${inp};flex:1;min-width:140px"/>
+        <span style="font-size:11.5px;color:var(--ink3)">${form.kind ? escHtml(certKindLabel(form.kind, form.kind)) : t('모든 종류 공용','All types')}</span>
+        <button onclick="cfPreview()" style="height:34px;padding:0 13px;border:1.5px solid var(--border);border-radius:8px;background:var(--surface);color:var(--ink2);font:700 12px var(--font);cursor:pointer">${t('미리보기','Preview')}</button>
+        <button id="cf-save" onclick="cfSave()" style="height:34px;padding:0 16px;border:none;border-radius:8px;background:${cfDirty ? '#be5b2a' : '#9aa6b8'};color:#fff;font:700 12.5px var(--font);cursor:pointer">${t('저장','Save')}</button>
+      </div>
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) 250px;gap:14px;align-items:start">
+        <div id="cf-canvas" style="position:relative;background:#fff;border:1px solid var(--border);border-radius:6px;overflow:hidden;user-select:none">
+          ${body}
+        </div>
+        <div>
+          <div style="font-size:11.5px;color:var(--ink3);line-height:1.7;margin-bottom:9px">${t(
+            '파란 꼬리표를 <b>끌어서</b> 양식의 빈칸에 놓으세요. 글자 크기·너비는 아래에서 맞춥니다.',
+            'Drag the blue tags onto the blanks. Set size and width below.')}</div>
+          <div style="max-height:150px;overflow:auto;border:1px solid var(--border);border-radius:9px;padding:7px;margin-bottom:10px">
+            ${CF_FIELDS.map(sp => {
+              const f = fl.find(x => x && x.k === sp.k);
+              const on = !!(f && f.on !== false);
+              return `<label style="display:flex;align-items:center;gap:7px;padding:3px 2px;cursor:pointer;
+                       background:${sp.k===cfPickK?'var(--s2)':'transparent'};border-radius:5px">
+                <input type="checkbox" ${on?'checked':''} onchange="cfSet('${sp.k}','on',this.checked)" style="width:15px;height:15px;cursor:pointer"/>
+                <span onclick="cfPick('${sp.k}')" style="flex:1;font-size:12px;font-weight:${sp.k===cfPickK?800:500};color:var(--ink)">${escHtml(cfLabel(sp.k))}</span>
+              </label>`;
+            }).join('')}
+          </div>
+          ${cur ? `
+          <div style="border:1px solid var(--border);border-radius:9px;padding:10px">
+            <div style="font-size:12.5px;font-weight:800;color:var(--adeep);margin-bottom:8px">${escHtml(cfLabel(cfPickK))}
+              <span id="cf-xy" style="font-weight:500;font-size:11px;color:var(--ink3);margin-left:5px">${Math.round((cur.x||.5)*100)}% · ${Math.round((cur.y||.5)*100)}%</span></div>
+            ${cfSpec(cfPickK).img ? `
+              <label style="${lbl}">${t('크기 (종이 너비의 %)','Size (% of page width)')}</label>
+              <input type="number" min="3" max="100" value="${Math.round((cur.w||.11)*100)}" oninput="cfSet('${cfPickK}','w',this.value)" style="${inp};width:100%"/>
+            ` : `
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+                <div><label style="${lbl}">${t('글자 크기(pt)','Size (pt)')}</label>
+                  <input type="number" min="6" max="72" value="${Number(cur.size)||15}" oninput="cfSet('${cfPickK}','size',this.value)" style="${inp};width:100%"/></div>
+                <div><label style="${lbl}">${t('너비 (%)','Width (%)')}</label>
+                  <input type="number" min="3" max="100" value="${Math.round((cur.w||.5)*100)}" oninput="cfSet('${cfPickK}','w',this.value)" style="${inp};width:100%"/></div>
+              </div>
+              <label style="${lbl};margin-top:8px">${t('맞춤','Align')}</label>
+              <select onchange="cfSet('${cfPickK}','align',this.value)" style="${inp};width:100%">
+                ${['center','left','right'].map(a => `<option value="${a}"${(cur.align||'center')===a?' selected':''}>${t(a==='center'?'가운데':a==='left'?'왼쪽':'오른쪽', a)}</option>`).join('')}
+              </select>
+              <label style="display:flex;align-items:center;gap:7px;margin-top:9px;cursor:pointer">
+                <input type="checkbox" ${cur.bold?'checked':''} onchange="cfSet('${cfPickK}','bold',this.checked)" style="width:15px;height:15px;cursor:pointer"/>
+                <span style="font-size:12px;color:var(--ink)">${t('굵게','Bold')}</span></label>
+              ${cfPickK === 'stmt' ? `
+              <label style="${lbl};margin-top:9px">${t('줄 간격','Line height')}</label>
+              <input type="number" min="1" max="3" step="0.1" value="${Number(cur.line)||1.9}" oninput="cfSet('${cfPickK}','line',this.value)" style="${inp};width:100%"/>` : ''}
+            `}
+          </div>` : ''}
+        </div>
+      </div>
+    </div>`;
+  }
+
+  main.innerHTML = `<div class="spage" style="max-width:980px">
+    ${certTabsHtml()}
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:14px">
+      <div style="font-size:14px;font-weight:800;color:var(--adeep);margin-bottom:4px">🖼 ${t('우리 공동체 증명서 양식','Our certificate forms')}</div>
+      <div style="font-size:12px;color:var(--ink3);line-height:1.8;margin-bottom:12px">${t(
+        '쓰시던 양식을 <b>PDF 나 사진</b>으로 한 번 올리면, 그 양식을 배경으로 깔고 이름·본문만 바꿔 찍어 드립니다.<br>' +
+        '⚠️ PDF 안의 글자를 바꾸는 것이 아니라 <b>그 위에 얹습니다</b> — 그래서 스캔한 양식도 됩니다. 자리는 양식마다 한 번만 정하면 됩니다.<br>' +
+        '양식을 안 올린 종류는 지금 쓰는 기본 증서가 그대로 나갑니다.',
+        'Upload your existing form once as a PDF or an image. The values are drawn on top of it, so scans work too.')}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <select id="cf-new-kind" style="${inp};min-width:170px">${kindOpts}</select>
+        <input type="file" id="cf-file" accept="application/pdf,image/*" style="display:none" onchange="cfUpload(this)"/>
+        <button onclick="document.getElementById('cf-file').click()" ${cfBusy?'disabled':''}
+          style="height:34px;padding:0 15px;border:none;border-radius:8px;background:${cfBusy?'#9aa6b8':'#1d3a5f'};color:#fff;font:700 12.5px var(--font);cursor:${cfBusy?'default':'pointer'}">${
+          cfBusy ? t('올리는 중…','Uploading…') : t('＋ 양식 올리기 (PDF·사진)','＋ Upload form')}</button>
+      </div>
+    </div>
+    ${certForms.length ? `<div style="margin-bottom:14px">${cards}</div>` : `
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:30px;text-align:center;color:var(--ink3);font-size:13px">
+        ${t('아직 올린 양식이 없어요 — 지금은 기본 증서가 나갑니다','No forms yet — the built-in certificate is used')}</div>`}
+    ${editor}
+  </div>`;
+}
 
 // ══════════════════════════════════════════════════════════════════
 //  📜 공동체 → 본부에 신청
@@ -32472,7 +32855,9 @@ async function hqIssuePicked() {
     + t('발급 중…','Issuing…') + '</body>');
 
   hqBusy = true; renderHqIn();
-  const bodies = []; const nos = []; let failMsg = '';
+  const bodies = []; const nos = []; let failMsg = ''; let usedSnap = null;
+  //  본부가 대신 내는 것도 **본부 양식**을 쓴다 (번호·도장이 본부 것이니)
+  const formHq = certFormFor(picked[0] && picked[0].kind);
   try {
     for (const r of picked) {
       const sp = (CERT_TYPES[r.kind] || {})[certLang] || {};
@@ -32494,6 +32879,8 @@ async function hqIssuePicked() {
           org_id: orgId || null, org_name: org ? org.name : '',
           org_logo_url: org ? (org.logo_url || '') : '', org_address: oaddr,
           rep, seal_url: seal ? seal.image_url : '',
+          //  종류가 섞여 있어도 각 사람의 종류에 맞는 양식을 쓴다
+          form_id: (certFormFor(r.kind) || formHq || {}).id || null,
         }});
         if (error) throw error;
         rec = data;
@@ -32501,14 +32888,19 @@ async function hqIssuePicked() {
 
       nos.push(rec.cert_no);
       //  한 사람이 여러 부면 같은 장을 부수만큼 넣는다 (번호는 하나)
-      const one = buildCertOpts({
+      const dOne = {
         lang: certLang, type: r.kind, docLabel, sub: sp.sub || '',
         no: rec.cert_no, name: r.student_name || '', birth: r.student_birth || '',
         grade: '', school: r.community_name || '', address: r.student_address || '',
+        event: r.event_name || '',
         stmt, reason: r.purpose || '', date, rep,
         orgName: org ? org.name : '', orgLogo: org ? (org.logo_url || '') : '',
         orgAddress: oaddr, sealUrl: seal ? seal.image_url : '',
-      }).body;
+      };
+      //  대장에 남은 양식(form_snap)이 있으면 그것으로 — 없으면 기본 증서
+      const snap = rec.form_snap || null;
+      if (snap) usedSnap = snap;
+      const one = snap ? buildCertFormBody(dOne, snap) : buildCertOpts(dOne).body;
       for (let i = 0; i < Math.max(1, Math.min(9, Number(r.copies) || 1)); i++) bodies.push(one);
 
       try {
@@ -32532,12 +32924,16 @@ async function hqIssuePicked() {
     return;
   }
   const org1 = org || { name:'', logo_url:'' };
-  openPrintDoc({
-    title: t('증서 ' + bodies.length + '장', bodies.length + ' certificates'),
-    serif: true, letterhead: false, margin: '11mm',
-    org: { name: org1.name || '', logo: org1.logo_url || '' },
-    bodies,
-  }, win);
+  openPrintDoc(usedSnap
+    ? Object.assign(certFormPrintOpts({ orgName: org1.name || '', orgLogo: org1.logo_url || '' },
+                                      usedSnap, bodies),
+                    { title: t('증서 ' + bodies.length + '장', bodies.length + ' certificates') })
+    : {
+        title: t('증서 ' + bodies.length + '장', bodies.length + ' certificates'),
+        serif: true, letterhead: false, margin: '11mm',
+        org: { name: org1.name || '', logo: org1.logo_url || '' },
+        bodies,
+      }, win);
   showUploadToast(t(
     `✅ ${nos.length}명 발급 (${nos[0]} ~ ${nos[nos.length-1]})` + (failMsg ? ` · 일부 실패: ${failMsg}` : ''),
     `✅ Issued ${nos.length} (${nos[0]} ~ ${nos[nos.length-1]})`));
@@ -32557,7 +32953,7 @@ function certTabsHtml() {
   const hqBtn = (hqComm && !hqIsMe) ? btn('hq', t('📜 본부에 신청','📜 Request to HQ')) : '';
   const inBtn = (hqComm &&  hqIsMe) ? btn('hqin', t('공동체에서 온 신청','From communities') + inBadge) : '';
   return `<div style="display:flex;gap:7px;margin-bottom:14px;flex-wrap:wrap">
-    ${btn('issue', t('발급','Issue'))}${btn('req', t('신청함','Requests') + badge)}${hqBtn}${inBtn}${btn('log', t('발급 대장','Ledger'))}</div>`;
+    ${btn('issue', t('발급','Issue'))}${btn('req', t('신청함','Requests') + badge)}${hqBtn}${inBtn}${btn('log', t('발급 대장','Ledger'))}${btn('form', t('🖼 양식','🖼 Forms'))}</div>`;
 }
 
 async function certLoadStudent(id) {
@@ -32677,6 +33073,7 @@ function renderCert() {
       <div style="display:flex;justify-content:flex-end;gap:8px">
         <button onclick="printCertificate()" style="height:40px;padding:0 22px;border:none;background:#1d3a5f;color:#fff;border-radius:9px;cursor:pointer;font:700 13px var(--font)">${t('📄 미리보기 & 인쇄','📄 Preview & Print')}</button>
       </div>
+      <div id="cert-form-note" style="font-size:12px;margin-top:10px;line-height:1.7"></div>
       <div style="font-size:12px;color:var(--ink3);margin-top:12px;line-height:1.7">${t('학생을 고르면 인적·학적 정보가 자동으로 채워집니다(필요시 수정 가능). <b>발급 기관</b>은 관리자 → 공동체 설정의 ‘기록부 기관’에서 로고와 함께 등록할 수 있어요.','Selecting a student auto-fills personal and academic info (editable if needed). You can register the <b>issuing organization</b> with its logo under Admin → Community Settings → “Record Organizations”.')}</div>
     </div>` : ''}
   </div>`;
@@ -32810,6 +33207,17 @@ function reprintCertificate(id) {
   const r = certLog.find(x => x.id === id);
   if (!r) { showUploadToast(t('기록을 찾지 못했어요','Record not found')); return; }
   const spec = (CERT_TYPES[r.type] || {})[r.lang === 'en' ? 'en' : 'ko'] || {};
+  //  ⚠️ **그때 쓴 양식**으로 뽑는다. 지금 양식을 쓰면, 양식을 고친 뒤에
+  //     옛 증서를 다시 뽑았을 때 다른 모양이 나온다.
+  const d0 = {
+    lang: r.lang, type: r.type, docLabel: r.doc_label, sub: r.doc_sub || spec.sub || '',
+    no: r.cert_no, name: r.student_name, birth: r.birth, grade: r.grade, school: r.school,
+    address: r.address, event: r.event_name || '',
+    stmt: r.statement, reason: r.reason, date: r.issue_date, rep: r.rep,
+    orgName: r.org_name, orgLogo: r.org_logo_url, orgAddress: r.org_address, sealUrl: r.seal_url,
+    voided: !!r.voided_at,
+  };
+  if (r.form_snap) { openPrintDoc(certFormPrintOpts(d0, r.form_snap)); return; }
   openPrintDoc(buildCertOpts({
     lang: r.lang, type: r.type, docLabel: r.doc_label, sub: r.doc_sub || spec.sub || '',
     no: r.cert_no, name: r.student_name, birth: r.birth, grade: r.grade, school: r.school,
@@ -32861,6 +33269,18 @@ function certSyncType() {
   if (dl && spec.dateLabel) dl.textContent = spec.dateLabel;
   const di = document.getElementById('cert-admit');
   if (di && spec.needDate && !di.value) { di.value = attTodayStr(); certAdmitDate = di.value; }
+  //  지금 고른 종류가 어떤 양식으로 나가는지 알려 준다 — 모르고 찍으면
+  //  기본 증서가 나간 줄도 모르고 대외에 내보냅니다.
+  const fn = document.getElementById('cert-form-note');
+  if (fn) {
+    const fm = certFormFor(certType);
+    fn.style.color = fm ? '#1f6b42' : 'var(--ink3)';
+    fn.innerHTML = fm
+      ? t(`🖼 우리 공동체 양식 「${escHtml(fm.name)}」 으로 나갑니다.`,
+           `🖼 Using your form "${escHtml(fm.name)}".`)
+      : t('🖼 올려 둔 양식이 없어 <b>기본 증서</b>로 나갑니다 — 「🖼 양식」 에서 올릴 수 있어요.',
+          '🖼 No custom form — the built-in certificate will be used.');
+  }
   // 대회·행사 이름은 수료증·활동증명서에만
   const ew = document.getElementById('cert-event-wrap');
   if (ew) ew.style.display = spec.needEvent ? 'block' : 'none';
@@ -32911,6 +33331,133 @@ async function certFillPaid() {
 //  발급 화면에서도, 발급 대장에서 다시 뽑을 때도 같은 함수를 쓴다.
 //  대장에서 다시 뽑을 때는 '그때 찍힌 그대로' 나와야 하므로
 //  전역 상태(certLang 등)를 보지 않고 넘겨받은 값만 쓴다.
+
+// ══════════════════════════════════════════════════════════════════
+//  🖼 공동체마다 자기 증명서 양식
+//
+//   ⚠️ PDF 를 올려도 그 안의 글자는 못 바꿉니다.
+//      · 스캔해서 만든 PDF 는 글자가 아니라 그림입니다
+//      · 글자가 있는 PDF 라도 바꾸려면 PDF 를 다시 써야 하고, 한글 글꼴을
+//        PDF 안에 심어야 하고, 글자 길이가 달라지면 줄이 어긋납니다
+//
+//   그래서 **양식을 배경으로 깔고 글자를 그 위에 얹습니다.**
+//     ① 양식 PDF(또는 사진)를 올려 첫 장을 그림으로 바꿔 둔다
+//     ② 그 그림 위에서 「이름은 여기」 를 끌어서 한 번만 정한다
+//     ③ 발급할 때 배경 + 그 자리에 값을 얹어 인쇄한다
+//   스캔이든 글자 PDF든 둘 다 됩니다.
+//
+//   자리는 **비율(0~1)** 로 적습니다. 픽셀로 적으면 화면 크기가 바뀔
+//   때마다 어긋납니다.
+//
+//   글자 크기는 **A4 인쇄 기준 pt** 입니다. 편집 화면은 종이보다 작으니
+//   --cfs(배율)로 줄여 보여 줍니다 — 그래야 화면에서 본 대로 인쇄됩니다.
+// ══════════════════════════════════════════════════════════════════
+const CF_A4_W_PX = 793.7;   // 210mm @96dpi — 편집 화면 배율을 셈하는 기준
+
+//  놓을 수 있는 자리들. def 는 양식을 처음 올렸을 때의 기본 위치.
+const CF_FIELDS = [
+  { k:'docLabel',   ko:'증서 제목',        en:'Title',        def:{ x:.5,  y:.17, w:.8,  align:'center', size:32, bold:true } },
+  { k:'sub',        ko:'제목 아래 작은 줄', en:'Subtitle',     def:{ x:.5,  y:.235, w:.8, align:'center', size:12 } },
+  { k:'no',         ko:'발급번호',          en:'Cert no.',     def:{ x:.16, y:.085, w:.3, align:'left',   size:11 } },
+  { k:'name',       ko:'성명',              en:'Name',         def:{ x:.5,  y:.34, w:.5,  align:'center', size:19, bold:true } },
+  { k:'birth',      ko:'생년월일',          en:'Birth',        def:{ x:.5,  y:.40, w:.5,  align:'center', size:14 } },
+  { k:'grade',      ko:'학년',              en:'Grade',        def:{ x:.5,  y:.44, w:.4,  align:'center', size:14 } },
+  { k:'school',     ko:'소속',              en:'Organization', def:{ x:.5,  y:.47, w:.6,  align:'center', size:14 } },
+  { k:'address',    ko:'주소',              en:'Address',      def:{ x:.5,  y:.50, w:.76, align:'center', size:13 } },
+  { k:'event',      ko:'대회·행사 이름',    en:'Event',        def:{ x:.5,  y:.44, w:.7,  align:'center', size:15 } },
+  { k:'stmt',       ko:'본문',              en:'Statement',    def:{ x:.5,  y:.60, w:.78, align:'center', size:15, line:1.9 } },
+  { k:'reason',     ko:'용도',              en:'Purpose',      def:{ x:.5,  y:.68, w:.6,  align:'center', size:13 } },
+  { k:'dateKo',     ko:'발급일자 (2026년 11월 14일)', en:'Date (long)', def:{ x:.5, y:.78, w:.6, align:'center', size:15 } },
+  { k:'date',       ko:'발급일자 (2026-11-14)',       en:'Date',        def:{ x:.5, y:.78, w:.4, align:'center', size:14 } },
+  { k:'dateY',      ko:'발급 연도만',       en:'Year',         def:{ x:.44, y:.78, w:.08, align:'center', size:14 } },
+  { k:'dateM',      ko:'발급 월만',         en:'Month',        def:{ x:.53, y:.78, w:.06, align:'center', size:14 } },
+  { k:'dateD',      ko:'발급 일만',         en:'Day',          def:{ x:.60, y:.78, w:.06, align:'center', size:14 } },
+  { k:'org',        ko:'기관명',            en:'Organization', def:{ x:.5,  y:.87, w:.7,  align:'center', size:18, bold:true } },
+  { k:'orgAddress', ko:'기관 주소',         en:'Org. address', def:{ x:.5,  y:.92, w:.7,  align:'center', size:11 } },
+  { k:'rep',        ko:'대표자 명의',       en:'Representative', def:{ x:.5, y:.895, w:.7, align:'center', size:15 } },
+  { k:'seal',       ko:'직인 (도장)',       en:'Seal',   img:true, def:{ x:.72, y:.89, w:.11 } },
+  { k:'logo',       ko:'기관 로고',         en:'Logo',   img:true, def:{ x:.5,  y:.09, w:.10 } },
+];
+const cfSpec = (k) => CF_FIELDS.find(x => x.k === k) || null;
+const cfLabel = (k) => { const sp = cfSpec(k); return sp ? t(sp.ko, sp.en) : k; };
+
+//  증서 한 장의 값에서 그 자리에 들어갈 글자를 뽑는다.
+//  d 는 printCertificate / hqIssuePicked 가 만드는 그 덩어리다.
+function cfValue(d, k) {
+  const ymd = String(d.date || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  switch (k) {
+    case 'docLabel':   return d.docLabel || '';
+    case 'sub':        return d.sub || '';
+    case 'no':         return d.no || '';
+    case 'name':       return d.name || '';
+    case 'birth':      return d.birth || '';
+    case 'grade':      return d.grade || '';
+    case 'school':     return d.school || '';
+    case 'address':    return d.address || '';
+    case 'event':      return d.event || '';
+    case 'stmt':       return d.stmt || '';
+    case 'reason':     return d.reason || '';
+    case 'date':       return d.date || '';
+    case 'dateKo':     return ymd ? (d.lang === 'en'
+                          ? `${CERT_MON_EN[+ymd[2]]} ${+ymd[3]}, ${ymd[1]}`
+                          : `${ymd[1]}년 ${+ymd[2]}월 ${+ymd[3]}일`) : (d.date || '');
+    case 'dateY':      return ymd ? ymd[1] : '';
+    case 'dateM':      return ymd ? String(+ymd[2]) : '';
+    case 'dateD':      return ymd ? String(+ymd[3]) : '';
+    case 'org':        return d.orgName || '';
+    case 'orgAddress': return d.orgAddress || '';
+    case 'rep':        return d.rep || '';
+    case 'seal':       return d.sealUrl || '';
+    case 'logo':       return d.orgLogo || '';
+    default:           return '';
+  }
+}
+
+//  인쇄할 몸통 한 장. scale 을 주면 편집 화면에서도 같은 모양으로 보인다.
+function buildCertFormBody(d, form, o) {
+  const opt = o || {};
+  const fl = Array.isArray(form.fields) ? form.fields : [];
+  const w = Number(form.bg_w) || 2100, h = Number(form.bg_h) || 2970;
+  const pc = (v) => (Math.max(0, Math.min(1, Number(v) || 0)) * 100).toFixed(3);
+  const items = fl.filter(f => f && f.k && f.on !== false).map(f => {
+    const sp = cfSpec(f.k); if (!sp) return '';
+    const v = cfValue(d, f.k);
+    if (!v) return '';
+    if (sp.img) {
+      return `<img src="${imAttr(v)}" onerror="this.remove()" style="position:absolute;`
+        + `left:${pc(f.x)}%;top:${pc(f.y)}%;width:${pc(f.w || .11)}%;`
+        + `transform:translate(-50%,-50%);object-fit:contain"/>`;
+    }
+    const al = f.align || 'center';
+    //  가운데 맞춤이면 x 가 '가운데', 왼쪽 맞춤이면 x 가 '왼쪽 끝'
+    const pos = al === 'right'
+      ? `right:${pc(1 - (Number(f.x) || 0))}%;transform:translateY(-50%);`
+      : al === 'left'
+        ? `left:${pc(f.x)}%;transform:translateY(-50%);`
+        : `left:${pc(f.x)}%;transform:translate(-50%,-50%);`;
+    return `<div style="position:absolute;${pos}top:${pc(f.y)}%;width:${pc(f.w || .5)}%;`
+      + `text-align:${al};font-size:calc(${Number(f.size) || 15}pt * var(--cfs,1));`
+      + `line-height:${Number(f.line) || 1.6};font-weight:${f.bold ? 700 : 400};`
+      + `color:#17202b;white-space:pre-wrap;word-break:keep-all">${escHtml(v)}</div>`;
+  }).join('');
+  return `<div class="cfm" style="position:relative;width:100%;aspect-ratio:${w}/${h};`
+    + `margin:0 auto;${opt.scale ? `--cfs:${opt.scale};` : ''}${opt.outline ? 'outline:1px solid #cbd5e1;' : ''}">`
+    + `<img src="${imAttr(form.bg_url)}" style="position:absolute;inset:0;width:100%;height:100%;`
+    + `object-fit:contain;pointer-events:none" draggable="false"/>`
+    + items + (opt.extra || '') + `</div>`;
+}
+
+//  양식으로 인쇄할 때의 창 설정 — 머리글·바닥글 없이 종이를 가득 쓴다
+function certFormPrintOpts(d, form, bodies) {
+  return {
+    title: `${d.docLabel || ''} — ${d.name || ''}`,
+    letterhead: false, footer: false, margin: '0',
+    org: { name: d.orgName || '', logo: d.orgLogo || '' },
+    extraCss: '.cfm { break-inside: avoid; page-break-inside: avoid; }',
+    ...(bodies ? { bodies } : { body: buildCertFormBody(d, form) }),
+  };
+}
+
 function buildCertOpts(d) {
   const tr = (ko, en) => (d.lang === 'en' ? en : ko);
   const name = d.name || '', stmt = d.stmt || '', docLabel = d.docLabel || '';
@@ -33191,9 +33738,10 @@ async function printCertificate() {
   win.document.write('<!DOCTYPE html><meta charset="utf-8"/><body style="font:15px system-ui;padding:40px;color:#40506b">'
     + t('발급 중…','Issuing…') + '</body>');
 
+  const formNow = certFormFor(type);     // 우리 공동체가 이 종류에 올려 둔 양식
   const d = {
     lang: certLang, type, docLabel, sub: docSub,
-    name, birth, grade, school, address,
+    name, birth, grade, school, address, event: evName,
     stmt, reason, date, rep, no: typedNo,
     orgName: org ? org.name : (school || ''),
     orgAddress,
@@ -33209,6 +33757,7 @@ async function printCertificate() {
       student_id: certStudentId || null, student_name: name,
       birth, grade, school, address, statement: stmt, reason, issue_date: date,
       event_name: evName || null,
+      form_id: formNow ? formNow.id : null,
       //  소속 공동체 — 신청함에서 다른 공동체 것을 발급한 경우에만 다르다.
       //  비워 두면 서버가 발급한 공동체로 둔다.
       for_community_id: certForComm ? certForComm.id : null,
@@ -33243,7 +33792,11 @@ async function printCertificate() {
     if (!d.no) d.no = '____';
   }
 
-  openPrintDoc(buildCertOpts(d), win);
+  //  양식을 올려 둔 공동체면 그 양식으로, 없으면 기본 증서로.
+  //  recorded.form_snap 이 있으면 **서버가 떠 준 것**을 쓴다 — 지금
+  //  화면의 양식이 아니라 대장에 남은 그것이어야 다시 뽑을 때 같다.
+  const usedForm = (recorded && recorded.form_snap) || formNow;
+  openPrintDoc(usedForm ? certFormPrintOpts(d, usedForm) : buildCertOpts(d), win);
   if (recorded) {
     showUploadToast(t('✅ 발급 완료 · 제 ' + recorded.cert_no + ' 호', '✅ Issued · No. ' + recorded.cert_no));
     document.getElementById('cert-no').value = '';
