@@ -105,17 +105,53 @@ function dbScript() {
           return String(a == null ? '' : a).localeCompare(String(b == null ? '' : b));
         };
         //  or 는 'col.op.value' 를 쉼표로 이은 것. 하나라도 맞으면 통과.
+        //   ⚠️ eq 만 다루면 안 됩니다. 실제로 쓰이는 꼴이 섞여 있습니다 —
+        //      text.like.*이름*  ·  group_id.is.null  ·  start_date.gte.2026-11-14
+        //      like 를 모르면 '올린 이름 찾아오기' 가 통째로 걸러져 빈손이
+        //      됩니다 (여기서 다른 시험 여섯 개를 깨고 알았습니다).
         (this._or || []).forEach(expr => {
           const terms = expr.split(',').map(x => x.trim()).filter(Boolean).map(x => {
-            const m = x.match(/^([A-Za-z0-9_]+)\.([a-z]+)\.(.*)$/);
+            const m = x.match(/^([A-Za-z0-9_]+)\.([a-z]+)\.([\s\S]*)$/);
             return m ? { k:m[1], op:m[2], v:m[3] } : null;
           }).filter(Boolean);
           if (!terms.length) return;
+          //  like/ilike — '*' 와 '%' 를 '아무 글자' 로 본다.
+          //   ⚠️ 이 토막은 템플릿 문자열 안에 들어가므로 정규식 escape
+          //      ($& 같은 것)를 쓸 수 없습니다. 토막을 차례로 찾습니다.
+          const like = (val, pat, ci) => {
+            let v = String(val == null ? '' : val), q = String(pat);
+            if (ci) { v = v.toLowerCase(); q = q.toLowerCase(); }
+            const parts = q.split('*').join('%').split('%');
+            if (parts.length === 1) return v === q;
+            if (parts[0] && v.indexOf(parts[0]) !== 0) return false;
+            const last = parts[parts.length - 1];
+            if (last && v.lastIndexOf(last) !== v.length - last.length) return false;
+            let i = parts[0].length;
+            for (let n = 1; n < parts.length; n++) {
+              if (!parts[n]) continue;
+              const j = v.indexOf(parts[n], i);
+              if (j < 0) return false;
+              i = j + parts[n].length;
+            }
+            return true;
+          };
           rows = rows.filter(x => terms.some(tm => {
             const cur = x[tm.k];
-            if (tm.op === 'is') return tm.v === 'null' ? (cur == null) : String(cur) === tm.v;
-            if (tm.op === 'neq') return String(cur) !== tm.v;
-            return String(cur == null ? '' : cur) === tm.v;   // eq
+            switch (tm.op) {
+              case 'is':    return tm.v === 'null' ? (cur == null)
+                                 : tm.v === 'true' ? cur === true
+                                 : tm.v === 'false' ? cur === false : String(cur) === tm.v;
+              case 'neq':   return String(cur) !== tm.v;
+              case 'like':  return like(cur, tm.v, false);
+              case 'ilike': return like(cur, tm.v, true);
+              case 'gte': case 'gt': case 'lte': case 'lt': {
+                if (cur == null) return false;
+                const c = cmp(cur, tm.v);
+                return tm.op === 'gte' ? c >= 0 : tm.op === 'gt' ? c > 0
+                     : tm.op === 'lte' ? c <= 0 : c < 0;
+              }
+              default:      return String(cur == null ? '' : cur) === tm.v;   // eq
+            }
           }));
         });
         (this._is || []).forEach(([k, v]) => {
