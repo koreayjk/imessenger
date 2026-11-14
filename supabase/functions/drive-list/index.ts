@@ -18,8 +18,8 @@
 // 자료실은 두 칸입니다.
 //   🏠 우리 공동체  : communities.drive_root_folder_id
 //   🌐 전체 공용    : app_settings.drive_shared_folder_id_<종류> (총관리자만 정함)
-//                     종류마다 따로 둡니다 — 리뉴젠 공동체 그룹과 리뉴젠
-//                     아카데미 그룹이 서로 다른 자료실을 봅니다.
+//                     종류마다 따로 둡니다 — 리뉴젠 공동체 · 리뉴젠 아카데미 ·
+//                     해외 그룹이 서로 다른 자료실을 봅니다.
 // 요청의 scope 가 "shared" 면 공동체를 따지지 않고 전체 공용 폴더를 엽니다.
 //
 // 폴더는 '링크가 있는 모든 사용자 - 뷰어' 로 공유되어 있어야 합니다.
@@ -135,6 +135,22 @@ function shape(f: any) {
   };
 }
 
+// ── 공동체 종류 ──────────────────────────────────────────────────
+//  index.html 의 COMM_KINDS 와 짝입니다. 한쪽만 늘리면 어긋납니다.
+//  ⚠️ 예전에는 'academy 냐 아니냐' 로만 갈랐습니다. 그러면 세 번째 종류를
+//     더했을 때 그 그룹이 조용히 **리뉴젠 공동체 자료실을 보게** 됩니다.
+//     남의 그룹 자료실이 보이는 그 사고가 처음에 이 파일을 고친 까닭입니다.
+//     그러니 아는 종류만 그대로 쓰고, 모르는 값만 공동체로 봅니다.
+const COMM_KIND_KO: Record<string, string> = {
+  community: "리뉴젠 공동체",
+  academy: "리뉴젠 아카데미",
+  overseas: "해외 그룹",
+};
+function commKind(c: any): string {
+  const v = String(c?.kind || "");
+  return Object.prototype.hasOwnProperty.call(COMM_KIND_KO, v) ? v : "community";
+}
+
 // 호출자의 토큰으로 소속 공동체를 확인하고, 그 공동체의 루트 폴더를 돌려준다.
 // 총관리자만 다른 공동체를 명시해 열 수 있다 (앱의 공동체 전환 기능 때문).
 //
@@ -168,11 +184,11 @@ async function resolveRoot(req: Request, wantedCommunityId: string, scope: strin
     .select("drive_root_folder_id, name, kind").eq("id", communityId).single();
 
   // ── 🌐 전체 공용 폴더 ──
-  //  종류마다 **따로** 둔다. 리뉴젠 공동체 그룹과 리뉴젠 아카데미 그룹이
+  //  종류마다 **따로** 둔다. 리뉴젠 공동체 · 리뉴젠 아카데미 · 해외 그룹이
   //  서로 다른 자료실을 본다. 보고 있는 공동체의 종류를 따른다
   //  (총·부총관리자가 공동체를 바꾸면 그 종류의 공용 폴더가 보인다).
   if (scope === "shared") {
-    const kind = ((comm as any)?.kind === "academy") ? "academy" : "community";
+    const kind = commKind(comm);
     const { data: st } = await admin.from("app_settings")
       .select("value").eq("key", "drive_shared_folder_id_" + kind).maybeSingle();
     return {
@@ -188,7 +204,7 @@ async function resolveRoot(req: Request, wantedCommunityId: string, scope: strin
   const rootId = String((comm as any)?.drive_root_folder_id || "").trim();
   return { rootId, communityId, role: me.community_role,
            communityName: (comm as any)?.name || "", scope: "mine",
-           sharedKind: ((comm as any)?.kind === "academy") ? "academy" : "community" };
+           sharedKind: commKind(comm) };
 }
 
 Deno.serve(async (req) => {
@@ -205,7 +221,7 @@ Deno.serve(async (req) => {
 
     const wantScope = (String(b.scope || "mine").trim() === "shared") ? "shared" : "mine";
     const { rootId, communityName, scope, sharedKind } = await resolveRoot(req, String(b.communityId || "").trim(), wantScope);
-    const kindKo = sharedKind === "academy" ? "리뉴젠 아카데미" : "리뉴젠 공동체";
+    const kindKo = COMM_KIND_KO[sharedKind] || COMM_KIND_KO.community;
     if (!rootId) {
       return json({
         error: scope === "shared"

@@ -4005,8 +4005,15 @@ function isCommunityAdmin() {
 const COMM_KINDS = [
   { v: 'community', ko: '리뉴젠 공동체',   en: 'Renewgen Communities', emoji: '\u{1F3DB}\u{FE0F}' },
   { v: 'academy',   ko: '리뉴젠 아카데미', en: 'Renewgen Academy',     emoji: '\u{1F393}' },
+  { v: 'overseas',  ko: '해외 그룹',       en: 'Overseas',             emoji: '\u{1F30F}' },
 ];
-function commKind(c) { return (c && c.kind === 'academy') ? 'academy' : 'community'; }
+//  종류를 이 목록에서 읽습니다. 예전에는 'academy 냐 아니냐' 로만 갈라서,
+//  세 번째를 더하면 그 자리가 조용히 공동체로 삼켜졌습니다. 늘릴 일이
+//  또 있을 테니 — 모르는 값만 공동체로 봅니다 (칸이 없는 옛 DB 도 여기로).
+function commKind(c) {
+  const v = c && c.kind;
+  return COMM_KINDS.some(k => k.v === v) ? v : 'community';
+}
 function commKindInfo(v) { return COMM_KINDS.find(k => k.v === v) || COMM_KINDS[0]; }
 function commKindLabel(c) { const k = commKindInfo(commKind(c)); return k.emoji + ' ' + t(k.ko, k.en); }
 //  목록을 종류별로 묶는다. 빈 종류는 내놓지 않는다.
@@ -7223,11 +7230,15 @@ function driveGoCrumb(level) { drivePath = drivePath.slice(0, level); driveSearc
 function driveGoRoot() { drivePath = []; driveSearch = ''; initDrivePage(); }
 
 //  전체 공용 폴더는 **종류마다 따로** 입니다.
-//    리뉴젠 공동체 그룹 → drive_shared_folder_id_community
+//    리뉴젠 공동체 그룹   → drive_shared_folder_id_community
 //    리뉴젠 아카데미 그룹 → drive_shared_folder_id_academy
+//    해외 그룹            → drive_shared_folder_id_overseas
 //  내가 보고 있는 공동체의 종류에 맞는 것을 봅니다.
+//  ⚠️ 모르는 종류를 공동체로 되돌리면 **남의 그룹 자료실이 보입니다.**
+//     처음에 자료실을 고친 까닭이 바로 그 사고였습니다. 그러니 열쇠도
+//     COMM_KINDS 에 있는 종류만 그대로 쓰고, 그 밖은 공동체로 둡니다.
 function sharedKeyFor(kind) {
-  return 'drive_shared_folder_id_' + (kind === 'academy' ? 'academy' : 'community');
+  return 'drive_shared_folder_id_' + (COMM_KINDS.some(k => k.v === kind) ? kind : 'community');
 }
 let driveMyKind = null;      // 지금 보고 있는 공동체의 종류
 async function driveLoadShared() {

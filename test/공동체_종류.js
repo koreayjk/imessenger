@@ -1,17 +1,23 @@
-//  🏛️🎓 공동체 2종류 — 리뉴젠 공동체 / 리뉴젠 아카데미
+//  🏛️🎓🌏 공동체 종류 — 리뉴젠 공동체 / 리뉴젠 아카데미 / 해외 그룹
 //
-//  공동체가 17곳까지 늘었습니다. 두 갈래로 묶어서 보여 줍니다.
-//  · 종류는 communities.kind — 'community' | 'academy'
-//  · 칸이 없는 옛 DB 에서도 조용히 '리뉴젠 공동체'로 봅니다
+//  공동체가 20곳까지 늘었습니다. 갈래로 묶어서 보여 줍니다.
+//  · 종류는 communities.kind — 'community' | 'academy' | 'overseas'
+//  · 칸이 없는 옛 DB 에서도, 모르는 값이 들어와도 '리뉴젠 공동체'로 봅니다
 //  · 종류는 **총관리자만** 바꿉니다 (서버에서도 막아 뒀습니다)
-//  · 아직 아무것도 아카데미로 안 옮겼으면 묶음이 1개라 화면은 전과 똑같습니다
+//  · 한 종류만 쓰면 묶음이 1개라 화면은 묶기 전과 똑같습니다
+//
+//  ⚠️ 갈래를 늘릴 때 'academy 냐 아니냐' 로 갈라 둔 자리가 남아 있으면,
+//     새 갈래가 조용히 리뉴젠 공동체로 삼켜집니다. 자료실에서는 그게
+//     **남의 그룹 자료실이 보이는** 사고가 됩니다. 그래서 종류를 늘려도
+//     COMM_KINDS 만 보고 따라오는지를 잽니다.
 const { launch, openApp, ok, done } = require('./_harness');
 
 const COMMS = [
   { id:'c1', name:'IM HQ',    kind:'community', color:'#1d3a5f' },
-  { id:'c2', name:'IM USA',   kind:'community', color:'#2a7a5a' },
+  { id:'c2', name:'IM USA',   kind:'overseas',  color:'#2a7a5a' },
   { id:'c3', name:'리뉴젠스쿨', kind:'academy',  color:'#7B6BA0' },
   { id:'c4', name:'종류없음',   color:'#B05865' },          // ← 옛 DB (kind 칸 없음)
+  { id:'c5', name:'엉뚱한값',   kind:'zzz',      color:'#8a4a22' }, // ← 모르는 값
 ];
 
 (async () => {
@@ -29,18 +35,21 @@ console.log('\n① 종류 읽기');
     empty: groupByCommKind([]).length,
   }), COMMS);
 
-  ok(r.kinds.join(',') === 'community,community,academy,community',
-     '종류를 바르게 읽는다 (칸이 없으면 리뉴젠 공동체)');
-  ok(r.labels[0] === '리뉴젠 공동체' && r.labels[1] === '리뉴젠 아카데미',
-     '두 종류의 이름이 1번 리뉴젠 공동체 · 2번 리뉴젠 아카데미 다');
+  ok(r.kinds.join(',') === 'community,overseas,academy,community,community',
+     '종류를 바르게 읽는다 (칸이 없거나 모르는 값이면 리뉴젠 공동체)');
+  ok(r.labels.join(' · ') === '리뉴젠 공동체 · 리뉴젠 아카데미 · 해외 그룹',
+     '종류가 1번 리뉴젠 공동체 · 2번 리뉴젠 아카데미 · 3번 해외 그룹 이다');
   //  ⚠️ 되돌려 보니 여기서 시험이 터져서 ②③④⑤ 를 아예 재지 못했다.
   //     터지지 않게 기본값을 두고, 뒷 묶음까지 다 재게 한다.
-  const g0 = r.groups[0] || { v:'', names:[] }, g1 = r.groups[1] || { v:'', names:[] };
-  ok(r.groups.length === 2, '두 갈래로 묶인다');
+  const g0 = r.groups[0] || { v:'', names:[] }, g1 = r.groups[1] || { v:'', names:[] },
+        g2 = r.groups[2] || { v:'', names:[] };
+  ok(r.groups.length === 3, '세 갈래로 묶인다');
   ok(g0.v === 'community' && g0.names.length === 3,
-     '리뉴젠 공동체가 먼저 오고 3곳이 들어간다');
+     '리뉴젠 공동체가 먼저 오고 3곳이 들어간다 (칸 없는 것·모르는 값 포함)');
   ok(g1.v === 'academy' && g1.names[0] === '리뉴젠스쿨',
-     '리뉴젠 아카데미가 뒤에 오고 리뉴젠스쿨이 들어간다');
+     '리뉴젠 아카데미가 그다음이고 리뉴젠스쿨이 들어간다');
+  ok(g2.v === 'overseas' && g2.names[0] === 'IM USA',
+     '해외 그룹이 끝에 오고 IM USA 가 들어간다 ← 공동체로 삼켜지지 않는다');
   ok(r.oneKind === 1, '한 종류만 있으면 묶음도 1개다 (화면이 전과 같아진다)');
   ok(r.empty === 0, '빈 목록은 묶음이 없다');
   await pg.close();
@@ -69,10 +78,11 @@ console.log('\n② 🏛️ 공동체 전환 창');
     return { two, one };
   }, COMMS);
 
-  ok(r.two.heads.join(',') === 'community,academy',
-     '두 종류가 다 있으면 머리글 두 개가 순서대로 뜬다');
+  ok(r.two.heads.join(',') === 'community,academy,overseas',
+     '종류가 다 있으면 머리글이 순서대로 뜬다');
   ok(/리뉴젠 아카데미/.test(r.two.txt) && /리뉴젠스쿨/.test(r.two.txt),
      '아카데미 머리글과 그 아래 공동체가 보인다');
+  ok(/해외 그룹/.test(r.two.txt), '해외 그룹 머리글도 보인다');
   ok(/IM HQ/.test(r.two.txt) && /IM USA/.test(r.two.txt), '공동체 쪽도 그대로 보인다');
   ok(r.one.heads.length === 0,
      '한 종류만 있으면 머리글을 붙이지 않는다 ← 괜히 어수선해지지 않게');
@@ -96,10 +106,10 @@ console.log('\n③ 로그인 직후 고르기 화면');
              cards: el.querySelectorAll('[onclick^="enterCommunity"]').length };
   }, COMMS);
 
-  ok(r.heads.join(',') === 'community,academy', '여기도 두 갈래로 보인다');
-  ok(/리뉴젠 아카데미/.test(r.txt), '머리글 글씨도 제대로 나온다');
-  ok(r.cards === 4, '공동체 4곳이 다 나온다 (묶어도 빠지지 않는다)');
-  ok(r.full === 2, '머리글이 한 줄을 통째로 쓴다 (칸이 밀리지 않게)');
+  ok(r.heads.join(',') === 'community,academy,overseas', '여기도 세 갈래로 보인다');
+  ok(/리뉴젠 아카데미/.test(r.txt) && /해외 그룹/.test(r.txt), '머리글 글씨도 제대로 나온다');
+  ok(r.cards === 5, '공동체 5곳이 다 나온다 (묶어도 빠지지 않는다)');
+  ok(r.full === 3, '머리글이 한 줄을 통째로 쓴다 (칸이 밀리지 않게)');
   await pg.close();
 }
 
@@ -126,10 +136,10 @@ console.log('\n④ 관리자 ▸ 공동체 목록');
 
   //  ⚠️ 글자만 보면 안 된다 — '리뉴젠 아카데미' 가 새 공동체 만들기의
   //     종류 고르개 <option> 에도 있어서, 되돌려도 통과해 버렸다.
-  ok(r.heads.join(',') === 'community,academy', '목록이 두 갈래로 나뉜다');
-  ok(r.cards === 4, '4곳이 다 나온다 (묶는 바람에 빠진 곳이 없다)');
+  ok(r.heads.join(',') === 'community,academy,overseas', '목록이 세 갈래로 나뉜다');
+  ok(r.cards === 5, '5곳이 다 나온다 (묶는 바람에 빠진 곳이 없다)');
   ok(r.kindSel, '새 공동체 만들 때 종류를 고를 수 있다');
-  ok(r.kindOpts.join(',') === 'community,academy', '고를 수 있는 종류가 둘이다');
+  ok(r.kindOpts.join(',') === 'community,academy,overseas', '고를 수 있는 종류가 셋이다');
   await pg.close();
 }
 

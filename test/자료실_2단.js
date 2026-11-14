@@ -214,7 +214,8 @@ console.log('\n⑥ 전체 공용 폴더 정하기');
      '폴더 주소를 붙여넣어도 ID 만 뽑아 저장한다');
   ok(/"key":"drive_shared_folder_id_community"/.test(r.sent),
      '리뉴젠 공동체 그룹의 열쇠에 저장한다 ← 아카데미와 섞이지 않는다');
-  ok(r.kinds.join(',') === 'community,academy', '칸이 그룹별로 두 개다 ← 이게 요청이었다');
+  ok(r.kinds.join(',') === 'community,academy,overseas',
+     '칸이 그룹마다 하나씩 셋이다 (리뉴젠 공동체 · 아카데미 · 해외 그룹)');
   ok(/"key":"drive_shared_folder_id_academy"/.test(r.sentAcademy),
      '아카데미 칸은 아카데미 열쇠로 저장한다 ← 두 칸이 같은 자리에 쓰면 안 된다');
   ok(/"value":"1ACADEMYFOLDERID00"/.test(r.sentAcademy), '아카데미 칸의 값이 그대로 간다');
@@ -228,7 +229,8 @@ console.log('\n⑥ 전체 공용 폴더 정하기');
 //     되돌려도 시험이 통과했다. 앱이 실제로 고르는 열쇠를 잰다.
 console.log('\n⑥-2 앱이 보는 열쇠');
 {
-  for (const [kind, koName] of [['community','리뉴젠 공동체'], ['academy','리뉴젠 아카데미']]) {
+  for (const [kind, koName] of [['community','리뉴젠 공동체'], ['academy','리뉴젠 아카데미'],
+                                ['overseas','해외 그룹']]) {
     const pg = await openApp(b, { as:'teacher' });
     const r = await pg.evaluate(async (k) => {
       //  **그 종류의 열쇠만** 넣어 둔다. 앱이 엉뚱한 열쇠를 보면 못 찾는다.
@@ -257,6 +259,22 @@ console.log('\n⑥-2 앱이 보는 열쇠');
   await pg.close();
   ok(r.on === false,
      '아카데미 공동체는 공동체 그룹 폴더를 자기 것으로 삼지 않는다 ← 섞이면 안 된다');
+
+  //  ★ 갈래를 늘렸을 때가 제일 위험하다. 'academy 냐 아니냐' 로 갈라 둔
+  //    자리가 남아 있으면 해외 그룹이 조용히 공동체 폴더를 보게 된다.
+  const pg2 = await openApp(b, { as:'teacher' });
+  const r2 = await pg2.evaluate(async () => {
+    window.__DB['communities'] = [{ id:'c1', name:'IM USA', kind:'overseas' }];
+    window.__DB['app_settings'] = [{ key:'drive_shared_folder_id_community', value:'FOLDER_COMMUNITY' }];
+    driveSharedOn = null; driveMyKind = null;
+    await driveLoadShared();
+    return { on: driveSharedOn, kind: driveMyKind, key: sharedKeyFor('overseas') };
+  });
+  await pg2.close();
+  ok(r2.kind === 'overseas', '해외 그룹을 공동체로 삼키지 않는다');
+  ok(r2.key === 'drive_shared_folder_id_overseas', '해외 그룹은 자기 열쇠를 쓴다');
+  ok(r2.on === false,
+     '★ 해외 그룹이 리뉴젠 공동체 자료실을 자기 것으로 삼지 않는다 ← 남의 자료실이 보이면 안 된다');
 }
 
 // ── ⑦ 그룹마다 다른 자료실 ────────────────────────────────────
@@ -285,6 +303,7 @@ console.log('\n⑦ 그룹마다 다른 자료실');
   for (const [kind, koName, want] of [
     ['community', '리뉴젠 공동체',   'community전용파일.pdf'],
     ['academy',   '리뉴젠 아카데미', 'academy전용파일.pdf'],
+    ['overseas',  '해외 그룹',       'overseas전용파일.pdf'],
   ]) {
     const pg = await openApp(b, { as:'teacher' });
     const r = await pg.evaluate(async ([ans, k]) => {
@@ -293,6 +312,7 @@ console.log('\n⑦ 그룹마다 다른 자료실');
       window.__DB['app_settings'] = [
         { key:'drive_shared_folder_id_community', value:'FOLDER_COMMUNITY' },
         { key:'drive_shared_folder_id_academy',   value:'FOLDER_ACADEMY' },
+        { key:'drive_shared_folder_id_overseas',  value:'FOLDER_OVERSEAS' },
       ];
       window.__fnResult = { 'drive-list': eval(ans) };
       driveScope='mine'; drivePath=[]; driveSearch='';
@@ -311,7 +331,8 @@ console.log('\n⑦ 그룹마다 다른 자료실');
     console.log(`       ${koName}: ${r.txt.split('\n').find(l=>/전용파일/.test(l)) || '(파일 없음)'}`);
     ok(r.kind === kind, `${koName} 공동체에서는 종류를 ${kind} 로 본다`);
     ok(r.txt.includes(want), `${koName} 그룹은 자기 그룹 자료실이 열린다`);
-    ok(!r.txt.includes(kind === 'community' ? 'academy전용파일' : 'community전용파일'),
+    const others = ['community','academy','overseas'].filter(x => x !== kind);
+    ok(!others.some(x => r.txt.includes(x + '전용파일')),
        `${koName} 그룹에 다른 그룹 자료실이 섞이지 않는다 ← 이게 핵심이다`);
     ok(/그룹/.test(r.txt), '지금 어느 그룹 자료실인지 화면에 적어준다');
   }

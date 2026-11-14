@@ -19,6 +19,7 @@
 --  손으로 다시 일으킬 수 있습니다. 그래서 종류 칸을 붙이기 전에 막습니다.
 --
 --  ② 종류: 'community' = 리뉴젠 공동체 · 'academy' = 리뉴젠 아카데미
+--          · 'overseas' = 해외 그룹 (IM USA · IMOHP)
 --     전부 'community' 로 시작하고, 총관리자가 하나씩 아카데미로 옮깁니다.
 --     종류는 총관리자만 바꿉니다 (공동체 관리자는 못 바꿉니다).
 -- ═══════════════════════════════════════════════════════════════════
@@ -31,10 +32,10 @@ alter table public.communities
 
 alter table public.communities drop constraint if exists communities_kind_chk;
 alter table public.communities
-  add constraint communities_kind_chk check (kind in ('community','academy'));
+  add constraint communities_kind_chk check (kind in ('community','academy','overseas'));
 
 comment on column public.communities.kind is
-  '공동체 종류. community = 리뉴젠 공동체 · academy = 리뉴젠 아카데미. 총관리자만 바꿉니다.';
+  '공동체 종류. community = 리뉴젠 공동체 · academy = 리뉴젠 아카데미 · overseas = 해외 그룹. 총관리자만 바꿉니다.';
 
 -- ─────────────────────────────────────────────────────────────────
 --  2. 거드는 함수
