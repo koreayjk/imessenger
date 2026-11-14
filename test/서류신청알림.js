@@ -1,7 +1,11 @@
 // 📄 서류 신청 → 담임 + 행정담당자에게 알림
 const { launch, openApp, ok, done } = require('./_harness');
 
-//  학부모가 '내 아이' 화면에서 재학증명서를 신청하는 상황
+//  학부모가 '내 아이' 화면에서 서류를 신청하는 상황
+//
+//  ⚠️ 종류를 **분명히 골라서** 신청합니다. 전에는 고르개의 첫 항목에
+//     기대고 있었는데(그때는 재학증명서였습니다), 재학증명서를 내리자
+//     이 시험이 깨졌습니다. 목록 순서가 바뀌어도 안 깨지게 둡니다.
 const setup = (extra) => `(async () => {
   members['t2'] = { id:'t2', name:'박교사', community_id:'c1', community_role:'teacher', status:'approved' };
   members['ao'] = { id:'ao', name:'행정샘', community_id:'c1', community_role:'admin_officer', status:'approved' };
@@ -16,6 +20,7 @@ const setup = (extra) => `(async () => {
   childList = [{ id:'s1', name:'홍길동', community_id:'c1', relation:'모' }]; childPicked = 's1';
   await renderChildPage();
   await new Promise(r => setTimeout(r, 300));
+  document.getElementById('child-cert-kind').value = 'tuition_paid';
   document.getElementById('child-cert-purpose').value = '학교 제출용';
   document.getElementById('child-cert-copies').value = '2';
   await childCertRequest();
@@ -56,7 +61,7 @@ console.log('\n② 글에 들어 있어야 할 것');
   const r = await pg.evaluate(read);
   const txt = r.got['ao'] || '';
   ok(/홍길동/.test(txt), '누구 서류인지 (홍길동)');
-  ok(/재학증명서/.test(txt), '무슨 서류인지 (재학증명서)');
+  ok(/기부금 납입 증명서/.test(txt), '무슨 서류인지 (기부금 납입 증명서)');
   ok(/2부/.test(txt), '몇 부인지 (2부)');
   ok(/학교 제출용/.test(txt), '어디에 내는지 (학교 제출용)');
   ok(/홍어머니/.test(txt), '누가 신청했는지 (홍어머니)');

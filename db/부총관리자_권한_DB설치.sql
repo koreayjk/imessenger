@@ -139,6 +139,17 @@ begin
       end if;
     end loop;
 
+    --  '우리에게 보낸 것' 도 틔운다 — 공동체가 본부에 증명서를 신청하면
+    --  그 행의 community_id 는 **신청한 공동체**입니다. 그대로 두면 본부의
+    --  부총관리자가 그 신청을 승인하지 못합니다.
+    --  (db/본부_증명서신청_DB설치.sql 을 보세요)
+    if exists (select 1 from pg_attribute a
+                where a.attrelid = r.oid and a.attname = 'to_community_id'
+                  and a.attnum > 0 and not a.attisdropped
+                  and a.atttypid = 'uuid'::regtype) then
+      own := own || ' or to_community_id = (select public.my_community_id())';
+    end if;
+
     --  (select …) 로 감싸는 까닭 — 이렇게 쓰면 행마다 다시 부르지 않고
     --  질의 시작 때 한 번만 셈합니다. 정책 177 개가 깔리므로 차이가 큽니다.
     guard := '(not (select public.is_vice_admin()))'
