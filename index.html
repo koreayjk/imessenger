@@ -31944,14 +31944,35 @@ const CERT_TYPES = {
   },
 };
 // '2026-03' ~ '2026-08' → '2026년 3월부터 8월까지' / 'March to August 2026'
+//  '2026-07' ~ '2026-08'     → '2026년 7월부터 8월까지'
+//  '2026-07-20' ~ '2026-08-02' → '2026년 7월 20일부터 8월 2일까지'
+//
+//  ⚠️ 달까지만 적힌 옛 기록도 그대로 읽어야 합니다. 날짜 고르개로 바꾸기
+//     전에 발급한 것들이 'YYYY-MM' 으로 남아 있습니다.
 function certPeriodText(from, to, lang) {
-  const P = v => { const m = String(v||'').match(/^(\d{4})-(\d{2})/); return m ? { y:+m[1], m:+m[2] } : null; };
+  const P = v => {
+    const m = String(v||'').match(/^(\d{4})-(\d{2})(?:-(\d{2}))?/);
+    return m ? { y:+m[1], m:+m[2], d: m[3] ? +m[3] : null } : null;
+  };
   const a = P(from), b = P(to);
   if (!a || !b) return [from, to].filter(Boolean).join(' ~ ');
+  const day = a.d != null && b.d != null;      // 둘 다 날짜까지 있을 때만 날짜로 쓴다
   if (lang === 'en') {
+    if (day) {
+      if (a.y === b.y && a.m === b.m && a.d === b.d) return `${CERT_MON_EN[a.m]} ${a.d}, ${a.y}`;
+      return a.y === b.y
+        ? `${CERT_MON_EN[a.m]} ${a.d} to ${CERT_MON_EN[b.m]} ${b.d}, ${a.y}`
+        : `${CERT_MON_EN[a.m]} ${a.d}, ${a.y} to ${CERT_MON_EN[b.m]} ${b.d}, ${b.y}`;
+    }
     return a.y === b.y
       ? (a.m === b.m ? `${CERT_MON_EN[a.m]} ${a.y}` : `${CERT_MON_EN[a.m]} to ${CERT_MON_EN[b.m]} ${a.y}`)
       : `${CERT_MON_EN[a.m]} ${a.y} to ${CERT_MON_EN[b.m]} ${b.y}`;
+  }
+  if (day) {
+    if (a.y === b.y && a.m === b.m && a.d === b.d) return `${a.y}년 ${a.m}월 ${a.d}일`;
+    return a.y === b.y
+      ? `${a.y}년 ${a.m}월 ${a.d}일부터 ${b.m}월 ${b.d}일까지`
+      : `${a.y}년 ${a.m}월 ${a.d}일부터 ${b.y}년 ${b.m}월 ${b.d}일까지`;
   }
   return a.y === b.y
     ? (a.m === b.m ? `${a.y}년 ${a.m}월` : `${a.y}년 ${a.m}월부터 ${b.m}월까지`)
@@ -32614,6 +32635,9 @@ function renderHqOut() {
         ${r.status === 'issued' && r.cert_no ? `<div style="font-size:11.5px;color:#1f6b42;margin-top:2px">${t('발급번호','No.')} ${escHtml(r.cert_no)}</div>` : ''}
         ${r.status === 'rejected' && r.reject_reason ? `<div style="font-size:11.5px;color:#a93226;margin-top:2px">${escHtml(r.reject_reason)}</div>` : ''}
       </div>
+      ${r.status === 'issued' && r.certificate_id
+        ? `<button onclick="hqPrintIssued('${escJs(r.certificate_id)}')" style="height:32px;padding:0 13px;border:none;border-radius:8px;background:#1d3a5f;color:#fff;font:700 12px var(--font);cursor:pointer;flex-shrink:0">${t('📄 인쇄 · PDF','📄 Print · PDF')}</button>`
+        : ''}
     </div>`).join('');
 
   main.innerHTML = `<div class="spage" style="max-width:820px">
@@ -32779,8 +32803,8 @@ function renderHqIn() {
       <div style="border-top:1px solid var(--border);margin-top:14px;padding-top:14px">
         <div style="font-size:13px;font-weight:800;color:var(--ink2);margin-bottom:10px">${t('고른 사람 한꺼번에 발급','Issue the picked ones')} · ${hqInPicked.size}${t('명','')}</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
-          <div><label style="${lbl}">${t('기간 (처음)','Period from')}</label><input id="hq-pfrom" type="month" style="${inp};width:100%"/></div>
-          <div><label style="${lbl}">${t('기간 (끝)','Period to')}</label><input id="hq-pto" type="month" style="${inp};width:100%"/></div>
+          <div><label style="${lbl}">${t('기간 (처음)','Period from')}</label><input id="hq-pfrom" type="date" style="${inp};width:100%"/></div>
+          <div><label style="${lbl}">${t('기간 (끝)','Period to')}</label><input id="hq-pto" type="date" style="${inp};width:100%"/></div>
           <div><label style="${lbl}">${t('발급일자','Issue date')}</label><input id="hq-date" type="date" value="${attTodayStr()}" style="${inp};width:100%"/></div>
           <div><label style="${lbl}">${t('발급 기관','Issuing organization')}</label><select id="hq-org" style="${inp};width:100%">${orgOpts}</select></div>
           <div><label style="${lbl}">${t('직인','Seal')}</label><select id="hq-seal" style="${inp};width:100%">${sealOpts}</select></div>
@@ -33035,9 +33059,9 @@ function renderCert() {
       <div id="cert-period-wrap" style="display:none;margin-bottom:14px">
         <label style="${lbl}">${t('납입 기간과 금액','Period and amount paid')}</label>
         <div style="display:flex;gap:9px;flex-wrap:wrap;align-items:center">
-          <input id="cert-period-from" type="month" value="${escAttr(certPeriodFrom)}" oninput="certPeriodFrom=this.value" style="${inp};max-width:170px"/>
+          <input id="cert-period-from" type="date" value="${escAttr(certPeriodFrom)}" oninput="certPeriodFrom=this.value" style="${inp};max-width:170px"/>
           <span style="font-size:13px;color:var(--ink3)">~</span>
-          <input id="cert-period-to" type="month" value="${escAttr(certPeriodTo)}" oninput="certPeriodTo=this.value" style="${inp};max-width:170px"/>
+          <input id="cert-period-to" type="date" value="${escAttr(certPeriodTo)}" oninput="certPeriodTo=this.value" style="${inp};max-width:170px"/>
           <input id="cert-paid-amount" value="${escAttr(certPaidAmount)}" placeholder="${t('납입 금액','Amount paid')}" oninput="certPaidAmount=this.value" style="${inp};max-width:200px"/>
           <button type="button" id="cert-fill-paid" onclick="certFillPaid()" style="height:38px;padding:0 14px;border:1.5px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:9px;cursor:pointer;font:700 12.5px var(--font)">${t('학비 기록에서 불러오기','Load from tuition records')}</button>
         </div>
@@ -33203,9 +33227,10 @@ function certLogRow(r) {
 }
 
 // 대장에서 다시 뽑기 — 새 번호를 매기지 않고 그때 그 문서를 그대로 낸다
-function reprintCertificate(id) {
-  const r = certLog.find(x => x.id === id);
-  if (!r) { showUploadToast(t('기록을 찾지 못했어요','Record not found')); return; }
+//  대장에 남은 한 줄을 그대로 다시 뽑는다.
+//   발급 대장(본부·우리 공동체)과 「본부에 신청」(신청한 공동체)이 **같은
+//   길**을 쓴다. 따로 그리면 한쪽만 맞고 다른 쪽이 어긋난다.
+function certPrintRow(r, win) {
   const spec = (CERT_TYPES[r.type] || {})[r.lang === 'en' ? 'en' : 'ko'] || {};
   //  ⚠️ **그때 쓴 양식**으로 뽑는다. 지금 양식을 쓰면, 양식을 고친 뒤에
   //     옛 증서를 다시 뽑았을 때 다른 모양이 나온다.
@@ -33217,15 +33242,42 @@ function reprintCertificate(id) {
     orgName: r.org_name, orgLogo: r.org_logo_url, orgAddress: r.org_address, sealUrl: r.seal_url,
     voided: !!r.voided_at,
   };
-  if (r.form_snap) { openPrintDoc(certFormPrintOpts(d0, r.form_snap)); return; }
-  openPrintDoc(buildCertOpts({
-    lang: r.lang, type: r.type, docLabel: r.doc_label, sub: r.doc_sub || spec.sub || '',
-    no: r.cert_no, name: r.student_name, birth: r.birth, grade: r.grade, school: r.school,
-    address: r.address,
-    stmt: r.statement, reason: r.reason, date: r.issue_date, rep: r.rep,
-    orgName: r.org_name, orgLogo: r.org_logo_url, orgAddress: r.org_address, sealUrl: r.seal_url,
-    voided: !!r.voided_at,
-  }));
+  if (r.form_snap) return openPrintDoc(certFormPrintOpts(d0, r.form_snap), win);
+  return openPrintDoc(buildCertOpts(Object.assign({}, d0)), win);
+}
+
+function reprintCertificate(id) {
+  const r = certLog.find(x => x.id === id);
+  if (!r) { showUploadToast(t('기록을 찾지 못했어요','Record not found')); return; }
+  certPrintRow(r);
+}
+
+//  📄 신청한 공동체가 **본부가 발급한 증서**를 직접 뽑는다.
+//
+//   본부가 승인하면 그 증서는 본부 대장에 남습니다. 공동체가 그걸 못
+//   뽑으면 "발급됐다" 는 글자만 보고 본부에 다시 달라고 해야 합니다.
+//   certificates_select_for 정책이 **신청한 공동체**(for_community_id)
+//   에게 읽기를 열어 두었습니다.
+async function hqPrintIssued(certId) {
+  //  창은 누른 직후에 열어야 한다. 서버에 물어본 뒤에 열면 팝업 차단에 걸린다.
+  const win = window.open('', '_blank');
+  if (!win) { showUploadToast(t('팝업을 허용해 주세요','Please allow pop-ups')); return; }
+  win.document.write('<!DOCTYPE html><meta charset="utf-8"/><body style="font:15px system-ui;padding:40px;color:#40506b">'
+    + t('불러오는 중…','Loading…') + '</body>');
+  try {
+    const { data, error } = await sb.from('certificates').select('*').eq('id', certId).maybeSingle();
+    if (error) throw error;
+    if (!data) {
+      win.close();
+      showUploadToast(t('본부가 발급한 증서를 찾지 못했어요 — 본부에 문의해 주세요',
+                        'Could not find the issued certificate'));
+      return;
+    }
+    certPrintRow(data, win);
+  } catch (e) {
+    win.close();
+    showUploadToast(t('불러오지 못했어요: ','Failed: ') + ((e && e.message) || e));
+  }
 }
 
 // 잘못 발급한 것은 지우지 않고 무효로 남긴다.
@@ -33298,10 +33350,13 @@ function certSyncType() {
   const amNote = document.getElementById('cert-paid-note');
   if (amNote) amNote.style.display = spec.noAmount ? 'none' : '';
   if (spec.needPeriod) {
-    const now = attTodayStr().slice(0,7);
+    //  ⚠️ 달 고르개(type=month)는 사파리·파이어폭스가 모릅니다 — 달력이
+    //     안 뜨고 빈 칸으로 보입니다. 날짜 고르개(type=date)는 어디서나
+    //     달력이 뜹니다. 그래서 날짜로 받고, 문장도 날짜까지 씁니다.
+    const today = attTodayStr();
     const f = document.getElementById('cert-period-from'), tt = document.getElementById('cert-period-to');
-    if (f && !f.value) { f.value = (Number(now.slice(0,4))) + '-01'; certPeriodFrom = f.value; }
-    if (tt && !tt.value) { tt.value = now; certPeriodTo = tt.value; }
+    if (f && !f.value) { f.value = today.slice(0,4) + '-01-01'; certPeriodFrom = f.value; }
+    if (tt && !tt.value) { tt.value = today; certPeriodTo = tt.value; }
   }
 }
 

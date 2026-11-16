@@ -265,8 +265,10 @@ console.log('\n⑦ 본부가 한꺼번에 발급');
       const bx = lb && lb.querySelector('input[type=checkbox]');
       if (bx) bx.click();
     });
-    document.getElementById('hq-pfrom').value = '2026-07';
-    document.getElementById('hq-pto').value   = '2026-08';
+    //  ⚠️ 기간 칸은 **날짜 고르개(type=date)** 입니다. 달 고르개(month)는
+    //     사파리·파이어폭스가 몰라서 달력이 안 뜨고 빈 칸으로 보입니다.
+    document.getElementById('hq-pfrom').value = '2026-07-20';
+    document.getElementById('hq-pto').value   = '2026-08-02';
     await hqIssuePicked();
     await new Promise(r => setTimeout(r, 200));
     window.open = realOpen;
@@ -282,7 +284,7 @@ console.log('\n⑦ 본부가 한꺼번에 발급');
   ok(r.first && r.first.for_community_id === 'c1', '소속 공동체를 신청한 공동체로 찍는다', r.first && r.first.for_community_id);
   ok(r.first && r.first.for_community_name === '프로토스', '소속 공동체 이름도 함께', r.first && r.first.for_community_name);
   ok(r.first && /2026 전국대회/.test(r.first.statement || ''), '문장에 대회 이름이 들어간다', r.first && r.first.statement);
-  ok(r.first && /2026년 7월부터 8월까지/.test(r.first.statement || ''), '문장에 기간이 들어간다', r.first && r.first.statement);
+  ok(r.first && /2026년 7월 20일부터 8월 2일까지/.test(r.first.statement || ''), '문장에 기간이 날짜까지 들어간다', r.first && r.first.statement);
   ok(r.first && r.first.birth === '2010-03-15', '생년월일은 신청에 실린 값을 쓴다', r.first && r.first.birth);
   ok(r.reqs.every(x => x.st === 'issued'), '신청이 「발급 완료」 로 닫힌다', JSON.stringify(r.reqs));
   ok(r.reqs.every(x => /^IMHQ-2026-/.test(x.no || '')), '신청에 본부 번호가 적힌다', JSON.stringify(r.reqs.map(x=>x.no)));
@@ -340,6 +342,105 @@ console.log('\n⑧ 본부 「신청함」 에 18개 공동체 신청이 섞이�
   ok(r.nIn === 1 && /가나다/.test(r.inb) && !/본부아이/.test(r.inb),
      '공동체에서 온 신청에는 공동체 것만 (1건)', '받은 것 ' + r.nIn + '건');
   ok(r.nToHq === 0, '본부는 본부에 보낸 것이 없다', r.nToHq + '건');
+  await pg.close();
+}
+
+// ── ⑩ 기간 칸은 달력으로 고를 수 있어야 한다 ─────────────────────
+//
+//   사파리·파이어폭스는 달 고르개(type=month)를 **모릅니다.** 달력이
+//   안 뜨고 그냥 빈 글자칸으로 보입니다 — 실제로 그렇게 보인다고
+//   알려 주셨습니다(발급일자는 달력이 뜨는데 기간만 빈 칸이었습니다).
+//   날짜 고르개(type=date)는 어디서나 달력이 뜹니다.
+console.log('\n⑩ 기간 칸 — 어느 브라우저에서나 달력이 떠야 한다');
+{
+  const pg = await asHq(b, [REQ({})]);
+  const r = await pg.evaluate(() => {
+    const f = document.getElementById('hq-pfrom'), t2 = document.getElementById('hq-pto');
+    const dt = document.getElementById('hq-date');
+    return { from: f && f.type, to: t2 && t2.type, date: dt && dt.type };
+  });
+  ok(r.from === 'date', '기간(처음)이 날짜 고르개다 — month 는 사파리에서 빈 칸이 된다', r.from);
+  ok(r.to === 'date', '기간(끝)도 날짜 고르개다', r.to);
+  ok(r.date === 'date', '발급일자는 그대로 날짜 고르개', r.date);
+  await pg.close();
+
+  //  기부금 납입 증명서의 납입 기간도 같은 문제였다
+  const pg2 = await asComm(b, { tab:'issue' });
+  const r2 = await pg2.evaluate(() => {
+    //  ⚠️ certSyncType() 은 고르개 값을 진짜로 봅니다 — 변수만 바꿔 놓고
+    //     부르면 고르개 값으로 되돌립니다(화면이 먼저입니다). 사람이
+    //     하듯 고르개에서 골라 줍니다.
+    document.getElementById('cert-type').value = 'tuition_paid';
+    certOnType('tuition_paid');
+    const f = document.getElementById('cert-period-from'), t2 = document.getElementById('cert-period-to');
+    return { from: f && f.type, to: t2 && t2.type, v: f && f.value, kind: certType };
+  });
+  ok(r2.from === 'date' && r2.to === 'date', '납입 기간도 날짜 고르개다', r2.from + '/' + r2.to);
+  ok(r2.kind === 'tuition_paid', '기부금 납입 증명서를 골랐다', r2.kind);
+  ok(/^\d{4}-\d{2}-\d{2}$/.test(r2.v || ''), '처음 띄울 때 넣어 주는 값도 날짜 꼴이다', JSON.stringify(r2));
+  await pg2.close();
+}
+
+// ── ⑪ 기간 글 — 날짜까지, 옛 기록(달만)도 그대로 ────────────────
+console.log('\n⑪ 증서에 찍히는 기간 글');
+{
+  const pg = await asHq(b, []);
+  const r = await pg.evaluate(() => ({
+    day:   certPeriodText('2026-07-20','2026-08-02','ko'),
+    same:  certPeriodText('2026-07-20','2026-07-20','ko'),
+    yr:    certPeriodText('2025-12-20','2026-01-05','ko'),
+    month: certPeriodText('2026-03','2026-08','ko'),          // 옛 기록
+    en:    certPeriodText('2026-07-20','2026-08-02','en'),
+  }));
+  ok(r.day === '2026년 7월 20일부터 8월 2일까지', '날짜 두 개면 날짜까지 쓴다', r.day);
+  ok(r.same === '2026년 7월 20일', '같은 날이면 하루만 쓴다', r.same);
+  ok(/2025년 12월 20일부터 2026년 1월 5일까지/.test(r.yr), '해를 넘기면 두 해를 다 쓴다', r.yr);
+  ok(r.month === '2026년 3월부터 8월까지', '달까지만 적힌 옛 기록은 그대로 읽는다', r.month);
+  ok(/July 20 to August 2, 2026/.test(r.en), '영문도 날짜까지', r.en);
+  await pg.close();
+}
+
+// ── ⑫ 신청한 공동체가 발급된 증서를 직접 뽑는다 ─────────────────
+//
+//   본부가 승인하면 그 증서는 본부 대장에 남습니다. 공동체가 못 뽑으면
+//   "발급됐다" 는 글자만 보고 본부에 다시 달라고 해야 합니다.
+console.log('\n⑫ 신청한 공동체가 📄 인쇄 · PDF 로 뽑는다');
+{
+  const pg = await asComm(b, {
+    reqs: [
+      REQ({ id:'r-ok', status:'issued', cert_no:'IMHQ-2026-0007', certificate_id:'cert-7' }),
+      REQ({ id:'r-wait', status:'pending' }),
+    ],
+  });
+  const r = await pg.evaluate(() => {
+    const txt = document.getElementById('school-main').innerText;
+    const btns = [...document.querySelectorAll('#school-main button')]
+      .filter(x => /hqPrintIssued/.test(x.getAttribute('onclick') || ''));
+    return { txt, n: btns.length, on: btns.map(x => x.getAttribute('onclick')) };
+  });
+  ok(/IMHQ-2026-0007/.test(r.txt), '본부가 매긴 번호가 공동체에도 보인다');
+  ok(r.n === 1, '발급된 것에만 인쇄 단추가 붙는다 (기다리는 것엔 없다)', r.n + '개');
+  ok(/cert-7/.test((r.on || [])[0] || ''), '그 증서를 가리킨다', (r.on||[])[0]);
+
+  //  실제로 눌러서 본부 대장의 증서를 뽑아 본다
+  const out = await pg.evaluate(async () => {
+    window.__printed = [];
+    window.open = () => ({ document:{ open(){}, close(){}, write(h){ window.__printed.push(String(h)); } }, close(){} });
+    window.__DB.certificates = [{
+      id:'cert-7', community_id:'hq-1', for_community_id:'c1', for_community_name:'프로토스',
+      cert_no:'IMHQ-2026-0007', lang:'ko', type:'natl_completion', doc_label:'수 료 증',
+      student_name:'가나다', birth:'2010-03-15', statement:'위 사람은 … 수료하였음을 확인합니다.',
+      issue_date:'2026-11-16', org_name:'IM Korea', org_address:'충남 논산시 벌곡면 황룡재로 324',
+      rep:'IM Korea 장', seal_url:'', event_name:'2026 전국대회', form_snap:null,
+    }];
+    await hqPrintIssued('cert-7');
+    await new Promise(r => setTimeout(r, 150));
+    return { html: (window.__printed || []).join('\n') };
+  });
+  ok(/수 료 증/.test(out.html), '본부가 만든 증서가 그대로 나온다', out.html.slice(0,0));
+  ok(/IMHQ-2026-0007/.test(out.html), '본부 번호가 찍혀 있다');
+  ok(/가나다/.test(out.html), '이름이 찍혀 있다');
+  ok(/IM Korea/.test(out.html), '본부 기관명으로 나간다 — 공동체 이름이 아니다');
   await pg.close();
 }
 

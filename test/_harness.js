@@ -37,9 +37,16 @@ const ROOT = path.resolve(__dirname, '..');
 const STUB = fs.readFileSync(path.join(__dirname, 'stub.js'), 'utf8');
 
 const state = { pass: 0, fail: 0 };
-const ok = (c, m) => {
+//  셋째 값(실제로 나온 것)은 **틀렸을 때만** 같이 찍는다.
+//   ⚠️ 예전에는 그냥 버렸다. 시험마다 공들여 적어 둔 설명이 하나도
+//      안 보여서, 틀릴 때마다 디버그 코드를 새로 심어야 했다.
+const ok = (c, m, detail) => {
   if (c) { state.pass++; console.log('  ✅', m); }
-  else   { state.fail++; console.log('  ❌', m); }
+  else {
+    state.fail++;
+    console.log('  ❌', m + (detail === undefined || detail === null || detail === ''
+      ? '' : '\n       → 나온 것: ' + String(detail).slice(0, 300)));
+  }
 };
 
 //  가짜 Supabase — from()/rpc() 가 메모리 위의 표를 다룹니다.
