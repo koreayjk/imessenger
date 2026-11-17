@@ -59,6 +59,11 @@ const READ = async (pg) => pg.evaluate(() => {
     del: [...box.querySelectorAll('button')].filter(x => /deleteCommunity/.test(x.getAttribute('onclick')||'')).length,
     edit: [...box.querySelectorAll('button')].map(x => x.getAttribute('onclick')||'')
             .filter(x => /editCommunity/.test(x)),
+    //  ⚠️ 목록에 어떤 묶음이 떴는지는 **머리글로** 셉니다. 화면 글 전체를
+    //     뒤지면 설명 문장의 「리뉴젠 아카데미」 같은 말까지 집어서,
+    //     목록이 제대로 걸러져도 ❌ 가 납니다 (여기서 한 번 데었습니다).
+    listKinds: [...box.querySelectorAll('[data-comm-kind-head]')]
+                 .map(e => e.getAttribute('data-comm-kind-head')),
     shared: !!document.getElementById('shared-drive-community'),
     makeBtn: [...box.querySelectorAll('button')].some(x => /createCommunity/.test(x.getAttribute('onclick')||'')),
   };
@@ -99,12 +104,13 @@ console.log('\n②③④⑤ 부총관리자가 보는 🏛️ 공동체 화면')
   ok(r.kindLocked === true, '그 고르개는 잠겨 있다 — 다른 묶음을 고를 수 없다');
   ok(/자기 묶음 안에서만/.test(r.txt), '왜 하나뿐인지 알려 준다');
   ok(/프로토스/.test(r.txt) && /어웨이크닝/.test(r.txt), '같은 묶음 공동체가 보인다');
-  ok(!/리뉴젠 아카데미/.test(r.txt) && !/IM USA/.test(r.txt),
-     '다른 묶음은 안 보인다 — 눌러도 못 하는 칸을 만들지 않는다');
+  ok(r.listKinds.length === 1 && r.listKinds[0] === 'community',
+     '목록에 다른 묶음이 없다 — 눌러도 못 하는 칸을 만들지 않는다', JSON.stringify(r.listKinds));
+  ok(!/IM USA/.test(r.txt), '해외 그룹 공동체는 안 보인다');
   ok(r.del === 0, '지우기 단추가 하나도 없다', r.del + '개');
   ok(r.edit.length === 1 && /'c1'/.test(r.edit[0]),
      '수정은 자기 공동체에만 붙는다', JSON.stringify(r.edit));
-  ok(r.shared === false, '전체 공용 자료실 폴더(총관리자 것)는 안 보인다');
+  ok(r.shared === true, '전체 공용 자료실 폴더 칸이 보인다 — 자기 묶음 것은 넣을 수 있다');
   await pg.close();
 }
 
@@ -141,11 +147,89 @@ console.log('\n⑦ 총관리자 — 전과 똑같아야 한다');
   const r = await READ(pg);
   ok(r.kinds && r.kinds.length >= 3, '종류를 전부 고를 수 있다', JSON.stringify(r.kinds));
   ok(r.kindLocked === false, '고르개가 잠겨 있지 않다');
-  ok(/프로토스/.test(r.txt) && /리뉴젠 아카데미/.test(r.txt) && /IM USA/.test(r.txt),
-     '모든 묶음이 보인다');
+  ok(r.listKinds.length === 3, '총관리자 목록에는 세 묶음이 다 보인다', JSON.stringify(r.listKinds));
+  ok(/프로토스/.test(r.txt) && /IM USA/.test(r.txt), '모든 공동체가 보인다');
   ok(r.del >= 3, '지우기 단추가 있다', r.del + '개');
   ok(r.edit.length >= 4, '수정이 모든 공동체에 붙는다', r.edit.length + '개');
   ok(r.shared === true, '전체 공용 자료실 폴더가 보인다');
+  await pg.close();
+}
+
+// ── ⑧ 🌐 전체 공용 자료실 폴더 — 자기 묶음 칸만 ────────────────
+//
+//   유은혜님(IM HQ 부총관리자) 화면에 자료실 2단이 안 보인다고 하셨습니다.
+//   재 보니 고장이 아니라 **전체 공용 폴더가 한 칸도 안 들어가 있었습니다**
+//   (app_settings 표가 통째로 비어 있었습니다). 폴더가 없으면 화면은
+//   일부러 탭을 숨깁니다 — 들어가도 '아직 없어요' 뿐인 칸이라서요.
+//
+//   그래서 그 묶음을 맡은 부총관리자가 직접 넣을 수 있게 열었습니다.
+console.log('\n⑧ 🌐 전체 공용 자료실 폴더 — 누구에게 어떤 칸이 보이나');
+{
+  const pg = await openAdmin(b, 'vice_admin');
+  await pg.evaluate(() => renderAdminCommunities());
+  await pg.waitForTimeout(200);
+  const r = await pg.evaluate(() => ({
+    boxes: ['community','academy','overseas'].filter(k => !!document.getElementById('shared-drive-' + k)),
+    txt: document.getElementById('admin-content').innerText,
+  }));
+  ok(r.boxes.length === 1 && r.boxes[0] === 'community',
+     '부총관리자에게는 자기 묶음 칸 하나만 뜬다', JSON.stringify(r.boxes));
+  ok(/부총관리자는 자기 묶음 것만/.test(r.txt), '왜 하나뿐인지 알려 준다');
+  await pg.close();
+
+  const pg2 = await openAdmin(b, 'super_admin');
+  await pg2.evaluate(() => renderAdminCommunities());
+  await pg2.waitForTimeout(200);
+  const r2 = await pg2.evaluate(() => ({
+    boxes: ['community','academy','overseas'].filter(k => !!document.getElementById('shared-drive-' + k)),
+    txt: document.getElementById('admin-content').innerText,
+  }));
+  ok(r2.boxes.length === 3, '총관리자에게는 세 묶음이 다 뜬다 (전과 같음)', JSON.stringify(r2.boxes));
+  ok(!/부총관리자는 자기 묶음 것만/.test(r2.txt), '총관리자에게는 그 안내가 없다');
+  await pg2.close();
+}
+
+// ── ⑨ 남의 묶음은 넣으려 해도 막힌다 ────────────────────────────
+console.log('\n⑨ 부총관리자가 남의 묶음 폴더를 넣으려 하면');
+{
+  const pg = await openAdmin(b, 'vice_admin');
+  await pg.evaluate(() => renderAdminCommunities());
+  await pg.waitForTimeout(200);
+  const r = await pg.evaluate(async () => {
+    //  화면에 없는 칸을 억지로 만들어 불러 본다
+    document.body.insertAdjacentHTML('beforeend',
+      '<input id="shared-drive-overseas" value="남의폴더ID"/>');
+    const n0 = (window.__ins || []).length + (window.__upd || []).length;
+    await saveSharedDriveFolder('overseas');
+    await new Promise(r => setTimeout(r, 150));
+    const n1 = (window.__ins || []).length + (window.__upd || []).length;
+    return { wrote: n1 - n0, txt: document.body.innerText };
+  });
+  ok(r.wrote === 0, '남의 묶음은 저장 자체를 안 보낸다', r.wrote + '번 썼다');
+  ok(/맡은 분이 넣어요/.test(r.txt), '왜 안 되는지 알려 준다');
+  await pg.close();
+}
+
+// ── ⑩ 자기 묶음은 저장된다 ──────────────────────────────────────
+console.log('\n⑩ 자기 묶음 폴더는 저장된다');
+{
+  const pg = await openAdmin(b, 'vice_admin');
+  await pg.evaluate(() => renderAdminCommunities());
+  await pg.waitForTimeout(200);
+  const r = await pg.evaluate(async () => {
+    document.getElementById('shared-drive-community').value =
+      'https://drive.google.com/drive/folders/1AbC2dEfGhIjKlMnOpQ';
+    await saveSharedDriveFolder('community');
+    await new Promise(r => setTimeout(r, 150));
+    const ins = (window.__ins || []).filter(x => x.t === 'app_settings').pop();
+    return { sent: ins ? ins.rows[0] : null, txt: document.body.innerText };
+  });
+  ok(r.sent, '저장을 보냈다');
+  ok(r.sent && r.sent.key === 'drive_shared_folder_id_community',
+     '자기 묶음 열쇠로 보낸다', r.sent && r.sent.key);
+  ok(r.sent && r.sent.value === '1AbC2dEfGhIjKlMnOpQ',
+     '폴더 주소를 붙여넣어도 ID 만 뽑아 보낸다', r.sent && r.sent.value);
+  ok(/저장했어요/.test(r.txt), '저장됐다고 알려 준다');
   await pg.close();
 }
 
