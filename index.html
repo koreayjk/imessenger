@@ -12950,9 +12950,13 @@ function showAdminTabsFor() {
     show('adm-tab-communities'); show('adm-tab-mysettings'); show('adm-tab-home');
     if (label) label.textContent = t('총관리자 — 공동체·멤버·채널 전체 관리','Super Admin — manage all communities, members, channels');
   } else if (isCommunityAdmin()) {
+    //  부총관리자도 🏛️ 공동체 를 엽니다 — 자기 묶음 안에서 **새 공동체를
+    //  만들 수 있습니다.** 다만 지우기·종류 바꾸기·전체 공용 폴더는
+    //  총관리자 것이라 화면에서도 안 보입니다(서버도 막습니다).
+    if (isViceAdmin()) show('adm-tab-communities');
     show('adm-tab-mysettings'); show('adm-tab-home');
     if (label) label.textContent = isViceAdmin()
-      ? t('부총관리자 — 내 공동체 관리 · 다른 공동체는 열람만','Deputy Admin — manage your community; other communities are read-only')
+      ? t('부총관리자 — 내 묶음의 공동체 만들기·열람 · 내 공동체 관리','Deputy Admin — create and view communities in your group; manage your own')
       : t('공동체 관리자 — 공동체 설정 및 멤버 관리','Community Admin — community settings & member management');
   }
 }
@@ -12987,6 +12991,12 @@ function initAdminPage() {
     switchAdminTab('communities');
   } else if (isCommunityAdmin()) {
     // 공동체 관리자: 공동체 설정 탭 표시, 설정 탭으로 시작
+    //  부총관리자는 🏛️ 공동체 도 연다 — 자기 묶음에 새 공동체를 만들 수 있다.
+    //  (시작 탭은 그대로 '설정' — 날마다 쓰는 것은 그쪽이다)
+    if (isViceAdmin()) {
+      const ct = document.getElementById('adm-tab-communities');
+      if (ct) ct.style.display = 'block';
+    }
     const settingsTab = document.getElementById('adm-tab-mysettings');
     if (settingsTab) settingsTab.style.display = 'block';
     const homeTab = document.getElementById('adm-tab-home');
@@ -18754,8 +18764,14 @@ async function renderAdminCommunities() {
   _viewingComm = null;
   const area = document.getElementById('admin-content');
   const { data: communities } = await sb.from('communities').select('*').order('created_at');
-  const list = communities || [];
+  //  부총관리자에게는 **자기 묶음만** 보입니다. 다른 묶음을 보여 주면
+  //  눌러도 아무것도 못 하는 칸이 됩니다 (서버가 막습니다).
+  const all = communities || [];
+  const list = visibleCommunities(all);
   const groups = groupByCommKind(list);   // 리뉴젠 공동체 / 리뉴젠 아카데미
+  //  내가 만들 수 있는 종류 — 총관리자는 전부, 부총관리자는 자기 묶음 하나
+  const myKind = commKind(all.find(c => c.id === (ME && ME.community_id)));
+  const canKinds = isSuperAdmin() ? COMM_KINDS : COMM_KINDS.filter(k => k.v === myKind);
   //  🌐 전체 공용 자료실 폴더 — **종류마다 따로**.
   //  표를 아직 안 깔았으면 빈 값으로 둔다.
   const sharedFolders = { community: '', academy: '' };
@@ -18781,6 +18797,7 @@ async function renderAdminCommunities() {
         <span style="font-size:13.5px;font-weight:700;color:#b91c1c">승인 대기 ${totalPending}명 — 아래 빨간 배지가 있는 공동체의 "멤버 보기"에서 승인하세요</span>
       </div>` : ''}
       <!-- 🌐 전체 공용 자료실 폴더 — 종류마다 따로. 총관리자만. -->
+      ${!isSuperAdmin() ? '' : `
       <div class="adm-card" style="margin-bottom:20px;border-left:4px solid #1e40af">
         <div style="font-size:14px;font-weight:700;margin-bottom:6px;color:var(--adeep)">🌐 전체 공용 자료실 폴더</div>
         <div style="font-size:12.5px;color:var(--ink3);line-height:1.75;margin-bottom:14px">
@@ -18805,7 +18822,7 @@ async function renderAdminCommunities() {
             </div>
           </div>`;
         }).join('')}
-      </div>
+      </div>`}
 
       <!-- 새 공동체 생성 -->
       <div class="adm-card" style="border:2px dashed var(--border);background:var(--s2);margin-bottom:20px">
@@ -18833,9 +18850,12 @@ async function renderAdminCommunities() {
           </div>
           <div>
             <div style="font-size:12px;color:var(--ink3);margin-bottom:5px;font-weight:500">종류 *</div>
-            <select id="new-comm-kind" class="adm-input" style="width:100%">
-              ${COMM_KINDS.map(k => `<option value="${k.v}">${k.emoji} ${t(k.ko, k.en)}</option>`).join('')}
+            <select id="new-comm-kind" class="adm-input" style="width:100%" ${canKinds.length > 1 ? '' : 'disabled'}>
+              ${canKinds.map(k => `<option value="${k.v}">${k.emoji} ${t(k.ko, k.en)}</option>`).join('')}
             </select>
+            ${canKinds.length > 1 ? '' : `<div style="font-size:11.5px;color:var(--ink3);margin-top:5px">${t(
+              '부총관리자는 <b>자기 묶음 안에서만</b> 만들 수 있어요 — 다른 묶음으로 만들면 만든 본인이 그 공동체를 못 봅니다.',
+              'Deputy admins can only create within their own group.')}</div>`}
           </div>
         </div>
         <button onclick="createCommunity()" style="height:38px;padding:0 20px;border-radius:10px;border:none;background:var(--accent);color:white;font:600 13px var(--font);cursor:pointer">+ 공동체 생성</button>
@@ -18860,12 +18880,17 @@ async function renderAdminCommunities() {
               </div>
             </div>
             <div style="display:flex;gap:8px;flex-shrink:0">
+              ${/*  고칠 수 있는 곳에만 「수정」 을 띄운다. 부총관리자는 자기
+                     공동체만 고칠 수 있다(can_edit_community). 남의 것에
+                     단추를 띄워 두면 눌러도 조용히 실패한다. */''}
+              ${(isSuperAdmin() || c.id === (ME && ME.community_id)) ? `
               <button onclick="editCommunity('${c.id}','${escJs(c.name)}','${escJs(c.description||'')}','${c.color||'#1d3a5f'}','${commKind(c)}')"
-                style="height:32px;padding:0 12px;border-radius:8px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:500 12px var(--font);cursor:pointer">수정</button>
-              ${c.id !== '00000000-0000-0000-0000-000000000001' ? `
+                style="height:32px;padding:0 12px;border-radius:8px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:500 12px var(--font);cursor:pointer">수정</button>` : ''}
+              ${/*  지우기는 총관리자만. 만드는 것과 없애는 것은 무게가 다르다. */''}
+              ${!isSuperAdmin() ? '' : (c.id !== '00000000-0000-0000-0000-000000000001' ? `
               <button onclick="deleteCommunity('${c.id}','${escJs(c.name)}')"
                 style="height:32px;padding:0 12px;border-radius:8px;border:1.5px solid #fca5a5;background:#fef2f2;color:#dc2626;font:500 12px var(--font);cursor:pointer">삭제</button>
-              ` : '<span style="font-size:11px;color:var(--ink3);padding:0 4px">기본</span>'}
+              ` : '<span style="font-size:11px;color:var(--ink3);padding:0 4px">기본</span>')}
             </div>
           </div>
 
@@ -18933,7 +18958,17 @@ async function createCommunity() {
   const name = document.getElementById('new-comm-name').value.trim();
   const desc = document.getElementById('new-comm-desc').value.trim();
   const color = document.getElementById('new-comm-color').value || '#1d3a5f';
-  const kind = (document.getElementById('new-comm-kind') || {}).value || 'community';
+  let kind = (document.getElementById('new-comm-kind') || {}).value || 'community';
+  //  부총관리자는 **자기 묶음**으로 못 박는다. 다른 묶음으로 만들면
+  //  만든 본인이 그 공동체를 못 본다(보는 범위를 묶음으로 가른다).
+  //  화면이 틀어져도 서버가 한 번 더 막는다.
+  if (!isSuperAdmin() && isViceAdmin()) {
+    try {
+      const { data } = await sb.from('communities').select('kind')
+        .eq('id', ME.community_id).maybeSingle();
+      if (data) kind = commKind(data);
+    } catch (_) { /* 못 읽으면 고른 값 그대로 — 서버가 어차피 막는다 */ }
+  }
   if (!name) { showUploadToast('공동체 이름을 입력해주세요'); return; }
   let { error } = await sb.from('communities').insert({
     name, description: desc, color, kind, created_by: ME.id
@@ -19739,7 +19774,8 @@ const ROLE_CAPS = [
   { name:'학생 일괄 등록', roles:['community_admin','vice_admin','super_admin'] },
   { name:'다른 공동체 열람 · 채팅', roles:['vice_admin','super_admin'] },
   { name:'다른 공동체 수정 · 관리', roles:['super_admin'] },
-  { name:'공동체 만들기 · 지우기 · 설정 수정', roles:['super_admin'] },
+  { name:'공동체 만들기 (부총관리자는 자기 묶음 안에서만)', roles:['vice_admin','super_admin'] },
+  { name:'공동체 지우기 · 종류 바꾸기', roles:['super_admin'] },
   { name:'총관리자·부총관리자 권한 부여', roles:['super_admin'] },
 ];
 function rolePermGuideHtml() {
