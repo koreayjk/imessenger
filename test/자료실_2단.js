@@ -375,6 +375,48 @@ console.log('\n⑧ 아카데미 그룹만 아직 안 정했을 때');
   ok(!/FOLDER_COMMUNITY/.test(r.txt), '다른 그룹 폴더로 되돌아가지 않는다');
 }
 
+// ── ⑨ 폴더가 아직 없을 때 — 넣을 수 있는 사람에게만 길을 보여준다 ──
+//
+//   유은혜님(부총관리자) 화면에 자료실 2단이 안 보인다고 하셨다. 폴더가
+//   한 칸도 안 들어가 있어서였다(app_settings 0줄) — 거기까지는 맞다.
+//   그런데 **부총관리자가 자기 묶음 폴더를 넣을 수 있게 열어 놓고도**
+//   자료실에서는 총관리자에게만 안내가 떴다. 넣을 수 있는데 어디서
+//   넣는지 알 길이 없었다.
+console.log('\n⑨ 폴더가 아직 없을 때 — 누구에게 길을 보여주나');
+{
+  const WHO = [
+    ['super_admin',     true,  '총관리자'],
+    ['vice_admin',      true,  '부총관리자 ← 자기 묶음 폴더를 넣을 수 있다'],
+    ['community_admin', false, '일반 공동체 관리자'],
+    ['teacher',         false, '교사'],
+  ];
+  for (const [role, want, 말] of WHO) {
+    const pg = await openApp(b, { as:'teacher' });
+    const r = await pg.evaluate((role) => {
+      ME.community_role = role; ME.email = 'nobody@example.com';
+      driveSharedOn = false;          // 폴더가 아직 없는 상태
+      driveScope = 'mine';
+      const html = driveTabsHtml();
+      return { has: !!html, hint: /전체 공용 폴더는 관리자/.test(html) };
+    }, role);
+    await pg.close();
+    ok(r.has === want, `${말} — 탭이 ${want ? '보인다' : '안 보인다'}`, '보임=' + r.has);
+    ok(r.hint === want, `${말} — 어디서 넣는지 ${want ? '알려 준다' : '말하지 않는다'}`);
+  }
+
+  //  폴더가 들어가 있으면 누구에게나 보인다
+  const pg = await openApp(b, { as:'teacher' });
+  const r = await pg.evaluate(() => {
+    ME.community_role = 'teacher'; ME.email = 'nobody@example.com';
+    driveSharedOn = true; driveScope = 'mine';
+    const html = driveTabsHtml();
+    return { has: !!html, hint: /전체 공용 폴더는 관리자/.test(html) };
+  });
+  await pg.close();
+  ok(r.has === true, '폴더가 들어가 있으면 교사에게도 탭이 보인다');
+  ok(r.hint === false, '그때는 안내를 띄우지 않는다 — 이미 다 된 일이다');
+}
+
 await b.close();
 done();
 })();

@@ -7282,10 +7282,15 @@ function driveSwitchScope(sc) {
   initDrivePage();
 }
 
-//  두 칸 탭. 전체 공용 폴더가 없으면 총관리자에게만 보여줍니다 —
+//  두 칸 탭. 전체 공용 폴더가 없으면 **넣을 수 있는 사람에게만** 보여줍니다 —
 //  남들에게는 들어가도 '아직 없어요' 밖에 없는 칸이라 보여줄 이유가 없습니다.
+//
+//  ⚠️ 넣을 수 있는 사람 = 총관리자 + **부총관리자**(자기 묶음 것).
+//     부총관리자에게 안 보여 주면, 넣을 수 있게 해 놓고도 어디서 넣는지
+//     알 길이 없습니다 — 실제로 "아직 이렇게 나온다" 고 하셨습니다.
+function driveCanSetShared() { return isSuperAdmin() || isViceAdmin(); }
 function driveTabsHtml() {
-  if (!(driveSharedOn || isSuperAdmin())) return '';
+  if (!(driveSharedOn || driveCanSetShared())) return '';
   const tab = (sc, emoji, ko, en) => {
     const on = driveScope === sc;
     return `<div data-drive-tab="${sc}" onclick="driveSwitchScope('${sc}')"
@@ -7296,7 +7301,7 @@ function driveTabsHtml() {
     ${tab('mine',   '\u{1F3E0}', '우리 공동체', 'Our community')}
     ${tab('shared', '\u{1F310}', '전체 공용',   'Shared')}
     ${driveScope === 'shared' ? `<div style="display:flex;align-items:center;font:700 11.5px var(--font);color:#1e40af;padding:0 4px">${escHtml(commKindInfo(driveMyKind || 'community').emoji + ' ' + t(commKindInfo(driveMyKind || 'community').ko, commKindInfo(driveMyKind || 'community').en))} ${t('그룹','group')}</div>` : ''}
-    ${(!driveSharedOn && isSuperAdmin()) ? `<div style="display:flex;align-items:center;font:600 11.5px var(--font);color:var(--ink3);padding:0 4px">${t('← 전체 공용 폴더는 관리자 ▸ 🏛️ 공동체 에서 정합니다','← set the shared folder under Admin ▸ Communities')}</div>` : ''}
+    ${(!driveSharedOn && driveCanSetShared()) ? `<div style="display:flex;align-items:center;font:600 11.5px var(--font);color:var(--ink3);padding:0 4px">${t('← 전체 공용 폴더는 관리자 ▸ 🏛️ 공동체 에서 정합니다','← set the shared folder under Admin ▸ Communities')}</div>` : ''}
   </div>`;
 }
 function driveDoSearch(v) {
