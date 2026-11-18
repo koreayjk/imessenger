@@ -33041,7 +33041,14 @@ function certTabsHtml() {
 async function certLoadStudent(id) {
   certStudentId = id;
   const s = schoolStudents.find(x => x.id === id);
-  certPrefill = { name: s ? s.name : '', birth: (s && s.birth_date) || '', school:'', address: (s && s.address) || '' };
+  certPrefill = {
+    name: s ? s.name : '', birth: (s && s.birth_date) || '',
+    school:'', address: (s && s.address) || '',
+    //  입소일 — 생기부에 적힌 것을 먼저 쓰고, 없으면 프로필의 입학일.
+    //  (운영에서 재 보니 생기부 18명 · 프로필 4명이고 겹치는 사람은
+    //   없어서 부딪힐 일이 없습니다)
+    enroll: (s && s.enroll_date) ? String(s.enroll_date).slice(0, 10) : '',
+  };
   const { data } = await sb.from('tcs_records').select('section,data')
     .eq('student_id', id).in('section', ['personal','school']);
   (data||[]).forEach(r => {
@@ -33050,8 +33057,16 @@ async function certLoadStudent(id) {
       certPrefill.address = r.data?.address || certPrefill.address;
       if (r.data?.name_ko) certPrefill.name = r.data.name_ko;
     }
-    if (r.section === 'school')   { certPrefill.school = r.data?.school_name || ''; }
+    if (r.section === 'school') {
+      certPrefill.school = r.data?.school_name || '';
+      const en = String(r.data?.enroll_date || '').slice(0, 10);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(en)) certPrefill.enroll = en;
+    }
   });
+  //  ⚠️ 학생을 바꾸면 입소일도 따라 바뀌어야 합니다. 안 비우면 **앞 학생의
+  //     날짜가 그대로 남아** 다른 아이 증명서에 찍힙니다 (certAdmitDate 는
+  //     화면을 다시 그려도 살아 있는 값입니다).
+  certAdmitDate = certPrefill.enroll || '';
 }
 
 // 발급번호는 서버가 공동체·연도별 순번으로 매긴다.
@@ -33113,6 +33128,7 @@ function renderCert() {
         <label style="${lbl}" id="cert-admit-label">${t('입소일','Date of admission')}</label>
         <input id="cert-admit" type="date" value="${escAttr(certAdmitDate)}" oninput="certAdmitDate=this.value" style="${inp};width:100%;max-width:240px"/>
         <div style="font-size:11.5px;color:var(--ink3);margin-top:5px">${t('이 날짜가 증명서 문장에 들어갑니다.','This date appears in the certificate sentence.')}</div>
+        <div id="cert-admit-note" style="font-size:11.5px;margin-top:4px;color:var(--ink2)"></div>
       </div>
       <div id="cert-period-wrap" style="display:none;margin-bottom:14px">
         <label style="${lbl}">${t('납입 기간과 금액','Period and amount paid')}</label>
@@ -33378,7 +33394,19 @@ function certSyncType() {
   const dl = document.getElementById('cert-admit-label');
   if (dl && spec.dateLabel) dl.textContent = spec.dateLabel;
   const di = document.getElementById('cert-admit');
-  if (di && spec.needDate && !di.value) { di.value = attTodayStr(); certAdmitDate = di.value; }
+  if (di && spec.needDate && !di.value) {
+    //  생기부에 적힌 입소일이 있으면 그것을, 없으면 오늘을 띄운다
+    di.value = certPrefill.enroll || attTodayStr();
+    certAdmitDate = di.value;
+  }
+  //  어디서 온 날짜인지 알려 준다 — 모르고 오늘 날짜로 찍어 내보내면
+  //  입소일이 틀린 증명서가 나갑니다.
+  const dn = document.getElementById('cert-admit-note');
+  if (dn) dn.innerHTML = !spec.needDate ? ''
+    : (certPrefill.enroll
+        ? t('✅ 생기부에 적힌 입소일을 가져왔어요.', '✅ Filled from the student record.')
+        : t('ℹ️ 생기부에 입소일이 없어 <b>오늘 날짜</b>를 띄웠어요 — 맞는지 확인해 주세요.',
+            'ℹ️ No admission date in the record — today was filled in. Please check.'));
   //  지금 고른 종류가 어떤 양식으로 나가는지 알려 준다 — 모르고 찍으면
   //  기본 증서가 나간 줄도 모르고 대외에 내보냅니다.
   const fn = document.getElementById('cert-form-note');
