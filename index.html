@@ -19106,7 +19106,7 @@ async function viewCommunityMembers(communityId, communityName) {
             ${st === 'pending' ? `
               <button onclick="approveInCommunity('${m.id}','${communityId}','${escJs(communityName)}')" style="height:28px;padding:0 11px;border-radius:7px;border:none;background:#15803d;color:white;font:600 12px var(--font);cursor:pointer">✅ 승인</button>
               <button onclick="rejectInCommunity('${m.id}','${communityId}','${escJs(communityName)}')" style="height:28px;padding:0 11px;border-radius:7px;border:1.5px solid #fca5a5;background:white;color:#dc2626;font:600 12px var(--font);cursor:pointer">거절</button>` : ''}
-            ${m.community_role !== 'super_admin' ? `<button onclick="showMoveCommunityModal('${m.id}')" title="다른 공동체로 옮기기" style="height:28px;padding:0 10px;border-radius:7px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:600 12px var(--font);cursor:pointer">🏛️ 이동</button>` : ''}
+            ${(moveCanUse() && m.community_role !== 'super_admin' && !(m.community_role === 'vice_admin' && !isSuperAdmin())) ? `<button onclick="showMoveCommunityModal('${m.id}')" title="다른 공동체로 옮기기" style="height:28px;padding:0 10px;border-radius:7px;border:1.5px solid var(--border);background:white;color:var(--ink2);font:600 12px var(--font);cursor:pointer">🏛️ 이동</button>` : ''}
             <select onchange="changeMemberCommunityRole('${m.id}',this.value)" style="height:28px;padding:0 8px;border-radius:7px;border:1.5px solid var(--border);font:500 12px var(--font);color:var(--ink);background:white;cursor:pointer">
               <option value="student" ${m.community_role==='student'?'selected':''}>학생</option>
               <option value="parent" ${m.community_role==='parent'?'selected':''}>학부모</option>
@@ -19212,9 +19212,24 @@ function moveRemember(m) { if (m && m.id) _moveKnown[m.id] = m; }
 let _moveCommCache = null;
 async function moveLoadCommunities(force) {
   if (_moveCommCache && !force) return _moveCommCache;
-  const { data } = await sb.from('communities').select('id,name,color').order('name');
+  const { data } = await sb.from('communities').select('id,name,color,kind').order('name');
   _moveCommCache = data || [];
   return _moveCommCache;
+}
+
+// 옮기기를 할 수 있는 사람 — 총관리자, 그리고 부총관리자 (자기 묶음 안에서만)
+function moveCanUse() { return isSuperAdmin() || isViceAdmin(); }
+
+// 내 묶음 (부총관리자용). 총관리자는 묶음에 매이지 않는다.
+function moveMyKind(all) {
+  if (isSuperAdmin()) return null;
+  return commKind((all || []).find(c => c.id === (ME && ME.community_id)));
+}
+
+// 이 공동체로 옮길 수 있나
+function moveKindOk(c, all) {
+  const mine = moveMyKind(all);
+  return mine === null || commKind(c) === mine;
 }
 
 // DB 설치를 안 했을 때를 알아보기 쉽게
@@ -19276,6 +19291,8 @@ async function adminMemberSearch() {
       </div>
       ${isSuper
         ? `<span style="font-size:11px;color:var(--ink3);flex-shrink:0">${t('총관리자는 공동체 전환으로','Super admin — use Switch Community')}</span>`
+        : (r.community_role === 'vice_admin' && !isSuperAdmin())
+        ? `<span style="font-size:11px;color:var(--ink3);flex-shrink:0">${t('부총관리자는 총관리자만 옮깁니다','Only a super admin can move a vice admin')}</span>`
         : `<button class="adm-btn primary" style="flex-shrink:0"
              onclick="showMoveCommunityModal('${r.id}')">🏛️ ${t('공동체 이동','Move')}</button>`}
     </div>`;
@@ -19295,7 +19312,9 @@ async function showMoveCommunityModal(memberId) {
   const name    = m.name || '';
   const curCid  = m.community_id || '';
   const curName = m.community_name || (all.find(c => c.id === curCid) || {}).name || '';
-  const list = all.filter(c => c.id !== curCid);
+  // 부총관리자는 자기 묶음 안에서만 옮길 수 있다 — 서버도 같은 줄을 긋는다.
+  const list = all.filter(c => c.id !== curCid && moveKindOk(c, all));
+  const myKind = moveMyKind(all);
   document.getElementById('move-comm-modal')?.remove();
   const modal = document.createElement('div');
   modal.id = 'move-comm-modal';
@@ -19318,6 +19337,10 @@ async function showMoveCommunityModal(memberId) {
             <div style="font-size:14px;font-weight:600;color:var(--ink)">${escHtml(c.name||'')}</div>
           </div>`).join('')
         : `<div style="padding:24px;text-align:center;color:var(--ink3);font-size:13px">${t('옮길 수 있는 다른 공동체가 없어요','No other community to move to')}</div>`}
+        ${myKind ? `<div style="font-size:11.5px;color:var(--ink3);padding:10px 14px 2px;line-height:1.6;word-break:keep-all">
+          ${t('부총관리자는 맡으신 묶음 안에서만 옮길 수 있어요. 묶음을 넘는 이동(예: 국내 → 해외)은 총관리자에게 부탁하세요.',
+              'A vice admin can only move within their own group. Crossing groups needs a super admin.')}
+        </div>` : ''}
       </div>
       <div style="padding:12px 16px;border-top:1px solid var(--border)">
         <button onclick="document.getElementById('move-comm-modal').remove()"
@@ -19337,13 +19360,20 @@ async function doMoveCommunity(memberId, toCid) {
     { p_member_id: memberId, p_community_id: toCid, p_dry_run: true });
   if (e1) { showUploadToast('이동 실패: ' + moveErrText(e1)); return; }
 
-  const left = (pre && pre.leftovers) || {};
-  const leftLines = Object.keys(left).map(k => `· ${MOVE_TBL_KO[k] || k} ${left[k]}건`).join('\n');
+  const lines = o => Object.keys(o || {}).map(k => `· ${MOVE_TBL_KO[k] || k} ${o[k]}건`).join('\n');
+  const leftLines = lines(pre && pre.leftovers);
+  const readLines = lines(pre && pre.readable);
+  const settle    = (pre && pre.settle) || [];
+  const setLines  = settle.map(s =>
+    `· ${s.kind} ${allowMoney(Number(s.amount), s.currency)} → ${pre.to_community} 로`).join('\n');
+
   const msg =
     `${pre.member_name} 님을 옮깁니다.\n\n` +
     `${pre.from_community}  →  ${pre.to_community}\n\n` +
     `이전 공동체의 반·담임·채팅방·개인 시간표에서 빠집니다.\n` +
-    (leftLines ? `\n${pre.from_community} 에 남는 기록 (따라가지 않아요):\n${leftLines}\n` : '') +
+    (setLines  ? `\n💰 잔액을 자동으로 정산합니다 (${pre.from_community} 에서 빼고 ${pre.to_community} 에 넣습니다):\n${setLines}\n` : '') +
+    (readLines ? `\n📖 ${pre.to_community} 선생님이 읽을 수 있게 되는 기록 (옮겨지지는 않고, 읽기만):\n${readLines}\n` : '') +
+    (leftLines ? `\n🔒 ${pre.from_community} 에만 남는 기록 (${pre.to_community} 에서 안 보입니다):\n${leftLines}\n` : '') +
     `\n진행할까요?`;
   if (!confirm(msg)) return;
 
@@ -19354,7 +19384,11 @@ async function doMoveCommunity(memberId, toCid) {
 
   const un = (res && res.unlinked) || {};
   const unTxt = Object.keys(un).map(k => `${k.replace(/_/g,' ')} ${un[k]}건`).join(' · ');
-  showUploadToast(`✅ ${res.member_name} 님을 ${res.to_community} 로 옮겼어요${unTxt ? ' (' + unTxt + ' 정리)' : ''}`);
+  const stTxt = ((res && res.settle) || [])
+    .map(s => `${s.kind} ${allowMoney(Number(s.amount), s.currency)}`).join(' · ');
+  showUploadToast(`✅ ${res.member_name} 님을 ${res.to_community} 로 옮겼어요`
+    + (stTxt ? ` · 정산 ${stTxt}` : '')
+    + (unTxt ? ` · ${unTxt} 정리` : ''));
 
   // 보고 있던 화면을 다시 그린다
   const box = document.getElementById('mv-results');
@@ -19365,13 +19399,15 @@ async function doMoveCommunity(memberId, toCid) {
 
 // ── 멤버 관리 화면 맨 위에 붙는 찾기 카드 (총관리자만) ──
 function moveSearchCardHtml() {
-  if (!isSuperAdmin()) return '';
+  if (!moveCanUse()) return '';
   return `
   <div class="adm-card" style="margin-bottom:20px">
     <div style="font-size:14px;font-weight:700;margin-bottom:5px">🔎 ${t('사람 찾기 · 공동체 이동','Find a person · Move community')}</div>
     <div style="font-size:12px;color:var(--ink3);margin-bottom:12px;line-height:1.65;word-break:keep-all">
       ${t('어느 공동체에 있는지 몰라도 이름·이메일로 바로 찾습니다. 공동체를 아신다면 🏛️ 공동체 → 멤버 보기 에서도 옮길 수 있어요.',
           'Finds anyone by name or email, whichever community they are in. If you know the community, you can also move them from 🏛️ Communities → View members.')}
+      ${isViceAdmin() ? '<br>' + t('부총관리자는 맡으신 묶음 안에서만 옮길 수 있어요.',
+                                   'A vice admin can only move within their own group.') : ''}
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <input id="mv-q" class="adm-input" style="margin-bottom:0;flex:1 1 240px;min-width:0"
@@ -19702,7 +19738,7 @@ async function renderAdminMembers() {
             <option value="">${t('그룹 없음','No group')}</option>
             ${(tcsGroups||[]).map(g => `<option value="${g.id}" ${m.group_id===g.id?'selected':''}>${escHtml(g.name)}</option>`).join('')}
           </select>` : ''}
-          ${(isSuperAdmin() && !isGuestViewing() && m.community_role !== 'super_admin') ? `<button class="adm-btn ghost" title="${t('다른 공동체로 옮기기','Move to another community')}" onclick="showMoveCommunityModal('${m.id}')">🏛️</button>` : ''}
+          ${(moveCanUse() && !isGuestViewing() && m.community_role !== 'super_admin' && !(m.community_role === 'vice_admin' && !isSuperAdmin())) ? `<button class="adm-btn ghost" title="${t('다른 공동체로 옮기기','Move to another community')}" onclick="showMoveCommunityModal('${m.id}')">🏛️</button>` : ''}
           ${isGuestViewing()
               ? ''
               : m.community_role === 'super_admin'
@@ -19797,6 +19833,8 @@ const ROLE_CAPS = [
   { name:'같은 묶음 공동체의 가입 승인 · 거절 · 역할 바꾸기', roles:['vice_admin','super_admin'] },
   { name:'다른 공동체 수정 · 관리', roles:['super_admin'] },
   { name:'공동체 만들기 (부총관리자는 자기 묶음 안에서만)', roles:['vice_admin','super_admin'] },
+  { name:'멤버를 다른 공동체로 옮기기 (부총관리자는 자기 묶음 안에서만)', roles:['vice_admin','super_admin'] },
+  { name:'묶음을 넘는 이동 (예: 국내 ↔ 해외) · 부총관리자 옮기기', roles:['super_admin'] },
   { name:'공동체 지우기 · 종류 바꾸기', roles:['super_admin'] },
   { name:'전체 공용 자료실 폴더 (부총관리자는 자기 묶음 것만)', roles:['vice_admin','super_admin'] },
   { name:'총관리자·부총관리자 권한 부여', roles:['super_admin'] },

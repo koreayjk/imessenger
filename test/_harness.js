@@ -117,9 +117,18 @@ function dbScript() {
         //      like 를 모르면 '올린 이름 찾아오기' 가 통째로 걸러져 빈손이
         //      됩니다 (여기서 다른 시험 여섯 개를 깨고 알았습니다).
         (this._or || []).forEach(expr => {
+          //  ⚠️ 여기서 정규식을 쓰면 안 됩니다. 이 토막은 Node 의 템플릿
+          //     문자열 안에 들어가므로 역슬래시가 먹힙니다 — 전에 쓰던
+          //     /^([A-Za-z0-9_]+)\.([a-z]+)\.([\s\S]*)$/ 가 브라우저에서는
+          //     /^([A-Za-z0-9_]+).([a-z]+).([sS]*)$/ 로 들어가서, 'name.ilike.*유은*'
+          //     이 아예 안 맞고 terms 가 비었습니다. terms 가 비면 아래에서
+          //     return 해 버려서 **or 가 한 줄도 안 거르고 전부 통과**했습니다.
+          //     (조용히 통과하던 터라, 되돌려 봐도 ❌ 가 안 났습니다.)
+          //     점 두 개를 손으로 찾습니다.
           const terms = expr.split(',').map(x => x.trim()).filter(Boolean).map(x => {
-            const m = x.match(/^([A-Za-z0-9_]+)\.([a-z]+)\.([\s\S]*)$/);
-            return m ? { k:m[1], op:m[2], v:m[3] } : null;
+            const i = x.indexOf('.');            if (i < 1) return null;
+            const j = x.indexOf('.', i + 1);     if (j < 0) return null;
+            return { k: x.slice(0, i), op: x.slice(i + 1, j), v: x.slice(j + 1) };
           }).filter(Boolean);
           if (!terms.length) return;
           //  like/ilike — '*' 와 '%' 를 '아무 글자' 로 본다.
