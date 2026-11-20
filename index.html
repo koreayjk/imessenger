@@ -19807,7 +19807,11 @@ async function renderAdminMembers() {
 
 // ── 역할·권한 안내표 ──
 let rolesGuideOpen = false;
-function toggleRolesGuide() { rolesGuideOpen = !rolesGuideOpen; renderMembers(); }
+//  ⚠️ 전에는 renderMembers() 를 불렀습니다. 그건 **채팅 쪽 멤버 목록**이고,
+//     #member-list 가 없으면 아무것도 안 하고 돌아갑니다. 그래서 관리 ▸ 멤버에서
+//     「역할별 권한 안내」 를 눌러도 표가 열리지 않았습니다 (눌러도 조용히 무반응).
+//     이 안내는 renderAdminMembers() 가 그립니다.
+function toggleRolesGuide() { rolesGuideOpen = !rolesGuideOpen; renderAdminMembers(); }
 const ROLE_COLS = [
   { k:'student',        label:'학생' },
   { k:'parent',         label:'학부모' },
