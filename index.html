@@ -414,6 +414,29 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
 .trdet { max-width:860px; }
 .trvid { position:relative; padding-top:56.25%; border-radius:14px; overflow:hidden; background:#000; }
 .trvid iframe { position:absolute; inset:0; width:100%; height:100%; border:0; }
+
+/* ── 📺 사용법 강의 ──
+   번호 칸은 유튜브 섬네일을 쓰지 않습니다. 표지 슬라이드라 어차피
+   다 비슷하게 생겼고, 카드 열 개마다 바깥 그림을 받아 오면 망이
+   느린 곳에서 깨진 그림만 남기 때문입니다. */
+.glcard { display:block; width:100%; text-align:left; background:var(--surface); border:1px solid var(--border);
+          border-radius:14px; padding:0; overflow:hidden; font:inherit; color:inherit;
+          box-shadow:0 8px 20px -18px rgba(15,23,42,.5); transition:transform .12s var(--ease-out); }
+.glcard.on { cursor:pointer; }
+.glcard.on:hover { transform:translateY(-2px); }
+.glcard.off { opacity:.62; }
+.glnum { height:74px; display:flex; align-items:center; justify-content:space-between; padding:0 14px;
+         color:#fff; font:800 22px var(--font); letter-spacing:-.5px; }
+.glnum small { font:700 11.5px var(--font); opacity:.85; letter-spacing:0; }
+.glbody { padding:12px 14px 14px; }
+.gltitle { font:800 13.5px var(--font); color:var(--ink); line-height:1.4; }
+.glmeta { margin-top:3px; font:600 11.5px var(--font); color:var(--ink3); }
+.glone { margin-top:9px; padding:7px 10px; background:#fff8ec; border:1px solid #f0dfba;
+         border-left:3px solid #d9a441; border-radius:8px; font:700 11.5px var(--font); color:#7a5a16; line-height:1.45; }
+.glrow { display:flex; gap:9px; align-items:center; margin-bottom:8px; }
+.glrow b { flex:0 0 46px; font:800 12.5px var(--font); color:var(--ink2); }
+.glrow input { flex:1; min-width:0; height:34px; padding:0 10px; border:1px solid var(--border);
+                border-radius:8px; background:var(--surface); color:var(--ink); font:500 12.5px var(--font); }
 .trbook { display:flex; gap:16px; align-items:center; background:linear-gradient(135deg,#f3f0fb,#eef3f7);
           border:1px solid var(--border); border-radius:14px; padding:18px 20px; }
 .trlead { margin-top:14px; background:#fff8ec; border:1px solid #f0dfba; border-left:4px solid #d9a441; border-radius:12px; padding:11px 15px; }
@@ -24205,6 +24228,7 @@ const SCHOOL_TABS = [
   { id:'timetable',  icon:'🗓', label:t('시간표','Timetable'),        group:'class',   section:'school' },
   { id:'attendance', icon:'✅', label:t('출석부','Attendance'),       group:'class',   section:'school' },
   { id:'leave',      icon:'📝', label:t('출결 신청','Leave'),         group:'class',   section:'school' },
+  { id:'lecture',    icon:'📺', label:t('사용법 강의','Guide'),       group:'grow',    section:'ops' },
   { id:'training',   icon:'🎓', label:t('사역자 교육','Training'),    group:'grow',    section:'ops' },
   { id:'tuition',    icon:'💰', label:t('재정','Finance'),           group:'money',   section:'ops' },
   { id:'vehicle',    icon:'🚗', label:t('차량','Vehicles'),          group:'money',   section:'ops', admin:true },
@@ -24360,6 +24384,7 @@ function renderSchoolMain() {
   if (schoolSubMode === 'attendance') return renderAttendanceHub();
   if (schoolSubMode === 'leave')      return renderApprovalHub();
   if (schoolSubMode === 'timetable')  return renderTimetableHub();
+  if (schoolSubMode === 'lecture')    return renderLectureHub();
   if (schoolSubMode === 'training')   return renderTrainingHub();
   if (schoolSubMode === 'tuition')    return renderTuitionHub();
   if (schoolSubMode === 'vehicle')    return renderVehicleHub();
@@ -28505,6 +28530,263 @@ async function deleteVehCar(id){
   showUploadToast(t('지웠어요','Deleted'));
   vehSelId = null; vehCarDraft = null;
   await renderVehicleHub();
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  📺 사용법 강의 (운영관리 → 사용법 강의)
+//
+//  TCS 사용법 10강을 공동체 안에서 바로 보는 자리입니다.
+//  영상 자체는 유튜브에 있고, 여기는 **주소를 모아 둔 곳** 입니다.
+//
+//  왜 파일을 안 올리고 유튜브인가 —
+//   · 한 강이 50MB 쯤 됩니다. 미국·필리핀 공동체에서 파일을 통째로
+//     받게 하면 거기서 끊깁니다. 유튜브는 망이 느리면 화질을 낮춰 이어 줍니다.
+//   · 자막을 켜고 끌 수 있고, 배속으로 복습할 수 있고,
+//     보던 자리에서 이어 볼 수 있습니다. 선생님들이 한 번에 다 못 보십니다.
+//
+//  주소는 app_settings(앱 전체에 하나뿐인 설정)에 둡니다. 강의는 공동체마다
+//  다른 것이 아니라 **모두가 같은 열 개** 를 보기 때문입니다 — 트리플스쿨
+//  책 목록이 전 공동체 공용인 것과 같은 이유입니다.
+//  넣고 고치는 것은 총관리자만. app_settings 규칙이 이미 그렇게 되어 있어서
+//  **새로 설치할 표가 없습니다.** (db/자료실_전체공용폴더_DB설치.sql 에서 만든 표)
+// ════════════════════════════════════════════════════════════════════
+const GUIDE_KEY = 'guide_lecture_links';
+//  강의 목록 자체는 바뀌지 않는 것이라 코드에 둡니다. 바뀌는 것은 주소뿐입니다.
+//  one/en1 = 10강 마지막에 정리한 「꼭 기억할 한 가지」
+const GUIDE_LECTURES = [
+  { n:1,  c:'#1d3a5f', min:'16:08', slides:15,
+    ko:'공동체 가입 · 사역자 가입',        en:'Joining · staff signup',
+    one:'승인해야 들어옵니다',              en1:'Nobody joins until you approve' },
+  { n:2,  c:'#2f6f6a', min:'17:00', slides:15,
+    ko:'관리자 페이지 전체 설정',          en:'Admin page — full setup',
+    one:'역할이 보이는 것을 정합니다',       en1:'Roles decide what each person sees' },
+  { n:3,  c:'#6a48c0', min:'16:00', slides:14,
+    ko:'학생 등록과 증명서 세팅',          en:'Students & certificates',
+    one:'생년월일을 꼭 넣어 두세요',         en1:'Always fill in the date of birth' },
+  { n:4,  c:'#b9760a', min:'12:51', slides:13,
+    ko:'채팅창 개설과 운영',               en:'Chat rooms',
+    one:'교사실에 학생을 넣지 마세요',       en1:'Never put a student in the staff room' },
+  { n:5,  c:'#2a7a5a', min:'13:51', slides:14,
+    ko:'운영 — 예치금 · 학비 · 용돈',      en:'Deposits · tuition · allowance',
+    one:'맡아 둔 돈과 쓰라고 준 돈은 다릅니다', en1:'Money held is not money given' },
+  { n:6,  c:'#c0397b', min:'11:37', slides:13,
+    ko:'학부모 가입과 가정통신문',          en:'Parents & newsletters',
+    one:'부모님 화면은 가장 좁습니다',       en1:"The parent's screen is the narrowest" },
+  { n:7,  c:'#5b6675', min:'12:41', slides:14,
+    ko:'생활기록부와 일일기록',             en:'Student records & daily logs',
+    one:'매일 2~3분이 한 해를 만듭니다',     en1:'Two or three minutes a day makes the year' },
+  { n:8,  c:'#2f6f6a', min:'12:06', slides:14,
+    ko:'트리플스쿨 · 성구암송 · 활동후기',   en:'Triple School · Memory · Reviews',
+    one:'선생님이 먼저 목록을 넣어야 합니다', en1:'The teacher fills the list first' },
+  { n:9,  c:'#40506b', min:'10:47', slides:12,
+    ko:'매점과 용돈',                      en:'Store & allowance',
+    one:'매점 관리는 따로 열립니다',         en1:'Store management opens in its own window' },
+  { n:10, c:'#1d3a5f', min:'13:27', slides:15,
+    ko:'결재 · 노트 · 자료실 · 그 밖',      en:'Approvals · Notes · Drive',
+    one:'불편하면 개선창에 적어 주세요',      en1:'Tell us in the suggestion box' },
+];
+
+let guideLinks = null;   // { "1":"https://youtu.be/…", …, list:"재생목록 주소" }
+let guideSel   = null;   // 열어 본 강
+let guideEdit  = false;  // 주소 넣는 칸을 펼쳤나 (총관리자만)
+
+function guideParse(s) {
+  try { const o = JSON.parse(s || '{}'); return (o && typeof o === 'object' && !Array.isArray(o)) ? o : {}; }
+  catch (_) { return {}; }
+}
+function guideUrlOf(n)  { return String((guideLinks || {})[String(n)] || '').trim(); }
+function guideVidOf(n)  { return ytIdOf(guideUrlOf(n)); }
+function guideOne(L)    { return t(L.one, L.en1); }
+function guideTitle(L)  { return t(L.ko, L.en); }
+function guideReady()   { return GUIDE_LECTURES.filter(L => guideVidOf(L.n)).length; }
+
+async function renderLectureHub() {
+  const main = document.getElementById('school-main'); if (!main) return;
+  if (!guideLinks) {
+    main.innerHTML = `<div style="text-align:center;padding:40px;color:var(--ink3);font-size:13px">${t('불러오는 중...','Loading...')}</div>`;
+    try {
+      const { data } = await sb.from('app_settings').select('value').eq('key', GUIDE_KEY).maybeSingle();
+      guideLinks = guideParse(data && data.value);
+    } catch (_) {
+      //  주소를 못 읽어도 목록은 보여 줍니다 — 어느 강에 무엇이 있는지가 먼저입니다
+      guideLinks = {};
+    }
+  }
+  renderLectureMain();
+}
+
+function renderLectureMain() {
+  const main = document.getElementById('school-main'); if (!main) return;
+  if (guideSel && GUIDE_LECTURES.find(L => L.n === guideSel)) {
+    main.innerHTML = `<div class="pg">${guideDetailHtml(guideSel)}</div>`;
+    return;
+  }
+  guideSel = null;
+  main.innerHTML = `<div class="pg">${guideListHtml()}</div>`;
+}
+
+function openLecture(n) {
+  n = Number(n);
+  if (!guideVidOf(n)) { showUploadToast(t('이 강은 아직 주소가 없어요','No link for this one yet')); return; }
+  guideSel = n; guideEdit = false; renderLectureMain();
+  const m = document.getElementById('school-main'); if (m) m.scrollTop = 0;
+}
+function closeLecture() { guideSel = null; renderLectureMain(); }
+function toggleGuideEdit() { guideEdit = !guideEdit; renderLectureMain(); }
+
+// ── 목록 ──
+function guideListHtml() {
+  const ready = guideReady();
+  const list  = String((guideLinks || {}).list || '').trim();
+  const sup   = isSuperAdmin();
+  const cards = GUIDE_LECTURES.map(L => {
+    const on = !!guideVidOf(L.n);
+    const inner = `
+      <div class="glnum" style="background:${L.c}">
+        <span>${L.n}${t('강','')}</span>
+        <small>${on ? `${escHtml(L.min)} · ${L.slides}${t('장','p')}` : t('준비 중','Coming')}</small>
+      </div>
+      <div class="glbody">
+        <div class="gltitle">${escHtml(guideTitle(L))}</div>
+        <div class="glmeta">${on ? t('눌러서 보기','Tap to watch') : t('주소가 아직 없어요','No link yet')}</div>
+        <div class="glone">${escHtml(guideOne(L))}</div>
+      </div>`;
+    return on
+      ? `<button type="button" class="glcard on" data-gl="${L.n}" onclick="openLecture(${L.n})">${inner}</button>`
+      : `<div class="glcard off" data-gl="${L.n}">${inner}</div>`;
+  }).join('');
+
+  return `
+  <div class="pg-head" style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap">
+    <div>
+      <div style="font-size:18px;font-weight:800;color:var(--ink)">📺 ${t('사용법 강의','Guide videos')}</div>
+      <div style="font-size:12px;color:var(--ink3);margin-top:2px">
+        ${t('TCS 사용법 10강. 언제든 다시 보실 수 있어요','The ten TCS guide videos — watch any time')}
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      ${list ? `<a href="${escHtml(list)}" target="_blank" rel="noopener noreferrer"
+          style="height:32px;display:inline-flex;align-items:center;padding:0 14px;border-radius:8px;text-decoration:none;
+                 background:#1d3a5f;color:#fff;font:700 12.5px var(--font)">▶ ${t('재생목록 열기','Open playlist')}</a>` : ''}
+      ${sup ? `<button onclick="toggleGuideEdit()"
+          style="height:32px;padding:0 14px;border:1px solid var(--border);border-radius:8px;cursor:pointer;
+                 background:var(--surface);color:var(--ink2);font:700 12.5px var(--font)">🔗 ${t('주소 넣기','Links')}</button>` : ''}
+    </div>
+  </div>
+  ${guideEdit && sup ? guideEditHtml() : ''}
+  ${ready === 0 && !guideEdit ? `
+    <div style="background:#fff8ec;border:1px solid #f0dfba;border-left:4px solid #d9a441;border-radius:12px;padding:12px 15px;margin-bottom:14px;font-size:12.5px;color:#7a5a16;line-height:1.6">
+      ${sup
+        ? t('아직 주소가 하나도 없어요. 오른쪽 위 <b>🔗 주소 넣기</b> 에서 유튜브 주소를 넣어 주세요.',
+            'No links yet. Use <b>🔗 Links</b> at the top right to paste the YouTube URLs.')
+        : t('강의 영상이 아직 올라오지 않았어요. 총관리자가 주소를 넣으면 여기서 바로 보실 수 있어요.',
+            'The videos are not up yet. Once the super admin adds the links they will play here.')}
+    </div>` : ''}
+  <div class="pg-grid pg-grid-sm">${cards}</div>
+  <div style="margin-top:16px;font-size:12px;color:var(--ink3);line-height:1.7">
+    ${t('강의 자료(슬라이드·자막)는 <b>자료실</b> 에 있습니다.','Slides and subtitles are in the <b>Drive</b> tab.')}
+    ${ready ? t(`전체 ${GUIDE_LECTURES.length}강 중 ${ready}강이 올라와 있어요.`,
+                `${ready} of ${GUIDE_LECTURES.length} are up.`) : ''}
+  </div>`;
+}
+
+// ── 한 강 보기 ──
+function guideDetailHtml(n) {
+  const L = GUIDE_LECTURES.find(x => x.n === n); if (!L) return '';
+  const vid  = guideVidOf(n);
+  const prev = GUIDE_LECTURES.find(x => x.n === n - 1 && guideVidOf(x.n));
+  const next = GUIDE_LECTURES.find(x => x.n === n + 1 && guideVidOf(x.n));
+  const navBtn = (x, label) => x
+    ? `<button onclick="openLecture(${x.n})"
+         style="height:34px;padding:0 14px;border:1px solid var(--border);border-radius:9px;cursor:pointer;
+                background:var(--surface);color:var(--ink2);font:700 12.5px var(--font)">${label}</button>` : '';
+  return `
+  <div class="pg-head">
+    <button onclick="closeLecture()"
+      style="height:32px;padding:0 13px;border:1px solid var(--border);border-radius:9px;cursor:pointer;
+             background:var(--surface);color:var(--ink2);font:700 12.5px var(--font);margin-bottom:10px">← ${t('강의 목록','All videos')}</button>
+    <div style="font-size:18px;font-weight:800;color:var(--ink)">${L.n}${t('강','')} · ${escHtml(guideTitle(L))}</div>
+    <div style="font-size:12px;color:var(--ink3);margin-top:2px">${escHtml(L.min)} · ${L.slides}${t('장','pages')}</div>
+  </div>
+  <div style="max-width:980px">
+    ${vid ? `<div class="trvid"><iframe src="https://www.youtube-nocookie.com/embed/${escHtml(vid)}" title="${escHtml(guideTitle(L))}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe></div>` : ''}
+    <div class="glone" style="margin-top:14px;font-size:13px">
+      ${t('꼭 기억할 한 가지','The one thing to remember')} — ${escHtml(guideOne(L))}
+    </div>
+    <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
+      ${navBtn(prev, '← ' + (prev ? `${prev.n}${t('강','')}` : ''))}
+      ${navBtn(next, (next ? `${next.n}${t('강','')}` : '') + ' →')}
+      <a href="${escHtml(guideUrlOf(n))}" target="_blank" rel="noopener noreferrer"
+         style="height:34px;display:inline-flex;align-items:center;padding:0 14px;border:1px solid var(--border);
+                border-radius:9px;text-decoration:none;background:var(--surface);color:var(--ink2);font:700 12.5px var(--font)">
+        ${t('유튜브에서 보기','Open on YouTube')} ↗</a>
+    </div>
+  </div>`;
+}
+
+// ── 주소 넣기 (총관리자만) ──
+function guideEditHtml() {
+  const rows = GUIDE_LECTURES.map(L => `
+    <div class="glrow">
+      <b>${L.n}${t('강','')}</b>
+      <input id="gl-in-${L.n}" type="url" placeholder="https://youtu.be/…"
+             value="${escHtml(guideUrlOf(L.n))}" />
+    </div>`).join('');
+  return `
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin-bottom:16px">
+    <div style="font:800 13.5px var(--font);color:var(--ink);margin-bottom:4px">🔗 ${t('유튜브 주소 넣기','Paste the YouTube links')}</div>
+    <div style="font-size:12px;color:var(--ink3);line-height:1.65;margin-bottom:13px">
+      ${t('유튜브에 <b>미등록</b> 으로 올리고 주소를 그대로 붙여 넣으세요. 공개 범위를 미등록으로 두면 검색에는 안 뜨고, 여기 들어온 분만 보십니다.',
+          'Upload to YouTube as <b>Unlisted</b> and paste the URLs here. Unlisted videos are not searchable.')}<br>
+      ${t('넣은 주소는 <b>모든 공동체</b> 가 함께 봅니다. 총관리자만 고칠 수 있어요.',
+          'These links are shared by <b>every community</b>. Only a super admin can change them.')}
+    </div>
+    ${rows}
+    <div class="glrow" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+      <b style="flex-basis:46px">${t('목록','List')}</b>
+      <input id="gl-in-list" type="url" placeholder="${t('재생목록 주소 (선택)','Playlist URL (optional)')}"
+             value="${escHtml(String((guideLinks || {}).list || ''))}" />
+    </div>
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button onclick="saveGuideLinks()"
+        style="height:34px;padding:0 16px;border:none;border-radius:9px;cursor:pointer;background:#1d3a5f;color:#fff;font:700 12.5px var(--font)">
+        ${t('저장','Save')}</button>
+      <button onclick="toggleGuideEdit()"
+        style="height:34px;padding:0 14px;border:1px solid var(--border);border-radius:9px;cursor:pointer;background:var(--surface);color:var(--ink2);font:700 12.5px var(--font)">
+        ${t('닫기','Close')}</button>
+    </div>
+  </div>`;
+}
+
+async function saveGuideLinks() {
+  if (!isSuperAdmin()) { showUploadToast(t('총관리자만 넣을 수 있어요','Super admin only')); return; }
+  const next = {};
+  GUIDE_LECTURES.forEach(L => {
+    const el = document.getElementById('gl-in-' + L.n);
+    const v = String(el ? el.value : '').trim();
+    if (v) next[String(L.n)] = v;
+  });
+  const pl = document.getElementById('gl-in-list');
+  const plv = String(pl ? pl.value : '').trim();
+  if (plv) next.list = plv;
+  //  유튜브 주소처럼 안 생긴 것은 미리 말해 줍니다 — 저장해 놓고 안 열리는 것보다 낫습니다
+  const bad = GUIDE_LECTURES.filter(L => next[String(L.n)] && !ytIdOf(next[String(L.n)]));
+  if (bad.length && !confirm(
+      `${bad.map(L => L.n + '강').join(', ')} ${t('는 유튜브 주소로 안 보여요. 그래도 저장할까요?','does not look like a YouTube URL. Save anyway?')}`)) return;
+  const { data, error } = await sb.from('app_settings')
+    .upsert({ key: GUIDE_KEY, value: JSON.stringify(next) }, { onConflict: 'key' })
+    .select('key');
+  if (error) {
+    showUploadToast(/app_settings/.test(error.message || '')
+      ? t('db/자료실_전체공용폴더_DB설치.sql 을 먼저 실행해주세요','Run db/자료실_전체공용폴더_DB설치.sql first')
+      : t('저장 실패: ','Save failed: ') + error.message);
+    return;
+  }
+  //  0건이면 규칙(RLS)에 막힌 것 — 조용히 넘어가면 '저장됐다' 고 거짓말이 됩니다
+  if (!data || !data.length) { showUploadToast(t('저장 권한이 없어요 (총관리자만)','No permission (super admin only)')); return; }
+  guideLinks = next; guideEdit = false;
+  showUploadToast(t('✅ 강의 주소를 저장했어요','✅ Saved'));
+  renderLectureMain();
 }
 
 // ════════════════════════════════════════════════════════════════════
