@@ -49,8 +49,9 @@ begin
   return new;
 end $$;
 
-drop trigger if exists prayers_guard_edit_trg on public.prayers;
-create trigger prayers_guard_edit_trg
+--  ⚠️ drop 대신 create or replace 를 씁니다 (PostgreSQL 14+).
+--     여러 번 돌려도 방아쇠가 하나로 유지됩니다.
+create or replace trigger prayers_guard_edit_trg
   before update on public.prayers
   for each row execute function public.prayers_guard_edit();
 
