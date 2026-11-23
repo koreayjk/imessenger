@@ -10037,6 +10037,7 @@ async function loadPrayers() {
 // ══════════════════════════════════════════════════════════════════
 let prayerCmts = {};          // prayer_id → 댓글 줄
 let prayerCmtOpen = {};       // 펼쳐 둔 기도제목
+let prayerEditId = null;      // 지금 고쳐 쓰고 있는 기도제목 (개선창 · 김연정)
 let prayerCmtMissing = false;
 
 async function loadPrayerComments() {
@@ -10197,12 +10198,15 @@ function renderPrayerContent() {
         <div style="width:32px;height:32px;border-radius:10px;background:${colors[i%colors.length]};color:white;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600">${escHtml((p.member_name||'?')[0])}</div>
         <div><div style="font-size:13.5px;font-weight:600">${escHtml(p.member_name||'')}</div><div style="font-size:11.5px;color:var(--ink3)">${escHtml(prayerScopeLabel(p.scope))} · ${new Date(p.created_at).toLocaleDateString(APP_LANG === 'en' ? 'en-US' : 'ko-KR')}</div></div>
       </div>
+      ${prayerEditId === p.id ? prayerEditHtml(p) : `
       <h4>${escHtml(p.title||'')}</h4>
-      <p>${escHtml(p.body||'')}</p>
+      <p>${escHtml(p.body||'')}</p>`}
       <div class="pray-btn">
         <div style="font-size:12.5px;color:var(--ink2)"><b style="color:var(--ink);font-weight:600" id="cnt-${p.id}">${prayerCountLabel(p.prayer_count||0)}</b> ${t('함께 기도 중','praying together')}</div>
         <div style="display:flex;align-items:center;gap:8px">
-          ${(p.member_id === ME.id || isCommunityAdmin()) ? `<button onclick="deletePrayer('${p.id}')" title="${t('지우기','Delete')}"
+          ${p.member_id === ME.id && prayerEditId !== p.id ? `<button onclick="startEditPrayer('${p.id}')" title="${escAttr(t('고치기','Edit'))}"
+            style="border:none;background:transparent;cursor:pointer;color:var(--ink3);font-size:13px;padding:4px 6px">✏️</button>` : ''}
+          ${(p.member_id === ME.id || isCommunityAdmin()) ? `<button onclick="deletePrayer('${p.id}')" title="${escAttr(t('지우기','Delete'))}"
             style="border:none;background:transparent;cursor:pointer;color:var(--ink3);font-size:13px;padding:4px 6px">🗑</button>` : ''}
           <div class="pray-action${prayerJoined[p.id]?' joined':''}" onclick="togglePrayer('${p.id}',${p.prayer_count||0})" id="pbtn-${p.id}">
             ${prayerJoined[p.id] ? t('✓ 함께 기도 중','✓ Praying') : t('🙏 함께 기도','🙏 Pray with them')}
@@ -10258,9 +10262,83 @@ async function showPrayerForm() {
   setTimeout(() => initImusaRealtime(), 100);
 }
 
+//  ⚠️ el.closest('div') 는 **자기 자신** 이었습니다 (칩이 div 이므로).
+//     그래서 그 안을 아무리 뒤져도 다른 칩이 안 나오고, 먼저 골라 둔 칩이
+//     꺼지지 않았습니다. 고른 칩이 둘이 되는데 submitPrayer() 는
+//     querySelector('[data-selected]') 로 **첫 번째** 를 읽으므로 늘 '전체'
+//     가 나갔습니다 — 한 그룹에게만 나누려고 골라도 공동체 전체에
+//     올라갔습니다. 칩을 담은 **칸** 에서 찾습니다.
 function selectScope(el, scope) {
-  el.closest('div').querySelectorAll('[data-scope]').forEach(x => { x.style.background='var(--s3)'; x.style.color='var(--ink2)'; delete x.dataset.selected; });
+  const box = el.parentElement || el;
+  box.querySelectorAll('[data-scope]').forEach(x => { x.style.background='var(--s3)'; x.style.color='var(--ink2)'; delete x.dataset.selected; });
   el.style.background = 'var(--sage)'; el.style.color = 'white'; el.dataset.selected = '1';
+}
+
+// ── 올린 글 고치기 (개선창 · 김연정, 프로토스 11/16) ──
+//   「수정 가능하도록」. 올린 사람 본인만입니다 — 관리자는 지울 수는 있어도
+//   남이 쓴 기도의 말을 바꾸지는 않는 편이 맞습니다.
+//
+//   ⚠️ 표의 UPDATE 규칙은 지금 「같은 공동체면 누구나」 입니다. 「함께 기도」
+//      숫자(prayer_count)를 올리려고 같은 행을 고치기 때문입니다. 그래서
+//      **서버는 남의 글 고치기도 막지 않습니다.** 화면에서만 본인으로 좁혀
+//      둔 상태이니, db/기도제목_본인만고치기.sql 로 서버도 잠가야 합니다.
+function prayerEditHtml(p) {
+  const scopes = ['전체'].concat((tcsGroups || []).map(g => g.name));
+  const now = String(p.scope || '전체');
+  const chips = scopes.map(s => {
+    const on = s === now;
+    return `<div onclick="selectScope(this,'${escJs(s)}')" data-scope="${escAttr(s)}"
+      ${on ? 'data-selected="1"' : ''}
+      style="height:28px;padding:0 12px;border-radius:999px;font-size:12px;display:flex;align-items:center;cursor:pointer;background:${on?'var(--sage)':'var(--s3)'};color:${on?'white':'var(--ink2)'}">${escHtml(prayerScopeLabel(s))}</div>`;
+  }).join('');
+  return `
+    <input id="pe-title-${p.id}" value="${escAttr(p.title || '')}" placeholder="${escAttr(t('제목','Title'))}"
+      style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font:14px var(--font);outline:none;margin-bottom:8px"/>
+    <textarea id="pe-body-${p.id}" rows="4" placeholder="${escAttr(t('기도 내용을 나눠주세요...','Share what you would like prayer for...'))}"
+      style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font:14px var(--font);outline:none;resize:vertical;margin-bottom:8px">${escHtml(p.body || '')}</textarea>
+    <div id="pe-scope-${p.id}" style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">${chips}</div>
+    <div style="display:flex;gap:8px;margin-bottom:4px">
+      <div onclick="cancelEditPrayer()" style="flex:1;height:36px;border-radius:11px;display:flex;align-items:center;justify-content:center;background:var(--s3);font-size:13px;color:var(--ink2);cursor:pointer">${t('취소','Cancel')}</div>
+      <div onclick="saveEditPrayer('${p.id}')" style="flex:2;height:36px;border-radius:11px;display:flex;align-items:center;justify-content:center;background:var(--sage);color:white;font-size:13px;font-weight:600;cursor:pointer">${t('저장','Save')}</div>
+    </div>`;
+}
+
+async function startEditPrayer(id) {
+  const p = prayers.find(x => x.id === id);
+  if (!p) return;
+  if (p.member_id !== ME.id) { showUploadToast(t('내가 올린 것만 고칠 수 있어요','You can only edit your own')); return; }
+  //  범위 칩에 쓸 그룹 이름 (아직 안 읽었으면 지금)
+  if (!tcsGroups.length) { try { await loadStudentGroups(); } catch (_) {} }
+  prayerEditId = id;
+  renderPrayerContent();
+  const ta = document.getElementById('pe-body-' + id);
+  if (ta) { try { ta.focus(); } catch (_) {} }
+}
+
+function cancelEditPrayer() { prayerEditId = null; renderPrayerContent(); }
+
+async function saveEditPrayer(id) {
+  const p = prayers.find(x => x.id === id);
+  if (!p) return;
+  if (p.member_id !== ME.id) { showUploadToast(t('내가 올린 것만 고칠 수 있어요','You can only edit your own')); return; }
+  const tEl = document.getElementById('pe-title-' + id);
+  const bEl = document.getElementById('pe-body-' + id);
+  const sEl = document.getElementById('pe-scope-' + id);
+  const title = String(tEl ? tEl.value : '').trim();
+  const body  = String(bEl ? bEl.value : '').trim();
+  const sel   = sEl ? sEl.querySelector('[data-selected="1"]') : null;
+  const scope = sel ? sel.dataset.scope : (p.scope || '전체');
+  if (!title) { showUploadToast(t('제목을 적어주세요','Please add a title')); return; }
+  const { data, error } = await sb.from('prayers')
+    .update({ title, body, scope }).eq('id', id).select('id');
+  if (error) { showUploadToast(t('저장 실패: ','Save failed: ') + error.message); return; }
+  //  규칙(RLS)에 막히면 오류 없이 0건으로 끝난다 — 조용히 넘어가면 거짓말이 된다
+  if (!data || !data.length) { showUploadToast(t('고칠 권한이 없어요','No permission to edit')); return; }
+  p.title = title; p.body = body; p.scope = scope;
+  prayerEditId = null;
+  showUploadToast(t('고쳤어요','Saved'));
+  renderPrayerContent();
+  try { renderPrayerPanel(); } catch (_) {}
 }
 
 // 올린 사람과 관리자만. 규칙(RLS)에 막히면 오류 없이 0건으로 끝나므로
