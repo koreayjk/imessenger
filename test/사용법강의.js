@@ -13,7 +13,8 @@
 //   ⑥ 규칙(RLS)에 막혀 0건이면 **저장했다고 거짓말하지 않나**
 const { launch, openApp, ok, done } = require('./_harness');
 
-const U1  = 'https://youtu.be/aaaaaaaaaaa';
+//  주소는 세 가지를 받습니다 — 드라이브에 올린 파일(권장) · mp4 파일 주소 · 유튜브
+const U1  = 'https://drive.google.com/file/d/1AbCdEfGhIjKlMnOpQrStUvWxYz/view?usp=sharing';
 const U5  = 'https://www.youtube.com/watch?v=bbbbbbbbbbb';
 const PLS = 'https://www.youtube.com/playlist?list=PLxxxx';
 
@@ -126,6 +127,19 @@ console.log('\n④ 1강·5강만 넣었을 때');
   ok(/맡아 둔 돈과 쓰라고 준 돈은 다릅니다/.test(d.txt), '5강의 한 가지가 같이 보인다');
   ok(/4강/.test(d.txt) === false, '주소 없는 4강으로는 이어지지 않는다');
 
+  //  드라이브에 올린 파일 — 그쪽 재생기(/preview)로 끼워야 한다.
+  //  /view 주소를 그대로 iframe 에 넣으면 구글이 거절해서 빈 칸만 남는다.
+  const dr = await pg.evaluate(() => {
+    openLecture(1);
+    const el = document.getElementById('school-main');
+    const f = el.querySelector('iframe');
+    return { src: f && f.getAttribute('src'), txt: el.innerText, kind: guidePlayOf(1).kind };
+  });
+  ok(dr.kind === 'drive', '드라이브 주소를 드라이브로 알아본다', dr.kind);
+  ok(/drive\.google\.com\/file\/d\/1AbCdEfGhIjKlMnOpQrStUvWxYz\/preview$/.test(dr.src || ''),
+     '/view 가 아니라 /preview 로 바꿔 끼운다', dr.src);
+  ok(/드라이브에서 보기/.test(dr.txt), '바깥으로 여는 단추가 「드라이브에서 보기」 다');
+
   //  주소 없는 강은 눌러도 안 열린다
   const bad = await pg.evaluate(() => {
     guideSel = null; renderLectureMain();
@@ -135,6 +149,33 @@ console.log('\n④ 1강·5강만 넣었을 때');
   });
   ok(bad.sel === null, '주소 없는 강은 열리지 않는다', bad.sel);
   ok(/아직 주소가 없어요/.test(bad.toast), '왜 안 열리는지 말해 준다', bad.toast);
+  await pg.close();
+}
+
+// ── ④-2 mp4 파일 주소는 <video> 로 바로 튼다 ─────────────────
+console.log('\n④-2 파일(mp4) 주소');
+{
+  const pg = await setup(b, 'community_admin', {
+    '2': 'https://example.com/강의/TCS_2강.mp4',
+    '3': '1ZzZzZzZzZzZzZzZzZzZzZzZzZ',          // 주소 없이 드라이브 파일 id 만
+    '6': '그냥 글자',                             // 주소가 아닌 것
+  });
+  const r = await pg.evaluate(async () => {
+    await renderLectureHub();
+    const kinds = [2,3,6].map(n => { const p = guidePlayOf(n); return p ? p.kind : 'none'; });
+    openLecture(2);
+    const el = document.getElementById('school-main');
+    const v = el.querySelector('video');
+    return { kinds, src: v && v.getAttribute('src'), ctrl: !!(v && v.hasAttribute('controls')),
+             iframe: !!el.querySelector('iframe'), txt: el.innerText };
+  });
+  ok(r.kinds[0] === 'file',  'mp4 주소는 파일로 본다',            r.kinds.join(','));
+  ok(r.kinds[1] === 'drive', '드라이브 파일 id 만 넣어도 받는다',  r.kinds.join(','));
+  ok(r.kinds[2] === 'none',  '주소가 아닌 글자는 안 받는다',       r.kinds.join(','));
+  ok(r.src === 'https://example.com/강의/TCS_2강.mp4', '<video> 가 그 파일을 가리킨다', r.src);
+  ok(r.ctrl, '멈추고 돌릴 수 있게 controls 를 붙인다');
+  ok(!r.iframe, '파일일 때는 iframe 을 쓰지 않는다');
+  ok(/새 창에서 보기/.test(r.txt), '바깥으로 여는 단추가 「새 창에서 보기」 다');
   await pg.close();
 }
 
