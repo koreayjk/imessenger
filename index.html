@@ -1423,7 +1423,7 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
       <span data-ko="자료실" data-en="Files">자료실</span>
     </div>
-    <div class="sb-btn" id="sb-improve" onclick="setMode('improve')" title="개선창">
+    <div class="sb-btn" id="sb-improve" onclick="setMode('improve')" title="개선창" style="display:none">
       <span style="font-size:21px">💡</span>
       <span>개선창</span>
     </div>
@@ -4352,6 +4352,16 @@ function canDmMember(m) {
 function canAccessSchool() {
   return ME && ['super_admin','community_admin','admin_officer','teacher','staff','vice_admin'].includes(ME.community_role);
 }
+//  개선창 — 간사 이상만 봅니다. 학생·학부모는 들어오지 않습니다.
+//  ⚠️ 2026-11-25 선교사님 지시로 좁혔습니다. 전에는 모두가 보고 쓸 수 있었습니다.
+//     여기만 고치면 안 됩니다 — 표의 규칙(RLS)도 같이 좁혀 둡니다
+//     (db/개선창_간사이상만_DB설치.sql). 화면만 가리면 화면을 거치지
+//     않고 부를 때 그대로 열립니다.
+function canUseImprove() {
+  return !!ME && ['super_admin','vice_admin','community_admin','admin_officer','teacher','staff']
+    .includes(ME.community_role);
+}
+
 // 학비·가정통신문·증명서 — 행정담당자 + 관리자/총관리자만
 function canSeeAdminModules() {
   return ME && ['super_admin','community_admin','admin_officer','vice_admin'].includes(ME.community_role);
@@ -4605,6 +4615,9 @@ function enterApp() {
   // 전자결재 버튼: 교사·간사·관리자만
   const sbAppr = document.getElementById('sb-approval');
   if (sbAppr) sbAppr.style.display = canAccessSchool() ? 'flex' : 'none';
+  // 개선창 버튼: 간사 이상만 (학생·학부모에게는 안 보입니다)
+  const sbImp = document.getElementById('sb-improve');
+  if (sbImp) sbImp.style.display = canUseImprove() ? 'flex' : 'none';
   // 단독 Triple School 버튼은 숨김 — TCS 하위 탭으로 접근
   const sbReading = document.getElementById('sb-reading');
   if (sbReading) sbReading.style.display = 'none';
@@ -4726,7 +4739,7 @@ function moreMenuItems() {
   if (canOpenAdmin()) items.push({ icon:'⚙️', label:t('관리','Admin'), act:"setMode('admin')" });
   if (!isParent()) items.push({ icon:'📜', label:t('성구암송','Memory'), act:"setMode('memory')" });
   items.push({ icon:'📝', label:t('IM노트','IM Notes'), act:"setMode('note')" });
-  items.push({ icon:'💡', label:t('개선창','Ideas'), act:"setMode('improve')" });
+  if (canUseImprove()) items.push({ icon:'💡', label:t('개선창','Ideas'), act:"setMode('improve')" });
   items.push({ icon:'👤', label:t('내 프로필','My Profile'), act:"setMode('profile')" });
   items.push({ icon:'🚪', label:t('로그아웃','Log out'), act:"doLogout()", danger:true });
   return items;
@@ -5124,6 +5137,9 @@ function setMode(m, opts) {
   // 권한 없는 화면은 홈으로 — 새로고침 복원이나 공동체 전환으로
   // 예전 화면이 남아 있을 때 (부총관리자가 남의 공동체를 볼 때 포함)
   if (m === 'admin' && !canOpenAdmin()) m = 'home';
+  //  개선창은 간사 이상만. 사이드바에는 안 보이지만 새로고침 복원
+  //  (sessionStorage 의 last_mode)으로 들어올 수 있어 여기서도 막습니다.
+  if (m === 'improve' && !canUseImprove()) m = 'home';
   // 학부모는 학생 개인 화면에 들어갈 일이 없다 — '내 아이' 로 보낸다.
   // (사이드바에는 안 보이지만 새로고침 복원으로 들어올 수 있다)
   if (isParent() && ['tcs','mock','gishome','allowance','deposit','mytt','leave',
@@ -10503,7 +10519,7 @@ const HOME_LINKS = [
   { m:'prayer',    i:'🙏', ko:'기도제목', en:'Prayer' },
   { m:'note',      i:'📝', ko:'노트',     en:'Notes' },
   { m:'drive',     i:'📁', ko:'자료실',   en:'Files' },
-  { m:'improve',   i:'💡', ko:'개선창',   en:'Ideas' },
+  { m:'improve',   i:'💡', ko:'개선창',   en:'Ideas',    can:() => canUseImprove() },
   { m:'allowance', i:'🐷', ko:'용돈기입장', en:'Allowance' },
   { m:'school',    i:'🎓', ko:'학사관리', en:'School',   can:() => canAccessSchool() },
   { m:'tcs',       i:'📄', ko:'생기부',   en:'Records',  can:() => isTeacher() },
@@ -19954,7 +19970,8 @@ const ROLE_COLS = [
 // 부총관리자의 ✓ 는 '자기 소속 공동체에서' 라는 뜻이다. 표 아래에 적어 둔다.
 const ROLE_CAPS = [
   { name:'채팅 · 일정 · 홈 · 기도제목', roles:['student','parent','staff','teacher','admin_officer','community_admin','vice_admin','super_admin'] },
-  { name:'노트 · 자료실 · 개선창', roles:['student','parent','staff','teacher','admin_officer','community_admin','vice_admin','super_admin'] },
+  { name:'노트 · 자료실', roles:['student','parent','staff','teacher','admin_officer','community_admin','vice_admin','super_admin'] },
+  { name:'개선창', roles:['staff','teacher','admin_officer','community_admin','vice_admin','super_admin'] },
   { name:'👨‍👩‍👧 내 아이 — 주간 피드백 · 예치금 · 용돈 · 매점 · 학비 · 서류 신청', roles:['parent'] },
   { name:'내 생기부 · 트리플스쿨 독서(본인 기록)', roles:['student','staff'] },
   { name:'학사관리 — 학생·출석부·시간표·생기부 작성', roles:['staff','teacher','admin_officer','community_admin','vice_admin','super_admin'] },
@@ -36063,6 +36080,15 @@ let myCommunityName = null;
 
 async function initImprovePage() {
   const page = document.getElementById('improve-main');
+  //  ⚠️ setMode() 에서 이미 막지만, 이 함수를 바로 부를 수도 있어 한 번 더 봅니다.
+  //     표도 막혀 있으니 여기까지 와도 글은 안 읽힙니다.
+  if (!canUseImprove()) {
+    page.innerHTML = `<div style="max-width:420px;margin:60px auto;text-align:center">
+      <div style="font-size:38px">🔒</div>
+      <div style="font-size:15px;font-weight:700;margin:10px 0 6px;color:var(--ink)">${t('개선창은 간사 이상만 볼 수 있어요','Only staff and above can open the ideas board')}</div>
+      <div style="font-size:13px;color:var(--ink3);line-height:1.7">${t('고치고 싶은 것이 있으면 선생님께 말해 주세요.','If something needs fixing, please tell a teacher.')}</div></div>`;
+    return;
+  }
   page.innerHTML = `<div style="text-align:center;padding:40px;color:var(--ink3);font-size:13px">${t('불러오는 중...','Loading...')}</div>`;
   try {
     const { data: items, error } = await sb.from('improvements').select('*').order('created_at', { ascending:false });
