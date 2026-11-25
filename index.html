@@ -19775,6 +19775,11 @@ async function renderAdminMembers() {
   // 총관리자: 승인된 멤버 중에서는 교사/관리자만, pending/rejected는 전부 표시
   const pending  = list.filter(m => m.status === 'pending');
   const rejected = list.filter(m => m.status === 'rejected');
+  //  탈퇴(소프트)한 멤버. 표에서 지우지 않고 status 만 'removed' 로 바꿉니다.
+  //  ⚠️ 그래서 **그 메일로는 다시 가입이 안 됩니다** (계정이 아직 살아 있어서).
+  //     개선창 · grace (아임홈스쿨러, 11/14) 가 막힌 곳이 여기입니다.
+  //     다시 가입시키는 게 아니라 되살리는 것이 맞는 답이라 단추를 답니다.
+  const removed  = list.filter(m => m.status === 'removed');
   // 관리자·총관리자 모두 현재 공동체의 전체 멤버(학생 포함) 표시
   const approved = list.filter(m => (m.status === 'approved' || !m.status));
 
@@ -19906,6 +19911,23 @@ async function renderAdminMembers() {
         </div>
         <button class="adm-btn sage" onclick="approveMember('${m.id}')">${t('재승인','Re-approve')}</button>
         <button class="adm-btn danger" onclick="deleteMember('${escJs(m.id)}','${escJs(m.name || '')}')">${t('삭제','Delete')}</button>
+      </div>`).join('')}
+    </div>` : ''}
+
+    ${(removed.length && !isGuestViewing()) ? `
+    <div class="adm-card" style="padding:0;overflow:hidden;opacity:.6;margin-top:16px">
+      <div style="padding:12px 20px;border-bottom:1px solid var(--bs)">
+        <div style="font-size:12px;font-weight:600;color:var(--ink3)">${t('탈퇴한 멤버 '+removed.length+'명', removed.length+' removed members')}</div>
+        <div style="font-size:11px;color:var(--ink3);margin-top:3px">${t('탈퇴한 메일은 다시 가입이 안 됩니다. 되살리면 전에 쓰던 비밀번호로 그대로 들어옵니다.','A removed email cannot sign up again. Restoring lets them log in with their old password.')}</div>
+      </div>
+      ${removed.map(m => `
+      <div class="adm-row" style="padding:14px 20px">
+        <div style="width:38px;height:38px;border-radius:12px;${avFill(m, '#999')};color:white;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;flex-shrink:0">${avInner(m)}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:14px;font-weight:600">${escHtml(m.name || '')}</div>
+          <div style="font-size:12px;color:var(--ink3)">${escHtml(m.email || '')}</div>
+        </div>
+        <button class="adm-btn sage" onclick="restoreMember('${escJs(m.id)}','${escJs(m.name || '')}')">${t('되살리기','Restore')}</button>
       </div>`).join('')}
     </div>` : ''}`;
 
@@ -20246,6 +20268,24 @@ async function deleteMember(id, name) {
   if (!data || !data.length) { memberNoPermToast(t('이 멤버를 탈퇴시킬','remove this member')); return; }
   if (typeof members === 'object' && members) delete members[id];
   showUploadToast(`✅ ${name} 님 탈퇴 처리됐어요`);
+  renderAdminMembers();
+  if (typeof renderMembers === 'function') renderMembers();
+}
+
+//  탈퇴한 멤버를 되살린다.
+//  ⚠️ 탈퇴는 표에서 지우는 게 아니라 status 를 'removed' 로 바꾸는 것뿐입니다.
+//     로그인 계정은 그대로 남아 있어서 **그 메일로 다시 가입이 안 됩니다.**
+//     그래서 「다시 가입」 이 아니라 여기서 되살립니다 — 전에 쓰던 비밀번호로
+//     그대로 들어옵니다.
+async function restoreMember(id, name) {
+  if (!confirm(`${name} 님을 되살릴까요?\n다시 로그인할 수 있게 되고 목록에 돌아옵니다. (전에 쓰던 비밀번호 그대로)`)) return;
+  //  ⚠️ 규칙(RLS)에 막히면 Supabase 는 오류를 주지 않고 0건만 돌려줍니다.
+  //     .select('id') 로 센 뒤가 아니면 「되살렸어요」 라고 말하면 안 됩니다.
+  const { data, error } = await sb.from('members')
+    .update({ status: 'approved' }).eq('id', id).select('id');
+  if (error) { showUploadToast('되살리기 실패: ' + error.message); return; }
+  if (!data || !data.length) { memberNoPermToast(t('이 멤버를 되살릴','restore this member')); return; }
+  showUploadToast(`✅ ${name} 님 되살렸어요`);
   renderAdminMembers();
   if (typeof renderMembers === 'function') renderMembers();
 }
@@ -26945,6 +26985,11 @@ function ttColorForKind(k){ const f = TT_KINDS.find(x=>x.key===k); return f ? f.
 function ttKindForColor(c){ const f = TT_KINDS.find(x=>x.color===c); return f ? f.key : 'class'; }
 let myTT = [];
 let mttKind = 'class';   // 입력 폼 선택 카탈로그
+//  개선창 · 정은규 (IM HQ, 10/27): 「시간표 추가할때 요일 여러개를 선택해서
+//  한번에 추가 가능하게」 — 월·수·금 같은 수업을 세 번 넣던 것을 한 번에.
+//  ⚠️ 고치기(수정) 때는 그대로 하나만 고릅니다. 한 일정이 여러 요일이 될 수는
+//     없으니, 여러 개 고르기는 **새로 추가할 때만** 띄웁니다.
+let mttDays = [1];
 let mttTerm = null;      // 학기: 'YYYY-spring|summer|fall'
 let ttSelectedId = null; // 선택된 블록
 let ttClipboard = null;  // 복사한 블록
@@ -27069,7 +27114,7 @@ function renderMyTimetable() {
         <div style="font-size:10.5px;color:var(--ink3);line-height:1.55;margin-bottom:11px">${sel?t('카테고리는 바꾸면 바로 적용. 나머지는 고친 뒤 저장.','Category applies instantly when changed. Edit the rest, then save.'):t('표에서 <b>드래그</b>해 등록 · 블록 <b>드래그로 이동</b> · <b>가장자리 드래그로 시간 조절</b> · 클릭 후 <b>⌘/Ctrl+C→V 복사</b>','Drag on the grid to add · <b>drag a block to move</b> · <b>drag edges to resize</b> · click then <b>⌘/Ctrl+C→V to copy</b>')}</div>
         <div style="display:flex;flex-direction:column;gap:8px">
           <select id="mtt-kind" onchange="${sel?'saveMyTTEdit()':'mttKind=this.value'}" style="${finp}">${kindOpts}</select>
-          <select id="mtt-day" style="${finp}">${dayOpts}</select>
+          ${sel ? `<select id="mtt-day" style="${finp}">${dayOpts}</select>` : mttDayChipsHtml()}
           <div style="display:flex;gap:6px;align-items:center">
             <input id="mtt-start" type="time" value="${fStart}" style="${inp};flex:1;min-width:0"/>
             <span style="color:var(--ink3)">~</span>
@@ -27138,7 +27183,10 @@ function ttDragEnd() {
     dg.preview.remove();
     const hour = Math.max(0, Math.min(dg.minH + Math.floor(dg.curTop / dg.pph), 23));
     const z = n => String(n).padStart(2,'0');
-    const dEl = document.getElementById('mtt-day'); if (dEl) dEl.value = dg.day;
+    //  표에서 끌어 놓은 요일을 폼에 맞춥니다. 고치기 중이면 select, 아니면 칩.
+    const dEl = document.getElementById('mtt-day');
+    if (dEl) dEl.value = dg.day;
+    else { mttDays = [dg.day]; mttPaintDayChips(); }
     const s = document.getElementById('mtt-start'); if (s) s.value = `${z(hour)}:00`;
     // 23시를 누르면 자정을 넘길 수 없으니 23:59 로 (time 입력칸은 24:00 을 못 받는다)
     const e = document.getElementById('mtt-end'); if (e) e.value = hour >= 23 ? '23:59' : `${z(hour+1)}:00`;
@@ -27199,17 +27247,63 @@ async function saveMyTTEdit() {
   showUploadToast(t('✅ 수정됐어요','✅ Updated'));
 }
 
+//  요일 칩 — 여러 개 고를 수 있습니다 (월·수·금).
+function mttDayChipsHtml() {
+  const on = (d) => mttDays.includes(d);
+  return `<div id="mtt-days" style="display:flex;gap:5px;flex-wrap:wrap">
+    ${[1,2,3,4,5,6,7].map(d => `<button type="button" data-mttday="${d}" onclick="mttToggleDay(${d})"
+      style="flex:1;min-width:38px;height:36px;border-radius:9px;cursor:pointer;font:800 13px var(--font);
+             border:1.5px solid ${on(d)?'#1d3a5f':'var(--border)'};
+             background:${on(d)?'#1d3a5f':'var(--surface)'};color:${on(d)?'#fff':'var(--ink2)'}"
+      >${TT_DAYS_FULL[d]}</button>`).join('')}
+  </div>`;
+}
+
+//  ⚠️ 화면 전체를 다시 그리면 적던 내용·장소가 날아갑니다. 칩 색만 바꿉니다.
+function mttPaintDayChips() {
+  const box = document.getElementById('mtt-days'); if (!box) return;
+  box.querySelectorAll('[data-mttday]').forEach(b => {
+    const on = mttDays.includes(Number(b.dataset.mttday));
+    b.style.borderColor = on ? '#1d3a5f' : 'var(--border)';
+    b.style.background  = on ? '#1d3a5f' : 'var(--surface)';
+    b.style.color       = on ? '#fff'    : 'var(--ink2)';
+  });
+}
+
+function mttToggleDay(d) {
+  if (mttDays.includes(d)) {
+    //  하나도 안 고른 채로 두면 「추가」 가 아무 일도 못 합니다. 마지막 하나는 남깁니다.
+    if (mttDays.length === 1) { showUploadToast(t('요일은 하나는 골라야 해요','Pick at least one day')); return; }
+    mttDays = mttDays.filter(x => x !== d);
+  } else {
+    mttDays = mttDays.concat(d).sort((a,b) => a - b);
+  }
+  mttPaintDayChips();
+}
+
 async function addMyTTEntry() {
-  const day = parseInt(document.getElementById('mtt-day').value) || 1;
+  //  고치기 중이면 그 칸(select)이 있고, 새로 추가면 칩에서 가져옵니다.
+  const dEl = document.getElementById('mtt-day');
+  const days = dEl ? [parseInt(dEl.value) || 1] : mttDays.slice();
   const start = document.getElementById('mtt-start').value;
   const end = document.getElementById('mtt-end').value;
   const subject = (document.getElementById('mtt-subject').value || '').trim();
   const place = (document.getElementById('mtt-place').value || '').trim();
+  if (!days.length) { showUploadToast(t('요일을 골라주세요','Pick a day')); return; }
   if (!start || !end) { showUploadToast(t('시간을 입력하세요','Enter a time')); return; }
   if (end <= start) { showUploadToast(t('종료가 시작보다 빨라요 — 오전/오후를 확인해주세요','End is before start — check AM/PM')); return; }
   if (!subject) { showUploadToast(t('내용(과목명 등)을 입력하세요','Enter a title (subject, etc.)')); return; }
-  const ok = await ttInsertEntry({ day, start_time: start, end_time: end, subject, place, color: ttColorForKind(mttKind) });
-  if (ok) { ttSelectedId = null; showUploadToast(t('✅ 추가됐어요','✅ Added')); initMyTimetable(); }
+  //  ⚠️ 하나가 막혔다고 나머지를 버리지 않습니다. 넣은 수를 세어 그대로 알려 줍니다.
+  let made = 0;
+  for (const day of days) {
+    const ok = await ttInsertEntry({ day, start_time: start, end_time: end, subject, place, color: ttColorForKind(mttKind) });
+    if (ok) made++;
+  }
+  if (!made) return;   // ttInsertEntry 가 이미 왜 안 됐는지 말했습니다
+  ttSelectedId = null;
+  showUploadToast(made === 1 ? t('✅ 추가됐어요','✅ Added')
+                             : t(`✅ ${made}개 요일에 추가됐어요`, `✅ Added to ${made} days`));
+  initMyTimetable();
 }
 
 // ── 마우스 hover: 정확한 시각 표시 ──
@@ -34417,7 +34511,12 @@ const LOG_SPECS = {
     desc:t('면담·상담하거나 <b>생활지도한 일</b>을 기록해요. (선생님이 개입·지도한 내용)','Record interviews, counseling, or <b>guidance given</b>. (What the teacher intervened in or guided)'),
     cats:['상담','생활지도','주의','기타'],
     catColor:{ '상담':'#2a5298','생활지도':'#b8860b','주의':'#c0392b','기타':'#7f8c8d' },
-    titlePh:t('제목 (예: 진로 상담)','Title (e.g. career counseling)'), bodyPh:t('상담/지도 내용을 입력하세요','Enter counseling/guidance details') },
+    titlePh:t('제목 (예: 진로 상담)','Title (e.g. career counseling)'), bodyPh:t('상담/지도 내용을 입력하세요','Enter counseling/guidance details'),
+    //  개선창 · Clara (IM HQ, 11/13): 「상담을 어느 선생님이 했는지 선택하는 란」
+    //  ⚠️ author_name(적은 사람) 과 따로 둡니다 — 간사가 선생님 상담을 대신
+    //     적어 넣는 일이 있어서, 적은 사람을 상담한 사람으로 덮으면 안 됩니다.
+    who:{ idCol:'counselor_id', nameCol:'counselor_name',
+          ko:'상담한 선생님', en:'Counselor', file:'db/학사_상담_상담한선생님_DB설치.sql' } },
   health: { table:'health_logs', file:'db/학사_보건_DB설치.sql', icon:'🏥', title:t('보건·건강 기록','Health Log'),
     desc:t('보건실 방문·투약·병결 등 건강 관련 기록을 남깁니다.','Record health matters such as nurse-office visits, medication, and sick leave.'),
     cats:['보건실 방문','투약','병결','예방접종','기타'],
@@ -34459,6 +34558,11 @@ function renderLog() {
   const studentOpts = schoolStudents.map(x => `<option value="${x.id}" ${x.id===logStudentId?'selected':''}>${x.name}${x.grade?` (${x.grade})`:''}</option>`).join('');
   const catOpts = spec.cats.map(c => `<option value="${c}">${c}</option>`).join('');
   const inp = 'height:36px;padding:0 10px;border:1px solid var(--border);border-radius:9px;font:600 13px var(--font);color:var(--ink);background:var(--surface)';
+  //  상담한 선생님 — 선생님 목록에서 고릅니다. 내가 선생님 목록에 없을 수도
+  //  있으니(관리자·간사) 나를 맨 앞에 넣어 두고, 처음엔 나를 골라 둡니다.
+  const whoList = spec.who ? logWhoList() : [];
+  const whoOpts = whoList.map(x =>
+    `<option value="${escAttr(x.id)}" ${x.id===(ME.id||'')?'selected':''}>${escHtml(x.name)}</option>`).join('');
 
   const entries = logEntries.map(e => {
     const color = spec.catColor[e.category] || '#7f8c8d';
@@ -34466,7 +34570,7 @@ function renderLog() {
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;flex-wrap:wrap">
         <span style="font-size:11px;font-weight:700;color:#fff;background:${color};padding:2px 9px;border-radius:6px">${escHtml(e.category||'')}</span>
         ${e.title?`<span style="font-size:14px;font-weight:700;color:var(--ink)">${escHtml(e.title)}</span>`:''}
-        <span style="font-size:11px;color:var(--ink3)">${e.date||''}${e.author_name?` · ${escHtml(e.author_name)}`:''}</span>
+        <span style="font-size:11px;color:var(--ink3)">${e.date||''}${logWhoLine(spec, e)}</span>
         <div style="flex:1"></div>
         <button onclick="deleteLog('${e.id}')" title="${t('삭제','Delete')}" style="border:none;background:transparent;cursor:pointer;color:var(--ink3);font-size:14px">✕</button>
       </div>
@@ -34484,6 +34588,7 @@ function renderLog() {
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:16px">
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
         <select id="log-cat" style="${inp}">${catOpts}</select>
+        ${spec.who ? `<select id="log-who" title="${escAttr(t(spec.who.ko, spec.who.en))}" style="${inp};min-width:140px">${whoOpts}</select>` : ''}
         <input id="log-date" type="date" value="${attTodayStr()}" style="${inp}"/>
         <input id="log-title" placeholder="${spec.titlePh}" style="${inp};flex:1;min-width:160px"/>
       </div>
@@ -34497,6 +34602,25 @@ function renderLog() {
   </div>`;
 }
 
+//  고를 수 있는 선생님 목록. 나를 맨 앞에 두고, 중복은 뺍니다.
+function logWhoList() {
+  const out = [];
+  if (ME.id) out.push({ id: ME.id, name: (ME.name || '') + t(' (나)',' (me)') });
+  (schoolTeachers || []).forEach(x => { if (x.id !== ME.id) out.push({ id:x.id, name:x.name || '' }); });
+  return out;
+}
+
+//  목록 한 줄에 「상담한 선생님」 을 적는다.
+//  ⚠️ 적은 사람과 상담한 사람이 같으면 한 번만 적습니다. 다를 때만
+//     「· 적은이 ○○」 을 덧붙입니다 — 둘을 섞어 보이면 안 됩니다.
+function logWhoLine(spec, e) {
+  const who = spec.who ? (e[spec.who.nameCol] || '') : '';
+  const by  = e.author_name || '';
+  if (!who) return by ? ` · ${escHtml(by)}` : '';
+  if (!by || by === who) return ` · ${escHtml(who)}`;
+  return ` · ${escHtml(who)} · ${t('적은이','noted by')} ${escHtml(by)}`;
+}
+
 function changeLogStudent(id) { logStudentId = id; renderLogHub(logSpecKey); }
 
 async function addLog() {
@@ -34506,10 +34630,27 @@ async function addLog() {
   const title = document.getElementById('log-title').value.trim();
   const content = document.getElementById('log-content').value.trim();
   if (!title && !content) { showUploadToast(t('제목이나 내용을 입력하세요','Enter a title or content')); return; }
-  const { error } = await sb.from(spec.table).insert({
-    community_id: CID(), student_id: logStudentId, date, category, title, content,
-    author_name: ME.name, created_by: ME.id,
-  });
+  const row = { community_id: CID(), student_id: logStudentId, date, category, title, content,
+                author_name: ME.name, created_by: ME.id };
+  //  상담한 선생님 — 고른 사람의 이름까지 같이 남깁니다. 이름만 두면 나중에
+  //  이름을 바꿨을 때 누구였는지 못 찾고, id 만 두면 탈퇴한 뒤 빈칸이 됩니다.
+  if (spec.who) {
+    const sel = document.getElementById('log-who');
+    const wid = sel ? sel.value : (ME.id || '');
+    const w = logWhoList().find(x => x.id === wid);
+    row[spec.who.idCol]   = wid || null;
+    row[spec.who.nameCol] = w ? w.name.replace(t(' (나)',' (me)'), '') : (ME.name || null);
+  }
+  let { error } = await sb.from(spec.table).insert(row);
+  //  ⚠️ 칸을 붙이는 SQL 을 아직 안 돌린 공동체에서는 칸이 없다고 막힙니다.
+  //     기록 자체가 안 들어가면 안 되니, 그 칸만 빼고 한 번 더 넣고 알려 줍니다.
+  if (error && spec.who && /column|칸/i.test(error.message || '') && new RegExp(spec.who.nameCol + '|' + spec.who.idCol).test(error.message || '')) {
+    const r2 = { ...row }; delete r2[spec.who.idCol]; delete r2[spec.who.nameCol];
+    const again = await sb.from(spec.table).insert(r2);
+    error = again.error;
+    if (!error) showUploadToast(t(`「${spec.who.ko}」 는 아직 저장되지 않아요 — ${spec.who.file} 을 한 번 돌려주세요`,
+                                  `“${spec.who.en}” is not saved yet — please run ${spec.who.file} once`));
+  }
   if (error) { if (schoolTableMissing(error)) return schoolSetupNeeded(error, spec.file); showUploadToast(t('저장 실패: ','Save failed: ') + error.message); return; }
   showUploadToast(t('✅ 기록이 추가됐어요','✅ Entry added'));
   await loadLogs();
