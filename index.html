@@ -27064,6 +27064,18 @@ const TT_KINDS = [ {key:'class', label:t('수업','Class'), color:'#2a5298'}, {k
 function ttColorForKind(k){ const f = TT_KINDS.find(x=>x.key===k); return f ? f.color : '#2a5298'; }
 function ttKindForColor(c){ const f = TT_KINDS.find(x=>x.color===c); return f ? f.key : 'class'; }
 let myTT = [];
+//  개선창 · 홍예원 (IM HQ, 11/20): 「생기부 >> 시간표 … 개인 일정으로」
+//  개인 시간표는 있었지만 **학생 본인만** 짤 수 있었습니다. 선생님은
+//  생기부에서 보기만 했고, 아이가 안 짜면 할 수 있는 일이 없었습니다.
+//  그래서 「누구 것을 짜는 중인가」 를 둡니다.
+//  ⚠️ null 이면 내 것입니다. 학생이 남의 것을 열 수는 없습니다 —
+//     ttOwnerId() 가 교직원이 아니면 늘 내 id 를 돌려줍니다.
+let ttOwner = null;      // { id, name } — 선생님이 대신 짜는 중인 아이
+function ttOwnerId() {
+  if (ttOwner && ttOwner.id && canAccessSchool()) return ttOwner.id;
+  return ME ? ME.id : null;
+}
+function ttForOther() { return !!ME && ttOwnerId() !== ME.id; }
 let mttKind = 'class';   // 입력 폼 선택 카탈로그
 //  개선창 · 정은규 (IM HQ, 10/27): 「시간표 추가할때 요일 여러개를 선택해서
 //  한번에 추가 가능하게」 — 월·수·금 같은 수업을 세 번 넣던 것을 한 번에.
@@ -27140,6 +27152,9 @@ function myTTSetupHtml() {
 }
 
 async function initMyTimetable() {
+  //  ⚠️ 교직원이 아니면 남의 것이 남아 있을 수 없게 지웁니다
+  //     (역할이 바뀌었거나, 어떤 길로 들어왔어도).
+  if (!canAccessSchool()) ttOwner = null;
   const sn = document.getElementById('subnav-mytt');
   if (sn) sn.innerHTML = isTeacher() ? '' : tcsSubnavHtml('mytt');
   if (!mttTerm) mttTerm = ttDefaultTerm();
@@ -27147,7 +27162,7 @@ async function initMyTimetable() {
   const main = document.getElementById('mytt-main');
   if (main) main.innerHTML = `<div style="text-align:center;padding:40px;color:var(--ink3);font-size:13px">${t('불러오는 중...','Loading...')}</div>`;
   try {
-    const { data, error } = await sb.from('student_timetables').select('*').eq('member_id', ME.id).order('day').order('start_time');
+    const { data, error } = await sb.from('student_timetables').select('*').eq('member_id', ttOwnerId()).order('day').order('start_time');
     if (error) throw error;
     myTT = data || [];
   } catch(e) {
@@ -27189,6 +27204,11 @@ function renderMyTimetable() {
         </div>
         <div style="display:flex;gap:6px">${seasonBtns}</div>
       </div>
+      ${ttForOther() ? `<div style="background:#FFF8E7;border:1.5px solid #F0D080;border-radius:14px;padding:12px 14px;margin-bottom:9px">
+        <div style="font-size:13px;font-weight:800;color:#8B6914">🗓 ${escHtml((ttOwner&&ttOwner.name) || '')} ${t('님의 개인 시간표','— personal timetable')}</div>
+        <div style="font-size:11px;color:#8B6914;line-height:1.55;margin-top:3px">${t('선생님이 대신 짜는 중입니다. 아이도 자기 화면에서 고칠 수 있어요.','You are editing on the student\'s behalf. They can still edit it themselves.')}</div>
+        <button onclick="ttBackToStudent()" style="margin-top:8px;height:30px;padding:0 12px;border:1px solid #E0C070;background:var(--surface);color:#8B6914;border-radius:8px;cursor:pointer;font:700 12px var(--font)">← ${t('생기부로 돌아가기','Back to records')}</button>
+      </div>` : ''}
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px">
         <div style="font-size:13px;font-weight:800;color:${sel?'#2a7a5a':'var(--ink)'};margin-bottom:3px">${sel?t('✏️ 선택한 일정 수정','✏️ Edit selected entry'):t('＋ 일정 추가','＋ Add entry')}</div>
         <div style="font-size:10.5px;color:var(--ink3);line-height:1.55;margin-bottom:11px">${sel?t('카테고리는 바꾸면 바로 적용. 나머지는 고친 뒤 저장.','Category applies instantly when changed. Edit the rest, then save.'):t('표에서 <b>드래그</b>해 등록 · 블록 <b>드래그로 이동</b> · <b>가장자리 드래그로 시간 조절</b> · 클릭 후 <b>⌘/Ctrl+C→V 복사</b>','Drag on the grid to add · <b>drag a block to move</b> · <b>drag edges to resize</b> · click then <b>⌘/Ctrl+C→V to copy</b>')}</div>
@@ -27294,7 +27314,10 @@ function ttDragEnd() {
   ttDrag = null;   // 이동 종료 (인라인 입력은 dg로 처리)
 }
 async function ttInsertEntry(row) {
-  row = { member_id: ME.id, community_id: CID(), term: mttTerm, ...row };
+  //  ⚠️ ME.id 가 아니라 ttOwnerId() 입니다. 선생님이 대신 짜는 중이면
+  //     그 아이 줄로 들어가야 합니다 (서버 규칙도 같이 넓혔습니다 —
+  //     db/개인시간표_선생님도쓰기_DB설치.sql).
+  row = { member_id: ttOwnerId(), community_id: CID(), term: mttTerm, ...row };
   let { error } = await sb.from('student_timetables').insert(row);
   if (error && /term|column|schema/i.test(error.message || '')) { // term 컬럼 없으면 제외하고 재시도
     const r2 = { ...row }; delete r2.term;
@@ -27522,6 +27545,26 @@ async function deleteMyTTEntry(id) {
   renderMyTimetable();
 }
 
+//  선생님이 그 아이 개인 시간표를 짜러 들어간다.
+//  ⚠️ 교직원만. 학생이 이 함수를 불러도 ttOwnerId() 가 내 id 를 돌려주므로
+//     남의 시간표가 열리지 않습니다. 그래도 여기서 한 번 막습니다.
+function ttEditFor(id, name) {
+  if (!canAccessSchool()) { showUploadToast(t('권한이 없어요','You do not have permission')); return; }
+  if (!id) return;
+  ttOwner = { id, name };
+  ttSelectedId = null; mttDays = [1]; mttKind = 'class';
+  setMode('mytt');
+}
+
+//  대신 짜기를 끝내고 그 아이 생기부로 돌아간다
+function ttBackToStudent() {
+  const id = ttOwner && ttOwner.id;
+  ttOwner = null;
+  ttSelectedId = null;
+  if (id) { s360Id = id; schoolSubMode = 'student'; }
+  setMode('school');
+}
+
 // 교사·관리자: 학생 상세에 표시할 개인 시간표 카드 (최근 학기 기준)
 function s360TimetableCard(entries) {
   entries = entries || [];
@@ -27534,6 +27577,10 @@ function s360TimetableCard(entries) {
       <div style="font-size:14px;font-weight:700;color:var(--ink)">${t('🗓 개인 시간표','🗓 Personal timetable')}</div>
       ${entries.length?`<span style="font-size:11px;font-weight:700;color:#1d3a5f;background:var(--asoft);padding:2px 9px;border-radius:6px">${ttTermLabel(term)}</span>`:''}
       <span style="font-size:11px;color:var(--ink3)">${t('학생이 등록한 시간표','Timetable registered by the student')}</span>
+      <div style="flex:1"></div>
+      ${canAccessSchool() ? `<button onclick="ttEditFor('${escJs(s360Id)}','${escJs((schoolStudents.find(x=>x.id===s360Id)||{}).name || '')}')"
+        style="height:30px;padding:0 12px;border:1px solid var(--border);background:var(--surface);color:var(--ink2);border-radius:8px;cursor:pointer;font:700 12px var(--font)"
+        title="${escAttr(t('아이 대신 개인 시간표를 짜요','Edit this student’s personal timetable'))}">✏️ ${t('짜 주기','Edit')}</button>` : ''}
     </div>
     ${ttGridHtml(shown, false)}
   </div>`;
