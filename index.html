@@ -4955,7 +4955,7 @@ async function loadCrossChannelMembers(ch) {
 //  보는 모두의 순서가 바뀐다 — '본인만의 그룹' 이 될 수 없다.
 let commGroups = [];      // 공동체가 같이 쓰는 그룹
 let myGroups  = [];       // 내가 만든 그룹
-let myChPref  = {};       // channel_id → { sort, group_id }
+let myChPref  = {};       // channel_id → { sort, group_id, pinned }
 let _prefsMissing = false;  // 아직 표를 안 깔았다
 
 function mergeGroups() {
@@ -4969,12 +4969,12 @@ async function loadMyChannelPrefs() {
   try {
     const [gr, pr] = await Promise.all([
       sb.from('my_channel_groups').select('*').eq('member_id', ME.id).order('sort').order('created_at'),
-      sb.from('my_channel_prefs').select('channel_id,sort,group_id').eq('member_id', ME.id),
+      sb.from('my_channel_prefs').select('channel_id,sort,group_id,pinned').eq('member_id', ME.id),
     ]);
     if (gr.error || pr.error) { _prefsMissing = true; myGroups = []; myChPref = {}; mergeGroups(); return; }
     myGroups = gr.data || [];
     myChPref = {};
-    (pr.data || []).forEach(r => { myChPref[r.channel_id] = { sort: r.sort, group_id: r.group_id }; });
+    (pr.data || []).forEach(r => { myChPref[r.channel_id] = { sort: r.sort, group_id: r.group_id, pinned: !!r.pinned }; });
   } catch (_) { _prefsMissing = true; myGroups = []; myChPref = {}; }
   mergeGroups();
 }
@@ -4993,7 +4993,11 @@ async function savePrefs(rows) {
   const { error } = await sb.from('my_channel_prefs')
     .upsert(payload, { onConflict: 'member_id,channel_id' });
   if (error) { _prefsMissing = true; prefsNeedSql(); return false; }
-  payload.forEach(r => { myChPref[r.channel_id] = { sort: r.sort, group_id: r.group_id }; });
+  //  ⚠️ pinned 는 보내지 않았습니다 — 보낸 칸만 고쳐지므로 표에는 그대로
+  //     남습니다. 화면 쪽 기억에서도 지우지 않아야 짝이 맞습니다.
+  payload.forEach(r => { myChPref[r.channel_id] = {
+    sort: r.sort, group_id: r.group_id,
+    pinned: !!(myChPref[r.channel_id] && myChPref[r.channel_id].pinned) }; });
   return true;
 }
 async function loadDmFavorites() {
@@ -5260,10 +5264,29 @@ function chanGroupOf(c) {
   if (p) return p.group_id || null;
   return c.group_id || null;
 }
+//  이 방이 내 목록에서 맨 위로 가나.
+//  두 가지를 합칩니다 —
+//   · channels.pinned  : 공동체가 같이 보는 고정 (전체공지 등, 관리자가 정함)
+//   · 내 덧층의 pinned : 나만 보는 고정 (개선창 · 김시원 11/21)
+//  ⚠️ 1:1 대화는 이미 ★ 즐겨찾기가 맨 위로 올려 줍니다. 같은 일을 하는
+//     장치를 둘 두면 헷갈리므로 1:1 에는 📌 를 달지 않습니다.
+function chanPinned(c) {
+  if (!c) return false;
+  if (c.pinned) return true;
+  if (c.kind === 'dm') return false;
+  const p = myChPref[c.id];
+  return !!(p && p.pinned);
+}
+//  내가 고정한 것인가 (📌 단추 색을 정할 때)
+function chanPinnedByMe(c) {
+  if (!c || c.kind === 'dm') return false;
+  const p = myChPref[c.id];
+  return !!(p && p.pinned);
+}
 function sortChannels(arr) {
   return (arr || []).slice().sort((a,b) => {
-    const pa = a.pinned?0:1, pb = b.pinned?0:1; if (pa!==pb) return pa-pb;
-    if (a.pinned && b.pinned) { const aa = isAnnounceChannel(a)?0:1, ab = isAnnounceChannel(b)?0:1; if (aa!==ab) return aa-ab; }
+    const pa = chanPinned(a)?0:1, pb = chanPinned(b)?0:1; if (pa!==pb) return pa-pb;
+    if (chanPinned(a) && chanPinned(b)) { const aa = isAnnounceChannel(a)?0:1, ab = isAnnounceChannel(b)?0:1; if (aa!==ab) return aa-ab; }
     const sa = chanOrderVal(a), sb2 = chanOrderVal(b); if (sa!==sb2) return sa-sb2;
     return String(a.created_at||'').localeCompare(String(b.created_at||''));
   });
@@ -5293,12 +5316,14 @@ async function chDrop(e, targetId) {
   if (!dragId || dragId===targetId) return;
   const moved = channels.find(c=>c.id===dragId), target = channels.find(c=>c.id===targetId);
   if (!moved || !target || moved.kind==='dm') return;
-  if (!!moved.pinned !== !!target.pinned) return;   // 고정 ↔ 토픽 섞기 금지
+  //  ⚠️ 눈에 보이는 묶음끼리만 섞습니다. 내가 고정한 방은 channels.pinned
+  //     가 false 여도 고정 칸에 있으니, 그 판정으로 재야 합니다.
+  if (chanPinned(moved) !== chanPinned(target)) return;   // 고정 ↔ 토픽 섞기 금지
 
   // 고정 채널 재정렬 (전체공지는 항상 맨 위, 이동 불가)
-  if (moved.pinned) {
+  if (chanPinned(moved)) {
     if (isAnnounceChannel(moved)) return;
-    let list = channels.filter(c => c.pinned && c.kind!=='dm' && !isAnnounceChannel(c));
+    let list = channels.filter(c => chanPinned(c) && c.kind!=='dm' && !isAnnounceChannel(c));
     const di = list.findIndex(c=>c.id===dragId); if (di>=0) list.splice(di,1);
     let ti;
     if (isAnnounceChannel(target)) ti = 0;   // 전체공지 위로는 못 감 → 바로 아래
@@ -5315,7 +5340,7 @@ async function chDrop(e, targetId) {
 
   // 떨어뜨린 자리의 그룹으로 따라 들어간다 (내가 보는 그룹 기준)
   const gid = chanGroupOf(target);
-  let list = channels.filter(c => !c.pinned && c.kind!=='dm' && chanGroupOf(c) === gid && c.id !== dragId);
+  let list = channels.filter(c => !chanPinned(c) && c.kind!=='dm' && chanGroupOf(c) === gid && c.id !== dragId);
   let ti = list.findIndex(c=>c.id===targetId); if (ti<0) ti = list.length;
   list.splice(before?ti:ti+1, 0, moved);
   // 여기도 내 덧층에만 적는다. channels 를 고치면 모두의 순서가 바뀐다.
@@ -5331,10 +5356,10 @@ function chGroupDragLeave(e) { e.currentTarget.style.background=''; }
 async function chDropToGroup(e, groupId) {
   e.preventDefault(); e.currentTarget.style.background='';
   const id = _dragCh; if (!id) return;
-  const ch = channels.find(c=>c.id===id); if (!ch || ch.kind==='dm' || ch.pinned) return;
+  const ch = channels.find(c=>c.id===id); if (!ch || ch.kind==='dm' || chanPinned(ch)) return;
   const g = groupId || null;
   myChPref[ch.id] = { sort: (myChPref[ch.id] && myChPref[ch.id].sort) ?? ch.sort ?? null, group_id: g };
-  const list = channels.filter(c => !c.pinned && c.kind!=='dm' && chanGroupOf(c) === g);
+  const list = channels.filter(c => !chanPinned(c) && c.kind!=='dm' && chanGroupOf(c) === g);
   const rows = list.map((c,i) => ({ id: c.id, sort: (i+1)*10, group_id: g }));
   rows.forEach(r => { myChPref[r.id] = { sort: r.sort, group_id: r.group_id }; });
   channels = sortChannels(channels);
@@ -5579,8 +5604,8 @@ function renderPanel() {
   //  자기 방만 보이므로 가를 것이 없습니다.
   const watch = isAdmin ? allVisible.filter(isWatchOnly) : [];
   const visibleChannels = watch.length ? allVisible.filter(c => !isWatchOnly(c)) : allVisible;
-  const pinned = visibleChannels.filter(c => c.pinned && c.kind !== 'dm');
-  const topics = visibleChannels.filter(c => !c.pinned && c.kind !== 'dm');
+  const pinned = visibleChannels.filter(c => chanPinned(c) && c.kind !== 'dm');
+  const topics = visibleChannels.filter(c => !chanPinned(c) && c.kind !== 'dm');
   const dms = visibleChannels.filter(c => c.kind === 'dm');
   let html = '';
   if (pinned.length) {
@@ -5828,11 +5853,49 @@ function chRow(ch) {
     </div>
     ${unread ? `<div style="min-width:20px;height:20px;border-radius:10px;padding:0 5px;background:#E53935;color:white;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">${unread > 99 ? '99+' : unread}</div>` : ''}
     ${ch.kind==='dm' && !isWatchOnly(ch) ? `<div onclick="event.stopPropagation();toggleDmFavorite('${ch.id}')" title="즐겨찾기" style="cursor:pointer;font-size:15px;line-height:1;flex-shrink:0;color:${dmFavorites.has(ch.id)?'#F5B301':'var(--ink3)'}">${dmFavorites.has(ch.id)?'★':'☆'}</div>` : ''}
+    ${/*  📌 나만 보는 고정 — 개선창 · 김시원 (11/21).
+            공동체 고정(전체공지 등)은 관리자가 정하므로 단추를 달지 않습니다.
+            1:1 은 바로 위 ★ 즐겨찾기가 같은 일을 합니다.                 */''}
+    ${(ch.kind!=='dm' && !ch.pinned && !isWatchOnly(ch)) ? `<div onclick="event.stopPropagation();toggleMyPin('${ch.id}')"
+      title="${escAttr(chanPinnedByMe(ch) ? t('내 고정 풀기','Unpin for me') : t('나만 위로 고정','Pin to top, just for me'))}"
+      style="cursor:pointer;font-size:14px;line-height:1;flex-shrink:0;opacity:${chanPinnedByMe(ch)?'1':'.3'}">📌</div>` : ''}
     ${isAdmin ? `<div class="ch-edit-btn" onclick="event.stopPropagation();showEditChannel('${ch.id}')"
       style="width:26px;height:26px;border-radius:7px;
       background:rgba(0,0,0,.07);display:flex;align-items:center;justify-content:center;
       flex-shrink:0;cursor:pointer;font-size:13px" title="채널 수정">✏️</div>` : ''}
   </div>`;
+}
+
+//  📌 나만 보는 고정 켜고 끄기.
+//  ⚠️ 내 덧층(my_channel_prefs)에만 적습니다. channels.pinned 를 건드리면
+//     **모두의 목록**이 바뀝니다 — 그게 지금 있는 공동체 고정입니다.
+//  ⚠️ 규칙에 막히면 Supabase 는 오류를 주지 않고 0건만 돌려줄 수 있습니다.
+//     고정한 척 보여주고 새로고침하면 풀려 있으면 안 되니, 표에 들어간
+//     것을 확인한 뒤에 화면을 고칩니다.
+async function toggleMyPin(id) {
+  if (!ME) return;
+  const ch = channels.find(c => c.id === id);
+  if (!ch || ch.kind === 'dm' || ch.pinned) return;
+  const next = !chanPinnedByMe(ch);
+  const { data, error } = await sb.from('my_channel_prefs')
+    .upsert({ member_id: ME.id, channel_id: id, pinned: next },
+            { onConflict: 'member_id,channel_id' })
+    .select('channel_id');
+  if (error) {
+    //  칸을 아직 안 붙인 공동체 — 어떤 SQL 인지 알려 줍니다
+    if (/pinned|column|schema/i.test(error.message || ''))
+      showUploadToast(t('고정을 저장하지 못했어요 — db/채팅방_내가고정_DB설치.sql 을 돌려주세요',
+                        'Could not save — run db/채팅방_내가고정_DB설치.sql'));
+    else showUploadToast(t('고정 실패: ','Pin failed: ') + error.message);
+    return;
+  }
+  if (!data || !data.length) { showUploadToast(t('고정을 저장하지 못했어요','Could not save the pin')); return; }
+  const p = myChPref[id] || { sort: null, group_id: null };
+  myChPref[id] = { ...p, pinned: next };
+  channels = sortChannels(channels);
+  renderPanel();
+  showUploadToast(next ? t('📌 맨 위로 올렸어요 (나만 보입니다)','📌 Pinned to top (only you see this)')
+                       : t('고정을 풀었어요','Unpinned'));
 }
 
 function filterChannels(q) {
@@ -5843,8 +5906,8 @@ function filterChannels(q) {
   // 찾을 때는 지켜보는 방도 찾아지되, 아래로 따로 모은다
   const watch = isAdmin ? all.filter(isWatchOnly) : [];
   const filtered = watch.length ? all.filter(c => !isWatchOnly(c)) : all;
-  const pinned = filtered.filter(c => c.pinned && c.kind !== 'dm');
-  const topics = filtered.filter(c => !c.pinned && c.kind !== 'dm');
+  const pinned = filtered.filter(c => chanPinned(c) && c.kind !== 'dm');
+  const topics = filtered.filter(c => !chanPinned(c) && c.kind !== 'dm');
   const dms = filtered.filter(c => c.kind === 'dm');
   let html = '';
   if (pinned.length) {
