@@ -14698,6 +14698,27 @@ const TCS_ACAD_FIELDS = {
   rank:    { label:t('석차등급','Rank'),  en:'Rank',   w:'74px',  type:'select', options:TCS_RANK },
   takers:  { label:t('수강자수','Takers'),en:'Takers', w:'74px',  type:'num' },
 };
+//  📅 월말평가 — 개선창 · 양회광 · 홍예원 (IM HQ, 11/20, 같은 요청 둘)
+//    「리뉴젠아카데미는 분기별 월말평가도있는데 그것도 기록 할 수 있게끔」
+//    「리뉴젠 아이들은 월말평기를 보는데 달마다 작성할 수 있게」
+//
+//  ⚠️ 학기 성적(위 TCS_ACAD_FIELDS)의 「학기」 칸에 월을 섞지 않았습니다.
+//     그 칸은 생기부 별지 제7·9·11호 출력이 1·2학기로 읽습니다. 월을
+//     넣으면 양식이 깨집니다. 그래서 **따로 적는 칸**을 둡니다.
+//     저장도 같은 academic 칸 안의 딴 열쇠(<학년>_monthly)에 넣어,
+//     별지가 읽는 <학년>_grades 는 건드리지 않습니다.
+const TCS_MONTHS = ['1','2','3','4','5','6','7','8','9','10','11','12'];
+const TCS_MON_FIELDS = {
+  month: { label:t('월','Month'),   en:'Month',  w:'72px',  type:'select', options:TCS_MONTHS },
+  name:  { label:t('과목','Course'), en:'Course', w:'',      type:'text', flex:true },
+  score: { label:t('점수','Score'),  en:'Score',  w:'74px',  type:'num' },
+  note:  { label:t('비고','Note'),   en:'Note',   w:'130px', type:'text' },
+};
+const TCS_MON_COLS = ['month','name','score','note'];
+function tcsEmptyMonRow() { return { month:'', name:'', score:'', note:'' }; }
+//  학년 열쇠(g7_grades) → 월말평가 열쇠(g7_monthly)
+function tcsMonKey(gradeKey) { return String(gradeKey || '').replace(/_grades$/, '') + '_monthly'; }
+
 const TCS_ACAD_COLS = {
   elem:   ['name'],
   middle: ['sem','area','name','score','mean','achieve','takers'],
@@ -14734,6 +14755,22 @@ function parseAcademicRows(str) {
     else { row.name = pair.slice(0, i).trim(); row.letter = pair.slice(i + 1).trim(); }
     return row;
   }).filter(r => r.name);
+}
+
+//  월말평가 한 학년치 읽기 / 쓰기 (학기 성적과 같은 방식 — JSON 한 줄).
+//  옛 형식이 없으니 못 읽으면 없는 것으로 둡니다.
+function parseMonthlyRows(str) {
+  if (!str) return [];
+  try {
+    const arr = JSON.parse(String(str));
+    if (Array.isArray(arr)) return arr.map(r => Object.assign(tcsEmptyMonRow(), r));
+  } catch (_) { /* 없는 것으로 */ }
+  return [];
+}
+function serializeMonthlyRows(rows) {
+  const keep = (rows || []).filter(r =>
+    Object.keys(r).some(k => String(r[k] == null ? '' : r[k]).trim() !== ''));
+  return keep.length ? JSON.stringify(keep) : '';
 }
 
 function serializeAcademicRows(rows) {
@@ -14776,6 +14813,13 @@ function openAcademicEditor() {
   // 드래프트 초기화: 저장된 학년별 문자열 → 구조화
   const grades = {};
   TCS_ACADEMIC_GRADES.forEach(([key]) => { grades[key] = initAcademicGradeRows(saved[key]); });
+  //  월말평가 — 비어 있으면 빈 줄 하나로 시작합니다. 기본 과목을 깔지
+  //  않습니다 (월말평가는 그 달에 본 것만 적는 것이라서요).
+  const monthly = {};
+  TCS_ACADEMIC_GRADES.forEach(([key]) => {
+    const parsed = parseMonthlyRows(saved[tcsMonKey(key)]);
+    monthly[key] = parsed.length ? parsed : [tcsEmptyMonRow()];
+  });
 
   // 활성 학년 기본값: 학생의 현재 학년 → 데이터 있는 첫 학년 → K
   const gradeStr = (tcsCurrentStudent.grade || '').trim();
@@ -14787,7 +14831,7 @@ function openAcademicEditor() {
     active = withData ? withData[0] : 'k_grades';
   }
 
-  tcsAcademicDraft = { active, grades };
+  tcsAcademicDraft = { active, grades, monthly };
   renderAcademicEditor();
 }
 
@@ -14832,6 +14876,19 @@ function renderAcademicEditor() {
         </button>
       </div>
 
+      <div class="adm-card" id="acad-monthly" style="margin-top:16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;flex-wrap:wrap;gap:8px">
+          <div style="font-size:14px;font-weight:700;color:var(--adeep)">📅 ${activeLabel} ${t('월말평가','Monthly assessment')}</div>
+          <div id="acad-mon-avg" style="font-size:12px;font-weight:700;color:#b45309"></div>
+        </div>
+        <div style="font-size:11px;color:var(--ink3);line-height:1.6;margin-bottom:12px">${t('달마다 보는 평가를 적어요. <b>학기 성적과는 따로</b> 쌓이고, 생기부 별지 출력에는 들어가지 않습니다.','Record monthly assessments here. Kept <b>separate from term grades</b>; not included in the official record printout.')}</div>
+        <div id="acad-mon-rows"></div>
+        <button onclick="addMonthlyRow()"
+          style="width:100%;height:38px;border-radius:10px;border:1.5px dashed var(--border);background:var(--s2);color:var(--ink2);font:600 13px var(--font);cursor:pointer;margin-top:4px">
+          ${t('＋ 월말평가 추가','＋ Add monthly row')}
+        </button>
+      </div>
+
       <div style="background:linear-gradient(135deg,#1d3a5f,#2a5298);border-radius:14px;padding:18px 22px;margin-top:16px;display:flex;align-items:center;justify-content:space-between">
         <div>
           <div style="font-size:12px;color:rgba(255,255,255,.7)">${t('전 학년 누계','Cumulative')}</div>
@@ -14847,6 +14904,7 @@ function renderAcademicEditor() {
     </div>`;
 
   renderAcademicRows();
+  renderMonthlyRows();
   refreshAcademicGpa();
 }
 
@@ -14891,6 +14949,83 @@ function renderAcademicRows() {
         oninput="setAcademicField(${i},'detail',this.value)"
         style="width:100%;min-height:58px;margin-top:7px;padding:8px 10px;border-radius:8px;border:1.5px solid var(--border);background:var(--s2);font:13px var(--font);color:var(--ink);line-height:1.7;resize:vertical;outline:none">${escHtml(r.detail || '')}</textarea>
     </div>`).join('');
+}
+
+//  월말평가 줄 그리기 — 학기 성적 줄과 같은 모양, 칸만 다릅니다.
+function renderMonthlyRows() {
+  const rows = (tcsAcademicDraft.monthly || {})[tcsAcademicDraft.active] || [];
+  const box = document.getElementById('acad-mon-rows');
+  if (!box) return;
+
+  const cell = (i, key, r) => {
+    const f = TCS_MON_FIELDS[key];
+    const v = String(r[key] == null ? '' : r[key]).replace(/"/g, '&quot;');
+    const base = `height:36px;padding:0 9px;border-radius:8px;border:1.5px solid var(--border);`
+      + `background:var(--s2);font:13px var(--font);color:var(--ink);outline:none;`
+      + (f.flex ? 'flex:1;min-width:110px;' : `width:${f.w};flex:none;`);
+    if (f.type === 'select') {
+      return `<select onchange="setMonthlyField(${i},'${key}',this.value)" title="${f.label}"
+        style="${base}background:white;cursor:pointer">
+        <option value="">${f.label}</option>
+        ${f.options.map(o => `<option value="${o}" ${r[key]===o?'selected':''}>${o}${t('월','')}</option>`).join('')}
+      </select>`;
+    }
+    return `<input value="${v}" placeholder="${f.label}" title="${f.label}"
+      ${f.type === 'num' ? 'inputmode="decimal"' : ''}
+      oninput="setMonthlyField(${i},'${key}',this.value)" style="${base}"/>`;
+  };
+
+  box.innerHTML = rows.map((r, i) => `
+    <div style="border:1px solid var(--border);border-radius:11px;padding:10px;margin-bottom:10px;background:var(--surface)">
+      <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+        ${TCS_MON_COLS.map(k => cell(i, k, r)).join('')}
+        <button onclick="removeMonthlyRow(${i})" title="${t('삭제','Delete')}"
+          style="width:32px;height:36px;border-radius:8px;border:1.5px solid var(--border);background:white;color:#ef4444;font-size:15px;cursor:pointer;flex:none">×</button>
+      </div>
+    </div>`).join('');
+  refreshMonthlyAvg();
+}
+
+//  이 학년 월말평가 요약 — 적은 줄 수와 점수 평균
+function monthlySummary(rows) {
+  let count = 0, sum = 0, n = 0;
+  (rows || []).forEach(r => {
+    if (String(r.name || '').trim() || String(r.score || '').trim()) count++;
+    const v = parseFloat(r.score); if (!isNaN(v)) { sum += v; n++; }
+  });
+  return { count, avg: n ? sum / n : null };
+}
+function refreshMonthlyAvg() {
+  const el = document.getElementById('acad-mon-avg');
+  if (!el) return;
+  const g = monthlySummary((tcsAcademicDraft.monthly || {})[tcsAcademicDraft.active] || []);
+  const bits = [];
+  if (g.count) bits.push(t(`${g.count}건`, `${g.count} rows`));
+  if (g.avg !== null) bits.push(t(`평균 ${g.avg.toFixed(1)}`, `avg ${g.avg.toFixed(1)}`));
+  el.textContent = bits.join(' · ');
+}
+
+function setMonthlyField(i, key, val) {
+  const rows = (tcsAcademicDraft.monthly || {})[tcsAcademicDraft.active];
+  if (!rows || !rows[i]) return;
+  rows[i][key] = val;
+  //  ⚠️ 여기서 다시 그리면 적던 글자가 튑니다. 요약만 고칩니다.
+  refreshMonthlyAvg();
+}
+function addMonthlyRow() {
+  const m = tcsAcademicDraft.monthly || (tcsAcademicDraft.monthly = {});
+  (m[tcsAcademicDraft.active] = m[tcsAcademicDraft.active] || []).push(tcsEmptyMonRow());
+  renderMonthlyRows();
+  const inputs = document.querySelectorAll('#acad-mon-rows input');
+  if (inputs.length) inputs[inputs.length - 1].focus();
+}
+function removeMonthlyRow(i) {
+  const rows = (tcsAcademicDraft.monthly || {})[tcsAcademicDraft.active];
+  if (!rows) return;
+  rows.splice(i, 1);
+  //  한 줄도 없으면 적을 칸이 사라집니다 — 빈 줄 하나는 남깁니다.
+  if (!rows.length) rows.push(tcsEmptyMonRow());
+  renderMonthlyRows();
 }
 
 // 지금 보고 있는 학생의 학년 숫자 (K=0). 모르면 null
@@ -14953,6 +15088,10 @@ async function saveAcademicSection() {
   TCS_ACADEMIC_GRADES.forEach(([key]) => {
     const s = serializeAcademicRows(tcsAcademicDraft.grades[key] || []);
     if (s) data[key] = s;
+    //  ⚠️ 딴 열쇠에 넣습니다 — 별지 출력이 읽는 <학년>_grades 와 섞이면
+    //     양식이 깨집니다.
+    const m = serializeMonthlyRows((tcsAcademicDraft.monthly || {})[key] || []);
+    if (m) data[tcsMonKey(key)] = m;
   });
   const c = cumulativeAcademic();
   if (c.avg !== null) data.avg_score = c.avg.toFixed(1);
