@@ -2161,14 +2161,11 @@ a { text-underline-offset: 2px; text-decoration-thickness: 1px; }
       <div style="font-size:13px;color:var(--ink3);margin-bottom:20px">Tabletalk 링크와 말씀을 입력해주세요</div>
       <div style="font-size:11.5px;color:var(--ink3);margin-bottom:5px">Tabletalk URL</div>
       <input id="dw-url" placeholder="https://tabletalkmagazine.com/daily-study/..." style="width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:11px;font:13px var(--font);outline:none;margin-bottom:10px"/>
-      <div style="font-size:11.5px;color:var(--ink3);margin-bottom:5px">성경 구절 <span style="color:var(--ink3);font-weight:400">(입력하면 말씀이 자동으로 들어와요)</span></div>
-      <input id="dw-verse" placeholder="예: 1 Peter 3:21" style="width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:11px;font:13px var(--font);outline:none;margin-bottom:4px" oninput="scheduleScriptureFetch()"/>
-      <div id="dw-fetch-msg" style="font-size:12px;color:var(--ink3);margin-bottom:8px;min-height:18px"></div>
+      <div style="font-size:11.5px;color:var(--ink3);margin-bottom:5px">성경 구절 <span style="color:var(--ink3);font-weight:400">(구절 주소만 적습니다)</span></div>
+      <input id="dw-verse" placeholder="예: 베드로전서 3:21" style="width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:11px;font:13px var(--font);outline:none;margin-bottom:8px"/>
       <div style="font-size:11.5px;color:var(--ink3);margin-bottom:5px">제목</div>
       <input id="dw-title" placeholder="예: Baptism and Salvation" style="width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:11px;font:13px var(--font);outline:none;margin-bottom:10px"/>
-      <div style="font-size:11.5px;color:var(--ink3);margin-bottom:5px">말씀 본문 <span style="color:var(--ink3);font-weight:400">(자동 입력 또는 직접 수정)</span></div>
-      <textarea id="dw-text" placeholder="구절을 입력하면 ESV 말씀이 자동으로 들어와요..." rows="5" style="width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:11px;font:13px var(--font);outline:none;resize:vertical;margin-bottom:18px;line-height:1.6"></textarea>
-      <div id="dw-fetch-msg2" style="display:none"></div>
+      <div style="font-size:11.5px;color:var(--ink3);line-height:1.6;margin-bottom:18px;padding:9px 11px;background:var(--s2);border-radius:9px">📖 말씀 본문은 담지 않습니다. 구절 주소만 적어 두고, 본문은 각자 성경책이나 성경 앱에서 찾아 읽습니다.</div>
       <div style="display:flex;gap:8px">
         <div onclick="document.getElementById('daily-word-modal').style.display='none'" style="flex:1;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:var(--s3);color:var(--ink2);cursor:pointer;font-size:14px">취소</div>
         <div onclick="submitDailyWord()" style="flex:2;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:var(--accent);color:white;cursor:pointer;font-size:14px;font-weight:600">등록하기</div>
@@ -11071,7 +11068,8 @@ const HOME_WIDGETS = {
         (row ? `<div style="display:flex;flex-direction:column;gap:8px">
             ${row.title ? `<div style="font-size:14px;font-weight:700;color:var(--ink);word-break:keep-all">${escHtml(row.title)}</div>` : ''}
             ${row.verse ? `<div style="font-size:12px;font-weight:700;color:var(--adeep)">${escHtml(row.verse)}</div>` : ''}
-            ${row.scripture_text ? `<div style="font-size:13px;color:var(--ink2);line-height:1.75;white-space:pre-wrap;max-height:170px;overflow:auto;word-break:keep-all">${escHtml(row.scripture_text)}</div>` : ''}
+            ${/*  📖 성경 본문은 보여주지 않습니다 — 구절 주소만 둡니다.
+                   저작권 있는 번역본을 앱에 담지 않기로 했습니다. */''}
             ${row.url ? `<a href="${escHtml(row.url)}" target="_blank" style="font-size:12px;font-weight:600;color:var(--accent);text-decoration:none">${t('본문 보기','Open passage')} →</a>` : ''}
           </div>` : hwEmpty(t('오늘 등록된 말씀이 없어요','No word posted today'))));
     }
@@ -23696,64 +23694,24 @@ function showDailyWordForm(dateStr) {
   document.getElementById('dw-url').value = '';
   document.getElementById('dw-verse').value = '';
   document.getElementById('dw-title').value = '';
-  document.getElementById('dw-text').value = '';
-  const msg = document.getElementById('dw-fetch-msg');
-  if (msg) msg.style.display = 'none';
   document.getElementById('daily-word-modal').style.display = 'flex';
 }
 
-let _scriptureTimer = null;
-function scheduleScriptureFetch() {
-  clearTimeout(_scriptureTimer);
-  const msg = document.getElementById('dw-fetch-msg');
-  msg.textContent = '입력 중...';
-  msg.style.color = 'var(--ink3)';
-  _scriptureTimer = setTimeout(fetchScripture, 1500);
-}
-
-async function fetchScripture() {
-  const verse = document.getElementById('dw-verse').value.trim();
-  const msg = document.getElementById('dw-fetch-msg');
-  if (!verse) { msg.textContent = ''; return; }
-
-  msg.textContent = '📖 말씀 가져오는 중...';
-  msg.style.color = 'var(--ink3)';
-
-  try {
-    // Bible API (공개 무료 API)
-    const encoded = encodeURIComponent(verse);
-    const res = await fetch(`https://bible-api.com/${encoded}?translation=esv`);
-    const data = await res.json();
-
-    if (data.text) {
-      // 구절 번호 포함해서 표시
-      let text = '';
-      if (data.verses && data.verses.length > 1) {
-        text = data.verses.map(v => `[${v.verse}] ${v.text.trim()}`).join('\n');
-      } else {
-        text = data.text.trim();
-      }
-      document.getElementById('dw-text').value = text;
-      msg.textContent = '✅ ESV 말씀을 가져왔어요!';
-      msg.style.color = 'var(--sage)';
-    } else {
-      throw new Error('no text');
-    }
-  } catch(e) {
-    msg.textContent = '⚠️ 구절을 찾을 수 없어요. 직접 입력해주세요 (예: 1 Peter 3:21)';
-    msg.style.color = 'var(--gold)';
-  }
-}
-
+//  📖 성경 본문은 앱에 담지 않습니다.
+//  전에는 bible-api.com 에서 ESV 본문을 받아 와 묵상에 저장했습니다.
+//  ESV(Crossway)·개역개정(대한성서공회)·NIV(Biblica) 는 모두 저작권이 있는
+//  번역본입니다. 공개 API 로 받아올 수 있다고 해서 앱에 실어도 되는 것은
+//  아닙니다. 구절 주소(예: 창세기 1:1)만 적어 두고, 본문은 각자 성경책이나
+//  성경 앱에서 찾아 읽습니다. (2026-11-27 선교사님 지시)
 async function submitDailyWord() {
   const url = document.getElementById('dw-url').value.trim();
   const verse = document.getElementById('dw-verse').value.trim();
   const title = document.getElementById('dw-title').value.trim();
-  const scriptureText = document.getElementById('dw-text').value.trim();
   if (!url) { document.getElementById('dw-url').style.borderColor='var(--rose)'; return; }
   await sb.from('daily_word').upsert({
     date: dailyWordDate, url, verse, title,
-    scripture_text: scriptureText || null,
+    //  ⚠️ 본문은 담지 않습니다. 옛 줄에 남아 있으면 같이 지웁니다.
+    scripture_text: null,
     created_by: ME.id,
     community_id: CID(),
   }, { onConflict: 'date,community_id' });
